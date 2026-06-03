@@ -1,0 +1,644 @@
+required_packages <- c(
+  "shiny", "bslib", "DT", "dplyr", "tidyr", "purrr", "stringr", "stringi", "lubridate",
+  "ggplot2", "plotly", "DBI", "RSQLite", "jsonlite", "digest", "htmltools",
+  "rvest", "xml2", "httr2", "tibble", "tools", "readr", "writexl", "janitor",
+  "glue", "progress", "pdftools", "polite", "future", "furrr"
+)
+
+install_missing_packages <- function(pkgs) {
+  if (length(pkgs) == 0) return(invisible(TRUE))
+
+  repos <- getOption("repos")
+  if (is.null(repos) || identical(unname(repos[["CRAN"]]), "@CRAN@") || is.na(repos[["CRAN"]])) {
+    options(repos = c(CRAN = "https://cloud.r-project.org"))
+  }
+
+  message("Instalando pacotes ausentes: ", paste(pkgs, collapse = ", "))
+
+  for (pkg in pkgs) {
+    if (!requireNamespace(pkg, quietly = TRUE)) {
+      tryCatch(
+        install.packages(pkg, dependencies = TRUE),
+        error = function(e) {
+          message(sprintf("Falha ao instalar o pacote '%s': %s", pkg, e$message))
+        }
+      )
+    }
+  }
+
+  invisible(TRUE)
+}
+
+missing_packages <- required_packages[!vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)]
+if (length(missing_packages) > 0) {
+  install_missing_packages(missing_packages)
+}
+
+missing_after_install <- required_packages[!vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)]
+if (length(missing_after_install) > 0) {
+  stop(
+    sprintf(
+      paste0(
+        "Não foi possível carregar/instalar todos os pacotes necessários. ",
+        "Instale manualmente e tente novamente: %s"
+      ),
+      paste(missing_after_install, collapse = ", ")
+    ),
+    call. = FALSE
+  )
+}
+
+invisible(lapply(required_packages, library, character.only = TRUE))
+
+get_app_dir <- function() {
+  ofiles <- character(0)
+  for (i in rev(seq_len(sys.nframe()))) {
+    fr <- sys.frame(i)
+    if (exists("ofile", envir = fr, inherits = FALSE)) {
+      candidate <- get("ofile", envir = fr, inherits = FALSE)
+      if (is.character(candidate) && length(candidate) == 1 && nzchar(candidate)) {
+        ofiles <- c(ofiles, candidate)
+      }
+    }
+  }
+  if (length(ofiles) > 0) {
+    return(dirname(normalizePath(ofiles[[1]], winslash = "/", mustWork = FALSE)))
+  }
+  if (file.exists(file.path(getwd(), "app.R"))) {
+    return(normalizePath(getwd(), winslash = "/", mustWork = FALSE))
+  }
+  normalizePath(getwd(), winslash = "/", mustWork = FALSE)
+}
+
+app_dir <- get_app_dir()
+app_file <- function(...) file.path(app_dir, ...)
+
+if (!exists("ensure_dir", mode = "function")) {
+  ensure_dir <- function(path) {
+    if (is.null(path) || !nzchar(path)) return(invisible(FALSE))
+    if (!dir.exists(path)) dir.create(path, recursive = TRUE, showWarnings = FALSE)
+    invisible(dir.exists(path))
+  }
+}
+
+safe_source <- function(path) {
+  full_path <- app_file(path)
+  out <- try(source(full_path, local = TRUE, encoding = "UTF-8"), silent = TRUE)
+  if (inherits(out, "try-error")) {
+    warning(sprintf("Não foi possível carregar %s. O app seguirá com fallbacks quando possível.", full_path), call. = FALSE)
+  }
+  invisible(out)
+}
+
+safe_source("R/helpers_utils.R")
+safe_source("R/helpers_db.R")
+safe_source("R/helpers_text.R")
+safe_source("R/helpers_ai.R")
+safe_source("R/helpers_recommend.R")
+safe_source("R/helpers_collect.R")
+
+db_path <- app_file("funding_intelligence.sqlite")
+export_dir <- app_file("data_exports")
+log_path <- app_file("logs", "funding_collection.log")
+ensure_dir(export_dir)
+ensure_dir(dirname(log_path))
+
+try(init_database(db_path), silent = TRUE)
+conn <- tryCatch(get_db_connection(db_path), error = function(e) NULL)
+onStop(function() {
+  if (!is.null(conn) && DBI::dbIsValid(conn)) DBI::dbDisconnect(conn)
+})
+
+build_sidebar <- function() {
+  bslib::sidebar(
+    open = "closed",
+    width = 0,
+    tags$div(style = "display:none;")
+  )
+}
+
+ui <- bslib::page_sidebar(
+  title = tags$div(
+    class = "app-title-wrap",
+    tags$div(
+      class = "app-title-main",
+      h2("Funding Intelligence Hub"),
+      p("Coleta direta em fontes oficiais, busca booleana, monitoramento de editais e recomendação personalizada.")
+    )
+  ),
+  theme = bslib::bs_theme(version = 5, bootswatch = "flatly", primary = "#1f6feb", secondary = "#0f172a"),
+  sidebar = build_sidebar(),
+  tags$head(tags$link(rel = "stylesheet", type = "text/css", href = "styles.css")),
+
+  bslib::card(
+    class = "search-card",
+    bslib::layout_columns(
+      col_widths = c(8, 1, 1, 1, 1),
+      textInput("search_query", "Barra de busca principal", value = "", placeholder = "Ex.: (health OR medical devices) AND innovation NOT veterinary"),
+      actionButton("btn_search", "Buscar", class = "btn-primary action-top"),
+      actionButton("btn_advanced", "Busca avançada", class = "btn-outline-primary action-top"),
+      actionButton("btn_save_search", "Salvar busca", class = "btn-outline-secondary action-top"),
+      actionButton("btn_collect_official", "Atualizar base", class = "btn-success action-top")
+    )
+  ),
+
+  bslib::layout_column_wrap(
+    width = 1 / 4,
+    bslib::value_box(title = "Registros visíveis", value = textOutput("total_editais")),
+    bslib::value_box(title = "Fontes ativas", value = textOutput("total_fontes")),
+    bslib::value_box(title = "Urgentes (14 dias)", value = textOutput("total_urgentes")),
+    bslib::value_box(title = "Última coleta", value = textOutput("ultima_coleta"))
+  ),
+
+  bslib::navset_card_tab(
+    id = "main_tabs",
+    bslib::nav_panel(
+      "Resultados",
+      bslib::card(
+        bslib::layout_columns(
+          col_widths = c(4, 4, 4),
+          uiOutput("collection_status_ui"),
+          uiOutput("source_counter_ui"),
+          uiOutput("export_status_ui")
+        )
+      ),
+      DTOutput("results_table")
+    ),
+    bslib::nav_panel(
+      "Por financiador",
+      bslib::layout_columns(
+        col_widths = c(7, 5),
+        bslib::card(plotlyOutput("funders_plot", height = 360)),
+        bslib::card(
+          selectInput("selected_funder", "Instituição financiadora", choices = NULL),
+          uiOutput("funder_profile")
+        )
+      ),
+      DTOutput("funders_table")
+    ),
+    bslib::nav_panel(
+      "Buscas salvas",
+      DTOutput("saved_searches_table")
+    ),
+    bslib::nav_panel(
+      "Editais rastreados",
+      bslib::layout_columns(
+        col_widths = c(8, 4),
+        DTOutput("tracked_table"),
+        bslib::card(
+          h5("Atualizar rastreamento"),
+          selectInput("tracked_status_input", "Status", choices = c("avaliar", "prioritário", "submetido", "descartado"), selected = "avaliar"),
+          textAreaInput("tracked_notes_input", "Observações", width = "100%", rows = 6),
+          actionButton("btn_update_tracked", "Salvar atualização", class = "btn-primary w-100 mb-2"),
+          actionButton("btn_remove_tracked", "Remover da lista", class = "btn-outline-danger w-100")
+        )
+      )
+    ),
+    bslib::nav_panel(
+      "Recomendados para mim",
+      bslib::layout_columns(
+        col_widths = c(8, 4),
+        bslib::card(DTOutput("recommended_table")),
+        bslib::card(uiOutput("profile_summary"))
+      ),
+      bslib::card(h4("Colaboradores potenciais por tema"), DTOutput("collaborators_table"))
+    ),
+    bslib::nav_panel(
+      "Logs",
+      DTOutput("logs_table")
+    )
+  )
+)
+
+server <- function(input, output, session) {
+  rv <- reactiveValues(
+    opportunities = tibble::tibble(),
+    sources = tibble::tibble(),
+    saved_searches = tibble::tibble(),
+    tracked = tibble::tibble(),
+    history = tibble::tibble(),
+    profile = tibble::tibble(),
+    collaborators = tibble::tibble(),
+    logs = tibble::tibble(),
+    current_query = "",
+    advanced_filters = list(),
+    last_collect_summary = list(msg = "Base pronta.", n = 0L, exports = NULL),
+    selected_tracked_id = NULL
+  )
+
+  refresh_data <- function(notify = FALSE) {
+    data <- tryCatch(
+      {
+        if (is.null(conn)) stop("Conexão SQLite indisponível.", call. = FALSE)
+        read_app_data(conn)
+      },
+      error = function(e) {
+        if (isTRUE(notify)) showNotification(paste("Falha ao carregar a base:", e$message), type = "error", duration = 8)
+        fallback_app_data()
+      }
+    )
+    rv$opportunities <- tibble::as_tibble(data$opportunities)
+    rv$sources <- tibble::as_tibble(data$sources)
+    rv$saved_searches <- tibble::as_tibble(data$saved_searches)
+    rv$tracked <- tibble::as_tibble(data$tracked)
+    rv$history <- tibble::as_tibble(data$history)
+    rv$profile <- tibble::as_tibble(data$profile)
+    rv$collaborators <- tibble::as_tibble(data$collaborators)
+    rv$logs <- tibble::as_tibble(data$logs)
+    invisible(TRUE)
+  }
+
+  refresh_data()
+  observe({
+    opps <- rv$opportunities
+    funder_choices <- sort(unique(opps$entidade))
+    updateSelectInput(session, "selected_funder", choices = funder_choices, selected = if (length(funder_choices) > 0) funder_choices[[1]] else "")
+  })
+
+  build_filters_json <- function() {
+    jsonlite::toJSON(
+      list(
+        query = rv$current_query,
+        advanced = rv$advanced_filters
+      ),
+      auto_unbox = TRUE,
+      null = "null"
+    )
+  }
+
+  execute_search <- function(query_text, save_history = TRUE) {
+    query_text <- stringr::str_squish(query_text %||% "")
+    if (nzchar(query_text)) {
+      parsed <- tryCatch(parse_boolean_query(query_text), error = function(e) e)
+      if (inherits(parsed, "error")) {
+        showNotification(parsed$message, type = "error", duration = 8)
+        return(invisible(FALSE))
+      }
+    }
+    rv$current_query <- query_text
+    if (save_history && !is.null(conn)) save_search_record(conn, rv$current_query, build_filters_json())
+    invisible(TRUE)
+  }
+
+  observeEvent(input$btn_search, {
+    execute_search(input$search_query)
+  })
+
+  observeEvent(input$btn_advanced, {
+    opps <- rv$opportunities
+    showModal(modalDialog(
+      title = "Busca avançada",
+      easyClose = TRUE,
+      size = "l",
+      bslib::layout_columns(
+        col_widths = c(6, 6),
+        textInput("adv_required_terms", "Termos obrigatórios", value = rv$advanced_filters$required_terms %||% ""),
+        textInput("adv_optional_terms", "Termos opcionais", value = rv$advanced_filters$optional_terms %||% ""),
+        textInput("adv_exclude_terms", "Termos a excluir", value = rv$advanced_filters$exclude_terms %||% ""),
+        textInput("adv_exact_phrase", "Frase exata", value = rv$advanced_filters$exact_phrase %||% ""),
+        selectInput("adv_idioma", "Idioma", choices = c("Todos", sort(unique(opps$idioma))), selected = rv$advanced_filters$idioma %||% "Todos"),
+        selectizeInput("adv_country", "País/região", choices = sort(unique(opps$pais_origem)), multiple = TRUE, selected = rv$advanced_filters$pais %||% character(0)),
+        selectizeInput("adv_type", "Tipo de oportunidade", choices = sort(unique(opps$tipo_oportunidade)), multiple = TRUE, selected = rv$advanced_filters$tipo %||% character(0)),
+        selectizeInput("adv_area", "Área temática", choices = sort(unique(opps$area_tematica)), multiple = TRUE, selected = rv$advanced_filters$area_tematica %||% character(0)),
+        selectizeInput("adv_funder", "Financiador", choices = sort(unique(opps$entidade)), multiple = TRUE, selected = rv$advanced_filters$financiador %||% character(0)),
+        textInput("adv_eligibility", "Elegibilidade institucional", value = rv$advanced_filters$elegibilidade %||% ""),
+        textInput("adv_maturity", "Nível de maturidade da pesquisa", value = rv$advanced_filters$maturidade %||% ""),
+        dateRangeInput("adv_deadline", "Prazo de submissão", start = Sys.Date() - 365, end = Sys.Date() + 365)
+      ),
+      footer = tagList(modalButton("Cancelar"), actionButton("btn_apply_advanced", "Aplicar", class = "btn-primary"))
+    ))
+  })
+
+  observeEvent(input$btn_apply_advanced, {
+    query_built <- build_advanced_query(
+      required_terms = input$adv_required_terms,
+      optional_terms = input$adv_optional_terms,
+      exclude_terms = input$adv_exclude_terms,
+      exact_phrase = input$adv_exact_phrase
+    )
+
+    rv$advanced_filters <- list(
+      required_terms = input$adv_required_terms,
+      optional_terms = input$adv_optional_terms,
+      exclude_terms = input$adv_exclude_terms,
+      exact_phrase = input$adv_exact_phrase,
+      idioma = input$adv_idioma,
+      pais = input$adv_country,
+      tipo = input$adv_type,
+      area_tematica = input$adv_area,
+      financiador = input$adv_funder,
+      elegibilidade = input$adv_eligibility,
+      maturidade = input$adv_maturity,
+      deadline_range = input$adv_deadline
+    )
+
+    updateTextInput(session, "search_query", value = query_built)
+    removeModal()
+    execute_search(query_built)
+  })
+
+  observeEvent(input$btn_save_search, {
+    showModal(modalDialog(
+      title = "Salvar busca atual",
+      textInput("save_search_name", "Nome da busca", value = paste0("Busca ", format(Sys.time(), "%d/%m %H:%M"))),
+      checkboxInput("save_search_alert", "Preparar alerta semanal", value = TRUE),
+      footer = tagList(modalButton("Cancelar"), actionButton("confirm_save_search", "Salvar", class = "btn-primary"))
+    ))
+  })
+
+  observeEvent(input$confirm_save_search, {
+    req(conn)
+    payload <- jsonlite::toJSON(rv$advanced_filters, auto_unbox = TRUE, null = "null")
+    save_named_search(conn, input$save_search_name %||% "Busca sem nome", input$search_query %||% "", payload, as.integer(isTRUE(input$save_search_alert)))
+    removeModal()
+    refresh_data()
+    showNotification("Busca salva com sucesso.", type = "message")
+  })
+
+  observeEvent(input$btn_collect_official, {
+    available_sources <- rv$sources |> dplyr::filter(!(.data$id_fonte %in% c("facepe", "fapesb")))
+    choices <- stats::setNames(available_sources$id_fonte, paste0(available_sources$sigla, " — ", available_sources$nome_fonte))
+    default_sel <- available_sources$id_fonte
+    showModal(modalDialog(
+      title = "Atualizar base a partir das fontes oficiais",
+      easyClose = TRUE,
+      size = "l",
+      p("A coleta parte diretamente das URLs oficiais cadastradas, percorre paginação quando detectada e enriquece os metadados via IA quando a variável GEMINI_API_KEY estiver configurada."),
+      selectizeInput("collect_sources", "Fontes a coletar", choices = choices, selected = default_sel, multiple = TRUE),
+      bslib::layout_columns(
+        col_widths = c(4, 4, 4),
+        numericInput("collect_max_pages", "Máx. páginas por fonte", value = 5, min = 1, max = 50),
+        numericInput("collect_max_records", "Máx. registros por fonte", value = 50, min = 1, max = 500),
+        checkboxInput("collect_use_ai", "Usar IA para enriquecimento", value = nzchar(Sys.getenv("GEMINI_API_KEY")))
+      ),
+      checkboxInput("collect_export", "Salvar CSV, RDS e XLSX ao final", value = TRUE),
+      footer = tagList(modalButton("Cancelar"), actionButton("confirm_collect_official", "Executar coleta", class = "btn-success"))
+    ))
+  })
+
+  observeEvent(input$confirm_collect_official, {
+    req(conn)
+    removeModal()
+    future::plan(future::sequential)
+    result <- withProgress(message = "Coletando fontes oficiais...", value = 0, {
+      incProgress(0.05, detail = "Inicializando")
+      tryCatch(
+        collect_all_sources(
+          conn = conn,
+          source_ids = input$collect_sources,
+          max_pages = input$collect_max_pages,
+          max_records_per_source = input$collect_max_records,
+          use_ai = isTRUE(input$collect_use_ai),
+          export_dir = export_dir,
+          log_path = log_path,
+          progress_cb = function(step, total, detail) {
+            frac <- if (total <= 0) 0 else step / total
+            incProgress(min(0.95, frac), detail = detail)
+          },
+          do_export = isTRUE(input$collect_export)
+        ),
+        error = function(e) e
+      )
+    })
+
+    if (inherits(result, "error")) {
+      showNotification(paste("Falha na coleta:", result$message), type = "error", duration = 10)
+      return(invisible(NULL))
+    }
+
+    rv$last_collect_summary <- result
+    refresh_data(notify = TRUE)
+    base_msg <- sprintf("Coleta concluída. %s registros inseridos/atualizados nesta rodada; %s registros totais na base; %s fonte(s) processadas.", result$inserted_now %||% 0L, result$n_records %||% 0L, result$sources_processed %||% 0L)
+    if (length(result$export_warnings %||% character()) > 0) {
+      showNotification(paste(result$export_warnings, collapse = " | "), type = "warning", duration = 12)
+    }
+    showNotification(base_msg, type = "message", duration = 10)
+  })
+
+  base_results <- reactive({
+    df <- rv$opportunities
+    if (nrow(df) == 0) return(df)
+    query <- rv$current_query
+    if (nzchar(query)) {
+      df <- tryCatch(apply_boolean_search(df, query, text_cols = c("titulo", "subtitulo", "descricao_resumida", "descricao_completa", "palavras_chave", "area_tematica", "elegibilidade")), error = function(e) df)
+    }
+    df <- apply_structured_filters(df, rv$advanced_filters)
+    compute_adherence_score(df, conn, query)
+  })
+
+  filtered_results <- reactive({
+    df <- base_results()
+    if (nrow(df) == 0) return(df)
+    dplyr::arrange(df, dplyr::desc(score_aderencia), parse_date_safe(data_limite))
+  })
+
+  output$total_editais <- renderText(nrow(filtered_results()))
+  output$total_fontes <- renderText(if (nrow(filtered_results()) == 0) 0 else dplyr::n_distinct(filtered_results()$entidade))
+  output$total_urgentes <- renderText(sum(days_to_deadline(filtered_results()$data_limite) <= 14 & days_to_deadline(filtered_results()$data_limite) >= 0, na.rm = TRUE))
+  output$ultima_coleta <- renderText({
+    if (nrow(rv$logs) == 0) return("-")
+    latest <- max(parse_datetime_safe(rv$logs$data_execucao), na.rm = TRUE)
+    if (!is.finite(as.numeric(latest))) return("-")
+    format(latest, "%d/%m/%Y %H:%M")
+  })
+
+  output$collection_status_ui <- renderUI({
+    tags$div(class = "mini-kpi", h5("Coleta"), p(rv$last_collect_summary$msg %||% "Base pronta."))
+  })
+  output$source_counter_ui <- renderUI({
+    tags$div(class = "mini-kpi", h5("Fontes"), p(sprintf("%s fontes configuradas", nrow(rv$sources))))
+  })
+  output$export_status_ui <- renderUI({
+    exp <- rv$last_collect_summary$exports
+    warn <- rv$last_collect_summary$export_warnings %||% character()
+    msg <- if (is.null(exp) || length(exp) == 0) "Ainda sem exportações na sessão" else paste(basename(exp), collapse = " | ")
+    tags$div(class = "mini-kpi", h5("Exportação"), p(msg), if (length(warn) > 0) tags$small(style = "color:#a15c00; display:block;", paste(warn, collapse = " | ")))
+  })
+
+  output$results_table <- renderDT({
+    df <- filtered_results()
+    if (nrow(df) == 0) return(DT::datatable(data.frame(Mensagem = "Nenhum resultado encontrado."), options = list(dom = 't')))
+    shown <- df |>
+      dplyr::mutate(
+        Prazo = format_date_br(data_limite),
+        Status = vapply(status_oportunidade, badge_status_html, character(1)),
+        Score = vapply(score_aderencia, score_bar_html, character(1)),
+        Link = vapply(dplyr::coalesce(link_detalhe, link_origem), link_html, character(1), label = "Abrir"),
+        Rastrear = vapply(id_registro, make_click_button, character(1), label = "Rastrear")
+      ) |>
+      dplyr::transmute(
+        ID = id_registro,
+        Título = titulo,
+        Financiador = entidade,
+        País = pais_origem,
+        Prazo,
+        Tipo = tipo_oportunidade,
+        Área = area_tematica,
+        Resumo = stringr::str_trunc(descricao_resumida, 180),
+        `Palavras-chave` = palavras_chave,
+        Score,
+        Status,
+        Link,
+        Rastrear
+      )
+    DT::datatable(shown, escape = FALSE, options = list(pageLength = 10, scrollX = TRUE))
+  })
+
+  observeEvent(input$row_action, {
+    rv$selected_tracked_id <- input$row_action$id
+    if (!is.null(conn)) track_opportunity(conn, input$row_action$id, status_usuario = "avaliar", observacoes = "")
+    refresh_data()
+    showNotification("Edital adicionado à lista de rastreamento.", type = "message")
+  })
+
+  output$funders_plot <- renderPlotly({
+    df <- filtered_results() |>
+      dplyr::count(entidade, sort = TRUE) |>
+      dplyr::slice_head(n = 15)
+    p <- ggplot2::ggplot(df, ggplot2::aes(x = reorder(entidade, n), y = n)) +
+      ggplot2::geom_col() +
+      ggplot2::coord_flip() +
+      ggplot2::labs(x = NULL, y = "Editais", title = "Top financiadores")
+    plotly::ggplotly(p)
+  })
+
+  output$funders_table <- renderDT({
+    df <- filtered_results() |>
+      dplyr::count(entidade, pais_origem, tipo_oportunidade, sort = TRUE, name = "n_editais")
+    DT::datatable(df, options = list(pageLength = 10, scrollX = TRUE))
+  })
+
+  output$funder_profile <- renderUI({
+    req(input$selected_funder)
+    info <- rv$sources |> dplyr::filter(sigla == input$selected_funder | nome_fonte == input$selected_funder | id_fonte == input$selected_funder)
+    if (nrow(info) == 0) {
+      stats <- filtered_results() |> dplyr::filter(entidade == input$selected_funder)
+      if (nrow(stats) == 0) return(tags$p("Sem informações adicionais."))
+      return(tags$div(h5(input$selected_funder), p(sprintf("%s oportunidade(s) na base filtrada.", nrow(stats)))))
+    }
+    tags$div(
+      h5(info$nome_fonte[[1]]),
+      p(sprintf("País: %s", info$pais[[1]])),
+      p(sprintf("Categoria: %s", info$categoria[[1]])),
+      p(sprintf("Método de coleta: %s", info$metodo_coleta[[1]])),
+      HTML(link_html(info$url_oportunidades[[1]], "Página oficial"))
+    )
+  })
+
+  output$themes_plot <- renderPlotly({
+    df <- simple_keyword_frequency(filtered_results(), top_n = 20)
+    p <- ggplot2::ggplot(df, ggplot2::aes(x = reorder(term, n), y = n)) +
+      ggplot2::geom_col() +
+      ggplot2::coord_flip() +
+      ggplot2::labs(x = NULL, y = "Frequência", title = "Principais termos")
+    plotly::ggplotly(p)
+  })
+
+  output$theme_funder_plot <- renderPlotly({
+    df <- filtered_results() |>
+      dplyr::count(area_tematica, entidade, sort = TRUE) |>
+      dplyr::slice_head(n = 20)
+    p <- ggplot2::ggplot(df, ggplot2::aes(x = entidade, y = n, text = area_tematica)) +
+      ggplot2::geom_col() +
+      ggplot2::coord_flip() +
+      ggplot2::labs(x = NULL, y = "Registros", title = "Temas por financiador")
+    plotly::ggplotly(p, tooltip = c("x", "y", "text"))
+  })
+
+  output$keywords_table <- renderDT({
+    DT::datatable(simple_keyword_frequency(filtered_results(), top_n = 50), options = list(pageLength = 10))
+  })
+
+  output$saved_searches_table <- renderDT({
+    df <- rv$saved_searches
+    if (nrow(df) == 0) return(DT::datatable(data.frame(Mensagem = "Nenhuma busca salva."), options = list(dom = 't')))
+    df <- df |>
+      dplyr::select(id, nome_busca, query_text, alerta_ativo, created_at, last_run_at)
+    DT::datatable(df, escape = FALSE, options = list(pageLength = 10, scrollX = TRUE), selection = "single")
+  })
+
+  observeEvent(input$saved_searches_table_rows_selected, {
+    idx <- input$saved_searches_table_rows_selected
+    if (length(idx) == 1) {
+      row <- rv$saved_searches[idx, , drop = FALSE]
+      updateTextInput(session, "search_query", value = row$query_text[[1]])
+      execute_search(row$query_text[[1]], save_history = FALSE)
+      if (!is.null(conn)) mark_saved_search_run(conn, row$id[[1]])
+      refresh_data()
+    }
+  })
+
+  output$tracked_table <- renderDT({
+    if (nrow(rv$tracked) == 0) return(DT::datatable(data.frame(Mensagem = "Nenhum edital rastreado."), options = list(dom = 't')))
+    df <- rv$tracked |>
+      dplyr::left_join(rv$opportunities, by = c("id_oportunidade" = "id_registro")) |>
+      dplyr::transmute(id = id_oportunidade, Título = titulo, Financiador = entidade, Prazo = format_date_br(data_limite), Status = status_usuario, Observações = observacoes)
+    DT::datatable(df, options = list(pageLength = 8, scrollX = TRUE), selection = "single")
+  })
+
+  observeEvent(input$tracked_table_rows_selected, {
+    idx <- input$tracked_table_rows_selected
+    if (length(idx) == 1 && nrow(rv$tracked) >= idx) {
+      rv$selected_tracked_id <- rv$tracked$id_oportunidade[[idx]]
+      updateSelectInput(session, "tracked_status_input", selected = rv$tracked$status_usuario[[idx]])
+      updateTextAreaInput(session, "tracked_notes_input", value = rv$tracked$observacoes[[idx]] %||% "")
+    }
+  })
+
+  observeEvent(input$btn_update_tracked, {
+    req(conn, rv$selected_tracked_id)
+    update_tracked_opportunity(conn, rv$selected_tracked_id, input$tracked_status_input, input$tracked_notes_input %||% "")
+    refresh_data()
+    showNotification("Rastreamento atualizado.", type = "message")
+  })
+
+  observeEvent(input$btn_remove_tracked, {
+    req(conn, rv$selected_tracked_id)
+    delete_tracked_opportunity(conn, rv$selected_tracked_id)
+    rv$selected_tracked_id <- NULL
+    refresh_data()
+    showNotification("Item removido da lista de rastreamento.", type = "message")
+  })
+
+  output$recommended_table <- renderDT({
+    df <- recommend_opportunities(conn, filtered_results(), rv$current_query, top_n = 15)
+    df <- df |>
+      dplyr::mutate(Link = vapply(dplyr::coalesce(link_detalhe, link_origem), link_html, character(1), label = "Abrir")) |>
+      dplyr::transmute(Título = titulo, Financiador = entidade, Score = score_aderencia, Prazo = format_date_br(data_limite), Tipo = tipo_oportunidade, Link)
+    DT::datatable(df, escape = FALSE, options = list(pageLength = 10, scrollX = TRUE))
+  })
+
+  output$profile_summary <- renderUI({
+    tags$div(
+      h5("Usuário"),
+      p(tags$strong("Instituição: "), "SENAI CIMATEC"),
+      p(tags$strong("Palavras-chave: "), "quântica; tecnologia quântica; comunicação quântica; sensores quânticos; computação quântica"),
+      p(tags$strong("Áreas: "), "Tecnologias Quânticas; Comunicação Quântica; Sensores Quânticos; Computação Quântica")
+    )
+  })
+
+  output$collaborators_table <- renderDT({
+    df <- find_potential_collaborators(conn, rv$current_query, top_n = 15)
+    if (nrow(df) == 0) {
+      return(DT::datatable(data.frame(Mensagem = "Nenhum colaborador potencial encontrado."), options = list(dom = 't')))
+    }
+    if ("similarity" %in% names(df)) df$similarity <- sprintf("%.2f", round(as.numeric(df$similarity), 2))
+    shown <- df |>
+      dplyr::transmute(
+        Nome = nome,
+        Instituição = instituicao,
+        País = pais,
+        Área = area,
+        `Palavras-chave` = palavras_chave,
+        Similarity = similarity,
+        Email = email
+      )
+    DT::datatable(shown, options = list(pageLength = 10, scrollX = TRUE))
+  })
+
+  output$logs_table <- renderDT({
+    DT::datatable(rv$logs |> dplyr::arrange(dplyr::desc(parse_datetime_safe(data_execucao))), options = list(pageLength = 15, scrollX = TRUE))
+  })
+}
+
+shiny::shinyApp(ui, server)

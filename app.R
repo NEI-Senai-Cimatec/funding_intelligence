@@ -223,7 +223,8 @@ server <- function(input, output, session) {
     current_query = "",
     advanced_filters = list(),
     last_collect_summary = list(msg = "Base pronta.", n = 0L, exports = NULL),
-    selected_tracked_id = NULL
+    selected_tracked_id = NULL,
+    collecting = FALSE
   )
 
   refresh_data <- function(notify = FALSE) {
@@ -379,40 +380,85 @@ server <- function(input, output, session) {
   observeEvent(input$confirm_collect_official, {
     req(conn)
     removeModal()
-    future::plan(future::sequential)
-    result <- withProgress(message = "Coletando fontes oficiais...", value = 0, {
-      incProgress(0.05, detail = "Inicializando")
-      tryCatch(
-        collect_all_sources(
-          conn = conn,
-          source_ids = input$collect_sources,
-          max_pages = input$collect_max_pages,
-          max_records_per_source = input$collect_max_records,
-          use_ai = isTRUE(input$collect_use_ai),
-          export_dir = export_dir,
-          log_path = log_path,
-          progress_cb = function(step, total, detail) {
-            frac <- if (total <= 0) 0 else step / total
-            incProgress(min(0.95, frac), detail = detail)
-          },
-          do_export = isTRUE(input$collect_export)
-        ),
-        error = function(e) e
+
+    if (isTRUE(rv$collecting)) {
+      showNotification("A coleta de dados ja esta em andamento em segundo plano.", type = "warning")
+      return()
+    }
+
+    rv$collecting <- TRUE
+    updateActionButton(session, "btn_collect_official", label = "Coletando...")
+    showNotification("Coleta iniciada em segundo plano. O painel continuará responsivo.", type = "message", id = "bg_collect_notif", duration = NULL)
+
+    # Parametros para o processo filho (passados por copia)
+    source_ids_bg <- input$collect_sources
+    max_pages_bg <- input$collect_max_pages
+    max_records_bg <- input$collect_max_records
+    use_ai_bg <- isTRUE(input$collect_use_ai)
+    export_dir_bg <- export_dir
+    log_path_bg <- log_path
+    do_export_bg <- isTRUE(input$collect_export)
+    db_path_bg <- db_path
+    gemini_key_bg <- Sys.getenv("GEMINI_API_KEY")
+
+    # Define o plano multisession se ainda estiver sequencial
+    if (inherits(future::plan(), "sequential")) {
+      future::plan(future::multisession, workers = 2)
+    }
+
+    # Executa a coleta em segundo plano
+    f <- future::future({
+      if (nzchar(gemini_key_bg)) {
+        Sys.setenv(GEMINI_API_KEY = gemini_key_bg)
+      }
+
+      # Conexao local do processo filho
+      bg_conn <- DBI::dbConnect(RSQLite::SQLite(), db_path_bg)
+      on.exit(DBI::dbDisconnect(bg_conn))
+
+      collect_all_sources(
+        conn = bg_conn,
+        source_ids = source_ids_bg,
+        max_pages = max_pages_bg,
+        max_records_per_source = max_records_bg,
+        use_ai = use_ai_bg,
+        export_dir = export_dir_bg,
+        log_path = log_path_bg,
+        do_export = do_export_bg,
+        progress_cb = NULL
       )
     })
 
-    if (inherits(result, "error")) {
-      showNotification(paste("Falha na coleta:", result$message), type = "error", duration = 10)
-      return(invisible(NULL))
-    }
+    # Manipula o retorno da promise
+    promises::then(
+      f,
+      onFulfilled = function(result) {
+        removeNotification("bg_collect_notif")
+        rv$collecting <- FALSE
+        updateActionButton(session, "btn_collect_official", label = "Atualizar base")
 
-    rv$last_collect_summary <- result
-    refresh_data(notify = TRUE)
-    base_msg <- sprintf("Coleta concluída. %s registros inseridos/atualizados nesta rodada; %s registros totais na base; %s fonte(s) processadas.", result$inserted_now %||% 0L, result$n_records %||% 0L, result$sources_processed %||% 0L)
-    if (length(result$export_warnings %||% character()) > 0) {
-      showNotification(paste(result$export_warnings, collapse = " | "), type = "warning", duration = 12)
-    }
-    showNotification(base_msg, type = "message", duration = 10)
+        rv$last_collect_summary <- result
+        refresh_data(notify = TRUE)
+
+        base_msg <- sprintf(
+          "Coleta concluida. %s registros inseridos/atualizados nesta rodada; %s registros totais na base; %s fonte(s) processadas.",
+          result$inserted_now %||% 0L,
+          result$n_records %||% 0L,
+          result$sources_processed %||% 0L
+        )
+        showNotification(base_msg, type = "message", duration = 10)
+
+        if (length(result$export_warnings %||% character()) > 0) {
+          showNotification(paste(result$export_warnings, collapse = " | "), type = "warning", duration = 12)
+        }
+      },
+      onRejected = function(err) {
+        removeNotification("bg_collect_notif")
+        rv$collecting <- FALSE
+        updateActionButton(session, "btn_collect_official", label = "Atualizar base")
+        showNotification(paste("Falha na coleta em segundo plano:", err$message), type = "error", duration = 10)
+      }
+    )
   })
 
   base_results <- reactive({

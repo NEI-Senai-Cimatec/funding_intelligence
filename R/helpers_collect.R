@@ -12,7 +12,58 @@ source_dispatch <- function(source_row, max_pages = 5, max_records = 50, use_ai 
   collect_generic_official(source_row, max_pages, max_records, use_ai, log_path)
 }
 
+safe_request_page_playwright <- function(url, log_path = NULL) {
+  if (!requireNamespace("reticulate", quietly = TRUE)) {
+    return(list(ok = FALSE))
+  }
+  py_playwright <- try(reticulate::import("playwright.sync_api", delay_load = TRUE), silent = TRUE)
+  if (inherits(py_playwright, "try-error")) {
+    return(list(ok = FALSE))
+  }
+  res <- tryCatch({
+    reticulate::py_run_string("
+def run_playwright_stealth(url):
+    from playwright.sync_api import sync_playwright
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                viewport={'width': 1920, 'height': 1080},
+                locale='pt-BR',
+                timezone_id='America/Sao_Paulo'
+            )
+            page = context.new_page()
+            page.add_init_script(\"\"\"
+                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                Object.defineProperty(navigator, 'languages', { get: () => ['pt-BR', 'pt', 'en-US', 'en'] });
+                Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+                window.chrome = { runtime: {} };
+            \"\"\")
+            page.goto(url, wait_until='networkidle', timeout=45000)
+            content = page.content()
+            browser.close()
+            return {'content': content, 'ok': True}
+    except Exception as e:
+        return {'content': str(e), 'ok': False}
+")
+    playwright_run <- reticulate::py$run_playwright_stealth(url)
+    if (isTRUE(playwright_run$ok)) {
+      html <- xml2::read_html(playwright_run$content)
+      list(url = url, html = html, text = playwright_run$content, ok = TRUE, method = "playwright")
+    } else {
+      if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Playwright falhou para %s: %s", url, playwright_run$content))
+      list(ok = FALSE)
+    }
+  }, error = function(e) {
+    if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Erro de execucao Playwright: %s", e$message))
+    list(ok = FALSE)
+  })
+  res
+}
+
 safe_request_page <- function(url, log_path = NULL, use_browser_fallback = TRUE) {
+  # 1. Tentar httr2 (metodo rapido)
   req <- httr2::request(url) |>
     httr2::req_user_agent("FundingIntelligenceHub/1.1 (+local-shiny-app)") |>
     httr2::req_headers(
@@ -29,31 +80,64 @@ safe_request_page <- function(url, log_path = NULL, use_browser_fallback = TRUE)
     if (txt_ok) {
       html <- try(xml2::read_html(txt), silent = TRUE)
       if (!inherits(html, "try-error")) {
-        return(list(url = url, html = html, text = txt, ok = TRUE, method = "httr2"))
-      }
-    }
-  }
-
-  if (isTRUE(use_browser_fallback) && requireNamespace("chromote", quietly = TRUE)) {
-    b <- try(chromote::ChromoteSession$new(), silent = TRUE)
-    if (!inherits(b, "try-error")) {
-      on.exit(try(b$close(), silent = TRUE), add = TRUE)
-      try(b$Page$navigate(url), silent = TRUE)
-      Sys.sleep(4)
-      html_txt <- try(b$Runtime$evaluate("document.documentElement.outerHTML")$result$value, silent = TRUE)
-      txt_ok <- !inherits(html_txt, "try-error") && length(html_txt) == 1 && !is.null(html_txt) && !is.na(html_txt) && nzchar(html_txt)
-      if (txt_ok) {
-        html <- try(xml2::read_html(html_txt), silent = TRUE)
-        if (!inherits(html, "try-error")) {
-          return(list(url = url, html = html, text = html_txt, ok = TRUE, method = "chromote"))
+        # Verifica se o conteudo contem sinal obvio de captcha/bloqueio por CDN antes de aceitar
+        has_block_signal <- grepl("cloudflare|captcha|security challenge|blocked|ddos", tolower(txt))
+        if (!has_block_signal) {
+          return(list(url = url, html = html, text = txt, ok = TRUE, method = "httr2"))
+        } else {
+          if (!is.null(log_path)) log_write(log_path, "INFO", sprintf("Bloqueio de CDN/CAPTCHA detectado via httr2 para %s. Acionando fallbacks...", url))
         }
       }
     }
   }
 
-  if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Falha ao requisitar %s", url))
+  # 2. Tentar Playwright (se habilitado/instalado via reticulate)
+  if (isTRUE(use_browser_fallback)) {
+    pw_res <- safe_request_page_playwright(url, log_path = log_path)
+    if (isTRUE(pw_res$ok)) return(pw_res)
+  }
+
+  # 3. Tentar Chromote Stealth (R nativo)
+  if (isTRUE(use_browser_fallback) && requireNamespace("chromote", quietly = TRUE)) {
+    b <- try(chromote::ChromoteSession$new(), silent = TRUE)
+    if (!inherits(b, "try-error")) {
+      on.exit(try(b$close(), silent = TRUE), add = TRUE)
+      
+      js_stealth_code <- paste(
+        "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });",
+        "Object.defineProperty(navigator, 'languages', { get: () => ['pt-BR', 'pt', 'en-US', 'en'] });",
+        "Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });",
+        "window.chrome = { runtime: {} };",
+        "const originalQuery = window.navigator.permissions.query;",
+        "window.navigator.permissions.query = (parameters) =>",
+        "  parameters.name === 'notifications' ?",
+        "    Promise.resolve({ state: Notification.permission }) :",
+        "    originalQuery(parameters);",
+        sep = "\n"
+      )
+      
+      try(b$Page$addScriptToEvaluateOnNewDocument(source = js_stealth_code), silent = TRUE)
+      try(b$Network$setUserAgentOverride(
+        userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+      ), silent = TRUE)
+      
+      try(b$Page$navigate(url), silent = TRUE)
+      Sys.sleep(5)
+      html_txt <- try(b$Runtime$evaluate("document.documentElement.outerHTML")$result$value, silent = TRUE)
+      txt_ok <- !inherits(html_txt, "try-error") && length(html_txt) == 1 && !is.null(html_txt) && !is.na(html_txt) && nzchar(html_txt)
+      if (txt_ok) {
+        html <- try(xml2::read_html(html_txt), silent = TRUE)
+        if (!inherits(html, "try-error")) {
+          return(list(url = url, html = html, text = html_txt, ok = TRUE, method = "chromote_stealth"))
+        }
+      }
+    }
+  }
+
+  if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Falha ao requisitar %s apos tentar todos os metodos (httr2, Playwright, Chromote Stealth)", url))
   list(url = url, html = NULL, text = NA_character_, ok = FALSE, method = NA_character_)
 }
+
 
 text_has_funding_signal <- function(text) {
   vals <- as.character(text %||% NA_character_)
@@ -470,7 +554,12 @@ collect_listing_with_pagination <- function(source_row, first_url, max_pages = 5
     pages_seen <- c(pages_seen, current_url)
     last_url <- current_url
     pg <- safe_request_page(current_url, log_path = log_path)
-    if (!isTRUE(pg$ok) || is.null(pg$html)) break
+    if (!isTRUE(pg$ok) || is.null(pg$html)) {
+      if (page_no == 1L) {
+        stop(sprintf("Erro ao carregar a pagina inicial: %s", current_url), call. = FALSE)
+      }
+      break
+    }
 
     candidates <- extract_listing_candidates(pg$html, current_url, source_row)
     if (nrow(candidates) > 0) {

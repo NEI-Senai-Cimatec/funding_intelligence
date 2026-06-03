@@ -1,37 +1,95 @@
+# Funding Intelligence Hub
 
-# Funding Intelligence Hub — versão reescrita com coleta oficial
+O **Funding Intelligence Hub** é uma plataforma analítica desenvolvida em **R/Shiny** projetada para automatizar o monitoramento, a busca booleana avançada e a recomendação personalizada de editais, chamadas públicas e oportunidades de financiamento científico e tecnológico nacionais e internacionais.
 
-Aplicação em **R/Shiny** para busca, monitoramento e recomendação de oportunidades de financiamento científico e tecnológico.
+O sistema foi desenhado de forma extensível, coletando metadados diretamente de portais oficiais de fomento, estruturando as informações em um banco de dados local unificado, enriquecendo os registros opcionalmente com inteligência artificial (Gemini) e fornecendo um motor de recomendação com base no perfil de interesses do usuário.
 
-## O que mudou
+---
 
-Esta versão reescreve a camada de coleta para partir **diretamente das páginas oficiais** das entidades financiadoras, com:
+## 📌 Funcionalidades Principais
 
-- scraping direto dos portais oficiais cadastrados;
-- tentativa de paginação automática (`next`, paginação numérica e padrões `/page/n/` quando aplicável);
-- coleta de metadados essenciais por registro;
-- extração de texto de PDFs quando o edital estiver no documento;
-- enriquecimento opcional com **Gemini**, via `Sys.getenv("GEMINI_API_KEY")`;
-- deduplicação por título normalizado, link, data limite e hash;
-- persistência em SQLite;
-- exportação automática em **CSV**, **RDS** e **XLSX**.
+*   **Coleta Direta e Paginação Automatizada**: Scraping direto das fontes oficiais configuradas com paginação automática (`next`, paginação numérica e detecção de rotas).
+*   **Extração de Texto de PDFs**: Download inteligente de editais anexos em formato PDF com extração de texto bruto (`pdftools`) para busca e indexação.
+*   **Fallback com Navegador Headless**: Suporte à renderização de páginas fortemente baseadas em JavaScript através do `chromote`.
+*   **Enriquecimento Opcional com GenAI**: Integração com a API do **Google Gemini** para limpeza de títulos, identificação de prazos e estruturação precisa de elegibilidade e áreas temáticas.
+*   **Motor de Busca Booleana Completo**: Analisador sintático (*parser*) que processa consultas complexas contendo operadores lógicos `AND`, `OR`, `NOT` e agrupamentos por parênteses `( )`, além de busca de frases exatas com aspas `"`.
+*   **Recomendação Personalizada**: Cálculo automático de score de aderência baseado no perfil do usuário, histórico de pesquisas e editais favoritados.
+*   **Sugestão de Colaboradores**: Algoritmo de recomendação de parceiros acadêmicos/pesquisadores internos/externos com base no alinhamento temático da oportunidade.
+*   **Exportação Automática**: Salvamento automático e exportação dos dados consolidados em formatos analíticos: **CSV**, **RDS** (R) e **XLSX** (Excel).
 
-## Estrutura de arquivos
+---
 
-- `app.R` — interface e servidor Shiny
-- `R/helpers_utils.R` — utilitários, datas, parsing, logging e normalização
-- `R/helpers_db.R` — banco SQLite, seed e persistência
-- `R/helpers_text.R` — busca booleana e filtros estruturados
-- `R/helpers_ai.R` — integração opcional com Gemini
-- `R/helpers_recommend.R` — score de aderência e recomendação
-- `R/helpers_collect.R` — scraping oficial, paginação, PDFs e exportação
-- `www/styles.css` — estilos da interface
+## 📐 Arquitetura do Sistema
 
-## Pacotes necessários
+A aplicação adota uma organização modular em camadas de responsabilidade, separando a interface do usuário, a gestão do banco de dados, o motor de busca, o subsistema de inteligência artificial e a engine de scraping.
 
-Instale antes de rodar:
+```mermaid
+flowchart TD
+    subgraph Interface [Camada de Apresentação]
+        UI[app.R - Shiny UI]
+        Dashboard[Dashboard & Painéis]
+        UI --> Dashboard
+    end
 
-```r
+    subgraph Core [Camada de Lógica & Negócio]
+        Utils[helpers_utils.R<br/>Normalização e Parsing]
+        TextSearch[helpers_text.R<br/>Parser Booleano]
+        Recommend[helpers_recommend.R<br/>Score de Aderência]
+    end
+
+    subgraph Data [Camada de Coleta & Persistência]
+        Collect[helpers_collect.R<br/>Scraping & PDFs]
+        DB[helpers_db.R<br/>SQLite Schema & Seed]
+        Gemini[helpers_ai.R<br/>API Gemini]
+    end
+
+    subgraph External [Fontes Externas]
+        Websites[Portais de Fomento<br/>CNPq, CAPES, Horizon...]
+        PDFDocs[Editais em PDF]
+        GeminiAPI[Google Gemini API]
+    end
+
+    UI <--> Core
+    Core <--> Data
+    Collect --> Websites
+    Collect --> PDFDocs
+    Gemini --> GeminiAPI
+    DB --> SQLite[(funding_intelligence.sqlite)]
+    Collect --> DB
+```
+
+### 🗂️ Estrutura de Módulos (Diretório `R/`)
+
+*   **[`app.R`](./app.R)**: Ponto de entrada do aplicativo Shiny. Define a estrutura da interface reativa (baseada em `bslib` e estilos customizados), as abas analíticas (Resultados, Por Financiador, Buscas Salvas, Editais Rastreados, Recomendados, Logs de Coleta) e gerencia o ciclo de reatividade do servidor.
+*   **[`R/helpers_db.R`](./R/helpers_db.R)**: Camada de persistência. Gerencia o ciclo de vida da base SQLite local (`funding_intelligence.sqlite`), cria as tabelas relacionais, gerencia os commits dos editais rastreados, histórico de buscas e perfis, além de realizar o semeio inicial (*seeding*) de dados demonstrativos.
+*   **[`R/helpers_collect.R`](./R/helpers_collect.R)**: Motor de coleta e raspagem. Despacha requisições inteligentes, executa paginação recursiva, extrai links de documentos PDF e salva exportações consolidadas de forma segura (tratando limites e codificação de caracteres).
+*   **[`R/helpers_text.R`](./R/helpers_text.R)**: Subsistema de linguística e filtragem. Implementa um lexer/parser booleano recursivo que converte consultas textuais em árvores de sintaxe abstrata (AST) para avaliar expressões complexas contra o índice textual dos editais.
+*   **[`R/helpers_recommend.R`](./R/helpers_recommend.R)**: Motor de recomendação. Avalia a aderência de cada edital cruzando metadados de elegibilidade, palavras-chave e financiador contra uma assinatura de interesses do usuário (construída dinamicamente).
+*   **[`R/helpers_ai.R`](./R/helpers_ai.R)**: Módulo de integração generativa. Constrói prompts estruturados e consulta o endpoint oficial da Google Gemini API para retornar representações JSON limpas dos editais.
+*   **[`R/helpers_utils.R`](./R/helpers_utils.R)**: Utilitários auxiliares de parsing de datas heterogêneas, conversão de moedas e normalização de strings (remoção de acentos e múltiplos espaços).
+
+---
+
+## 🗄️ Modelo de Dados (SQLite)
+
+O banco de dados local armazena o histórico do usuário e os dados minerados, garantindo acesso offline rápido:
+
+*   `fontes_financiamento`: Catálogo de agências de fomento monitoradas, com URLs de oportunidades e métodos de coleta.
+*   `oportunidades`: Editais coletados com metadados extraídos (título, descrição, prazo, valor, elegibilidade, link original, pdf, idioma e campos inferidos pela IA).
+*   `editais_rastreados`: Controle do funil de candidaturas do usuário (status: *avaliar*, *prioritário*, *submetido*, *descartado*).
+*   `perfil_usuario`: Preferências institucionais, áreas de atuação e palavras-chave de interesse do pesquisador.
+*   `buscas_salvas` & `historico_buscas`: Consultas salvas pelo usuário com opção de agendamento de alertas e registro cronológico de buscas executadas.
+*   `colaboradores`: Banco de dados interno de parceiros em potencial classificados por expertise temática.
+*   `logs_coleta`: Rastreabilidade completa de todas as execuções do scraper para fins de auditoria e debugging.
+
+---
+
+## 🚀 Requisitos e Como Executar
+
+### 1. Pré-requisitos
+A aplicação requer R >= 4.0 instalado. Para instalar todas as dependências necessárias, execute o seguinte comando no R console:
+
+```R
 install.packages(c(
   "shiny", "bslib", "DT", "dplyr", "tidyr", "purrr", "stringr", "stringi", "lubridate",
   "ggplot2", "plotly", "DBI", "RSQLite", "jsonlite", "digest", "htmltools",
@@ -40,48 +98,41 @@ install.packages(c(
 ))
 ```
 
-Se quiser usar fallback para páginas muito dependentes de JavaScript, também pode instalar:
-
-```r
+*Opcional para renderização de páginas com carregamento dinâmico via JS:*
+```R
 install.packages("chromote")
 ```
 
-## Configuração da IA
+### 2. Configurando a Chave do Gemini (Opcional)
+Se você deseja utilizar a inteligência artificial para limpeza e extração de metadados avançados, configure a variável de ambiente `GEMINI_API_KEY`:
 
-A integração com Gemini é opcional. Defina a chave por variável de ambiente.
+*   **No Windows (PowerShell/CMD antes de rodar o R):**
+    ```powershell
+    $env:GEMINI_API_KEY="SUA_CHAVE_AQUI"
+    ```
+*   **No Linux/macOS:**
+    ```bash
+    export GEMINI_API_KEY="SUA_CHAVE_AQUI"
+    ```
+*   **Diretamente dentro do console do R:**
+    ```R
+    Sys.setenv(GEMINI_API_KEY = "SUA_CHAVE_AQUI")
+    ```
 
-### Windows (sessão atual)
+### 3. Rodando o Aplicativo
+Navegue até o diretório do projeto e execute:
 
-```r
-Sys.setenv(GEMINI_API_KEY = "SUA_CHAVE_AQUI")
-```
-
-### Linux/macOS
-
-```bash
-export GEMINI_API_KEY="SUA_CHAVE_AQUI"
-```
-
-## Como executar
-
-No diretório do projeto:
-
-```r
+```R
 shiny::runApp()
 ```
 
-## Fluxo de uso
+---
 
-1. Abra o app.
-2. Clique em **Atualizar base**.
-3. Selecione as fontes oficiais, limite de páginas e se deseja usar IA.
-4. Execute a coleta.
-5. A aba **Resultados** será atualizada a partir da base SQLite.
-6. Os exports serão salvos em `data_exports/`.
+## 🔄 Fluxo de Trabalho do Usuário
 
-## Observações técnicas
-
-- Algumas fontes internacionais listadas funcionam mais como **portais de programas e chamadas** do que como listas únicas de editais; por isso o coletor segue links oficiais com vocabulário de funding antes de consolidar os registros.
-- Em páginas com PDF, o sistema guarda o link do documento e tenta extrair texto com `pdftools`.
-- Em páginas com JavaScript mais pesado, o código tenta `chromote` se ele estiver instalado.
-- O sistema foi organizado para expansão. Para adicionar uma nova fonte, faça o cadastro em `source_catalog()` e, se necessário, crie um coletor dedicado em `helpers_collect.R`.
+1.  **Exploração Inicial**: Ao abrir o aplicativo pela primeira vez, a base SQLite é semeada com editais demonstrativos para visualização do painel.
+2.  **Atualização da Base**: Clique em **Atualizar base** no canto superior direito para abrir o painel de coleta oficial. Selecione quais agências deseja varrer, defina os limites de páginas e ative ou desative o enriquecimento com IA.
+3.  **Filtragem e Busca Avançada**: Utilize a barra de buscas principal com lógica booleana complexa (ex: `(quântica OR quantum) AND (bolsa OR grant)`) ou refine detalhes específicos no botão **Busca avançada**.
+4.  **Rastreamento de Editais**: Identifique oportunidades interessantes na tabela de resultados e clique em **Rastrear**. A oportunidade será adicionada à aba **Editais rastreados**, onde você pode atualizar notas e status ao longo do ciclo de submissão do projeto.
+5.  **Análise de Recomendações**: Acesse a aba **Recomendados para mim** para visualizar oportunidades com alto score de aderência calculadas dinamicamente com base nas suas preferências e pesquisadores compatíveis com o tema para possíveis coautorias.
+6.  **Exportação**: A cada ciclo de coleta concluído com sucesso, bases de dados limpas e prontas para análise são gravadas em `data_exports/`.

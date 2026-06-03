@@ -30,6 +30,17 @@ Como parte da última otimização de infraestrutura de dados (Epic 1), foram im
 
 ---
 
+## 🎨 Design Institucional SENAI CIMATEC & Integração Estática (Epic 2)
+
+As últimas atualizações da interface do usuário (UI) e da integração de dados alinham a aplicação às diretrizes institucionais do **SENAI CIMATEC** e garantem alta performance de renderização:
+
+*   **Identidade Visual Institucional**: Redesenho completo do CSS (`www/styles.css`) adotando as cores oficiais da marca (Azul Escuro `#004691` e Vermelho `#e30613`), com tipografia moderna (família de fontes **Inter** integrada via Google Fonts), sombras suaves e micro-animações interativas de hover e cliques.
+*   **Logotipo Integrado**: O cabeçalho da plataforma foi adaptado com uma área dedicada para exibir o logotipo oficial em formato vetorial (SVG) de alta resolução.
+*   **Consumo Exclusivo de Dados Estáticos/Locais**: O aplicativo foi estruturado para atuar offline de forma nativa e rápida. Ao iniciar ou renderizar as telas, o Shiny consome exclusivamente a base relacional local SQLite (`funding_intelligence.sqlite`), eliminando qualquer chamada ou varredura de scraping síncrona na thread principal que pudesse degradar a performance inicial.
+*   **Validação da Busca Booleana e Identificação Única**: O motor de busca avançado foi validado e otimizado para realizar buscas complexas com parênteses, frases exatas e operadores lógicos diretamente nos registros estáticos locais, mapeando corretamente a coluna com os identificadores únicos gerados (`id_registro`, ex: `capes_102cbb3bcf547cae`).
+
+---
+
 ## 📐 Arquitetura do Sistema
 
 A aplicação adota uma organização modular em camadas de responsabilidade, separando a interface do usuário, a gestão do banco de dados, o motor de busca, o subsistema de inteligência artificial e a engine de scraping.

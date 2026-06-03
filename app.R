@@ -119,14 +119,25 @@ build_sidebar <- function() {
 
 ui <- bslib::page_sidebar(
   title = tags$div(
-    class = "app-title-wrap",
+    class = "app-header",
+    tags$div(
+      class = "logo-container",
+      tags$svg(
+        width = "150", height = "36", viewBox = "0 0 150 36", fill = "none", xmlns = "http://www.w3.org/2000/svg",
+        tags$rect(x = "0", y = "4", width = "28", height = "28", rx = "6", fill = "#e30613"),
+        tags$polygon(points = "8,18 14,10 20,18 17,18 14,14 11,18", fill = "#ffffff"),
+        tags$rect(x = "11", y = "20", width = "6", height = "6", rx = "1", fill = "#ffffff"),
+        tags$text(x = "36", y = "22", style = "font-family: 'Inter', sans-serif; font-weight: 800; font-size: 18px; fill: #004691;", "SENAI"),
+        tags$text(x = "36", y = "32", style = "font-family: 'Inter', sans-serif; font-weight: 600; font-size: 9px; fill: #64748b; letter-spacing: 1.5px;", "CIMATEC")
+      )
+    ),
     tags$div(
       class = "app-title-main",
       h2("Funding Intelligence Hub"),
-      p("Coleta direta em fontes oficiais, busca booleana, monitoramento de editais e recomendação personalizada.")
+      p("Busca booleana, monitoramento de editais e recomendação a partir do banco local.")
     )
   ),
-  theme = bslib::bs_theme(version = 5, bootswatch = "flatly", primary = "#1f6feb", secondary = "#0f172a"),
+  theme = bslib::bs_theme(version = 5, bootswatch = "flatly", primary = "#004691", secondary = "#0f172a"),
   sidebar = build_sidebar(),
   tags$head(tags$link(rel = "stylesheet", type = "text/css", href = "styles.css")),
 

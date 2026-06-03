@@ -19,6 +19,17 @@ O sistema foi desenhado de forma extensível, coletando metadados diretamente de
 
 ---
 
+## ⚡ Otimização do Scraper & Evasão de Bloqueios (Novidades)
+
+Como parte da última otimização de infraestrutura de dados (Epic 1), foram implementadas as seguintes melhorias para lidar com bloqueios de CDNs/CAPTCHAs nas agências nacionais (CNPq, CAPES, FAPESP) e otimizar a experiência do usuário no Shiny:
+
+*   **Processamento de Coleta Assíncrona**: O acionamento da coleta de dados foi desvinculado da thread da UI do Shiny. Utilizando os pacotes `future` (com workers em modo `multisession`) e `promises`, a coleta roda em segundo plano sem travar ou congelar o dashboard. A persistência em segundo plano gerencia de forma isolada suas conexões SQLite para garantir integridade transacional.
+*   **Evasão Stealth Avançada no Chromote**: Para contornar bloqueios baseados em detecção de automação, configuramos injeções via protocolo DevTools (`Page$addScriptToEvaluateOnNewDocument`) que ocultam a propriedade `navigator.webdriver`, mockam plugins e idiomas comuns do sistema operacional, e sobrescrevem assinaturas de cabeçalho do User-Agent.
+*   **Integração com Playwright (Python)**: Implementamos um conector via `reticulate` que aciona de forma automatizada o Playwright em Python para executar navegadores headless com evasões e timeouts robustos como camada alternativa de raspagem.
+*   **Resiliência e Registro de Falhas**: A coleta de cada agência agora ocorre em um pipeline isolado com `tryCatch`. Erros de carregamento de páginas iniciais são interceptados e gravados de forma estruturada com status `"erro"` na tabela `logs_coleta`, impedindo que a falha de acesso a uma agência interrompa a varredura das demais fontes.
+
+---
+
 ## 📐 Arquitetura do Sistema
 
 A aplicação adota uma organização modular em camadas de responsabilidade, separando a interface do usuário, a gestão do banco de dados, o motor de busca, o subsistema de inteligência artificial e a engine de scraping.

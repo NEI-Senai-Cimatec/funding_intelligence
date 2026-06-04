@@ -1,3 +1,10 @@
+log_progress <- function(detail, phase = "Scraping") {
+  try({
+    log_line <- sprintf("[%s] [%s] %s", format(Sys.time(), "%H:%M:%S"), phase, detail)
+    cat(log_line, "\n", file = file.path(getwd(), "logs", "collection_modal_log.txt"), append = TRUE)
+  }, silent = TRUE)
+}
+
 detect_next_page <- function(html, current_url) {
   nodes <- rvest::html_nodes(html, "a")
   if (length(nodes) == 0) return(NA_character_)
@@ -469,6 +476,16 @@ extract_core_record <- function(source_row, input_title = NA_character_, input_s
 
 
 enrich_record_with_ai <- function(record, log_path = NULL) {
+  log_progress(sprintf("Enriquecendo edital '%s' com IA...", record$titulo[[1]]), "IA")
+  status_file <- file.path(getwd(), "logs", "collection_status.json")
+  if (file.exists(status_file)) {
+    try({
+      status_data <- jsonlite::fromJSON(status_file, simplifyVector = FALSE)
+      status_data$phase <- "IA"
+      status_data$detail <- sprintf("Enriquecendo dados via IA para edital: %s", record$titulo[[1]])
+      jsonlite::write_json(status_data, status_file, auto_unbox = TRUE)
+    }, silent = TRUE)
+  }
   text <- collapse_non_empty(record$titulo, record$descricao_resumida, record$descricao_completa, record$texto_bruto, sep = "\n")
   ai <- ai_extract_fields(
     text,
@@ -892,17 +909,20 @@ collect_eureka <- function(source_row, max_pages, max_records, use_ai, log_path)
   list(records = finalize_records(recs), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]])
 }
 
-truncate_excel_strings <- function(df, max_chars = 32767L) {
-  out <- tibble::as_tibble(df)
+truncate_excel_strings <- function(df, max_chars = 32000L) {
+  # Convert to plain data.frame to prevent tibble Rcpp compatibility issues
+  out <- as.data.frame(df, stringsAsFactors = FALSE)
   for (nm in names(out)) {
     if (is.character(out[[nm]])) {
       x <- out[[nm]]
-      nch <- nchar(x, type = "chars", allowNA = TRUE, keepNA = TRUE)
+      # Clean any invalid UTF-8 bytes that cause nchar/substr or libxlsxwriter C++ errors
+      x <- iconv(x, to = "UTF-8", sub = "")
+      nch <- nchar(x, type = "chars")
       too_long <- !is.na(x) & !is.na(nch) & nch > max_chars
       if (any(too_long)) {
         x[too_long] <- paste0(substr(x[too_long], 1L, max_chars - 3L), "...")
-        out[[nm]] <- x
       }
+      out[[nm]] <- x
     }
   }
   out
@@ -915,48 +935,66 @@ save_collection_exports <- function(df, export_dir, prefix = "funding_base", log
   rds_path <- file.path(export_dir, sprintf("%s_%s.rds", prefix, stamp))
   xlsx_path <- file.path(export_dir, sprintf("%s_%s.xlsx", prefix, stamp))
 
-  exported_paths <- character()
-  warnings <- character()
+  export_paths <- character()
+  export_warnings <- character()
+
+  # Preprocessamento para evitar incompatibilidades de tipos e classes com writexl/readr
+  clean_df <- as.data.frame(df, stringsAsFactors = FALSE)
+  row.names(clean_df) <- NULL
+  for (nm in names(clean_df)) {
+    attr(clean_df[[nm]], "names") <- NULL
+    if (inherits(clean_df[[nm]], c("POSIXt", "Date"))) {
+      clean_df[[nm]] <- as.character(clean_df[[nm]])
+    }
+  }
 
   tryCatch({
-    readr::write_csv(df, csv_path, na = "")
-    exported_paths <<- c(exported_paths, csv_path)
+    readr::write_csv(clean_df, csv_path, na = "")
+    export_paths <- c(export_paths, csv_path)
   }, error = function(e) {
-    warnings <<- c(warnings, paste0("Falha ao exportar CSV: ", e$message))
-    if (!is.null(log_path)) log_write(log_path, "WARN", warnings[[length(warnings)]])
+    export_warnings <<- c(export_warnings, paste0("Falha ao exportar CSV: ", e$message))
+    if (!is.null(log_path)) log_write(log_path, "WARN", export_warnings[[length(export_warnings)]])
   })
 
   tryCatch({
-    saveRDS(df, rds_path)
-    exported_paths <<- c(exported_paths, rds_path)
+    saveRDS(clean_df, rds_path)
+    export_paths <- c(export_paths, rds_path)
   }, error = function(e) {
-    warnings <<- c(warnings, paste0("Falha ao exportar RDS: ", e$message))
-    if (!is.null(log_path)) log_write(log_path, "WARN", warnings[[length(warnings)]])
+    export_warnings <<- c(export_warnings, paste0("Falha ao exportar RDS: ", e$message))
+    if (!is.null(log_path)) log_write(log_path, "WARN", export_warnings[[length(export_warnings)]])
   })
 
   tryCatch({
-    xlsx_df <- truncate_excel_strings(df)
+    xlsx_df <- truncate_excel_strings(clean_df)
     writexl::write_xlsx(list(oportunidades = xlsx_df), xlsx_path)
-    exported_paths <<- c(exported_paths, xlsx_path)
-    if (any(vapply(names(df), function(nm) {
-      if (!is.character(df[[nm]])) return(FALSE)
-      nch <- nchar(df[[nm]], type = "chars", allowNA = TRUE, keepNA = TRUE)
-      any(!is.na(nch) & nch > 32767L, na.rm = TRUE)
+    export_paths <- c(export_paths, xlsx_path)
+    if (any(vapply(names(clean_df), function(nm) {
+      if (!is.character(clean_df[[nm]])) return(FALSE)
+      nch <- nchar(clean_df[[nm]], type = "chars")
+      any(!is.na(nch) & nch > 32000L, na.rm = TRUE)
     }, logical(1)))) {
-      warnings <<- c(warnings, "Exportação XLSX gerada com truncamento de textos acima de 32.767 caracteres.")
-      if (!is.null(log_path)) log_write(log_path, "WARN", warnings[[length(warnings)]])
+      export_warnings <<- c(export_warnings, "Exportação XLSX gerada com truncamento de textos acima de 32.000 caracteres.")
+      if (!is.null(log_path)) log_write(log_path, "WARN", export_warnings[[length(export_warnings)]])
     }
   }, error = function(e) {
-    warnings <<- c(warnings, paste0("Falha ao exportar XLSX: ", e$message))
-    if (!is.null(log_path)) log_write(log_path, "WARN", warnings[[length(warnings)]])
+    export_warnings <<- c(export_warnings, paste0("Falha ao exportar XLSX: ", e$message))
+    if (!is.null(log_path)) log_write(log_path, "WARN", export_warnings[[length(export_warnings)]])
   })
 
-  list(paths = exported_paths, warnings = unique(warnings))
+  list(paths = export_paths, warnings = unique(export_warnings))
 }
 
 collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_records_per_source = 50, use_ai = FALSE, export_dir = "data_exports", log_path = "logs/funding_collection.log", progress_cb = NULL, do_export = TRUE) {
   ensure_dir(dirname(log_path))
   log_write(log_path, "INFO", "Início da coleta oficial.")
+
+  status_file <- file.path(getwd(), "logs", "collection_status.json")
+  log_file <- file.path(getwd(), "logs", "collection_modal_log.txt")
+  dir.create(dirname(status_file), recursive = TRUE, showWarnings = FALSE)
+  try({
+    file.remove(status_file)
+    file.remove(log_file)
+  }, silent = TRUE)
 
   sources <- tibble::as_tibble(DBI::dbReadTable(conn, "fontes_financiamento")) |>
     dplyr::filter(!(.data$id_fonte %in% c("facepe", "fapesb")))
@@ -973,6 +1011,19 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
   for (i in seq_len(total)) {
     src <- sources[i, , drop = FALSE]
     sid <- src$id_fonte[[1]]
+    
+    status_data <- list(
+      step = i - 1L,
+      total = total,
+      percentage = round(((i - 1L) / total) * 100),
+      detail = sprintf("Processando %s (%d/%d)", src$nome_fonte[[1]], i, total),
+      phase = "Scraping",
+      timestamp = as.character(Sys.time()),
+      status = "running"
+    )
+    try(jsonlite::write_json(status_data, status_file, auto_unbox = TRUE), silent = TRUE)
+    log_progress(sprintf("Iniciando coleta da agência %s...", src$sigla[[1]]), "Scraping")
+    
     if (!is.null(progress_cb)) progress_cb(i - 1L, total, sprintf("Coletando %s", sid))
     log_write(log_path, "INFO", sprintf("Fonte em processamento: %s | %s", sid, src$url_oportunidades[[1]]))
 
@@ -1020,6 +1071,18 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
   exports <- NULL
   if (isTRUE(do_export)) exports <- save_collection_exports(final_df, export_dir, prefix = "funding_intelligence_base", log_path = log_path)
   log_write(log_path, "INFO", sprintf("Fim da coleta oficial. %s fontes processadas. %s registros adicionados nesta rodada. %s registros na base.", processed, inserted_total, nrow(final_df)))
+
+  status_data <- list(
+    step = total,
+    total = total,
+    percentage = 100,
+    detail = "Coleta finalizada com sucesso!",
+    phase = "Concluído",
+    timestamp = as.character(Sys.time()),
+    status = "done"
+  )
+  try(jsonlite::write_json(status_data, status_file, auto_unbox = TRUE), silent = TRUE)
+  log_progress("Processamento concluído com sucesso.", "Concluído")
 
   list(
     msg = sprintf("Coleta finalizada com %s fonte(s) processadas.", processed),

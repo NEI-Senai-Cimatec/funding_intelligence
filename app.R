@@ -268,6 +268,137 @@ server <- function(input, output, session) {
 
   refresh_data()
 
+  # Reactive values para rastreamento de progresso de coleta
+  progress_rv <- reactiveValues(
+    step = 0,
+    total = 1,
+    percentage = 0,
+    detail = "Iniciando...",
+    phase = "Scraping",
+    logs = "",
+    status = "idle"
+  )
+
+  # Leitor reativo de status/logs da coleta em segundo plano
+  observe({
+    req(progress_rv$status == "running")
+    # Agenda a reavaliação desse bloco a cada 1.5 segundos
+    invalidateLater(1500, session)
+    
+    status_file <- app_file("logs", "collection_status.json")
+    log_file <- app_file("logs", "collection_modal_log.txt")
+    
+    if (file.exists(status_file)) {
+      status_data <- tryCatch(jsonlite::fromJSON(status_file, simplifyVector = FALSE), error = function(e) NULL)
+      if (!is.null(status_data)) {
+        progress_rv$step <- status_data$step %||% 0
+        progress_rv$total <- status_data$total %||% 1
+        progress_rv$percentage <- status_data$percentage %||% 0
+        progress_rv$detail <- status_data$detail %||% ""
+        progress_rv$phase <- status_data$phase %||% "Scraping"
+        if (identical(status_data$status, "done")) {
+          progress_rv$status <- "done"
+        } else if (identical(status_data$status, "error")) {
+          progress_rv$status <- "error"
+        }
+      }
+    }
+    
+    if (file.exists(log_file)) {
+      log_lines <- tryCatch(readLines(log_file, warn = FALSE), error = function(e) character())
+      progress_rv$logs <- paste(log_lines, collapse = "\n")
+    }
+  })
+
+  # Renderizadores dinâmicos para o modal de progresso
+  output$progress_detail_text <- renderText(progress_rv$detail)
+  
+  output$progress_bar_ui <- renderUI({
+    pct <- progress_rv$percentage
+    color_class <- if (progress_rv$phase == "IA") "bg-info" else "bg-primary"
+    if (progress_rv$status == "done") color_class <- "bg-success"
+    if (progress_rv$status == "error") color_class <- "bg-danger"
+    
+    tags$div(
+      class = sprintf("progress-bar progress-bar-striped progress-bar-animated %s", color_class),
+      style = sprintf("width: %d%%; font-weight: bold; color: white; height: 25px; line-height: 25px; transition: width 0.3s ease;", pct),
+      sprintf("%d%%", pct)
+    )
+  })
+  
+  output$progress_phase_badge <- renderUI({
+    phase <- progress_rv$phase
+    badge_style <- "background-color: #004691; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85rem;"
+    if (phase == "IA") {
+      badge_style <- "background-color: #0ea5e9; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85rem;"
+    } else if (phase == "Concluído") {
+      badge_style <- "background-color: #22c55e; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85rem;"
+    }
+    tags$span(style = badge_style, sprintf("Fase Atual: %s", phase))
+  })
+  
+  output$modal_log_text <- renderText(progress_rv$logs)
+  
+  output$progress_modal_footer <- renderUI({
+    if (progress_rv$status %in% c("done", "error")) {
+      actionButton("btn_close_progress_modal", "Concluir", class = "btn-success")
+    } else {
+      actionButton("btn_minimize_progress_modal", "Minimizar (Rodar em 2º Plano)", class = "btn-outline-secondary")
+    }
+  })
+
+  show_progress_modal <- function() {
+    showModal(modalDialog(
+      title = span(style = "font-weight: bold; color: #004691; display: flex; align-items: center; gap: 8px;", 
+                   "🔄 Atualização da Base de Dados"),
+      easyClose = FALSE,
+      size = "l",
+      tags$div(
+        class = "progress-container",
+        style = "margin-bottom: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 15px;",
+        tags$h5(style = "color: #0f172a; margin-bottom: 12px; font-weight: 500;", textOutput("progress_detail_text")),
+        tags$div(
+          class = "progress",
+          style = "height: 25px; margin-bottom: 12px; background-color: #f1f5f9; border-radius: 6px; overflow: hidden;",
+          uiOutput("progress_bar_ui")
+        ),
+        uiOutput("progress_phase_badge")
+      ),
+      tags$div(
+        style = "margin-top: 15px;",
+        tags$h6(style = "color: #475569; font-weight: 600; margin-bottom: 8px;", "Log de Execução em Tempo Real:"),
+        tags$pre(
+          style = "height: 250px; overflow-y: auto; background-color: #0f172a; color: #38bdf8; border: 1px solid #1e293b; border-radius: 6px; padding: 12px; font-family: 'Courier New', monospace; font-size: 0.85rem; white-space: pre-wrap; margin-bottom: 0;",
+          textOutput("modal_log_text")
+        ),
+        tags$script("
+          setTimeout(function() {
+            var log_elem = document.getElementById('modal_log_text');
+            if (log_elem) {
+              log_elem.parentElement.scrollTop = log_elem.parentElement.scrollHeight;
+            }
+            var observer = new MutationObserver(function() {
+              var el = document.getElementById('modal_log_text');
+              if (el) el.parentElement.scrollTop = el.parentElement.scrollHeight;
+            });
+            if (log_elem) observer.observe(log_elem, { childList: true, characterData: true, subtree: true });
+          }, 500);
+        ")
+      ),
+      footer = uiOutput("progress_modal_footer")
+    ))
+  }
+
+  observeEvent(input$btn_close_progress_modal, {
+    removeModal()
+    progress_rv$status <- "idle"
+  })
+  
+  observeEvent(input$btn_minimize_progress_modal, {
+    removeModal()
+    showNotification("Coleta continua em execução em segundo plano.", type = "message")
+  })
+
   # Validação de API Key no startup do Shiny
   observe({
     key_ok <- validate_ai_config()
@@ -514,11 +645,30 @@ server <- function(input, output, session) {
       return()
     }
 
+    # Inicializa as variáveis de progresso e exibe o modal
+    progress_rv$step <- 0
+    progress_rv$total <- length(input$collect_sources)
+    progress_rv$percentage <- 0
+    progress_rv$detail <- "Iniciando processamento das fontes..."
+    progress_rv$phase <- "Scraping"
+    progress_rv$logs <- "Inicializando...\n"
+    progress_rv$status <- "running"
+    
+    show_progress_modal()
+
+    # Limpa arquivos de logs anteriores para evitar mostrar lixo
+    status_file <- app_file("logs", "collection_status.json")
+    log_file <- app_file("logs", "collection_modal_log.txt")
+    try({
+      if (file.exists(status_file)) file.remove(status_file)
+      if (file.exists(log_file)) file.remove(log_file)
+    }, silent = TRUE)
+
     rv$collecting <- TRUE
     updateActionButton(session, "btn_collect_official", label = "Coletando...")
-    showNotification("Coleta iniciada em segundo plano. O painel continuará responsivo.", type = "message", id = "bg_collect_notif", duration = NULL)
+    showNotification("Coleta iniciada. Acompanhe pelo modal de progresso.", type = "message", id = "bg_collect_notif", duration = 8)
 
-    # Parametros para o processo filho (passados por copia)
+    # Parametros para o processo processo filho (passados por copia)
     source_ids_bg <- input$collect_sources
     max_pages_bg <- input$collect_max_pages
     max_records_bg <- input$collect_max_records
@@ -584,6 +734,10 @@ server <- function(input, output, session) {
         rv$collecting <- FALSE
         updateActionButton(session, "btn_collect_official", label = "Atualizar base")
 
+        progress_rv$status <- "done"
+        progress_rv$percentage <- 100
+        progress_rv$detail <- "Coleta concluída com sucesso!"
+
         rv$last_collect_summary <- result
         refresh_data(notify = TRUE)
 
@@ -606,6 +760,11 @@ server <- function(input, output, session) {
         removeNotification("bg_collect_notif")
         rv$collecting <- FALSE
         updateActionButton(session, "btn_collect_official", label = "Atualizar base")
+        
+        progress_rv$status <- "error"
+        progress_rv$detail <- paste("Erro na coleta:", err$message)
+        log_progress(paste("Erro fatal:", err$message), "Erro")
+        
         showNotification(paste("Falha na coleta em segundo plano:", err$message), type = "error", duration = 10)
       }
     )

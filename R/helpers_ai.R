@@ -114,6 +114,11 @@ ai_request <- function(prompt, timeout_sec = 45, retries = 2, log_path = NULL) {
     return(NULL)
   }
 
+  # Atraso inteligente para evitar Rate Limits de Tokens por Minuto (TPM) na Groq (plano gratuito)
+  if (cfg$provider == "groq") {
+    Sys.sleep(12)
+  }
+
   req <- NULL
   
   if (cfg$provider == "gemini") {

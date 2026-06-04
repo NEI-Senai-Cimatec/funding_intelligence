@@ -270,3 +270,37 @@ table.dataTable tbody td a:hover {
   color: #004691;
   text-decoration: underline;
 }
+
+/* Remocao de scrollbars internas e ajuste de altura nos cards e containers */
+.card, 
+.card-body, 
+.bslib-card, 
+.bslib-grid, 
+.bslib-grid-layout, 
+.bslib-layout-columns, 
+.bslib-column-wrap,
+.mini-kpi, 
+.tab-content, 
+.tab-pane,
+.navset-card-tab,
+.bslib-navset-card-tab,
+.value-box,
+.bslib-value-box,
+.value-box-grid,
+.sidebar-layout,
+.bslib-sidebar-layout,
+.main,
+main {
+  overflow: visible !important;
+  height: auto !important;
+  min-height: auto !important;
+  max-height: none !important;
+}
+
+/* Garante rolagem horizontal apenas nas tabelas de dados quando necessario */
+.dataTables_wrapper,
+.dataTables_scrollBody {
+  overflow-x: auto !important;
+  overflow-y: visible !important;
+}
+

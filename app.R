@@ -118,18 +118,12 @@ build_sidebar <- function() {
 }
 
 ui <- bslib::page_sidebar(
+  fillable = FALSE,
   title = tags$div(
     class = "app-header",
     tags$div(
       class = "logo-container",
-      tags$svg(
-        width = "150", height = "36", viewBox = "0 0 150 36", fill = "none", xmlns = "http://www.w3.org/2000/svg",
-        tags$rect(x = "0", y = "4", width = "28", height = "28", rx = "6", fill = "#e30613"),
-        tags$polygon(points = "8,18 14,10 20,18 17,18 14,14 11,18", fill = "#ffffff"),
-        tags$rect(x = "11", y = "20", width = "6", height = "6", rx = "1", fill = "#ffffff"),
-        tags$text(x = "36", y = "22", style = "font-family: 'Inter', sans-serif; font-weight: 800; font-size: 18px; fill: #004691;", "SENAI"),
-        tags$text(x = "36", y = "32", style = "font-family: 'Inter', sans-serif; font-weight: 600; font-size: 9px; fill: #64748b; letter-spacing: 1.5px;", "CIMATEC")
-      )
+      tags$img(src = "senai_cimatec.jpg", height = "36px", alt = "SENAI CIMATEC")
     ),
     tags$div(
       class = "app-title-main",
@@ -514,32 +508,39 @@ server <- function(input, output, session) {
 
   output$results_table <- renderDT({
     df <- filtered_results()
-    if (nrow(df) == 0) return(DT::datatable(data.frame(Mensagem = "Nenhum resultado encontrado."), options = list(dom = 't')))
-    shown <- df |>
-      dplyr::mutate(
-        Prazo = format_date_br(data_limite),
-        Status = vapply(status_oportunidade, badge_status_html, character(1)),
-        Score = vapply(score_aderencia, score_bar_html, character(1)),
-        Link = vapply(dplyr::coalesce(link_detalhe, link_origem), link_html, character(1), label = "Abrir"),
-        Rastrear = vapply(id_registro, make_click_button, character(1), label = "Rastrear")
-      ) |>
-      dplyr::transmute(
-        ID = id_registro,
-        Título = titulo,
-        Financiador = entidade,
-        País = pais_origem,
-        Prazo,
-        Tipo = tipo_oportunidade,
-        Área = area_tematica,
-        Resumo = stringr::str_trunc(descricao_resumida, 180),
-        `Palavras-chave` = palavras_chave,
-        Score,
-        Status,
-        Link,
-        Rastrear
+    if (nrow(df) == 0) {
+      shown <- tibble::tibble(
+        ID = character(), Título = character(), Financiador = character(), País = character(),
+        Prazo = character(), Tipo = character(), Área = character(), Resumo = character(),
+        `Palavras-chave` = character(), Score = character(), Status = character(), Link = character(), Rastrear = character()
       )
-    DT::datatable(shown, escape = FALSE, options = list(pageLength = 10, scrollX = TRUE))
-  })
+    } else {
+      shown <- df |>
+        dplyr::mutate(
+          Prazo = format_date_br(data_limite),
+          Status = vapply(status_oportunidade, badge_status_html, character(1)),
+          Score = vapply(score_aderencia, score_bar_html, character(1)),
+          Link = vapply(dplyr::coalesce(link_detalhe, link_origem), link_html, character(1), label = "Abrir"),
+          Rastrear = vapply(id_registro, make_click_button, character(1), label = "Rastrear")
+        ) |>
+        dplyr::transmute(
+          ID = id_registro,
+          Título = titulo,
+          Financiador = entidade,
+          País = pais_origem,
+          Prazo,
+          Tipo = tipo_oportunidade,
+          Área = area_tematica,
+          Resumo = stringr::str_trunc(descricao_resumida, 180),
+          `Palavras-chave` = palavras_chave,
+          Score,
+          Status,
+          Link,
+          Rastrear
+        )
+    }
+    DT::datatable(shown, escape = FALSE, options = list(pageLength = 10, scrollX = TRUE, language = list(emptyTable = "Nenhum resultado encontrado.")))
+  }, server = FALSE)
 
   observeEvent(input$row_action, {
     rv$selected_tracked_id <- input$row_action$id
@@ -563,7 +564,7 @@ server <- function(input, output, session) {
     df <- filtered_results() |>
       dplyr::count(entidade, pais_origem, tipo_oportunidade, sort = TRUE, name = "n_editais")
     DT::datatable(df, options = list(pageLength = 10, scrollX = TRUE))
-  })
+  }, server = FALSE)
 
   output$funder_profile <- renderUI({
     req(input$selected_funder)
@@ -608,11 +609,14 @@ server <- function(input, output, session) {
 
   output$saved_searches_table <- renderDT({
     df <- rv$saved_searches
-    if (nrow(df) == 0) return(DT::datatable(data.frame(Mensagem = "Nenhuma busca salva."), options = list(dom = 't')))
-    df <- df |>
-      dplyr::select(id, nome_busca, query_text, alerta_ativo, created_at, last_run_at)
-    DT::datatable(df, escape = FALSE, options = list(pageLength = 10, scrollX = TRUE), selection = "single")
-  })
+    if (nrow(df) == 0) {
+      shown <- tibble::tibble(id = integer(), nome_busca = character(), query_text = character(), alerta_ativo = integer(), created_at = character(), last_run_at = character())
+    } else {
+      shown <- df |>
+        dplyr::select(id, nome_busca, query_text, alerta_ativo, created_at, last_run_at)
+    }
+    DT::datatable(shown, escape = FALSE, options = list(pageLength = 10, scrollX = TRUE, language = list(emptyTable = "Nenhuma busca salva.")), selection = "single")
+  }, server = FALSE)
 
   observeEvent(input$saved_searches_table_rows_selected, {
     idx <- input$saved_searches_table_rows_selected
@@ -626,12 +630,15 @@ server <- function(input, output, session) {
   })
 
   output$tracked_table <- renderDT({
-    if (nrow(rv$tracked) == 0) return(DT::datatable(data.frame(Mensagem = "Nenhum edital rastreado."), options = list(dom = 't')))
-    df <- rv$tracked |>
-      dplyr::left_join(rv$opportunities, by = c("id_oportunidade" = "id_registro")) |>
-      dplyr::transmute(id = id_oportunidade, Título = titulo, Financiador = entidade, Prazo = format_date_br(data_limite), Status = status_usuario, Observações = observacoes)
-    DT::datatable(df, options = list(pageLength = 8, scrollX = TRUE), selection = "single")
-  })
+    if (nrow(rv$tracked) == 0) {
+      df <- tibble::tibble(id = character(), Título = character(), Financiador = character(), Prazo = character(), Status = character(), Observações = character())
+    } else {
+      df <- rv$tracked |>
+        dplyr::left_join(rv$opportunities, by = c("id_oportunidade" = "id_registro")) |>
+        dplyr::transmute(id = id_oportunidade, Título = titulo, Financiador = entidade, Prazo = format_date_br(data_limite), Status = status_usuario, Observações = observacoes)
+    }
+    DT::datatable(df, options = list(pageLength = 8, scrollX = TRUE, language = list(emptyTable = "Nenhum edital rastreado.")), selection = "single")
+  }, server = FALSE)
 
   observeEvent(input$tracked_table_rows_selected, {
     idx <- input$tracked_table_rows_selected
@@ -659,11 +666,15 @@ server <- function(input, output, session) {
 
   output$recommended_table <- renderDT({
     df <- recommend_opportunities(conn, filtered_results(), rv$current_query, top_n = 15)
-    df <- df |>
-      dplyr::mutate(Link = vapply(dplyr::coalesce(link_detalhe, link_origem), link_html, character(1), label = "Abrir")) |>
-      dplyr::transmute(Título = titulo, Financiador = entidade, Score = score_aderencia, Prazo = format_date_br(data_limite), Tipo = tipo_oportunidade, Link)
-    DT::datatable(df, escape = FALSE, options = list(pageLength = 10, scrollX = TRUE))
-  })
+    if (nrow(df) == 0) {
+      shown <- tibble::tibble(Título = character(), Financiador = character(), Score = numeric(), Prazo = character(), Tipo = character(), Link = character())
+    } else {
+      shown <- df |>
+        dplyr::mutate(Link = vapply(dplyr::coalesce(link_detalhe, link_origem), link_html, character(1), label = "Abrir")) |>
+        dplyr::transmute(Título = titulo, Financiador = entidade, Score = score_aderencia, Prazo = format_date_br(data_limite), Tipo = tipo_oportunidade, Link)
+    }
+    DT::datatable(shown, escape = FALSE, options = list(pageLength = 10, scrollX = TRUE, language = list(emptyTable = "Nenhuma recomendação disponível.")))
+  }, server = FALSE)
 
   output$profile_summary <- renderUI({
     tags$div(
@@ -677,25 +688,34 @@ server <- function(input, output, session) {
   output$collaborators_table <- renderDT({
     df <- find_potential_collaborators(conn, rv$current_query, top_n = 15)
     if (nrow(df) == 0) {
-      return(DT::datatable(data.frame(Mensagem = "Nenhum colaborador potencial encontrado."), options = list(dom = 't')))
-    }
-    if ("similarity" %in% names(df)) df$similarity <- sprintf("%.2f", round(as.numeric(df$similarity), 2))
-    shown <- df |>
-      dplyr::transmute(
-        Nome = nome,
-        Instituição = instituicao,
-        País = pais,
-        Área = area,
-        `Palavras-chave` = palavras_chave,
-        Similarity = similarity,
-        Email = email
+      shown <- tibble::tibble(
+        Nome = character(),
+        Instituição = character(),
+        País = character(),
+        Área = character(),
+        `Palavras-chave` = character(),
+        Similarity = character(),
+        Email = character()
       )
-    DT::datatable(shown, options = list(pageLength = 10, scrollX = TRUE))
-  })
+    } else {
+      if ("similarity" %in% names(df)) df$similarity <- sprintf("%.2f", round(as.numeric(df$similarity), 2))
+      shown <- df |>
+        dplyr::transmute(
+          Nome = nome,
+          Instituição = instituicao,
+          País = pais,
+          Área = area,
+          `Palavras-chave` = palavras_chave,
+          Similarity = similarity,
+          Email = email
+        )
+    }
+    DT::datatable(shown, options = list(pageLength = 10, scrollX = TRUE, language = list(emptyTable = "Nenhum colaborador potencial encontrado.")))
+  }, server = FALSE)
 
   output$logs_table <- renderDT({
     DT::datatable(rv$logs |> dplyr::arrange(dplyr::desc(parse_datetime_safe(data_execucao))), options = list(pageLength = 15, scrollX = TRUE))
-  })
+  }, server = FALSE)
 }
 
 shiny::shinyApp(ui, server)

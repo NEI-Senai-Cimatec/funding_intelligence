@@ -10,6 +10,11 @@ body {
 }
 
 /* Estrutura do Cabeçalho */
+.navbar {
+  box-shadow: none !important;
+  border-bottom: none !important;
+}
+
 .app-header {
   display: flex;
   align-items: center;
@@ -24,7 +29,7 @@ body {
   background: white;
   padding: 0.5rem 1rem;
   border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  box-shadow: none !important;
   border: 1px solid #e2e8f0;
 }
 

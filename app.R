@@ -191,12 +191,18 @@ ui <- bslib::page_sidebar(
       bslib::layout_columns(
         col_widths = c(8, 4),
         DTOutput("tracked_table"),
-        bslib::card(
-          h5("Atualizar rastreamento"),
-          selectInput("tracked_status_input", "Status", choices = c("avaliar", "prioritário", "submetido", "descartado"), selected = "avaliar"),
-          textAreaInput("tracked_notes_input", "Observações", width = "100%", rows = 6),
-          actionButton("btn_update_tracked", "Salvar atualização", class = "btn-primary w-100 mb-2"),
-          actionButton("btn_remove_tracked", "Remover da lista", class = "btn-outline-danger w-100")
+        tags$div(
+          bslib::card(
+            h5("Atualizar rastreamento"),
+            selectInput("tracked_status_input", "Status", choices = c("avaliar", "prioritário", "submetido", "descartado"), selected = "avaliar"),
+            textAreaInput("tracked_notes_input", "Observações", width = "100%", rows = 6),
+            actionButton("btn_update_tracked", "Salvar atualização", class = "btn-primary w-100 mb-2"),
+            actionButton("btn_remove_tracked", "Remover da lista", class = "btn-outline-danger w-100")
+          ),
+          bslib::card(
+            h5("Potenciais Parceiros (CIMATEC)"),
+            uiOutput("tracked_partners_ui")
+          )
         )
       )
     ),
@@ -670,7 +676,65 @@ server <- function(input, output, session) {
       rv$selected_tracked_id <- rv$tracked$id_oportunidade[[idx]]
       updateSelectInput(session, "tracked_status_input", selected = rv$tracked$status_usuario[[idx]])
       updateTextAreaInput(session, "tracked_notes_input", value = rv$tracked$observacoes[[idx]] %||% "")
+    } else {
+      rv$selected_tracked_id <- NULL
     }
+  })
+
+  output$tracked_partners_ui <- renderUI({
+    opp_id <- rv$selected_tracked_id
+    if (is.null(opp_id) || !nzchar(opp_id)) {
+      return(tags$p(style = "color: #64748b; font-style: italic;", 
+                    "Selecione um edital na tabela ao lado para visualizar os parceiros internos recomendados."))
+    }
+    
+    partners <- recommend_partners_for_opportunity(conn, opp_id, top_n = 5)
+    
+    if (nrow(partners) == 0) {
+      return(tags$p(style = "color: #64748b; font-style: italic;", 
+                    "Nenhum pesquisador compatível encontrado para este edital."))
+    }
+    
+    # Renderizar lista de parceiros
+    partner_items <- lapply(seq_len(nrow(partners)), function(i) {
+      p <- partners[i, ]
+      
+      # Barra de progresso visual para afinidade
+      affinity_bar <- tags$div(
+        class = "score-wrap",
+        style = "margin-top: 5px; margin-bottom: 8px;",
+        tags$div(
+          class = "score-bar",
+          tags$div(
+            class = "score-bar-fill",
+            style = sprintf("width: %d%%;", p$score_afinidade)
+          )
+        ),
+        tags$div(
+          class = "score-label",
+          sprintf("Afinidade: %d%%", p$score_afinidade)
+        )
+      )
+      
+      tags$div(
+        style = "border-bottom: 1px solid #f1f5f9; padding-bottom: 10px; margin-bottom: 10px;",
+        tags$h6(style = "margin-bottom: 2px; color: #004691; font-weight: 600;", p$nome),
+        tags$p(style = "font-size: 0.8rem; color: #64748b; margin-bottom: 4px;", 
+               tags$strong("Email: "), tags$a(href = paste0("mailto:", p$email), p$email), " | ", tags$strong("Inst: "), p$instituicao),
+        affinity_bar,
+        if (nzchar(p$termos_correspondentes)) {
+          tags$p(style = "font-size: 0.75rem; margin-bottom: 4px; color: #0f172a;",
+                 tags$strong("Termos correspondentes: "), 
+                 tags$span(style = "background-color: #eff6ff; color: #1e40af; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.7rem;", p$termos_correspondentes))
+        },
+        if (nzchar(p$projetos_passados)) {
+          tags$p(style = "font-size: 0.75rem; color: #475569; margin-bottom: 0;",
+                 tags$strong("Projetos passados: "), p$projetos_passados)
+        }
+      )
+    })
+    
+    tags$div(partner_items)
   })
 
   observeEvent(input$btn_update_tracked, {

@@ -53,6 +53,16 @@ Como parte da expansão do monitoramento de editais e segmentação geográfica 
 
 ---
 
+## 🤝 Módulo de Parcerias Estratégicas (Epic 4)
+
+A plataforma conta agora com um módulo relacional para recomendação e engajamento de parceiros de pesquisa internos do **SENAI CIMATEC**, otimizando a formação de consórcios para novos editais:
+
+*   **Modelagem Relacional de Expertises**: Implementação das tabelas `pesquisadores_vencedores` (banco de talentos com expertises declaradas) e `projetos_aprovados` (histórico de captação e editais passados aprovados), vinculadas por relações de integridade referencial no SQLite.
+*   **Algoritmo de Afinidade Temática**: Desenvolvimento de lógica avançada de recomendação em [`R/helpers_recommend.R`](file:///c:/Users/Micro/source/repos/funding_intelligence/R/helpers_recommend.R) que cruza os dados do edital selecionado com a união dos termos de expertise do pesquisador e as palavras-chave de seus projetos passados, computando um score percentual de aderência.
+*   **Integração Visual na UI**: Inclusão de um painel dinâmico `"Potenciais Parceiros (CIMATEC)"` na aba de **Editais rastreados** em [`app.R`](file:///c:/Users/Micro/source/repos/funding_intelligence/app.R). Ao selecionar um edital monitorado, a plataforma apresenta instantaneamente os pesquisadores mais indicados, seus e-mails de contato, barra de afinidade visual e a listagem de projetos já executados na temática.
+
+---
+
 ## 📐 Arquitetura do Sistema
 
 A aplicação adota uma organização modular em camadas de responsabilidade, separando a interface do usuário, a gestão do banco de dados, o motor de busca, o subsistema de inteligência artificial e a engine de scraping.

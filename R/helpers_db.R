@@ -157,6 +157,26 @@ create_tables <- function(conn) {
       url TEXT,
       data_execucao TEXT
     )")
+
+  DBI::dbExecute(conn, "
+    CREATE TABLE IF NOT EXISTS pesquisadores_vencedores (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nome TEXT,
+      email TEXT,
+      instituicao TEXT,
+      expertise TEXT
+    )")
+
+  DBI::dbExecute(conn, "
+    CREATE TABLE IF NOT EXISTS projetos_aprovados (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      titulo_projeto TEXT,
+      pesquisador_id INTEGER,
+      edital_titulo TEXT,
+      ano INTEGER,
+      palavras_chave TEXT,
+      FOREIGN KEY(pesquisador_id) REFERENCES pesquisadores_vencedores(id)
+    )")
 }
 
 seed_sources <- function(conn) {
@@ -225,6 +245,48 @@ seed_collaborators <- function(conn) {
   DBI::dbWriteTable(conn, "colaboradores", collaborators, append = TRUE)
 }
 
+seed_pesquisadores_vencedores <- function(conn) {
+  existing <- DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM pesquisadores_vencedores")$n[[1]]
+  if (existing > 0) return(invisible(FALSE))
+  
+  pesquisadores <- tibble::tribble(
+    ~nome, ~email, ~instituicao, ~expertise,
+    "Dr. Marcos Santos", "marcos.santos@cimatec.org.br", "SENAI CIMATEC", "computação quântica; qubits; supercondutores; hardware; tecnologia quântica",
+    "Dra. Julia Costa", "julia.costa@cimatec.org.br", "SENAI CIMATEC", "comunicação quântica; criptografia pós-quântica; qkd; segurança quântica; tecnologia quântica",
+    "Dr. Roberto Silva", "roberto.silva@cimatec.org.br", "SENAI CIMATEC", "computação quântica; otimização; algoritmos quânticos; annealer; tecnologia quântica",
+    "Dra. Sandra Souza", "sandra.souza@cimatec.org.br", "SENAI CIMATEC", "saúde; dispositivos médicos; biotecnologia; diagnóstico precoce; inovação médica",
+    "Dr. André Oliveira", "andre.oliveira@cimatec.org.br", "SENAI CIMATEC", "transição energética; hidrogênio verde; descarbonização; células de combustível"
+  )
+  DBI::dbWriteTable(conn, "pesquisadores_vencedores", pesquisadores, append = TRUE)
+  invisible(TRUE)
+}
+
+seed_projetos_aprovados <- function(conn) {
+  existing <- DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM projetos_aprovados")$n[[1]]
+  if (existing > 0) return(invisible(FALSE))
+  
+  pesq <- DBI::dbGetQuery(conn, "SELECT id, nome FROM pesquisadores_vencedores")
+  
+  get_id <- function(nome_pesq) {
+    id <- pesq$id[pesq$nome == nome_pesq]
+    if (length(id) == 0) return(1L)
+    as.integer(id[[1]])
+  }
+  
+  projetos <- tibble::tribble(
+    ~titulo_projeto, ~pesquisador_id, ~edital_titulo, ~ano, ~palavras_chave,
+    "Desenvolvimento de Computadores Quânticos Supercondutores", get_id("Dr. Marcos Santos"), "Edital Tecnologias Quânticas Avançadas", 2024L, "qubits; supercondutores; hardware; criogenia; computação quântica",
+    "Sensores Quânticos para Exploração Petrolífera", get_id("Dr. Marcos Santos"), "Chamada Especial de Sensores Quânticos", 2025L, "sensores quânticos; gravimetria; magnetômetros; quântica",
+    "Redes de Comunicação Quântica e Criptografia em Fibras Ópticas", get_id("Dra. Julia Costa"), "Chamada Segurança e Comunicações Seguras", 2024L, "comunicação quântica; criptografia; qkd; segurança quântica",
+    "Algoritmos Quânticos para Otimização de Processos Logísticos", get_id("Dr. Roberto Silva"), "Chamada Computação Científica de Alto Desempenho", 2025L, "computação quântica; otimização; algoritmos quânticos; annealer",
+    "Dispositivo Portátil de Diagnóstico Rápido para Doenças Infecciosas", get_id("Dra. Sandra Souza"), "Edital Inovação em Saúde Pública", 2024L, "dispositivos médicos; biotecnologia; diagnóstico precoce; saúde",
+    "Desenvolvimento de Eletrolisadores Eficientes para Hidrogênio Verde", get_id("Dr. André Oliveira"), "Edital Transição Energética Industrial", 2025L, "hidrogênio verde; descarbonização; eletrolisadores; energia limpa"
+  )
+  DBI::dbWriteTable(conn, "projetos_aprovados", projetos, append = TRUE)
+  invisible(TRUE)
+}
+
+
 seed_demo_opportunities <- function(conn) {
   existing <- DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM oportunidades")$n[[1]]
   if (existing > 0) return(invisible(FALSE))
@@ -257,6 +319,8 @@ init_database <- function(db_path) {
   seed_search_history(conn)
   seed_collaborators(conn)
   seed_demo_opportunities(conn)
+  seed_pesquisadores_vencedores(conn)
+  seed_projetos_aprovados(conn)
   invisible(TRUE)
 }
 

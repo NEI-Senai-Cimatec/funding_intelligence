@@ -19,6 +19,71 @@ O sistema foi desenhado de forma extensível, coletando metadados diretamente de
 
 ---
 
+## ⚡ Otimização do Scraper & Evasão de Bloqueios (Novidades)
+
+Como parte da última otimização de infraestrutura de dados (Epic 1), foram implementadas as seguintes melhorias para lidar com bloqueios de CDNs/CAPTCHAs nas agências nacionais (CNPq, CAPES, FAPESP) e otimizar a experiência do usuário no Shiny:
+
+*   **Processamento de Coleta Assíncrona**: O acionamento da coleta de dados foi desvinculado da thread da UI do Shiny. Utilizando os pacotes `future` (com workers em modo `multisession`) e `promises`, a coleta roda em segundo plano sem travar ou congelar o dashboard. A persistência em segundo plano gerencia de forma isolada suas conexões SQLite para garantir integridade transacional.
+*   **Evasão Stealth Avançada no Chromote**: Para contornar bloqueios baseados em detecção de automação, configuramos injeções via protocolo DevTools (`Page$addScriptToEvaluateOnNewDocument`) que ocultam a propriedade `navigator.webdriver`, mockam plugins e idiomas comuns do sistema operacional, e sobrescrevem assinaturas de cabeçalho do User-Agent.
+*   **Integração com Playwright (Python)**: Implementamos um conector via `reticulate` que aciona de forma automatizada o Playwright em Python para executar navegadores headless com evasões e timeouts robustos como camada alternativa de raspagem.
+*   **Resiliência e Registro de Falhas**: A coleta de cada agência agora ocorre em um pipeline isolado com `tryCatch`. Erros de carregamento de páginas iniciais são interceptados e gravados de forma estruturada com status `"erro"` na tabela `logs_coleta`, impedindo que a falha de acesso a uma agência interrompa a varredura das demais fontes.
+
+---
+
+## 🎨 Design Institucional SENAI CIMATEC & Integração Estática (Epic 2)
+
+As últimas atualizações da interface do usuário (UI) e da integração de dados alinham a aplicação às diretrizes institucionais do **SENAI CIMATEC** e garantem alta performance de renderização:
+
+*   **Identidade Visual Institucional**: Redesenho completo do CSS (`www/styles.css`) adotando as cores oficiais da marca (Azul Escuro `#004691` e Vermelho `#e30613`), com tipografia moderna (família de fontes **Inter** integrada via Google Fonts), sombras suaves e micro-animações interativas de hover e cliques.
+*   **Logotipo Integrado**: O cabeçalho da plataforma foi adaptado com uma área dedicada para exibir o logotipo oficial em formato vetorial (SVG) de alta resolução.
+*   **Consumo Exclusivo de Dados Estáticos/Locais**: O aplicativo foi estruturado para atuar offline de forma nativa e rápida. Ao iniciar ou renderizar as telas, o Shiny consome exclusivamente a base relacional local SQLite (`funding_intelligence.sqlite`), eliminando qualquer chamada ou varredura de scraping síncrona na thread principal que pudesse degradar a performance inicial.
+*   **Validação da Busca Booleana e Identificação Única**: O motor de busca avançado foi validado e otimizado para realizar buscas complexas com parênteses, frases exatas e operadores lógicos diretamente nos registros estáticos locais, mapeando corretamente a coluna com os identificadores únicos gerados (`id_registro`, ex: `capes_102cbb3bcf547cae`).
+
+---
+
+## 🌍 Novas Entidades de Fomento & Filtro Regional (Epic 3)
+
+Como parte da expansão do monitoramento de editais e segmentação geográfica (Epic 3), foram implementadas as seguintes melhorias:
+
+*   **Novas Agências de Fomento**: 
+    *   **FAPESC** (Fundação de Amparo à Pesquisa e Inovação do Estado de Santa Catarina): Implementação de raspagem customizada baseada na URL oficial de chamadas abertas.
+    *   **EUREKA Network**: Integração de oportunidades europeias e transnacionais focadas em inovação industrial e desenvolvimento tecnológico cooperativo.
+*   **Otimização do Bypass de Bloqueios**: Refinamento do detector de CDN/CAPTCHA (`has_block_signal`) para eliminar falsos positivos em páginas que utilizam scripts do Cloudflare ou contêm termos de segurança comuns em JavaScript (CSP) sem bloquear o tráfego, garantindo conexões diretas bem-sucedidas.
+*   **Filtro Regional na Interface (UI)**: Inclusão do seletor `radioButtons` no painel principal permitindo filtrar instantaneamente os editais por **Bases Brasileiras**, **Bases Europeias** ou **Ambas**, atualizando reativamente os KPIs do painel, a seleção da aba "Por Financiador" e a listagem de fontes no modal de atualização de base.
+
+---
+
+## 🤝 Módulo de Parcerias Estratégicas (Epic 4)
+
+A plataforma conta agora com um módulo relacional para recomendação e engajamento de parceiros de pesquisa internos do **SENAI CIMATEC**, otimizando a formação de consórcios para novos editais:
+
+*   **Modelagem Relacional de Expertises**: Implementação das tabelas `pesquisadores_vencedores` (banco de talentos com expertises declaradas) e `projetos_aprovados` (histórico de captação e editais passados aprovados), vinculadas por relações de integridade referencial no SQLite.
+*   **Algoritmo de Afinidade Temática**: Desenvolvimento de lógica avançada de recomendação em [`R/helpers_recommend.R`](file:///c:/Users/Micro/source/repos/funding_intelligence/R/helpers_recommend.R) que cruza os dados do edital selecionado com a união dos termos de expertise do pesquisador e as palavras-chave de seus projetos passados, computando um score percentual de aderência.
+*   **Integração Visual na UI**: Inclusão de um painel dinâmico `"Potenciais Parceiros (CIMATEC)"` na aba de **Editais rastreados** em [`app.R`](file:///c:/Users/Micro/source/repos/funding_intelligence/app.R). Ao selecionar um edital monitorado, a plataforma apresenta instantaneamente os pesquisadores mais indicados, seus e-mails de contato, barra de afinidade visual e a listagem de projetos já executados na temática.
+
+---
+
+## 🔄 Sincronização Dinâmica de Busca — Scrape-on-Demand (Epic 5)
+
+Adição de busca híbrida em tempo real na plataforma, acionando a varredura das fontes oficiais dinamicamente no momento da pesquisa:
+
+*   **Scraping sob Demanda (Scrape-on-Demand)**: Ao acionar a busca na interface, a aplicação executa um ciclo de scraping rápido (`max_pages = 1`) nas agências da região ativa, minerando oportunidades publicadas recentemente antes de aplicar os filtros e renderizar na tela.
+*   **Controle e Resiliência via UPSERT Inteligente**: A inserção das novas oportunidades no SQLite agora utiliza a cláusula `INSERT OR IGNORE` baseada na restrição única `hash_deduplicacao` (gerada por MD5 de Título + Agência). Isso garante que editais já catalogados no banco de dados local sejam ignorados, eliminando regravações redundantes e economizando processamento.
+*   **Interface Interativa com Indicadores de Carregamento**: Integração do pacote `shinycssloaders` para exibir animações de carregamento nas tabelas e progresso passo a passo em popups (`withProgress`), mantendo a UI responsiva e amigável durante o processamento da raspagem na web.
+
+---
+
+## 🤖 Agente de IA, Otimização e Feedback de UI (Epic 6)
+
+Aprimoramento do fluxo de tratamento de editais com inteligência artificial generativa e feedback resiliente na interface do usuário:
+
+*   **Agente de IA e Pipeline de Metadados**: Recomendação e utilização do modelo **Gemini 1.5/2.5 Flash** (tier gratuito robusto). Implementação de habilidades (*skills*) no agente: `skill_extract_metadata()` (para extração precisa de elegibilidade, prazo e exatamente 5 palavras-chave) e `skill_verify_metadata()` (uma skill de auditoria para prevenção de alucinações de dados).
+*   **Execução em Pipeline Estrito**: Garantia de que a coleta ocorra na ordem estrita: Scraping bruto -> Submissão do texto à IA para extração limpa e estruturada dos campos finais.
+*   **Banner de IA Ausente**: Validação inteligente de API Key no startup do app. Se a chave `GEMINI_API_KEY` estiver ausente, exibe uma mensagem instrutiva no console e uma notificação persistente amarela de alerta na UI.
+*   **Tratamento de Bloqueios de Acesso com Alerta de Busca Manual**: Monitoramento ativo de falhas técnicas intransponíveis nas agências de fomento (como CAPTCHAs severos ou quedas de IP). Quando uma falha é detectada em qualquer portal (como CNPq ou FAPESP), a interface do Shiny exibe um modal amigável alertando quais agências falharam, fornecendo links oficiais diretos e sugerindo que o usuário realize uma "Busca Manual".
+
+---
+
 ## 📐 Arquitetura do Sistema
 
 A aplicação adota uma organização modular em camadas de responsabilidade, separando a interface do usuário, a gestão do banco de dados, o motor de busca, o subsistema de inteligência artificial e a engine de scraping.
@@ -103,21 +168,49 @@ install.packages(c(
 install.packages("chromote")
 ```
 
-### 2. Configurando a Chave do Gemini (Opcional)
-Se você deseja utilizar a inteligência artificial para limpeza e extração de metadados avançados, configure a variável de ambiente `GEMINI_API_KEY`:
+### 2. Configurando a Inteligência Artificial (Opcional)
+Se você deseja utilizar a inteligência artificial para limpeza, extração de metadados avançados e auditoria contra alucinações, é necessário configurar as credenciais do provedor de IA de sua preferência no arquivo `.Renviron` (ou no ambiente).
 
-*   **No Windows (PowerShell/CMD antes de rodar o R):**
-    ```powershell
-    $env:GEMINI_API_KEY="SUA_CHAVE_AQUI"
+A plataforma detectará automaticamente o provedor com base nas chaves de API disponíveis no seu ambiente. 
+
+#### Opção A: Autodetecção Dinâmica (Recomendado)
+Adicione um dos seguintes blocos de chaves ao seu arquivo `.Renviron` local na raiz do projeto:
+
+*   **Google Gemini**:
+    ```env
+    GEMINI_API_KEY="sua_chave_do_google_ai_studio"
     ```
-*   **No Linux/macOS:**
-    ```bash
-    export GEMINI_API_KEY="SUA_CHAVE_AQUI"
+*   **OpenAI**:
+    ```env
+    OPENAI_API_KEY="sua_chave_da_openai"
     ```
-*   **Diretamente dentro do console do R:**
-    ```R
-    Sys.setenv(GEMINI_API_KEY = "SUA_CHAVE_AQUI")
+*   **Anthropic (Claude)**:
+    ```env
+    ANTHROPIC_API_KEY="sua_chave_da_anthropic"
     ```
+*   **Groq**:
+    ```env
+    GROQ_API_KEY="sua_chave_da_groq"
+    ```
+*   **OpenRouter**:
+    ```env
+    OPENROUTER_API_KEY="sua_chave_do_openrouter"
+    ```
+*   **DeepSeek**:
+    ```env
+    DEEPSEEK_API_KEY="sua_chave_do_deepseek"
+    ```
+
+#### Opção B: Configuração Manual / Customizada
+Você pode forçar o uso de um provedor, modelo ou endpoint de API customizado (como qualquer agregador ou endpoint compatível com o padrão OpenAI) definindo as seguintes variáveis no seu `.Renviron`:
+```env
+AI_PROVIDER="groq"                      # Opções: gemini, openai, anthropic, groq, openrouter, deepseek
+AI_API_KEY="sua_chave_de_api_aqui"      # Substitui as chaves específicas se definida
+AI_MODEL="llama-3.3-70b-versatile"      # Modelo de preferência
+AI_API_URL="https://api.groq.com/openai/v1/chat/completions" # URL customizada do endpoint (opcional)
+```
+
+O R carregará automaticamente esta variável toda vez que o projeto for aberto ou executado.
 
 ### 3. Rodando o Aplicativo
 Navegue até o diretório do projeto e execute:

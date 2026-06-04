@@ -82,3 +82,74 @@ find_potential_collaborators <- function(conn, current_query = "", top_n = 10) {
     dplyr::arrange(dplyr::desc(similarity), nome) |>
     dplyr::slice_head(n = top_n)
 }
+
+recommend_partners_for_opportunity <- function(conn, opportunity_id, top_n = 5) {
+  if (is.null(conn) || is.na(opportunity_id) || !nzchar(opportunity_id)) {
+    return(tibble::tibble())
+  }
+  
+  opp <- DBI::dbGetQuery(
+    conn, 
+    "SELECT titulo, descricao_resumida, palavras_chave, area_tematica FROM oportunidades WHERE id_registro = ?",
+    params = list(opportunity_id)
+  )
+  
+  if (nrow(opp) == 0) return(tibble::tibble())
+  
+  researchers <- DBI::dbGetQuery(conn, "SELECT id, nome, email, instituicao, expertise FROM pesquisadores_vencedores")
+  if (nrow(researchers) == 0) return(tibble::tibble())
+  
+  projects <- DBI::dbGetQuery(conn, "SELECT pesquisador_id, titulo_projeto, palavras_chave FROM projetos_aprovados")
+  
+  opp_text <- paste(opp$titulo[[1]], opp$descricao_resumida[[1]], opp$palavras_chave[[1]], opp$area_tematica[[1]], collapse = " ")
+  
+  scores <- purrr::map_dfr(seq_len(nrow(researchers)), function(i) {
+    res_id <- researchers$id[[i]]
+    res_name <- researchers$nome[[i]]
+    res_email <- researchers$email[[i]]
+    res_inst <- researchers$instituicao[[i]]
+    res_exp <- researchers$expertise[[i]]
+    
+    res_projects <- projects |> dplyr::filter(pesquisador_id == res_id)
+    proj_keywords <- paste(res_projects$palavras_chave, collapse = "; ")
+    proj_titles <- paste(res_projects$titulo_projeto, collapse = " | ")
+    
+    all_terms <- unique(normalize_text(c(
+      safe_split(res_exp),
+      safe_split(proj_keywords)
+    )))
+    all_terms <- all_terms[nzchar(all_terms)]
+    
+    score <- if (length(all_terms) > 0) {
+      keyword_overlap_score(opp_text, all_terms)
+    } else {
+      0
+    }
+    
+    matched_terms <- character()
+    if (length(all_terms) > 0) {
+      norm_opp_text <- normalize_text(opp_text)
+      matched_terms <- all_terms[vapply(all_terms, function(t) {
+        pat <- tryCatch(term_to_pattern(t), error = function(e) "")
+        if (!nzchar(pat)) return(FALSE)
+        grepl(pat, norm_opp_text, ignore.case = TRUE, perl = TRUE)
+      }, logical(1))]
+    }
+    matched_str <- paste(unique(matched_terms), collapse = "; ")
+    
+    tibble::tibble(
+      id = res_id,
+      nome = res_name,
+      email = res_email,
+      instituicao = res_inst,
+      score_afinidade = round(score),
+      projetos_passados = proj_titles,
+      termos_correspondentes = matched_str
+    )
+  })
+  
+  scores |>
+    dplyr::arrange(dplyr::desc(score_afinidade), nome) |>
+    dplyr::slice_head(n = top_n)
+}
+

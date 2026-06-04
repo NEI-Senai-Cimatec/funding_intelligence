@@ -30,7 +30,9 @@ source_catalog <- function() {
     "undp", "Programa das Nações Unidas para o Desenvolvimento", "PNUD", "Brasil", "organismo multilateral", "ONU", "https://www.undp.org/pt/brazil", "https://www.undp.org/pt/brazil/licitacoes", "html", "pt", "diária", "Licitações e oportunidades do PNUD Brasil.",
     "embrapii", "Empresa Brasileira de Pesquisa e Inovação Industrial", "EMBRAPII", "Brasil", "organização social", "contrato de gestão federal", "https://embrapii.org.br/", "https://embrapii.org.br/chamadas-publicas/", "html", "pt", "diária", "Chamadas públicas.",
     "ics", "Instituto Clima e Sociedade", "iCS", "Brasil", "fundação privada", "filantropia", "https://climaesociedade.org/", "https://climaesociedade.org/editais/", "html", "pt", "diária", "Editais e doações.",
-    "min_saude", "Ministério da Saúde", "MS", "Brasil", "ministério", "governo federal", "https://www.gov.br/saude/pt-br", "https://www.gov.br/saude/pt-br/acesso-a-informacao/acoes-e-programas/editais", "html", "pt", "diária", "Fonte complementar nacional."
+    "min_saude", "Ministério da Saúde", "MS", "Brasil", "ministério", "governo federal", "https://www.gov.br/saude/pt-br", "https://www.gov.br/saude/pt-br/acesso-a-informacao/acoes-e-programas/editais", "html", "pt", "diária", "Fonte complementar nacional.",
+    "fapesc", "Fundação de Amparo à Pesquisa e Inovação de Santa Catarina", "FAPESC", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://fapesc.sc.gov.br/", "https://fapesc.sc.gov.br/chamadas-abertas/", "html", "pt", "diária", "Editais abertos FAPESC.",
+    "eureka", "Eureka Network", "EUREKA", "União Europeia", "programa multilateral", "associação internacional", "https://www.eurekanetwork.org/", "https://www.eurekanetwork.org/open-calls/", "html", "en", "diária", "Chamadas abertas para cooperação tecnológica internacional."
   )
 }
 
@@ -155,6 +157,26 @@ create_tables <- function(conn) {
       url TEXT,
       data_execucao TEXT
     )")
+
+  DBI::dbExecute(conn, "
+    CREATE TABLE IF NOT EXISTS pesquisadores_vencedores (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nome TEXT,
+      email TEXT,
+      instituicao TEXT,
+      expertise TEXT
+    )")
+
+  DBI::dbExecute(conn, "
+    CREATE TABLE IF NOT EXISTS projetos_aprovados (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      titulo_projeto TEXT,
+      pesquisador_id INTEGER,
+      edital_titulo TEXT,
+      ano INTEGER,
+      palavras_chave TEXT,
+      FOREIGN KEY(pesquisador_id) REFERENCES pesquisadores_vencedores(id)
+    )")
 }
 
 seed_sources <- function(conn) {
@@ -223,6 +245,48 @@ seed_collaborators <- function(conn) {
   DBI::dbWriteTable(conn, "colaboradores", collaborators, append = TRUE)
 }
 
+seed_pesquisadores_vencedores <- function(conn) {
+  existing <- DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM pesquisadores_vencedores")$n[[1]]
+  if (existing > 0) return(invisible(FALSE))
+  
+  pesquisadores <- tibble::tribble(
+    ~nome, ~email, ~instituicao, ~expertise,
+    "Dr. Marcos Santos", "marcos.santos@cimatec.org.br", "SENAI CIMATEC", "computação quântica; qubits; supercondutores; hardware; tecnologia quântica",
+    "Dra. Julia Costa", "julia.costa@cimatec.org.br", "SENAI CIMATEC", "comunicação quântica; criptografia pós-quântica; qkd; segurança quântica; tecnologia quântica",
+    "Dr. Roberto Silva", "roberto.silva@cimatec.org.br", "SENAI CIMATEC", "computação quântica; otimização; algoritmos quânticos; annealer; tecnologia quântica",
+    "Dra. Sandra Souza", "sandra.souza@cimatec.org.br", "SENAI CIMATEC", "saúde; dispositivos médicos; biotecnologia; diagnóstico precoce; inovação médica",
+    "Dr. André Oliveira", "andre.oliveira@cimatec.org.br", "SENAI CIMATEC", "transição energética; hidrogênio verde; descarbonização; células de combustível"
+  )
+  DBI::dbWriteTable(conn, "pesquisadores_vencedores", pesquisadores, append = TRUE)
+  invisible(TRUE)
+}
+
+seed_projetos_aprovados <- function(conn) {
+  existing <- DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM projetos_aprovados")$n[[1]]
+  if (existing > 0) return(invisible(FALSE))
+  
+  pesq <- DBI::dbGetQuery(conn, "SELECT id, nome FROM pesquisadores_vencedores")
+  
+  get_id <- function(nome_pesq) {
+    id <- pesq$id[pesq$nome == nome_pesq]
+    if (length(id) == 0) return(1L)
+    as.integer(id[[1]])
+  }
+  
+  projetos <- tibble::tribble(
+    ~titulo_projeto, ~pesquisador_id, ~edital_titulo, ~ano, ~palavras_chave,
+    "Desenvolvimento de Computadores Quânticos Supercondutores", get_id("Dr. Marcos Santos"), "Edital Tecnologias Quânticas Avançadas", 2024L, "qubits; supercondutores; hardware; criogenia; computação quântica",
+    "Sensores Quânticos para Exploração Petrolífera", get_id("Dr. Marcos Santos"), "Chamada Especial de Sensores Quânticos", 2025L, "sensores quânticos; gravimetria; magnetômetros; quântica",
+    "Redes de Comunicação Quântica e Criptografia em Fibras Ópticas", get_id("Dra. Julia Costa"), "Chamada Segurança e Comunicações Seguras", 2024L, "comunicação quântica; criptografia; qkd; segurança quântica",
+    "Algoritmos Quânticos para Otimização de Processos Logísticos", get_id("Dr. Roberto Silva"), "Chamada Computação Científica de Alto Desempenho", 2025L, "computação quântica; otimização; algoritmos quânticos; annealer",
+    "Dispositivo Portátil de Diagnóstico Rápido para Doenças Infecciosas", get_id("Dra. Sandra Souza"), "Edital Inovação em Saúde Pública", 2024L, "dispositivos médicos; biotecnologia; diagnóstico precoce; saúde",
+    "Desenvolvimento de Eletrolisadores Eficientes para Hidrogênio Verde", get_id("Dr. André Oliveira"), "Edital Transição Energética Industrial", 2025L, "hidrogênio verde; descarbonização; eletrolisadores; energia limpa"
+  )
+  DBI::dbWriteTable(conn, "projetos_aprovados", projetos, append = TRUE)
+  invisible(TRUE)
+}
+
+
 seed_demo_opportunities <- function(conn) {
   existing <- DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM oportunidades")$n[[1]]
   if (existing > 0) return(invisible(FALSE))
@@ -231,9 +295,12 @@ seed_demo_opportunities <- function(conn) {
     ~entidade, ~pais_origem, ~titulo, ~subtitulo, ~descricao_resumida, ~descricao_completa, ~tipo_oportunidade, ~modalidade, ~area_tematica, ~palavras_chave, ~elegibilidade, ~publico_alvo, ~nivel_academico, ~instituicao_financiadora, ~valor_financiado, ~moeda, ~data_publicacao, ~data_abertura, ~data_limite, ~data_encerramento, ~status_oportunidade, ~link_origem, ~link_detalhe, ~link_documento_pdf, ~idioma, ~localidade, ~observacoes, ~texto_bruto, ~pagina_coletada, ~fonte_oficial, ~data_hora_coleta,
     "CNPq", "Brasil", "Edital Demo de Inovação em Saúde", "Base demonstrativa", "Apoio a projetos de inovação em saúde.", "Registro de demonstração para abertura do app na primeira execução.", "edital", "individual", "Saúde", "health; innovation; medical devices", "ICTs e pesquisadores", "pesquisadores; instituições", "doutorado", "CNPq", 100000, "BRL", as.character(today - 20), as.character(today - 15), as.character(today + 25), NA_character_, "aberto", "https://www.gov.br/cnpq/pt-br/chamadas/abertas-para-submissao", "https://www.gov.br/cnpq/pt-br/chamadas/abertas-para-submissao", NA_character_, "pt", "Brasil", "Seed demo.", "Seed demo.", 1L, "cnpq", as.character(Sys.time()),
     "Horizon Europe", "União Europeia", "Grant Demo for Energy Transition", "Seed", "Support for collaborative R&D in low-carbon industry.", "Seed record for initial dashboard rendering.", "grant", "rede", "Transição Energética", "energy transition; hydrogen; biomethane", "universities; companies; research organisations", "instituições; empresas", "instituição", "Horizon Europe", 2500000, "EUR", as.character(today - 40), as.character(today - 35), as.character(today + 60), NA_character_, "aberto", "https://research-and-innovation.ec.europa.eu/", "https://research-and-innovation.ec.europa.eu/", NA_character_, "en", "União Europeia", "Seed demo.", "Seed demo.", 1L, "horizon_europe", as.character(Sys.time())
-  ) |>
+  )
+  demo$hash_deduplicacao <- vapply(seq_len(nrow(demo)), function(i) {
+    make_hash(demo$entidade[i], demo$titulo[i], demo$link_detalhe[i], demo$data_limite[i])
+  }, character(1))
+  demo <- demo |>
     dplyr::mutate(
-      hash_deduplicacao = make_hash(entidade, titulo, link_detalhe, data_limite),
       id_registro = paste0("seed_", seq_len(dplyr::n())),
       campos_inferidos_ia = ""
     ) |>
@@ -252,6 +319,8 @@ init_database <- function(db_path) {
   seed_search_history(conn)
   seed_collaborators(conn)
   seed_demo_opportunities(conn)
+  seed_pesquisadores_vencedores(conn)
+  seed_projetos_aprovados(conn)
   invisible(TRUE)
 }
 
@@ -303,16 +372,8 @@ upsert_opportunities <- function(conn, opportunities_df) {
   }
   df <- df[, cols, drop = FALSE]
 
-  sql_by_hash <- paste0(
-    "INSERT INTO oportunidades (", paste(cols, collapse = ", "), ") VALUES (", paste(paste0(":", cols), collapse = ", "), ") ",
-    "ON CONFLICT(hash_deduplicacao) DO UPDATE SET ",
-    paste(sprintf("%s = excluded.%s", cols[cols != "hash_deduplicacao"], cols[cols != "hash_deduplicacao"]), collapse = ", ")
-  )
-
-  sql_by_id <- paste0(
-    "INSERT INTO oportunidades (", paste(cols, collapse = ", "), ") VALUES (", paste(paste0(":", cols), collapse = ", "), ") ",
-    "ON CONFLICT(id_registro) DO UPDATE SET ",
-    paste(sprintf("%s = excluded.%s", cols[cols != "id_registro"], cols[cols != "id_registro"]), collapse = ", ")
+  sql_insert_ignore <- paste0(
+    "INSERT OR IGNORE INTO oportunidades (", paste(cols, collapse = ", "), ") VALUES (", paste(paste0(":", cols), collapse = ", "), ")"
   )
 
   inserted <- 0L
@@ -327,20 +388,24 @@ upsert_opportunities <- function(conn, opportunities_df) {
         row[[nm]] <- as.character(row[[nm]])
       }
     }
-    row$id_registro <- row$id_registro %||% paste0("auto_", substr(make_hash(row$entidade, row$titulo, row$link_detalhe, row$data_limite), 1, 16))
-    row$hash_deduplicacao <- row$hash_deduplicacao %||% make_hash(row$entidade, row$titulo, row$link_detalhe, row$data_limite)
+    
+    # Gera o hash de deduplicação via MD5 de Título + Agência (entidade)
+    if (is.null(row$hash_deduplicacao) || is.na(row$hash_deduplicacao) || !nzchar(row$hash_deduplicacao)) {
+      hash_input <- paste(row$entidade, row$titulo, sep = "||")
+      row$hash_deduplicacao <- digest::digest(hash_input, algo = "md5")
+    }
+    
+    if (is.null(row$id_registro) || is.na(row$id_registro) || !nzchar(row$id_registro)) {
+      row$id_registro <- paste0("auto_", substr(row$hash_deduplicacao, 1, 16))
+    }
 
-    ok <- tryCatch({
-      DBI::dbExecute(conn, sql_by_hash, params = row)
-      TRUE
+    affected <- tryCatch({
+      DBI::dbExecute(conn, sql_insert_ignore, params = row)
     }, error = function(e) {
-      tryCatch({
-        DBI::dbExecute(conn, sql_by_id, params = row)
-        TRUE
-      }, error = function(e2) FALSE)
+      0L
     })
 
-    if (isTRUE(ok)) inserted <- inserted + 1L
+    if (affected > 0) inserted <- inserted + 1L
   }
 
   invisible(inserted)

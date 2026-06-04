@@ -1,3 +1,42 @@
+log_progress <- function(detail, phase = "Scraping") {
+  try({
+    log_file <- Sys.getenv("COLLECTION_MODAL_LOG_FILE")
+    if (!nzchar(log_file)) {
+      log_file <- file.path(getwd(), "logs", "collection_modal_log.txt")
+    }
+    log_line <- sprintf("[%s] [%s] %s", format(Sys.time(), "%H:%M:%S"), phase, detail)
+    cat(log_line, "\n", file = log_file, append = TRUE)
+  }, silent = TRUE)
+}
+
+detect_next_page <- function(html, current_url) {
+  nodes <- rvest::html_nodes(html, "a")
+  if (length(nodes) == 0) return(NA_character_)
+  
+  hrefs <- rvest::html_attr(nodes, "href")
+  texts <- tolower(rvest::html_text(nodes, trim = TRUE))
+  rels <- tolower(rvest::html_attr(nodes, "rel"))
+  
+  valid <- !is.na(hrefs) & nzchar(hrefs)
+  if (!any(valid)) return(NA_character_)
+  
+  hrefs <- hrefs[valid]
+  texts <- texts[valid]
+  rels <- rels[valid]
+  
+  next_idx <- which(rels == "next")
+  if (length(next_idx) > 0) {
+    return(resolve_url(current_url, hrefs[[next_idx[1]]]))
+  }
+  
+  match_idx <- which(grepl("pr[oó]xim[oa]|next|\\bsecund\\b|\\bseg\\b|\\bdaqui\\b|>", texts))
+  if (length(match_idx) > 0) {
+    return(resolve_url(current_url, hrefs[[match_idx[1]]]))
+  }
+  
+  NA_character_
+}
+
 source_dispatch <- function(source_row, max_pages = 5, max_records = 50, use_ai = FALSE, log_path = NULL) {
   sid <- source_row$id_fonte[[1]]
   if (sid %in% c("facepe", "fapesb")) {
@@ -9,10 +48,67 @@ source_dispatch <- function(source_row, max_pages = 5, max_records = 50, use_ai 
   if (identical(sid, "confap")) {
     return(collect_confap(source_row, max_pages, max_records, use_ai, log_path))
   }
+  if (identical(sid, "fapesc")) {
+    return(collect_fapesc(source_row, max_pages, max_records, use_ai, log_path))
+  }
+  if (identical(sid, "eureka")) {
+    return(collect_eureka(source_row, max_pages, max_records, use_ai, log_path))
+  }
   collect_generic_official(source_row, max_pages, max_records, use_ai, log_path)
 }
 
+safe_request_page_playwright <- function(url, log_path = NULL) {
+  if (!requireNamespace("reticulate", quietly = TRUE)) {
+    return(list(ok = FALSE))
+  }
+  py_playwright <- try(reticulate::import("playwright.sync_api", delay_load = TRUE), silent = TRUE)
+  if (inherits(py_playwright, "try-error")) {
+    return(list(ok = FALSE))
+  }
+  res <- tryCatch({
+    reticulate::py_run_string("
+def run_playwright_stealth(url):
+    from playwright.sync_api import sync_playwright
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                viewport={'width': 1920, 'height': 1080},
+                locale='pt-BR',
+                timezone_id='America/Sao_Paulo'
+            )
+            page = context.new_page()
+            page.add_init_script(\"\"\"
+                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                Object.defineProperty(navigator, 'languages', { get: () => ['pt-BR', 'pt', 'en-US', 'en'] });
+                Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+                window.chrome = { runtime: {} };
+            \"\"\")
+            page.goto(url, wait_until='networkidle', timeout=45000)
+            content = page.content()
+            browser.close()
+            return {'content': content, 'ok': True}
+    except Exception as e:
+        return {'content': str(e), 'ok': False}
+")
+    playwright_run <- reticulate::py$run_playwright_stealth(url)
+    if (isTRUE(playwright_run$ok)) {
+      html <- xml2::read_html(playwright_run$content)
+      list(url = url, html = html, text = playwright_run$content, ok = TRUE, method = "playwright")
+    } else {
+      if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Playwright falhou para %s: %s", url, playwright_run$content))
+      list(ok = FALSE)
+    }
+  }, error = function(e) {
+    if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Erro de execucao Playwright: %s", e$message))
+    list(ok = FALSE)
+  })
+  res
+}
+
 safe_request_page <- function(url, log_path = NULL, use_browser_fallback = TRUE) {
+  # 1. Tentar httr2 (metodo rapido)
   req <- httr2::request(url) |>
     httr2::req_user_agent("FundingIntelligenceHub/1.1 (+local-shiny-app)") |>
     httr2::req_headers(
@@ -29,31 +125,64 @@ safe_request_page <- function(url, log_path = NULL, use_browser_fallback = TRUE)
     if (txt_ok) {
       html <- try(xml2::read_html(txt), silent = TRUE)
       if (!inherits(html, "try-error")) {
-        return(list(url = url, html = html, text = txt, ok = TRUE, method = "httr2"))
-      }
-    }
-  }
-
-  if (isTRUE(use_browser_fallback) && requireNamespace("chromote", quietly = TRUE)) {
-    b <- try(chromote::ChromoteSession$new(), silent = TRUE)
-    if (!inherits(b, "try-error")) {
-      on.exit(try(b$close(), silent = TRUE), add = TRUE)
-      try(b$Page$navigate(url), silent = TRUE)
-      Sys.sleep(4)
-      html_txt <- try(b$Runtime$evaluate("document.documentElement.outerHTML")$result$value, silent = TRUE)
-      txt_ok <- !inherits(html_txt, "try-error") && length(html_txt) == 1 && !is.null(html_txt) && !is.na(html_txt) && nzchar(html_txt)
-      if (txt_ok) {
-        html <- try(xml2::read_html(html_txt), silent = TRUE)
-        if (!inherits(html, "try-error")) {
-          return(list(url = url, html = html, text = html_txt, ok = TRUE, method = "chromote"))
+        # Verifica se o conteudo contem sinal obvio de captcha/bloqueio por CDN antes de aceitar
+        has_block_signal <- grepl("attention required! \\| cloudflare|cf-challenge|ray id:|checking your browser before accessing|security challenge|access denied", tolower(txt))
+        if (!has_block_signal) {
+          return(list(url = url, html = html, text = txt, ok = TRUE, method = "httr2"))
+        } else {
+          if (!is.null(log_path)) log_write(log_path, "INFO", sprintf("Bloqueio de CDN/CAPTCHA detectado via httr2 para %s. Acionando fallbacks...", url))
         }
       }
     }
   }
 
-  if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Falha ao requisitar %s", url))
+  # 2. Tentar Playwright (se habilitado/instalado via reticulate)
+  if (isTRUE(use_browser_fallback)) {
+    pw_res <- safe_request_page_playwright(url, log_path = log_path)
+    if (isTRUE(pw_res$ok)) return(pw_res)
+  }
+
+  # 3. Tentar Chromote Stealth (R nativo)
+  if (isTRUE(use_browser_fallback) && requireNamespace("chromote", quietly = TRUE)) {
+    b <- try(chromote::ChromoteSession$new(), silent = TRUE)
+    if (!inherits(b, "try-error")) {
+      on.exit(try(b$close(), silent = TRUE), add = TRUE)
+      
+      js_stealth_code <- paste(
+        "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });",
+        "Object.defineProperty(navigator, 'languages', { get: () => ['pt-BR', 'pt', 'en-US', 'en'] });",
+        "Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });",
+        "window.chrome = { runtime: {} };",
+        "const originalQuery = window.navigator.permissions.query;",
+        "window.navigator.permissions.query = (parameters) =>",
+        "  parameters.name === 'notifications' ?",
+        "    Promise.resolve({ state: Notification.permission }) :",
+        "    originalQuery(parameters);",
+        sep = "\n"
+      )
+      
+      try(b$Page$addScriptToEvaluateOnNewDocument(source = js_stealth_code), silent = TRUE)
+      try(b$Network$setUserAgentOverride(
+        userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+      ), silent = TRUE)
+      
+      try(b$Page$navigate(url), silent = TRUE)
+      Sys.sleep(5)
+      html_txt <- try(b$Runtime$evaluate("document.documentElement.outerHTML")$result$value, silent = TRUE)
+      txt_ok <- !inherits(html_txt, "try-error") && length(html_txt) == 1 && !is.null(html_txt) && !is.na(html_txt) && nzchar(html_txt)
+      if (txt_ok) {
+        html <- try(xml2::read_html(html_txt), silent = TRUE)
+        if (!inherits(html, "try-error")) {
+          return(list(url = url, html = html, text = html_txt, ok = TRUE, method = "chromote_stealth"))
+        }
+      }
+    }
+  }
+
+  if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Falha ao requisitar %s apos tentar todos os metodos (httr2, Playwright, Chromote Stealth)", url))
   list(url = url, html = NULL, text = NA_character_, ok = FALSE, method = NA_character_)
 }
+
 
 text_has_funding_signal <- function(text) {
   vals <- as.character(text %||% NA_character_)
@@ -351,6 +480,19 @@ extract_core_record <- function(source_row, input_title = NA_character_, input_s
 
 
 enrich_record_with_ai <- function(record, log_path = NULL) {
+  log_progress(sprintf("Enriquecendo edital '%s' com IA...", record$titulo[[1]]), "IA")
+  status_file <- Sys.getenv("COLLECTION_STATUS_FILE")
+  if (!nzchar(status_file)) {
+    status_file <- file.path(getwd(), "logs", "collection_status.json")
+  }
+  if (file.exists(status_file)) {
+    try({
+      status_data <- jsonlite::fromJSON(status_file, simplifyVector = FALSE)
+      status_data$phase <- "IA"
+      status_data$detail <- sprintf("Enriquecendo dados via IA para edital: %s", record$titulo[[1]])
+      jsonlite::write_json(status_data, status_file, auto_unbox = TRUE)
+    }, silent = TRUE)
+  }
   text <- collapse_non_empty(record$titulo, record$descricao_resumida, record$descricao_completa, record$texto_bruto, sep = "\n")
   ai <- ai_extract_fields(
     text,
@@ -470,7 +612,12 @@ collect_listing_with_pagination <- function(source_row, first_url, max_pages = 5
     pages_seen <- c(pages_seen, current_url)
     last_url <- current_url
     pg <- safe_request_page(current_url, log_path = log_path)
-    if (!isTRUE(pg$ok) || is.null(pg$html)) break
+    if (!isTRUE(pg$ok) || is.null(pg$html)) {
+      if (page_no == 1L) {
+        stop(sprintf("Erro ao carregar a pagina inicial: %s", current_url), call. = FALSE)
+      }
+      break
+    }
 
     candidates <- extract_listing_candidates(pg$html, current_url, source_row)
     if (nrow(candidates) > 0) {
@@ -652,17 +799,137 @@ collect_min_saude <- collect_generic_official
 collect_facepe <- function(source_row, max_pages, max_records, use_ai, log_path) list(records = ensure_record_schema(tibble::tibble()), pages_visited = 0L, last_url = source_row$url_oportunidades[[1]])
 collect_fapesb <- function(source_row, max_pages, max_records, use_ai, log_path) list(records = ensure_record_schema(tibble::tibble()), pages_visited = 0L, last_url = source_row$url_oportunidades[[1]])
 
-truncate_excel_strings <- function(df, max_chars = 32767L) {
-  out <- tibble::as_tibble(df)
+collect_fapesc <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  pg <- safe_request_page(source_row$url_oportunidades[[1]], log_path = log_path)
+  if (!isTRUE(pg$ok) || is.null(pg$html)) {
+    return(list(records = ensure_record_schema(tibble::tibble()), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]]))
+  }
+
+  links <- try({
+    rvest::html_elements(pg$html, "article a, .entry-content a, .content a, main a, a[href]")
+  }, silent = TRUE)
+
+  if (inherits(links, "try-error") || length(links) == 0) {
+    return(list(records = ensure_record_schema(tibble::tibble()), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]]))
+  }
+
+  hrefs <- rvest::html_attr(links, "href")
+  texts <- rvest::html_text2(links)
+
+  valid_idx <- !is.na(hrefs) & nzchar(hrefs) & 
+    (grepl("edital|chamada|fapesc", tolower(hrefs)) | grepl("edital|chamada|submiss", tolower(texts))) &
+    !grepl("wp-content/uploads", hrefs)
+
+  hrefs <- hrefs[valid_idx]
+  texts <- texts[valid_idx]
+
+  hrefs <- vapply(hrefs, function(h) resolve_url(source_row$url_oportunidades[[1]], h), character(1))
+
+  unique_links <- tibble::tibble(url = hrefs, text = texts) |>
+    dplyr::distinct(url, .keep_all = TRUE) |>
+    dplyr::filter(nzchar(text))
+
+  if (nrow(unique_links) == 0) {
+    return(list(records = ensure_record_schema(tibble::tibble()), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]]))
+  }
+
+  if (nrow(unique_links) > max_records) {
+    unique_links <- unique_links[seq_len(max_records), ]
+  }
+
+  recs <- purrr::map_dfr(seq_len(nrow(unique_links)), function(i) {
+    row <- unique_links[i, ]
+    detail_bundle <- extract_detail_bundle(detail_url = row$url[[1]], page_url = source_row$url_oportunidades[[1]], log_path = log_path)
+
+    rec <- extract_core_record(
+      source_row = source_row,
+      input_title = pick_first_nonempty(detail_bundle$detail_title, row$text[[1]]),
+      input_summary = pick_first_nonempty(detail_bundle$detail_summary, row$text[[1]]),
+      input_full_text = pick_first_nonempty(detail_bundle$full_text, row$text[[1]]),
+      page_url = source_row$url_oportunidades[[1]],
+      detail_url = row$url[[1]],
+      pdf_url = detail_bundle$pdf_url,
+      page_no = 1L
+    )
+    if (isTRUE(use_ai)) rec <- enrich_record_with_ai(rec, log_path)
+    rec
+  })
+
+  list(records = finalize_records(recs), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]])
+}
+
+collect_eureka <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  pg <- safe_request_page(source_row$url_oportunidades[[1]], log_path = log_path)
+  if (!isTRUE(pg$ok) || is.null(pg$html)) {
+    return(list(records = ensure_record_schema(tibble::tibble()), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]]))
+  }
+
+  links <- try({
+    rvest::html_elements(pg$html, "a[href]")
+  }, silent = TRUE)
+
+  if (inherits(links, "try-error") || length(links) == 0) {
+    return(list(records = ensure_record_schema(tibble::tibble()), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]]))
+  }
+
+  hrefs <- rvest::html_attr(links, "href")
+  texts <- rvest::html_text2(links)
+
+  valid_idx <- !is.na(hrefs) & nzchar(hrefs) & 
+    (grepl("/open-calls/|/call-for-", hrefs) | grepl("open call|call for", tolower(texts)))
+
+  hrefs <- hrefs[valid_idx]
+  texts <- texts[valid_idx]
+
+  hrefs <- vapply(hrefs, function(h) resolve_url(source_row$url_oportunidades[[1]], h), character(1))
+
+  unique_links <- tibble::tibble(url = hrefs, text = texts) |>
+    dplyr::distinct(url, .keep_all = TRUE) |>
+    dplyr::filter(nzchar(text))
+
+  if (nrow(unique_links) == 0) {
+    return(list(records = ensure_record_schema(tibble::tibble()), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]]))
+  }
+
+  if (nrow(unique_links) > max_records) {
+    unique_links <- unique_links[seq_len(max_records), ]
+  }
+
+  recs <- purrr::map_dfr(seq_len(nrow(unique_links)), function(i) {
+    row <- unique_links[i, ]
+    detail_bundle <- extract_detail_bundle(detail_url = row$url[[1]], page_url = source_row$url_oportunidades[[1]], log_path = log_path)
+
+    rec <- extract_core_record(
+      source_row = source_row,
+      input_title = pick_first_nonempty(detail_bundle$detail_title, row$text[[1]]),
+      input_summary = pick_first_nonempty(detail_bundle$detail_summary, row$text[[1]]),
+      input_full_text = pick_first_nonempty(detail_bundle$full_text, row$text[[1]]),
+      page_url = source_row$url_oportunidades[[1]],
+      detail_url = row$url[[1]],
+      pdf_url = detail_bundle$pdf_url,
+      page_no = 1L
+    )
+    if (isTRUE(use_ai)) rec <- enrich_record_with_ai(rec, log_path)
+    rec
+  })
+
+  list(records = finalize_records(recs), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]])
+}
+
+truncate_excel_strings <- function(df, max_chars = 32000L) {
+  # Convert to plain data.frame to prevent tibble Rcpp compatibility issues
+  out <- as.data.frame(df, stringsAsFactors = FALSE)
   for (nm in names(out)) {
     if (is.character(out[[nm]])) {
       x <- out[[nm]]
-      nch <- nchar(x, type = "chars", allowNA = TRUE, keepNA = TRUE)
+      # Clean any invalid UTF-8 bytes that cause nchar/substr or libxlsxwriter C++ errors
+      x <- iconv(x, to = "UTF-8", sub = "")
+      nch <- nchar(x, type = "chars")
       too_long <- !is.na(x) & !is.na(nch) & nch > max_chars
       if (any(too_long)) {
         x[too_long] <- paste0(substr(x[too_long], 1L, max_chars - 3L), "...")
-        out[[nm]] <- x
       }
+      out[[nm]] <- x
     }
   }
   out
@@ -675,48 +942,74 @@ save_collection_exports <- function(df, export_dir, prefix = "funding_base", log
   rds_path <- file.path(export_dir, sprintf("%s_%s.rds", prefix, stamp))
   xlsx_path <- file.path(export_dir, sprintf("%s_%s.xlsx", prefix, stamp))
 
-  exported_paths <- character()
-  warnings <- character()
+  export_paths <- character()
+  export_warnings <- character()
+
+  # Preprocessamento para evitar incompatibilidades de tipos e classes com writexl/readr
+  clean_df <- as.data.frame(df, stringsAsFactors = FALSE)
+  row.names(clean_df) <- NULL
+  for (nm in names(clean_df)) {
+    attr(clean_df[[nm]], "names") <- NULL
+    if (inherits(clean_df[[nm]], c("POSIXt", "Date"))) {
+      clean_df[[nm]] <- as.character(clean_df[[nm]])
+    }
+  }
 
   tryCatch({
-    readr::write_csv(df, csv_path, na = "")
-    exported_paths <<- c(exported_paths, csv_path)
+    readr::write_csv(clean_df, csv_path, na = "")
+    export_paths <- c(export_paths, csv_path)
   }, error = function(e) {
-    warnings <<- c(warnings, paste0("Falha ao exportar CSV: ", e$message))
-    if (!is.null(log_path)) log_write(log_path, "WARN", warnings[[length(warnings)]])
+    export_warnings <<- c(export_warnings, paste0("Falha ao exportar CSV: ", e$message))
+    if (!is.null(log_path)) log_write(log_path, "WARN", export_warnings[[length(export_warnings)]])
   })
 
   tryCatch({
-    saveRDS(df, rds_path)
-    exported_paths <<- c(exported_paths, rds_path)
+    saveRDS(clean_df, rds_path)
+    export_paths <- c(export_paths, rds_path)
   }, error = function(e) {
-    warnings <<- c(warnings, paste0("Falha ao exportar RDS: ", e$message))
-    if (!is.null(log_path)) log_write(log_path, "WARN", warnings[[length(warnings)]])
+    export_warnings <<- c(export_warnings, paste0("Falha ao exportar RDS: ", e$message))
+    if (!is.null(log_path)) log_write(log_path, "WARN", export_warnings[[length(export_warnings)]])
   })
 
   tryCatch({
-    xlsx_df <- truncate_excel_strings(df)
+    xlsx_df <- truncate_excel_strings(clean_df)
     writexl::write_xlsx(list(oportunidades = xlsx_df), xlsx_path)
-    exported_paths <<- c(exported_paths, xlsx_path)
-    if (any(vapply(names(df), function(nm) {
-      if (!is.character(df[[nm]])) return(FALSE)
-      nch <- nchar(df[[nm]], type = "chars", allowNA = TRUE, keepNA = TRUE)
-      any(!is.na(nch) & nch > 32767L, na.rm = TRUE)
+    export_paths <- c(export_paths, xlsx_path)
+    if (any(vapply(names(clean_df), function(nm) {
+      if (!is.character(clean_df[[nm]])) return(FALSE)
+      nch <- nchar(clean_df[[nm]], type = "chars")
+      any(!is.na(nch) & nch > 32000L, na.rm = TRUE)
     }, logical(1)))) {
-      warnings <<- c(warnings, "Exportação XLSX gerada com truncamento de textos acima de 32.767 caracteres.")
-      if (!is.null(log_path)) log_write(log_path, "WARN", warnings[[length(warnings)]])
+      export_warnings <<- c(export_warnings, "Exportação XLSX gerada com truncamento de textos acima de 32.000 caracteres.")
+      if (!is.null(log_path)) log_write(log_path, "WARN", export_warnings[[length(export_warnings)]])
     }
   }, error = function(e) {
-    warnings <<- c(warnings, paste0("Falha ao exportar XLSX: ", e$message))
-    if (!is.null(log_path)) log_write(log_path, "WARN", warnings[[length(warnings)]])
+    export_warnings <<- c(export_warnings, paste0("Falha ao exportar XLSX: ", e$message))
+    if (!is.null(log_path)) log_write(log_path, "WARN", export_warnings[[length(export_warnings)]])
   })
 
-  list(paths = exported_paths, warnings = unique(warnings))
+  list(paths = export_paths, warnings = unique(export_warnings))
 }
 
-collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_records_per_source = 50, use_ai = FALSE, export_dir = "data_exports", log_path = "logs/funding_collection.log", progress_cb = NULL, do_export = TRUE) {
+collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_records_per_source = 50, use_ai = FALSE, export_dir = "data_exports", log_path = "logs/funding_collection.log", progress_cb = NULL, do_export = TRUE, status_file = "logs/collection_status.json", modal_log_file = "logs/collection_modal_log.txt") {
   ensure_dir(dirname(log_path))
   log_write(log_path, "INFO", "Início da coleta oficial.")
+
+  # Garante caminhos absolutos e define variáveis de ambiente
+  if (!grepl("^(/|[A-Za-z]:)", status_file)) status_file <- file.path(getwd(), status_file)
+  if (!grepl("^(/|[A-Za-z]:)", modal_log_file)) modal_log_file <- file.path(getwd(), modal_log_file)
+  status_file <- normalizePath(status_file, winslash = "/", mustWork = FALSE)
+  modal_log_file <- normalizePath(modal_log_file, winslash = "/", mustWork = FALSE)
+  
+  Sys.setenv(COLLECTION_STATUS_FILE = status_file)
+  Sys.setenv(COLLECTION_MODAL_LOG_FILE = modal_log_file)
+
+  log_file <- modal_log_file
+  dir.create(dirname(status_file), recursive = TRUE, showWarnings = FALSE)
+  try({
+    if (file.exists(status_file)) file.remove(status_file)
+    if (file.exists(log_file)) file.remove(log_file)
+  }, silent = TRUE)
 
   sources <- tibble::as_tibble(DBI::dbReadTable(conn, "fontes_financiamento")) |>
     dplyr::filter(!(.data$id_fonte %in% c("facepe", "fapesb")))
@@ -733,6 +1026,19 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
   for (i in seq_len(total)) {
     src <- sources[i, , drop = FALSE]
     sid <- src$id_fonte[[1]]
+    
+    status_data <- list(
+      step = i - 1L,
+      total = total,
+      percentage = round(((i - 1L) / total) * 100),
+      detail = sprintf("Processando %s (%d/%d)", src$nome_fonte[[1]], i, total),
+      phase = "Scraping",
+      timestamp = as.character(Sys.time()),
+      status = "running"
+    )
+    try(jsonlite::write_json(status_data, status_file, auto_unbox = TRUE), silent = TRUE)
+    log_progress(sprintf("Iniciando coleta da agência %s...", src$sigla[[1]]), "Scraping")
+    
     if (!is.null(progress_cb)) progress_cb(i - 1L, total, sprintf("Coletando %s", sid))
     log_write(log_path, "INFO", sprintf("Fonte em processamento: %s | %s", sid, src$url_oportunidades[[1]]))
 
@@ -780,6 +1086,18 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
   exports <- NULL
   if (isTRUE(do_export)) exports <- save_collection_exports(final_df, export_dir, prefix = "funding_intelligence_base", log_path = log_path)
   log_write(log_path, "INFO", sprintf("Fim da coleta oficial. %s fontes processadas. %s registros adicionados nesta rodada. %s registros na base.", processed, inserted_total, nrow(final_df)))
+
+  status_data <- list(
+    step = total,
+    total = total,
+    percentage = 100,
+    detail = "Coleta finalizada com sucesso!",
+    phase = "Concluído",
+    timestamp = as.character(Sys.time()),
+    status = "done"
+  )
+  try(jsonlite::write_json(status_data, status_file, auto_unbox = TRUE), silent = TRUE)
+  log_progress("Processamento concluído com sucesso.", "Concluído")
 
   list(
     msg = sprintf("Coleta finalizada com %s fonte(s) processadas.", processed),

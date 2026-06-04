@@ -1,0 +1,25 @@
+# History files
+.Rhistory
+.Rapp.history
+
+# Session Data files
+.RData
+.RDataTmp
+
+# User-specific project files
+.Rproj.user/
+
+# Environment variables containing sensitive keys
+.Renviron
+
+# Local database file
+funding_intelligence.sqlite
+
+# Local R package library folder
+R_libs/
+
+# Logs folder
+logs/
+
+# Generated exports
+data_exports/

@@ -372,16 +372,8 @@ upsert_opportunities <- function(conn, opportunities_df) {
   }
   df <- df[, cols, drop = FALSE]
 
-  sql_by_hash <- paste0(
-    "INSERT INTO oportunidades (", paste(cols, collapse = ", "), ") VALUES (", paste(paste0(":", cols), collapse = ", "), ") ",
-    "ON CONFLICT(hash_deduplicacao) DO UPDATE SET ",
-    paste(sprintf("%s = excluded.%s", cols[cols != "hash_deduplicacao"], cols[cols != "hash_deduplicacao"]), collapse = ", ")
-  )
-
-  sql_by_id <- paste0(
-    "INSERT INTO oportunidades (", paste(cols, collapse = ", "), ") VALUES (", paste(paste0(":", cols), collapse = ", "), ") ",
-    "ON CONFLICT(id_registro) DO UPDATE SET ",
-    paste(sprintf("%s = excluded.%s", cols[cols != "id_registro"], cols[cols != "id_registro"]), collapse = ", ")
+  sql_insert_ignore <- paste0(
+    "INSERT OR IGNORE INTO oportunidades (", paste(cols, collapse = ", "), ") VALUES (", paste(paste0(":", cols), collapse = ", "), ")"
   )
 
   inserted <- 0L
@@ -396,20 +388,24 @@ upsert_opportunities <- function(conn, opportunities_df) {
         row[[nm]] <- as.character(row[[nm]])
       }
     }
-    row$id_registro <- row$id_registro %||% paste0("auto_", substr(make_hash(row$entidade, row$titulo, row$link_detalhe, row$data_limite), 1, 16))
-    row$hash_deduplicacao <- row$hash_deduplicacao %||% make_hash(row$entidade, row$titulo, row$link_detalhe, row$data_limite)
+    
+    # Gera o hash de deduplicação via MD5 de Título + Agência (entidade)
+    if (is.null(row$hash_deduplicacao) || is.na(row$hash_deduplicacao) || !nzchar(row$hash_deduplicacao)) {
+      hash_input <- paste(row$entidade, row$titulo, sep = "||")
+      row$hash_deduplicacao <- digest::digest(hash_input, algo = "md5")
+    }
+    
+    if (is.null(row$id_registro) || is.na(row$id_registro) || !nzchar(row$id_registro)) {
+      row$id_registro <- paste0("auto_", substr(row$hash_deduplicacao, 1, 16))
+    }
 
-    ok <- tryCatch({
-      DBI::dbExecute(conn, sql_by_hash, params = row)
-      TRUE
+    affected <- tryCatch({
+      DBI::dbExecute(conn, sql_insert_ignore, params = row)
     }, error = function(e) {
-      tryCatch({
-        DBI::dbExecute(conn, sql_by_id, params = row)
-        TRUE
-      }, error = function(e2) FALSE)
+      0L
     })
 
-    if (isTRUE(ok)) inserted <- inserted + 1L
+    if (affected > 0) inserted <- inserted + 1L
   }
 
   invisible(inserted)

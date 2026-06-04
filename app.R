@@ -1,8 +1,13 @@
+# Configura biblioteca local para contornar problemas de permissões de escrita globais
+local_libs <- file.path(getwd(), "R_libs")
+if (!dir.exists(local_libs)) dir.create(local_libs, showWarnings = FALSE)
+.libPaths(c(local_libs, .libPaths()))
+
 required_packages <- c(
   "shiny", "bslib", "DT", "dplyr", "tidyr", "purrr", "stringr", "stringi", "lubridate",
   "ggplot2", "plotly", "DBI", "RSQLite", "jsonlite", "digest", "htmltools",
   "rvest", "xml2", "httr2", "tibble", "tools", "readr", "writexl", "janitor",
-  "glue", "progress", "pdftools", "polite", "future", "furrr"
+  "glue", "progress", "pdftools", "polite", "future", "furrr", "shinycssloaders"
 )
 
 install_missing_packages <- function(pkgs) {
@@ -13,12 +18,12 @@ install_missing_packages <- function(pkgs) {
     options(repos = c(CRAN = "https://cloud.r-project.org"))
   }
 
-  message("Instalando pacotes ausentes: ", paste(pkgs, collapse = ", "))
+  message("Instalando pacotes ausentes em R_libs: ", paste(pkgs, collapse = ", "))
 
   for (pkg in pkgs) {
     if (!requireNamespace(pkg, quietly = TRUE)) {
       tryCatch(
-        install.packages(pkg, dependencies = TRUE),
+        install.packages(pkg, dependencies = TRUE, lib = local_libs),
         error = function(e) {
           message(sprintf("Falha ao instalar o pacote '%s': %s", pkg, e$message))
         }
@@ -168,7 +173,7 @@ ui <- bslib::page_sidebar(
           uiOutput("export_status_ui")
         )
       ),
-      DTOutput("results_table")
+      shinycssloaders::withSpinner(DTOutput("results_table"), type = 6, color = "#004691")
     ),
     bslib::nav_panel(
       "Por financiador",
@@ -288,6 +293,54 @@ server <- function(input, output, session) {
         return(invisible(FALSE))
       }
     }
+    
+    # Se for busca ativa (save_history = TRUE), aciona a coleta dinâmica de fontes correspondentes
+    if (isTRUE(save_history) && !is.null(conn)) {
+      region <- input$region_filter
+      available_sources <- rv$sources |> dplyr::filter(!(.data$id_fonte %in% c("facepe", "fapesb")))
+      if (region == "Brasileiras") {
+        available_sources <- available_sources |> dplyr::filter(pais == "Brasil")
+      } else if (region == "Europeias") {
+        available_sources <- available_sources |> dplyr::filter(pais %in% c("União Europeia", "Alemanha", "Reino Unido", "Suécia", "Bélgica", "França", "Suíça", "Europa", "Itália", "Espanha", "Holanda"))
+      } else {
+        available_sources <- available_sources |> dplyr::filter(pais == "Brasil" | pais %in% c("União Europeia", "Alemanha", "Reino Unido", "Suécia", "Bélgica", "França", "Suíça", "Europa", "Itália", "Espanha", "Holanda"))
+      }
+      
+      source_ids_to_collect <- available_sources$id_fonte
+      
+      if (length(source_ids_to_collect) > 0) {
+        shiny::withProgress(message = "Pesquisando novas oportunidades na web...", value = 0, {
+          total_src <- length(source_ids_to_collect)
+          for (i in seq_along(source_ids_to_collect)) {
+            sid <- source_ids_to_collect[i]
+            shiny::setProgress(
+              value = (i - 1) / total_src, 
+              detail = sprintf("Acessando portal da %s...", toupper(sid))
+            )
+            
+            tryCatch({
+              collect_all_sources(
+                conn = conn,
+                source_ids = sid,
+                max_pages = 1L,
+                max_records_per_source = 3L,
+                use_ai = FALSE, # Sem IA na busca dinâmica rápida
+                export_dir = export_dir,
+                log_path = log_path,
+                do_export = FALSE
+              )
+            }, error = function(e) {
+              # Ignora erros de scraping para seguir a busca
+            })
+          }
+          shiny::setProgress(value = 1, detail = "Processamento concluído. Atualizando painel...")
+        })
+      }
+    }
+    
+    # Atualiza a base de dados na UI
+    refresh_data()
+    
     rv$current_query <- query_text
     if (save_history && !is.null(conn)) save_search_record(conn, rv$current_query, build_filters_json())
     invisible(TRUE)

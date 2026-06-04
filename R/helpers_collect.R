@@ -1,3 +1,31 @@
+detect_next_page <- function(html, current_url) {
+  nodes <- rvest::html_nodes(html, "a")
+  if (length(nodes) == 0) return(NA_character_)
+  
+  hrefs <- rvest::html_attr(nodes, "href")
+  texts <- tolower(rvest::html_text(nodes, trim = TRUE))
+  rels <- tolower(rvest::html_attr(nodes, "rel"))
+  
+  valid <- !is.na(hrefs) & nzchar(hrefs)
+  if (!any(valid)) return(NA_character_)
+  
+  hrefs <- hrefs[valid]
+  texts <- texts[valid]
+  rels <- rels[valid]
+  
+  next_idx <- which(rels == "next")
+  if (length(next_idx) > 0) {
+    return(resolve_url(current_url, hrefs[[next_idx[1]]]))
+  }
+  
+  match_idx <- which(grepl("pr[oó]xim[oa]|next|\\bsecund\\b|\\bseg\\b|\\bdaqui\\b|>", texts))
+  if (length(match_idx) > 0) {
+    return(resolve_url(current_url, hrefs[[match_idx[1]]]))
+  }
+  
+  NA_character_
+}
+
 source_dispatch <- function(source_row, max_pages = 5, max_records = 50, use_ai = FALSE, log_path = NULL) {
   sid <- source_row$id_fonte[[1]]
   if (sid %in% c("facepe", "fapesb")) {

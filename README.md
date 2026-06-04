@@ -63,6 +63,16 @@ A plataforma conta agora com um módulo relacional para recomendação e engajam
 
 ---
 
+## 🔄 Sincronização Dinâmica de Busca — Scrape-on-Demand (Epic 5)
+
+Adição de busca híbrida em tempo real na plataforma, acionando a varredura das fontes oficiais dinamicamente no momento da pesquisa:
+
+*   **Scraping sob Demanda (Scrape-on-Demand)**: Ao acionar a busca na interface, a aplicação executa um ciclo de scraping rápido (`max_pages = 1`) nas agências da região ativa, minerando oportunidades publicadas recentemente antes de aplicar os filtros e renderizar na tela.
+*   **Controle e Resiliência via UPSERT Inteligente**: A inserção das novas oportunidades no SQLite agora utiliza a cláusula `INSERT OR IGNORE` baseada na restrição única `hash_deduplicacao` (gerada por MD5 de Título + Agência). Isso garante que editais já catalogados no banco de dados local sejam ignorados, eliminando regravações redundantes e economizando processamento.
+*   **Interface Interativa com Indicadores de Carregamento**: Integração do pacote `shinycssloaders` para exibir animações de carregamento nas tabelas e progresso passo a passo em popups (`withProgress`), mantendo a UI responsiva e amigável durante o processamento da raspagem na web.
+
+---
+
 ## 📐 Arquitetura do Sistema
 
 A aplicação adota uma organização modular em camadas de responsabilidade, separando a interface do usuário, a gestão do banco de dados, o motor de busca, o subsistema de inteligência artificial e a engine de scraping.

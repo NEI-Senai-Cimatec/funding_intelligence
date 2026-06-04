@@ -41,6 +41,18 @@ As últimas atualizações da interface do usuário (UI) e da integração de da
 
 ---
 
+## 🌍 Novas Entidades de Fomento & Filtro Regional (Epic 3)
+
+Como parte da expansão do monitoramento de editais e segmentação geográfica (Epic 3), foram implementadas as seguintes melhorias:
+
+*   **Novas Agências de Fomento**: 
+    *   **FAPESC** (Fundação de Amparo à Pesquisa e Inovação do Estado de Santa Catarina): Implementação de raspagem customizada baseada na URL oficial de chamadas abertas.
+    *   **EUREKA Network**: Integração de oportunidades europeias e transnacionais focadas em inovação industrial e desenvolvimento tecnológico cooperativo.
+*   **Otimização do Bypass de Bloqueios**: Refinamento do detector de CDN/CAPTCHA (`has_block_signal`) para eliminar falsos positivos em páginas que utilizam scripts do Cloudflare ou contêm termos de segurança comuns em JavaScript (CSP) sem bloquear o tráfego, garantindo conexões diretas bem-sucedidas.
+*   **Filtro Regional na Interface (UI)**: Inclusão do seletor `radioButtons` no painel principal permitindo filtrar instantaneamente os editais por **Bases Brasileiras**, **Bases Europeias** ou **Ambas**, atualizando reativamente os KPIs do painel, a seleção da aba "Por Financiador" e a listagem de fontes no modal de atualização de base.
+
+---
+
 ## 📐 Arquitetura do Sistema
 
 A aplicação adota uma organização modular em camadas de responsabilidade, separando a interface do usuário, a gestão do banco de dados, o motor de busca, o subsistema de inteligência artificial e a engine de scraping.

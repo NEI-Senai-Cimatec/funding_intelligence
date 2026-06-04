@@ -73,6 +73,17 @@ Adição de busca híbrida em tempo real na plataforma, acionando a varredura da
 
 ---
 
+## 🤖 Agente de IA, Otimização e Feedback de UI (Epic 6)
+
+Aprimoramento do fluxo de tratamento de editais com inteligência artificial generativa e feedback resiliente na interface do usuário:
+
+*   **Agente de IA e Pipeline de Metadados**: Recomendação e utilização do modelo **Gemini 1.5/2.5 Flash** (tier gratuito robusto). Implementação de habilidades (*skills*) no agente: `skill_extract_metadata()` (para extração precisa de elegibilidade, prazo e exatamente 5 palavras-chave) e `skill_verify_metadata()` (uma skill de auditoria para prevenção de alucinações de dados).
+*   **Execução em Pipeline Estrito**: Garantia de que a coleta ocorra na ordem estrita: Scraping bruto -> Submissão do texto à IA para extração limpa e estruturada dos campos finais.
+*   **Banner de IA Ausente**: Validação inteligente de API Key no startup do app. Se a chave `GEMINI_API_KEY` estiver ausente, exibe uma mensagem instrutiva no console e uma notificação persistente amarela de alerta na UI.
+*   **Tratamento de Bloqueios de Acesso com Alerta de Busca Manual**: Monitoramento ativo de falhas técnicas intransponíveis nas agências de fomento (como CAPTCHAs severos ou quedas de IP). Quando uma falha é detectada em qualquer portal (como CNPq ou FAPESP), a interface do Shiny exibe um modal amigável alertando quais agências falharam, fornecendo links oficiais diretos e sugerindo que o usuário realize uma "Busca Manual".
+
+---
+
 ## 📐 Arquitetura do Sistema
 
 A aplicação adota uma organização modular em camadas de responsabilidade, separando a interface do usuário, a gestão do banco de dados, o motor de busca, o subsistema de inteligência artificial e a engine de scraping.
@@ -172,6 +183,12 @@ Se você deseja utilizar a inteligência artificial para limpeza e extração de
     ```R
     Sys.setenv(GEMINI_API_KEY = "SUA_CHAVE_AQUI")
     ```
+*   **Via arquivo `.Renviron` local (Recomendado para persistência no R):**
+    Crie ou edite um arquivo chamado `.Renviron` na raiz do seu projeto ou no diretório home do seu usuário e adicione a seguinte linha:
+    ```env
+    GEMINI_API_KEY="SUA_CHAVE_AQUI"
+    ```
+    O R carregará automaticamente esta variável toda vez que o projeto for aberto ou executado.
 
 ### 3. Rodando o Aplicativo
 Navegue até o diretório do projeto e execute:

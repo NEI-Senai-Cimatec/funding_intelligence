@@ -267,6 +267,59 @@ server <- function(input, output, session) {
   }
 
   refresh_data()
+
+  # Validação de API Key no startup do Shiny
+  observe({
+    key_ok <- validate_gemini_api_key()
+    if (!key_ok) {
+      showNotification(
+        "Aviso de IA Desativada: A chave GEMINI_API_KEY não foi configurada. O enriquecimento e auditoria de editais com IA estarão desativados. Consulte o README.md para obter instruções de configuração.",
+        type = "warning",
+        duration = NULL,
+        id = "gemini_missing_warning"
+      )
+    }
+  })
+
+  # Função para exibir modal de alerta de falha de conexão/bloqueio
+  show_failed_sources_modal <- function(failed_sids) {
+    if (length(failed_sids) == 0) return()
+    
+    failed_info <- rv$sources |> dplyr::filter(id_fonte %in% failed_sids)
+    if (nrow(failed_info) == 0) return()
+    
+    showModal(modalDialog(
+      title = span(style = "color: #dc2626; font-weight: bold;", "⚠️ Alerta de Bloqueio / Falha na Coleta"),
+      easyClose = TRUE,
+      size = "m",
+      p("A coleta automática das seguintes agências encontrou problemas técnicos (como CAPTCHAs ou bloqueios de IP):"),
+      tags$ul(
+        lapply(seq_len(nrow(failed_info)), function(i) {
+          tags$li(
+            style = "margin-bottom: 8px;",
+            tags$strong(failed_info$sigla[[i]]), " — ", failed_info$nome_fonte[[i]], " ",
+            tags$a(href = failed_info$url_oportunidades[[i]], target = "_blank", class = "btn btn-sm btn-outline-primary", "Busca Manual ↗")
+          )
+        })
+      ),
+      p(style = "font-style: italic; color: #64748b; margin-top: 15px;",
+        "Orientação: Recomendamos abrir os links acima para verificar e coletar manualmente as oportunidades nesses portais."),
+      footer = modalButton("Fechar")
+    ))
+  }
+
+  check_and_alert_failures <- function(since_time) {
+    req(conn)
+    query <- "SELECT DISTINCT fonte FROM logs_coleta WHERE status_execucao = 'erro' AND data_execucao >= ?"
+    failed_sids <- tryCatch({
+      DBI::dbGetQuery(conn, query, params = list(as.character(since_time)))$fonte
+    }, error = function(e) character())
+    
+    if (length(failed_sids) > 0) {
+      show_failed_sources_modal(failed_sids)
+    }
+  }
+
   observe({
     opps <- filtered_results()
     funder_choices <- sort(unique(opps$entidade))
@@ -296,6 +349,7 @@ server <- function(input, output, session) {
     
     # Se for busca ativa (save_history = TRUE), aciona a coleta dinâmica de fontes correspondentes
     if (isTRUE(save_history) && !is.null(conn)) {
+      start_time <- Sys.time()
       region <- input$region_filter
       available_sources <- rv$sources |> dplyr::filter(!(.data$id_fonte %in% c("facepe", "fapesb")))
       if (region == "Brasileiras") {
@@ -310,31 +364,29 @@ server <- function(input, output, session) {
       
       if (length(source_ids_to_collect) > 0) {
         shiny::withProgress(message = "Pesquisando novas oportunidades na web...", value = 0, {
-          total_src <- length(source_ids_to_collect)
-          for (i in seq_along(source_ids_to_collect)) {
-            sid <- source_ids_to_collect[i]
-            shiny::setProgress(
-              value = (i - 1) / total_src, 
-              detail = sprintf("Acessando portal da %s...", toupper(sid))
-            )
-            
-            tryCatch({
-              collect_all_sources(
-                conn = conn,
-                source_ids = sid,
-                max_pages = 1L,
-                max_records_per_source = 3L,
-                use_ai = FALSE, # Sem IA na busca dinâmica rápida
-                export_dir = export_dir,
-                log_path = log_path,
-                do_export = FALSE
-              )
-            }, error = function(e) {
-              # Ignora erros de scraping para seguir a busca
-            })
+          progress_cb_shiny <- function(step, total, detail) {
+            shiny::setProgress(value = step / total, detail = detail)
           }
-          shiny::setProgress(value = 1, detail = "Processamento concluído. Atualizando painel...")
+          
+          tryCatch({
+            collect_all_sources(
+              conn = conn,
+              source_ids = source_ids_to_collect,
+              max_pages = 1L,
+              max_records_per_source = 3L,
+              use_ai = FALSE, # Sem IA na busca dinâmica rápida
+              export_dir = export_dir,
+              log_path = log_path,
+              progress_cb = progress_cb_shiny,
+              do_export = FALSE
+            )
+          }, error = function(e) {
+            # Ignora erros de scraping para seguir a busca
+          })
         })
+        
+        # Alerta se houver falhas durante a busca sob demanda
+        check_and_alert_failures(start_time)
       }
     }
     
@@ -476,6 +528,8 @@ server <- function(input, output, session) {
     do_export_bg <- isTRUE(input$collect_export)
     db_path_bg <- db_path
     gemini_key_bg <- Sys.getenv("GEMINI_API_KEY")
+    
+    bg_start_time <- Sys.time()
 
     # Define o plano multisession se ainda estiver sequencial
     if (inherits(future::plan(), "sequential")) {
@@ -527,6 +581,9 @@ server <- function(input, output, session) {
         if (length(result$export_warnings %||% character()) > 0) {
           showNotification(paste(result$export_warnings, collapse = " | "), type = "warning", duration = 12)
         }
+        
+        # Alerta se houver falhas nas agências no processamento paralelo
+        check_and_alert_failures(bg_start_time)
       },
       onRejected = function(err) {
         removeNotification("bg_collect_notif")

@@ -138,7 +138,17 @@ ui <- bslib::page_sidebar(
   ),
   theme = bslib::bs_theme(version = 5, bootswatch = "flatly", primary = "#004691", secondary = "#0f172a"),
   sidebar = build_sidebar(),
-  tags$head(tags$link(rel = "stylesheet", type = "text/css", href = "styles.css")),
+  tags$head(
+    tags$link(rel = "stylesheet", type = "text/css", href = "styles.css"),
+    tags$script("
+      Shiny.addCustomMessageHandler('scroll-logs', function(message) {
+        var log_elem = document.getElementById('modal_log_text');
+        if (log_elem) {
+          log_elem.parentElement.scrollTop = log_elem.parentElement.scrollHeight;
+        }
+      });
+    ")
+  ),
 
   bslib::card(
     class = "search-card",
@@ -307,6 +317,7 @@ server <- function(input, output, session) {
     if (file.exists(log_file)) {
       log_lines <- tryCatch(readLines(log_file, warn = FALSE), error = function(e) character())
       progress_rv$logs <- paste(log_lines, collapse = "\n")
+      session$sendCustomMessage("scroll-logs", list())
     }
   })
 
@@ -371,19 +382,6 @@ server <- function(input, output, session) {
           style = "height: 250px; overflow-y: auto; background-color: #0f172a; color: #38bdf8; border: 1px solid #1e293b; border-radius: 6px; padding: 12px; font-family: 'Courier New', monospace; font-size: 0.85rem; white-space: pre-wrap; margin-bottom: 0;",
           textOutput("modal_log_text")
         ),
-        tags$script("
-          setTimeout(function() {
-            var log_elem = document.getElementById('modal_log_text');
-            if (log_elem) {
-              log_elem.parentElement.scrollTop = log_elem.parentElement.scrollHeight;
-            }
-            var observer = new MutationObserver(function() {
-              var el = document.getElementById('modal_log_text');
-              if (el) el.parentElement.scrollTop = el.parentElement.scrollHeight;
-            });
-            if (log_elem) observer.observe(log_elem, { childList: true, characterData: true, subtree: true });
-          }, 500);
-        ")
       ),
       footer = uiOutput("progress_modal_footer")
     ))
@@ -677,6 +675,8 @@ server <- function(input, output, session) {
     log_path_bg <- log_path
     do_export_bg <- isTRUE(input$collect_export)
     db_path_bg <- db_path
+    status_file_bg <- normalizePath(status_file, winslash = "/", mustWork = FALSE)
+    log_file_bg <- normalizePath(log_file, winslash = "/", mustWork = FALSE)
     # Coleta todas as configurações de IA configuradas para passar ao processo filho
     ai_env_vars <- list(
       GEMINI_API_KEY = Sys.getenv("GEMINI_API_KEY"),
@@ -722,7 +722,9 @@ server <- function(input, output, session) {
         export_dir = export_dir_bg,
         log_path = log_path_bg,
         do_export = do_export_bg,
-        progress_cb = NULL
+        progress_cb = NULL,
+        status_file = status_file_bg,
+        modal_log_file = log_file_bg
       )
     })
 

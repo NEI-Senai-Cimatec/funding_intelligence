@@ -1,7 +1,11 @@
 log_progress <- function(detail, phase = "Scraping") {
   try({
+    log_file <- Sys.getenv("COLLECTION_MODAL_LOG_FILE")
+    if (!nzchar(log_file)) {
+      log_file <- file.path(getwd(), "logs", "collection_modal_log.txt")
+    }
     log_line <- sprintf("[%s] [%s] %s", format(Sys.time(), "%H:%M:%S"), phase, detail)
-    cat(log_line, "\n", file = file.path(getwd(), "logs", "collection_modal_log.txt"), append = TRUE)
+    cat(log_line, "\n", file = log_file, append = TRUE)
   }, silent = TRUE)
 }
 
@@ -477,7 +481,10 @@ extract_core_record <- function(source_row, input_title = NA_character_, input_s
 
 enrich_record_with_ai <- function(record, log_path = NULL) {
   log_progress(sprintf("Enriquecendo edital '%s' com IA...", record$titulo[[1]]), "IA")
-  status_file <- file.path(getwd(), "logs", "collection_status.json")
+  status_file <- Sys.getenv("COLLECTION_STATUS_FILE")
+  if (!nzchar(status_file)) {
+    status_file <- file.path(getwd(), "logs", "collection_status.json")
+  }
   if (file.exists(status_file)) {
     try({
       status_data <- jsonlite::fromJSON(status_file, simplifyVector = FALSE)
@@ -984,16 +991,24 @@ save_collection_exports <- function(df, export_dir, prefix = "funding_base", log
   list(paths = export_paths, warnings = unique(export_warnings))
 }
 
-collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_records_per_source = 50, use_ai = FALSE, export_dir = "data_exports", log_path = "logs/funding_collection.log", progress_cb = NULL, do_export = TRUE) {
+collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_records_per_source = 50, use_ai = FALSE, export_dir = "data_exports", log_path = "logs/funding_collection.log", progress_cb = NULL, do_export = TRUE, status_file = "logs/collection_status.json", modal_log_file = "logs/collection_modal_log.txt") {
   ensure_dir(dirname(log_path))
   log_write(log_path, "INFO", "Início da coleta oficial.")
 
-  status_file <- file.path(getwd(), "logs", "collection_status.json")
-  log_file <- file.path(getwd(), "logs", "collection_modal_log.txt")
+  # Garante caminhos absolutos e define variáveis de ambiente
+  if (!grepl("^(/|[A-Za-z]:)", status_file)) status_file <- file.path(getwd(), status_file)
+  if (!grepl("^(/|[A-Za-z]:)", modal_log_file)) modal_log_file <- file.path(getwd(), modal_log_file)
+  status_file <- normalizePath(status_file, winslash = "/", mustWork = FALSE)
+  modal_log_file <- normalizePath(modal_log_file, winslash = "/", mustWork = FALSE)
+  
+  Sys.setenv(COLLECTION_STATUS_FILE = status_file)
+  Sys.setenv(COLLECTION_MODAL_LOG_FILE = modal_log_file)
+
+  log_file <- modal_log_file
   dir.create(dirname(status_file), recursive = TRUE, showWarnings = FALSE)
   try({
-    file.remove(status_file)
-    file.remove(log_file)
+    if (file.exists(status_file)) file.remove(status_file)
+    if (file.exists(log_file)) file.remove(log_file)
   }, silent = TRUE)
 
   sources <- tibble::as_tibble(DBI::dbReadTable(conn, "fontes_financiamento")) |>

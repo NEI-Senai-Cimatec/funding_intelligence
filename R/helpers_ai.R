@@ -1,18 +1,104 @@
-# Módulo de Integração com o Agente de IA (Gemini)
+# Módulo de Integração com o Agente de IA Multi-Provedor
 
-gemini_available <- function() nzchar(Sys.getenv("GEMINI_API_KEY"))
-
-validate_gemini_api_key <- function() {
-  key_exists <- gemini_available()
-  if (!key_exists) {
-    message("----------------------------------------------------------------------")
-    message("AVISO: A variável de ambiente GEMINI_API_KEY não foi encontrada!")
-    message("O processamento com Inteligência Artificial (IA) estará desativado.")
-    message("Para habilitar a IA, configure sua chave no arquivo .Renviron:")
-    message("GEMINI_API_KEY=\"sua_chave_aqui\"")
-    message("----------------------------------------------------------------------")
+# Recupera configurações de IA do ambiente
+get_ai_config <- function() {
+  provider <- Sys.getenv("AI_PROVIDER")
+  model <- Sys.getenv("AI_MODEL")
+  api_key <- Sys.getenv("AI_API_KEY")
+  api_url <- Sys.getenv("AI_API_URL")
+  
+  # Autodetectar provedor se não estiver configurado explicitamente
+  if (!nzchar(provider)) {
+    if (nzchar(Sys.getenv("GEMINI_API_KEY"))) {
+      provider <- "gemini"
+    } else if (nzchar(Sys.getenv("OPENAI_API_KEY"))) {
+      provider <- "openai"
+    } else if (nzchar(Sys.getenv("ANTHROPIC_API_KEY"))) {
+      provider <- "anthropic"
+    } else if (nzchar(Sys.getenv("GROQ_API_KEY"))) {
+      provider <- "groq"
+    } else if (nzchar(Sys.getenv("OPENROUTER_API_KEY"))) {
+      provider <- "openrouter"
+    } else if (nzchar(Sys.getenv("DEEPSEEK_API_KEY"))) {
+      provider <- "deepseek"
+    }
   }
-  key_exists
+  
+  # Fallback para as chaves específicas do provedor se AI_API_KEY não estiver setada
+  if (!nzchar(api_key)) {
+    if (provider == "gemini") {
+      api_key <- Sys.getenv("GEMINI_API_KEY")
+    } else if (provider == "openai") {
+      api_key <- Sys.getenv("OPENAI_API_KEY")
+    } else if (provider == "anthropic") {
+      api_key <- Sys.getenv("ANTHROPIC_API_KEY")
+    } else if (provider == "groq") {
+      api_key <- Sys.getenv("GROQ_API_KEY")
+    } else if (provider == "openrouter") {
+      api_key <- Sys.getenv("OPENROUTER_API_KEY")
+    } else if (provider == "deepseek") {
+      api_key <- Sys.getenv("DEEPSEEK_API_KEY")
+    }
+  }
+  
+  # URLs padrão para provedores conhecidos
+  if (!nzchar(api_url)) {
+    if (provider == "openai") {
+      api_url <- "https://api.openai.com/v1/chat/completions"
+    } else if (provider == "anthropic") {
+      api_url <- "https://api.anthropic.com/v1/messages"
+    } else if (provider == "groq") {
+      api_url <- "https://api.groq.com/openai/v1/chat/completions"
+    } else if (provider == "openrouter") {
+      api_url <- "https://openrouter.ai/api/v1/chat/completions"
+    } else if (provider == "deepseek") {
+      api_url <- "https://api.deepseek.com/v1/chat/completions"
+    }
+  }
+  
+  # Modelos padrão para provedores conhecidos
+  if (!nzchar(model)) {
+    if (provider == "gemini") {
+      model <- "gemini-1.5-flash"
+    } else if (provider == "openai") {
+      model <- "gpt-4o-mini"
+    } else if (provider == "anthropic") {
+      model <- "claude-3-5-haiku-latest"
+    } else if (provider == "groq") {
+      model <- "llama-3.3-70b-versatile"
+    } else if (provider == "openrouter") {
+      model <- "google/gemini-2.5-flash"
+    } else if (provider == "deepseek") {
+      model <- "deepseek-chat"
+    }
+  }
+  
+  list(
+    provider = provider,
+    model = model,
+    api_key = api_key,
+    api_url = api_url
+  )
+}
+
+ai_available <- function() {
+  cfg <- get_ai_config()
+  nzchar(cfg$provider) && nzchar(cfg$api_key)
+}
+
+validate_ai_config <- function() {
+  cfg <- get_ai_config()
+  is_ok <- nzchar(cfg$provider) && nzchar(cfg$api_key)
+  if (!is_ok) {
+    message("----------------------------------------------------------------------")
+    message("AVISO: Nenhuma chave de API de IA (Gemini, OpenAI, Anthropic, Groq, OpenRouter, DeepSeek) configurada!")
+    message("O processamento com Inteligência Artificial (IA) estará desativado.")
+    message("Para habilitar a IA, configure sua chave no arquivo .Renviron (ex: GEMINI_API_KEY ou OPENAI_API_KEY).")
+    message("----------------------------------------------------------------------")
+  } else {
+    message(sprintf("IA Configurada: Provedor [%s], Modelo [%s]", cfg$provider, cfg$model))
+  }
+  is_ok
 }
 
 trim_for_ai <- function(text, max_chars = 12000) {
@@ -21,32 +107,86 @@ trim_for_ai <- function(text, max_chars = 12000) {
   substr(text, 1, max_chars)
 }
 
-gemini_request <- function(prompt, model = "gemini-1.5-flash", timeout_sec = 45, retries = 2, log_path = NULL) {
-  key <- Sys.getenv("GEMINI_API_KEY")
-  if (!nzchar(key)) {
-    if (!is.null(log_path)) log_write(log_path, "WARN", "GEMINI_API_KEY ausente. IA desabilitada para esta execução.")
+ai_request <- function(prompt, timeout_sec = 45, retries = 2, log_path = NULL) {
+  cfg <- get_ai_config()
+  if (!nzchar(cfg$provider) || !nzchar(cfg$api_key)) {
+    if (!is.null(log_path)) log_write(log_path, "WARN", "Configuração de IA incompleta ou ausente. IA desabilitada.")
     return(NULL)
   }
 
-  url <- sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, key)
-  req <- httr2::request(url) |>
-    httr2::req_method("POST") |>
-    httr2::req_timeout(timeout_sec) |>
-    httr2::req_headers(`Content-Type` = "application/json") |>
-    httr2::req_body_json(list(
-      contents = list(list(parts = list(list(text = prompt)))),
-      generationConfig = list(temperature = 0.1, responseMimeType = "application/json")
-    ), auto_unbox = TRUE)
+  req <- NULL
+  
+  if (cfg$provider == "gemini") {
+    url <- sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", cfg$model, cfg$api_key)
+    req <- httr2::request(url) |>
+      httr2::req_method("POST") |>
+      httr2::req_timeout(timeout_sec) |>
+      httr2::req_headers(`Content-Type` = "application/json") |>
+      httr2::req_body_json(list(
+        contents = list(list(parts = list(list(text = prompt)))),
+        generationConfig = list(temperature = 0.1, responseMimeType = "application/json")
+      ), auto_unbox = TRUE)
+  } else if (cfg$provider %in% c("openai", "groq", "openrouter", "deepseek")) {
+    url <- cfg$api_url
+    req <- httr2::request(url) |>
+      httr2::req_method("POST") |>
+      httr2::req_timeout(timeout_sec) |>
+      httr2::req_headers(
+        `Content-Type` = "application/json",
+        `Authorization` = sprintf("Bearer %s", cfg$api_key)
+      ) |>
+      httr2::req_body_json(list(
+        model = cfg$model,
+        messages = list(list(role = "user", content = prompt)),
+        temperature = 0.1,
+        response_format = list(type = "json_object")
+      ), auto_unbox = TRUE)
+  } else if (cfg$provider == "anthropic") {
+    url <- cfg$api_url
+    req <- httr2::request(url) |>
+      httr2::req_method("POST") |>
+      httr2::req_timeout(timeout_sec) |>
+      httr2::req_headers(
+        `Content-Type` = "application/json",
+        `x-api-key` = cfg$api_key,
+        `anthropic-version` = "2023-06-01"
+      ) |>
+      httr2::req_body_json(list(
+        model = cfg$model,
+        messages = list(list(role = "user", content = prompt)),
+        max_tokens = 4000,
+        temperature = 0.1
+      ), auto_unbox = TRUE)
+  } else {
+    if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Provedor de IA não suportado: %s", cfg$provider))
+    return(NULL)
+  }
 
   for (i in seq_len(retries + 1)) {
     resp <- try(httr2::req_perform(req), silent = TRUE)
     if (!inherits(resp, "try-error")) {
       txt <- try(httr2::resp_body_string(resp), silent = TRUE)
-      if (!inherits(txt, "try-error") && nzchar(txt)) return(txt)
+      if (!inherits(txt, "try-error") && nzchar(txt)) {
+        parsed_res <- try(jsonlite::fromJSON(txt, simplifyVector = FALSE), silent = TRUE)
+        if (inherits(parsed_res, "try-error")) next
+        
+        extracted_text <- NULL
+        if (cfg$provider == "gemini") {
+          extracted_text <- tryCatch(parsed_res$candidates[[1]]$content$parts[[1]]$text %||% txt, error = function(e) txt)
+        } else if (cfg$provider %in% c("openai", "groq", "openrouter", "deepseek")) {
+          extracted_text <- tryCatch(parsed_res$choices[[1]]$message$content %||% txt, error = function(e) txt)
+        } else if (cfg$provider == "anthropic") {
+          extracted_text <- tryCatch(parsed_res$content[[1]]$text %||% txt, error = function(e) txt)
+        }
+        
+        if (!is.null(extracted_text) && nzchar(extracted_text)) {
+          return(extracted_text)
+        }
+      }
     }
     Sys.sleep(min(6, i * 2))
   }
-  if (!is.null(log_path)) log_write(log_path, "WARN", "Falha ao consultar Gemini após tentativas.")
+  if (!is.null(log_path)) log_write(log_path, "WARN", "Falha ao consultar IA após tentativas.")
   NULL
 }
 
@@ -73,13 +213,10 @@ skill_extract_metadata <- function(text, current_info = list(), log_path = NULL)
     "Texto do Edital:", trim_for_ai(text)
   )
 
-  raw <- gemini_request(prompt, model = "gemini-1.5-flash", log_path = log_path)
+  raw <- ai_request(prompt, log_path = log_path)
   if (is.null(raw)) return(list())
 
-  parsed_outer <- tryCatch(jsonlite::fromJSON(raw, simplifyVector = FALSE), error = function(e) NULL)
-  if (is.null(parsed_outer)) return(list())
-  candidate_text <- tryCatch(parsed_outer$candidates[[1]]$content$parts[[1]]$text %||% raw, error = function(e) raw)
-  parsed <- tryCatch(jsonlite::fromJSON(candidate_text, simplifyVector = TRUE), error = function(e) NULL)
+  parsed <- tryCatch(jsonlite::fromJSON(raw, simplifyVector = TRUE), error = function(e) NULL)
   if (is.null(parsed)) return(list())
   as.list(parsed)
 }
@@ -100,20 +237,17 @@ skill_verify_metadata <- function(metadata, raw_text, log_path = NULL) {
     "Texto bruto do Edital:", trim_for_ai(raw_text)
   )
 
-  raw <- gemini_request(prompt, model = "gemini-1.5-flash", log_path = log_path)
+  raw <- ai_request(prompt, log_path = log_path)
   if (is.null(raw)) return(metadata)
 
-  parsed_outer <- tryCatch(jsonlite::fromJSON(raw, simplifyVector = FALSE), error = function(e) NULL)
-  if (is.null(parsed_outer)) return(metadata)
-  candidate_text <- tryCatch(parsed_outer$candidates[[1]]$content$parts[[1]]$text %||% raw, error = function(e) raw)
-  parsed <- tryCatch(jsonlite::fromJSON(candidate_text, simplifyVector = TRUE), error = function(e) NULL)
+  parsed <- tryCatch(jsonlite::fromJSON(raw, simplifyVector = TRUE), error = function(e) NULL)
   if (is.null(parsed)) return(metadata)
   as.list(parsed)
 }
 
 # Pipeline do Agente: Executa as skills sequencialmente
 ai_extract_fields <- function(text, current = list(), log_path = NULL) {
-  if (!gemini_available()) return(list())
+  if (!ai_available()) return(list())
 
   # Passo 1: Skill de Extração de Metadados
   extracted <- skill_extract_metadata(text, current, log_path)

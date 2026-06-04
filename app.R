@@ -270,13 +270,13 @@ server <- function(input, output, session) {
 
   # Validação de API Key no startup do Shiny
   observe({
-    key_ok <- validate_gemini_api_key()
+    key_ok <- validate_ai_config()
     if (!key_ok) {
       showNotification(
-        "Aviso de IA Desativada: A chave GEMINI_API_KEY não foi configurada. O enriquecimento e auditoria de editais com IA estarão desativados. Consulte o README.md para obter instruções de configuração.",
+        "Aviso de IA Desativada: Nenhuma chave de API de IA (Gemini, OpenAI, Anthropic, Groq, OpenRouter, DeepSeek) foi configurada. O enriquecimento e auditoria de editais com IA estarão desativados. Consulte o README.md para obter instruções de configuração.",
         type = "warning",
         duration = NULL,
-        id = "gemini_missing_warning"
+        id = "ai_missing_warning"
       )
     }
   })
@@ -492,13 +492,13 @@ server <- function(input, output, session) {
       title = "Atualizar base a partir das fontes oficiais",
       easyClose = TRUE,
       size = "l",
-      p("A coleta parte diretamente das URLs oficiais cadastradas, percorre paginação quando detectada e enriquece os metadados via IA quando a variável GEMINI_API_KEY estiver configurada."),
+      p("A coleta parte diretamente das URLs oficiais cadastradas, percorre paginação quando detectada e enriquece os metadados via IA quando a IA estiver configurada."),
       selectizeInput("collect_sources", "Fontes a coletar", choices = choices, selected = default_sel, multiple = TRUE),
       bslib::layout_columns(
         col_widths = c(4, 4, 4),
         numericInput("collect_max_pages", "Máx. páginas por fonte", value = 5, min = 1, max = 50),
         numericInput("collect_max_records", "Máx. registros por fonte", value = 50, min = 1, max = 500),
-        checkboxInput("collect_use_ai", "Usar IA para enriquecimento", value = nzchar(Sys.getenv("GEMINI_API_KEY")))
+        checkboxInput("collect_use_ai", "Usar IA para enriquecimento", value = ai_available())
       ),
       checkboxInput("collect_export", "Salvar CSV, RDS e XLSX ao final", value = TRUE),
       footer = tagList(modalButton("Cancelar"), actionButton("confirm_collect_official", "Executar coleta", class = "btn-success"))
@@ -527,7 +527,19 @@ server <- function(input, output, session) {
     log_path_bg <- log_path
     do_export_bg <- isTRUE(input$collect_export)
     db_path_bg <- db_path
-    gemini_key_bg <- Sys.getenv("GEMINI_API_KEY")
+    # Coleta todas as configurações de IA configuradas para passar ao processo filho
+    ai_env_vars <- list(
+      GEMINI_API_KEY = Sys.getenv("GEMINI_API_KEY"),
+      OPENAI_API_KEY = Sys.getenv("OPENAI_API_KEY"),
+      ANTHROPIC_API_KEY = Sys.getenv("ANTHROPIC_API_KEY"),
+      GROQ_API_KEY = Sys.getenv("GROQ_API_KEY"),
+      OPENROUTER_API_KEY = Sys.getenv("OPENROUTER_API_KEY"),
+      DEEPSEEK_API_KEY = Sys.getenv("DEEPSEEK_API_KEY"),
+      AI_PROVIDER = Sys.getenv("AI_PROVIDER"),
+      AI_MODEL = Sys.getenv("AI_MODEL"),
+      AI_API_KEY = Sys.getenv("AI_API_KEY"),
+      AI_API_URL = Sys.getenv("AI_API_URL")
+    )
     
     bg_start_time <- Sys.time()
 
@@ -538,8 +550,13 @@ server <- function(input, output, session) {
 
     # Executa a coleta em segundo plano
     f <- future::future({
-      if (nzchar(gemini_key_bg)) {
-        Sys.setenv(GEMINI_API_KEY = gemini_key_bg)
+      for (name in names(ai_env_vars)) {
+        val <- ai_env_vars[[name]]
+        if (nzchar(val)) {
+          args <- list(val)
+          names(args) <- name
+          do.call(Sys.setenv, args)
+        }
       }
 
       # Conexao local do processo filho

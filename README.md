@@ -168,27 +168,49 @@ install.packages(c(
 install.packages("chromote")
 ```
 
-### 2. Configurando a Chave do Gemini (Opcional)
-Se você deseja utilizar a inteligência artificial para limpeza e extração de metadados avançados, configure a variável de ambiente `GEMINI_API_KEY`:
+### 2. Configurando a Inteligência Artificial (Opcional)
+Se você deseja utilizar a inteligência artificial para limpeza, extração de metadados avançados e auditoria contra alucinações, é necessário configurar as credenciais do provedor de IA de sua preferência no arquivo `.Renviron` (ou no ambiente).
 
-*   **No Windows (PowerShell/CMD antes de rodar o R):**
-    ```powershell
-    $env:GEMINI_API_KEY="SUA_CHAVE_AQUI"
-    ```
-*   **No Linux/macOS:**
-    ```bash
-    export GEMINI_API_KEY="SUA_CHAVE_AQUI"
-    ```
-*   **Diretamente dentro do console do R:**
-    ```R
-    Sys.setenv(GEMINI_API_KEY = "SUA_CHAVE_AQUI")
-    ```
-*   **Via arquivo `.Renviron` local (Recomendado para persistência no R):**
-    Crie ou edite um arquivo chamado `.Renviron` na raiz do seu projeto ou no diretório home do seu usuário e adicione a seguinte linha:
+A plataforma detectará automaticamente o provedor com base nas chaves de API disponíveis no seu ambiente. 
+
+#### Opção A: Autodetecção Dinâmica (Recomendado)
+Adicione um dos seguintes blocos de chaves ao seu arquivo `.Renviron` local na raiz do projeto:
+
+*   **Google Gemini**:
     ```env
-    GEMINI_API_KEY="SUA_CHAVE_AQUI"
+    GEMINI_API_KEY="sua_chave_do_google_ai_studio"
     ```
-    O R carregará automaticamente esta variável toda vez que o projeto for aberto ou executado.
+*   **OpenAI**:
+    ```env
+    OPENAI_API_KEY="sua_chave_da_openai"
+    ```
+*   **Anthropic (Claude)**:
+    ```env
+    ANTHROPIC_API_KEY="sua_chave_da_anthropic"
+    ```
+*   **Groq**:
+    ```env
+    GROQ_API_KEY="sua_chave_da_groq"
+    ```
+*   **OpenRouter**:
+    ```env
+    OPENROUTER_API_KEY="sua_chave_do_openrouter"
+    ```
+*   **DeepSeek**:
+    ```env
+    DEEPSEEK_API_KEY="sua_chave_do_deepseek"
+    ```
+
+#### Opção B: Configuração Manual / Customizada
+Você pode forçar o uso de um provedor, modelo ou endpoint de API customizado (como qualquer agregador ou endpoint compatível com o padrão OpenAI) definindo as seguintes variáveis no seu `.Renviron`:
+```env
+AI_PROVIDER="groq"                      # Opções: gemini, openai, anthropic, groq, openrouter, deepseek
+AI_API_KEY="sua_chave_de_api_aqui"      # Substitui as chaves específicas se definida
+AI_MODEL="llama-3.3-70b-versatile"      # Modelo de preferência
+AI_API_URL="https://api.groq.com/openai/v1/chat/completions" # URL customizada do endpoint (opcional)
+```
+
+O R carregará automaticamente esta variável toda vez que o projeto for aberto ou executado.
 
 ### 3. Rodando o Aplicativo
 Navegue até o diretório do projeto e execute:

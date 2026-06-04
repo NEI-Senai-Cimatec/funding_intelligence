@@ -30,7 +30,9 @@ source_catalog <- function() {
     "undp", "Programa das Nações Unidas para o Desenvolvimento", "PNUD", "Brasil", "organismo multilateral", "ONU", "https://www.undp.org/pt/brazil", "https://www.undp.org/pt/brazil/licitacoes", "html", "pt", "diária", "Licitações e oportunidades do PNUD Brasil.",
     "embrapii", "Empresa Brasileira de Pesquisa e Inovação Industrial", "EMBRAPII", "Brasil", "organização social", "contrato de gestão federal", "https://embrapii.org.br/", "https://embrapii.org.br/chamadas-publicas/", "html", "pt", "diária", "Chamadas públicas.",
     "ics", "Instituto Clima e Sociedade", "iCS", "Brasil", "fundação privada", "filantropia", "https://climaesociedade.org/", "https://climaesociedade.org/editais/", "html", "pt", "diária", "Editais e doações.",
-    "min_saude", "Ministério da Saúde", "MS", "Brasil", "ministério", "governo federal", "https://www.gov.br/saude/pt-br", "https://www.gov.br/saude/pt-br/acesso-a-informacao/acoes-e-programas/editais", "html", "pt", "diária", "Fonte complementar nacional."
+    "min_saude", "Ministério da Saúde", "MS", "Brasil", "ministério", "governo federal", "https://www.gov.br/saude/pt-br", "https://www.gov.br/saude/pt-br/acesso-a-informacao/acoes-e-programas/editais", "html", "pt", "diária", "Fonte complementar nacional.",
+    "fapesc", "Fundação de Amparo à Pesquisa e Inovação de Santa Catarina", "FAPESC", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://fapesc.sc.gov.br/", "https://fapesc.sc.gov.br/chamadas-abertas/", "html", "pt", "diária", "Editais abertos FAPESC.",
+    "eureka", "Eureka Network", "EUREKA", "União Europeia", "programa multilateral", "associação internacional", "https://www.eurekanetwork.org/", "https://www.eurekanetwork.org/open-calls/", "html", "en", "diária", "Chamadas abertas para cooperação tecnológica internacional."
   )
 }
 

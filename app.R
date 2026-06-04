@@ -138,8 +138,9 @@ ui <- bslib::page_sidebar(
   bslib::card(
     class = "search-card",
     bslib::layout_columns(
-      col_widths = c(8, 1, 1, 1, 1),
+      col_widths = c(5, 3, 1, 1, 1, 1),
       textInput("search_query", "Barra de busca principal", value = "", placeholder = "Ex.: (health OR medical devices) AND innovation NOT veterinary"),
+      radioButtons("region_filter", "Região das fontes", choices = c("Brasileiras", "Europeias", "Ambas"), selected = "Ambas", inline = TRUE),
       actionButton("btn_search", "Buscar", class = "btn-primary action-top"),
       actionButton("btn_advanced", "Busca avançada", class = "btn-outline-primary action-top"),
       actionButton("btn_save_search", "Salvar busca", class = "btn-outline-secondary action-top"),
@@ -256,7 +257,7 @@ server <- function(input, output, session) {
 
   refresh_data()
   observe({
-    opps <- rv$opportunities
+    opps <- filtered_results()
     funder_choices <- sort(unique(opps$entidade))
     updateSelectInput(session, "selected_funder", choices = funder_choices, selected = if (length(funder_choices) > 0) funder_choices[[1]] else "")
   })
@@ -362,9 +363,20 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$btn_collect_official, {
+    region <- input$region_filter
     available_sources <- rv$sources |> dplyr::filter(!(.data$id_fonte %in% c("facepe", "fapesb")))
+    
+    if (region == "Brasileiras") {
+      available_sources <- available_sources |> dplyr::filter(pais == "Brasil")
+    } else if (region == "Europeias") {
+      available_sources <- available_sources |> dplyr::filter(pais %in% c("União Europeia", "Alemanha", "Reino Unido", "Suécia", "Bélgica", "França", "Suíça", "Europa", "Itália", "Espanha", "Holanda"))
+    } else {
+      available_sources <- available_sources |> dplyr::filter(pais == "Brasil" | pais %in% c("União Europeia", "Alemanha", "Reino Unido", "Suécia", "Bélgica", "França", "Suíça", "Europa", "Itália", "Espanha", "Holanda"))
+    }
+    
     choices <- stats::setNames(available_sources$id_fonte, paste0(available_sources$sigla, " — ", available_sources$nome_fonte))
     default_sel <- available_sources$id_fonte
+    
     showModal(modalDialog(
       title = "Atualizar base a partir das fontes oficiais",
       easyClose = TRUE,
@@ -480,6 +492,18 @@ server <- function(input, output, session) {
   filtered_results <- reactive({
     df <- base_results()
     if (nrow(df) == 0) return(df)
+    
+    # Filtro regional
+    region <- input$region_filter
+    if (region == "Brasileiras") {
+      df <- df |> dplyr::filter(pais_origem == "Brasil")
+    } else if (region == "Europeias") {
+      df <- df |> dplyr::filter(pais_origem %in% c("União Europeia", "Alemanha", "Reino Unido", "Suécia", "Bélgica", "França", "Suíça", "Europa", "Itália", "Espanha", "Holanda"))
+    } else {
+      # Ambas (Mantém brasileiras e europeias)
+      df <- df |> dplyr::filter(pais_origem == "Brasil" | pais_origem %in% c("União Europeia", "Alemanha", "Reino Unido", "Suécia", "Bélgica", "França", "Suíça", "Europa", "Itália", "Espanha", "Holanda"))
+    }
+    
     dplyr::arrange(df, dplyr::desc(score_aderencia), parse_date_safe(data_limite))
   })
 

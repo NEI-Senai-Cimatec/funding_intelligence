@@ -9,6 +9,12 @@ source_dispatch <- function(source_row, max_pages = 5, max_records = 50, use_ai 
   if (identical(sid, "confap")) {
     return(collect_confap(source_row, max_pages, max_records, use_ai, log_path))
   }
+  if (identical(sid, "fapesc")) {
+    return(collect_fapesc(source_row, max_pages, max_records, use_ai, log_path))
+  }
+  if (identical(sid, "eureka")) {
+    return(collect_eureka(source_row, max_pages, max_records, use_ai, log_path))
+  }
   collect_generic_official(source_row, max_pages, max_records, use_ai, log_path)
 }
 
@@ -81,7 +87,7 @@ safe_request_page <- function(url, log_path = NULL, use_browser_fallback = TRUE)
       html <- try(xml2::read_html(txt), silent = TRUE)
       if (!inherits(html, "try-error")) {
         # Verifica se o conteudo contem sinal obvio de captcha/bloqueio por CDN antes de aceitar
-        has_block_signal <- grepl("cloudflare|captcha|security challenge|blocked|ddos", tolower(txt))
+        has_block_signal <- grepl("attention required! \\| cloudflare|cf-challenge|ray id:|checking your browser before accessing|security challenge|access denied", tolower(txt))
         if (!has_block_signal) {
           return(list(url = url, html = html, text = txt, ok = TRUE, method = "httr2"))
         } else {
@@ -740,6 +746,123 @@ collect_ics <- collect_generic_official
 collect_min_saude <- collect_generic_official
 collect_facepe <- function(source_row, max_pages, max_records, use_ai, log_path) list(records = ensure_record_schema(tibble::tibble()), pages_visited = 0L, last_url = source_row$url_oportunidades[[1]])
 collect_fapesb <- function(source_row, max_pages, max_records, use_ai, log_path) list(records = ensure_record_schema(tibble::tibble()), pages_visited = 0L, last_url = source_row$url_oportunidades[[1]])
+
+collect_fapesc <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  pg <- safe_request_page(source_row$url_oportunidades[[1]], log_path = log_path)
+  if (!isTRUE(pg$ok) || is.null(pg$html)) {
+    return(list(records = ensure_record_schema(tibble::tibble()), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]]))
+  }
+
+  links <- try({
+    rvest::html_elements(pg$html, "article a, .entry-content a, .content a, main a, a[href]")
+  }, silent = TRUE)
+
+  if (inherits(links, "try-error") || length(links) == 0) {
+    return(list(records = ensure_record_schema(tibble::tibble()), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]]))
+  }
+
+  hrefs <- rvest::html_attr(links, "href")
+  texts <- rvest::html_text2(links)
+
+  valid_idx <- !is.na(hrefs) & nzchar(hrefs) & 
+    (grepl("edital|chamada|fapesc", tolower(hrefs)) | grepl("edital|chamada|submiss", tolower(texts))) &
+    !grepl("wp-content/uploads", hrefs)
+
+  hrefs <- hrefs[valid_idx]
+  texts <- texts[valid_idx]
+
+  hrefs <- vapply(hrefs, function(h) resolve_url(source_row$url_oportunidades[[1]], h), character(1))
+
+  unique_links <- tibble::tibble(url = hrefs, text = texts) |>
+    dplyr::distinct(url, .keep_all = TRUE) |>
+    dplyr::filter(nzchar(text))
+
+  if (nrow(unique_links) == 0) {
+    return(list(records = ensure_record_schema(tibble::tibble()), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]]))
+  }
+
+  if (nrow(unique_links) > max_records) {
+    unique_links <- unique_links[seq_len(max_records), ]
+  }
+
+  recs <- purrr::map_dfr(seq_len(nrow(unique_links)), function(i) {
+    row <- unique_links[i, ]
+    detail_bundle <- extract_detail_bundle(detail_url = row$url[[1]], page_url = source_row$url_oportunidades[[1]], log_path = log_path)
+
+    rec <- extract_core_record(
+      source_row = source_row,
+      input_title = pick_first_nonempty(detail_bundle$detail_title, row$text[[1]]),
+      input_summary = pick_first_nonempty(detail_bundle$detail_summary, row$text[[1]]),
+      input_full_text = pick_first_nonempty(detail_bundle$full_text, row$text[[1]]),
+      page_url = source_row$url_oportunidades[[1]],
+      detail_url = row$url[[1]],
+      pdf_url = detail_bundle$pdf_url,
+      page_no = 1L
+    )
+    if (isTRUE(use_ai)) rec <- enrich_record_with_ai(rec, log_path)
+    rec
+  })
+
+  list(records = finalize_records(recs), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]])
+}
+
+collect_eureka <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  pg <- safe_request_page(source_row$url_oportunidades[[1]], log_path = log_path)
+  if (!isTRUE(pg$ok) || is.null(pg$html)) {
+    return(list(records = ensure_record_schema(tibble::tibble()), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]]))
+  }
+
+  links <- try({
+    rvest::html_elements(pg$html, "a[href]")
+  }, silent = TRUE)
+
+  if (inherits(links, "try-error") || length(links) == 0) {
+    return(list(records = ensure_record_schema(tibble::tibble()), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]]))
+  }
+
+  hrefs <- rvest::html_attr(links, "href")
+  texts <- rvest::html_text2(links)
+
+  valid_idx <- !is.na(hrefs) & nzchar(hrefs) & 
+    (grepl("/open-calls/|/call-for-", hrefs) | grepl("open call|call for", tolower(texts)))
+
+  hrefs <- hrefs[valid_idx]
+  texts <- texts[valid_idx]
+
+  hrefs <- vapply(hrefs, function(h) resolve_url(source_row$url_oportunidades[[1]], h), character(1))
+
+  unique_links <- tibble::tibble(url = hrefs, text = texts) |>
+    dplyr::distinct(url, .keep_all = TRUE) |>
+    dplyr::filter(nzchar(text))
+
+  if (nrow(unique_links) == 0) {
+    return(list(records = ensure_record_schema(tibble::tibble()), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]]))
+  }
+
+  if (nrow(unique_links) > max_records) {
+    unique_links <- unique_links[seq_len(max_records), ]
+  }
+
+  recs <- purrr::map_dfr(seq_len(nrow(unique_links)), function(i) {
+    row <- unique_links[i, ]
+    detail_bundle <- extract_detail_bundle(detail_url = row$url[[1]], page_url = source_row$url_oportunidades[[1]], log_path = log_path)
+
+    rec <- extract_core_record(
+      source_row = source_row,
+      input_title = pick_first_nonempty(detail_bundle$detail_title, row$text[[1]]),
+      input_summary = pick_first_nonempty(detail_bundle$detail_summary, row$text[[1]]),
+      input_full_text = pick_first_nonempty(detail_bundle$full_text, row$text[[1]]),
+      page_url = source_row$url_oportunidades[[1]],
+      detail_url = row$url[[1]],
+      pdf_url = detail_bundle$pdf_url,
+      page_no = 1L
+    )
+    if (isTRUE(use_ai)) rec <- enrich_record_with_ai(rec, log_path)
+    rec
+  })
+
+  list(records = finalize_records(recs), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]])
+}
 
 truncate_excel_strings <- function(df, max_chars = 32767L) {
   out <- tibble::as_tibble(df)

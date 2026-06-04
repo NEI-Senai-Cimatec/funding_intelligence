@@ -7,7 +7,7 @@ required_packages <- c(
   "shiny", "bslib", "DT", "dplyr", "tidyr", "purrr", "stringr", "stringi", "lubridate",
   "ggplot2", "plotly", "DBI", "RSQLite", "jsonlite", "digest", "htmltools",
   "rvest", "xml2", "httr2", "tibble", "tools", "readr", "writexl", "janitor",
-  "glue", "progress", "pdftools", "polite", "future", "furrr", "shinycssloaders"
+  "glue", "progress", "pdftools", "polite", "callr", "shinycssloaders"
 )
 
 install_missing_packages <- function(pkgs) {
@@ -54,6 +54,7 @@ if (length(missing_after_install) > 0) {
 }
 
 invisible(lapply(required_packages, library, character.only = TRUE))
+# callr::r_bg() é usado para execução em background (sem future)
 
 get_app_dir <- function() {
   ofiles <- character(0)
@@ -142,10 +143,12 @@ ui <- bslib::page_sidebar(
     tags$link(rel = "stylesheet", type = "text/css", href = "styles.css"),
     tags$script("
       Shiny.addCustomMessageHandler('scroll-logs', function(message) {
-        var log_elem = document.getElementById('modal_log_text');
-        if (log_elem) {
-          log_elem.parentElement.scrollTop = log_elem.parentElement.scrollHeight;
-        }
+        setTimeout(function() {
+          var log_elem = document.getElementById('modal_log_text');
+          if (log_elem) {
+            log_elem.parentElement.scrollTop = log_elem.parentElement.scrollHeight;
+          }
+        }, 50);
       });
     ")
   ),
@@ -289,15 +292,19 @@ server <- function(input, output, session) {
     status = "idle"
   )
 
-  # Leitor reativo de status/logs da coleta em segundo plano
+  # Leitor reativo de status/logs da coleta em segundo plano (polling a cada 1.5s)
   observe({
-    req(progress_rv$status == "running")
-    # Agenda a reavaliação desse bloco a cada 1.5 segundos
-    invalidateLater(1500, session)
+    req(progress_rv$status %in% c("running", "done", "error"))
+    
+    # Polling contínuo enquanto status == running
+    if (progress_rv$status == "running") {
+      invalidateLater(1500, session)
+    }
     
     status_file <- app_file("logs", "collection_status.json")
     log_file <- app_file("logs", "collection_modal_log.txt")
     
+    # Ler arquivo de status JSON
     if (file.exists(status_file)) {
       status_data <- tryCatch(jsonlite::fromJSON(status_file, simplifyVector = FALSE), error = function(e) NULL)
       if (!is.null(status_data)) {
@@ -314,10 +321,53 @@ server <- function(input, output, session) {
       }
     }
     
+    # Ler arquivo de log de texto
     if (file.exists(log_file)) {
       log_lines <- tryCatch(readLines(log_file, warn = FALSE), error = function(e) character())
       progress_rv$logs <- paste(log_lines, collapse = "\n")
       session$sendCustomMessage("scroll-logs", list())
+    }
+    
+    # Detectar quando o processo background terminou
+    proc <- rv$bg_process
+    if (!is.null(proc) && !proc$is_alive()) {
+      result <- tryCatch(proc$get_result(), error = function(e) e)
+      rv$bg_process <- NULL
+      
+      if (inherits(result, "error") || inherits(result, "simpleError")) {
+        # Falha na coleta
+        removeNotification("bg_collect_notif")
+        rv$collecting <- FALSE
+        updateActionButton(session, "btn_collect_official", label = "Atualizar base")
+        progress_rv$status <- "error"
+        progress_rv$detail <- paste("Erro na coleta:", conditionMessage(result))
+        log_progress(paste("Erro fatal:", conditionMessage(result)), "Erro")
+        showNotification(paste("Falha na coleta em segundo plano:", conditionMessage(result)), type = "error", duration = 10)
+      } else {
+        # Coleta finalizada com sucesso
+        removeNotification("bg_collect_notif")
+        rv$collecting <- FALSE
+        updateActionButton(session, "btn_collect_official", label = "Atualizar base")
+        progress_rv$status <- "done"
+        progress_rv$percentage <- 100
+        progress_rv$detail <- "Coleta concluída com sucesso!"
+        rv$last_collect_summary <- result
+        refresh_data(notify = TRUE)
+        
+        base_msg <- sprintf(
+          "Coleta concluida. %s registros inseridos/atualizados nesta rodada; %s registros totais na base; %s fonte(s) processadas.",
+          result$inserted_now %||% 0L,
+          result$n_records %||% 0L,
+          result$sources_processed %||% 0L
+        )
+        showNotification(base_msg, type = "message", duration = 10)
+        
+        if (length(result$export_warnings %||% character()) > 0) {
+          showNotification(paste(result$export_warnings, collapse = " | "), type = "warning", duration = 12)
+        }
+        
+        check_and_alert_failures(rv$bg_start_time)
+      }
     }
   })
 
@@ -354,7 +404,10 @@ server <- function(input, output, session) {
     if (progress_rv$status %in% c("done", "error")) {
       actionButton("btn_close_progress_modal", "Concluir", class = "btn-success")
     } else {
-      actionButton("btn_minimize_progress_modal", "Minimizar (Rodar em 2º Plano)", class = "btn-outline-secondary")
+      tagList(
+        actionButton("btn_minimize_progress_modal", "Minimizar (Rodar em 2º Plano)", class = "btn-outline-secondary"),
+        modalButton("Fechar")
+      )
     }
   })
 
@@ -362,7 +415,7 @@ server <- function(input, output, session) {
     showModal(modalDialog(
       title = span(style = "font-weight: bold; color: #004691; display: flex; align-items: center; gap: 8px;", 
                    "🔄 Atualização da Base de Dados"),
-      easyClose = FALSE,
+      easyClose = TRUE,
       size = "l",
       tags$div(
         class = "progress-container",
@@ -603,6 +656,10 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$btn_collect_official, {
+    if (isTRUE(rv$collecting)) {
+      show_progress_modal()
+      return()
+    }
     region <- input$region_filter
     available_sources <- rv$sources |> dplyr::filter(!(.data$id_fonte %in% c("facepe", "fapesb")))
     
@@ -663,112 +720,95 @@ server <- function(input, output, session) {
     }, silent = TRUE)
 
     rv$collecting <- TRUE
+    rv$bg_start_time <- Sys.time()
     updateActionButton(session, "btn_collect_official", label = "Coletando...")
     showNotification("Coleta iniciada. Acompanhe pelo modal de progresso.", type = "message", id = "bg_collect_notif", duration = 8)
 
-    # Parametros para o processo processo filho (passados por copia)
-    source_ids_bg <- input$collect_sources
-    max_pages_bg <- input$collect_max_pages
-    max_records_bg <- input$collect_max_records
-    use_ai_bg <- isTRUE(input$collect_use_ai)
-    export_dir_bg <- export_dir
-    log_path_bg <- log_path
-    do_export_bg <- isTRUE(input$collect_export)
-    db_path_bg <- db_path
-    status_file_bg <- normalizePath(status_file, winslash = "/", mustWork = FALSE)
-    log_file_bg <- normalizePath(log_file, winslash = "/", mustWork = FALSE)
-    # Coleta todas as configurações de IA configuradas para passar ao processo filho
-    ai_env_vars <- list(
-      GEMINI_API_KEY = Sys.getenv("GEMINI_API_KEY"),
-      OPENAI_API_KEY = Sys.getenv("OPENAI_API_KEY"),
-      ANTHROPIC_API_KEY = Sys.getenv("ANTHROPIC_API_KEY"),
-      GROQ_API_KEY = Sys.getenv("GROQ_API_KEY"),
-      OPENROUTER_API_KEY = Sys.getenv("OPENROUTER_API_KEY"),
-      DEEPSEEK_API_KEY = Sys.getenv("DEEPSEEK_API_KEY"),
-      AI_PROVIDER = Sys.getenv("AI_PROVIDER"),
-      AI_MODEL = Sys.getenv("AI_MODEL"),
-      AI_API_KEY = Sys.getenv("AI_API_KEY"),
-      AI_API_URL = Sys.getenv("AI_API_URL")
-    )
-    
-    bg_start_time <- Sys.time()
-
-    # Define o plano multisession se ainda estiver sequencial
-    if (inherits(future::plan(), "sequential")) {
-      future::plan(future::multisession, workers = 2)
-    }
-
-    # Executa a coleta em segundo plano
-    f <- future::future({
-      for (name in names(ai_env_vars)) {
-        val <- ai_env_vars[[name]]
-        if (nzchar(val)) {
-          args <- list(val)
-          names(args) <- name
-          do.call(Sys.setenv, args)
-        }
-      }
-
-      # Conexao local do processo filho
-      bg_conn <- DBI::dbConnect(RSQLite::SQLite(), db_path_bg)
-      on.exit(DBI::dbDisconnect(bg_conn))
-
-      collect_all_sources(
-        conn = bg_conn,
-        source_ids = source_ids_bg,
-        max_pages = max_pages_bg,
-        max_records_per_source = max_records_bg,
-        use_ai = use_ai_bg,
-        export_dir = export_dir_bg,
-        log_path = log_path_bg,
-        do_export = do_export_bg,
-        progress_cb = NULL,
-        status_file = status_file_bg,
-        modal_log_file = log_file_bg
+    # Parametros para o processo filho (passados explicitamente como args)
+    bg_args <- list(
+      app_dir_bg      = app_dir,
+      source_ids_bg   = input$collect_sources,
+      max_pages_bg    = input$collect_max_pages,
+      max_records_bg  = input$collect_max_records,
+      use_ai_bg       = isTRUE(input$collect_use_ai),
+      export_dir_bg   = export_dir,
+      log_path_bg     = log_path,
+      do_export_bg    = isTRUE(input$collect_export),
+      db_path_bg      = db_path,
+      status_file_bg  = normalizePath(status_file, winslash = "/", mustWork = FALSE),
+      log_file_bg     = normalizePath(log_file, winslash = "/", mustWork = FALSE),
+      ai_env_vars     = list(
+        GEMINI_API_KEY    = Sys.getenv("GEMINI_API_KEY"),
+        OPENAI_API_KEY    = Sys.getenv("OPENAI_API_KEY"),
+        ANTHROPIC_API_KEY = Sys.getenv("ANTHROPIC_API_KEY"),
+        GROQ_API_KEY      = Sys.getenv("GROQ_API_KEY"),
+        OPENROUTER_API_KEY= Sys.getenv("OPENROUTER_API_KEY"),
+        DEEPSEEK_API_KEY  = Sys.getenv("DEEPSEEK_API_KEY"),
+        AI_PROVIDER       = Sys.getenv("AI_PROVIDER"),
+        AI_MODEL          = Sys.getenv("AI_MODEL"),
+        AI_API_KEY        = Sys.getenv("AI_API_KEY"),
+        AI_API_URL        = Sys.getenv("AI_API_URL")
       )
-    })
+    )
 
-    # Manipula o retorno da promise
-    promises::then(
-      f,
-      onFulfilled = function(result) {
-        removeNotification("bg_collect_notif")
-        rv$collecting <- FALSE
-        updateActionButton(session, "btn_collect_official", label = "Atualizar base")
+    message(sprintf("[callr] Lançando processo background. Parent PID: %d", Sys.getpid()))
 
-        progress_rv$status <- "done"
-        progress_rv$percentage <- 100
-        progress_rv$detail <- "Coleta concluída com sucesso!"
-
-        rv$last_collect_summary <- result
-        refresh_data(notify = TRUE)
-
-        base_msg <- sprintf(
-          "Coleta concluida. %s registros inseridos/atualizados nesta rodada; %s registros totais na base; %s fonte(s) processadas.",
-          result$inserted_now %||% 0L,
-          result$n_records %||% 0L,
-          result$sources_processed %||% 0L
-        )
-        showNotification(base_msg, type = "message", duration = 10)
-
-        if (length(result$export_warnings %||% character()) > 0) {
-          showNotification(paste(result$export_warnings, collapse = " | "), type = "warning", duration = 12)
+    # Executa a coleta em um processo R completamente separado via callr::r_bg()
+    rv$bg_process <- callr::r_bg(
+      func = function(app_dir_bg, source_ids_bg, max_pages_bg, max_records_bg,
+                      use_ai_bg, export_dir_bg, log_path_bg, do_export_bg,
+                      db_path_bg, status_file_bg, log_file_bg, ai_env_vars) {
+        
+        # Configura biblioteca local no processo filho
+        local_libs_bg <- file.path(app_dir_bg, "R_libs")
+        if (dir.exists(local_libs_bg)) {
+          .libPaths(c(local_libs_bg, .libPaths()))
         }
-        
-        # Alerta se houver falhas nas agências no processamento paralelo
-        check_and_alert_failures(bg_start_time)
+
+        # Carrega pacotes essenciais
+        for (pkg in c("DBI", "RSQLite", "jsonlite", "digest", "dplyr", "purrr",
+                      "stringr", "httr2", "rvest", "xml2", "lubridate", "tibble",
+                      "readr", "writexl")) {
+          library(pkg, character.only = TRUE)
+        }
+
+        # Configura variáveis de ambiente de IA
+        for (name in names(ai_env_vars)) {
+          val <- ai_env_vars[[name]]
+          if (nzchar(val)) {
+            args <- list(val)
+            names(args) <- name
+            do.call(Sys.setenv, args)
+          }
+        }
+
+        # Carrega os helpers do app
+        source(file.path(app_dir_bg, "R", "helpers_utils.R"), local = TRUE, encoding = "UTF-8")
+        source(file.path(app_dir_bg, "R", "helpers_db.R"),    local = TRUE, encoding = "UTF-8")
+        source(file.path(app_dir_bg, "R", "helpers_text.R"),  local = TRUE, encoding = "UTF-8")
+        source(file.path(app_dir_bg, "R", "helpers_ai.R"),    local = TRUE, encoding = "UTF-8")
+        source(file.path(app_dir_bg, "R", "helpers_collect.R"),local = TRUE, encoding = "UTF-8")
+
+        # Conexão SQLite própria do processo filho
+        bg_conn <- DBI::dbConnect(RSQLite::SQLite(), db_path_bg)
+        on.exit(DBI::dbDisconnect(bg_conn), add = TRUE)
+
+        collect_all_sources(
+          conn               = bg_conn,
+          source_ids         = source_ids_bg,
+          max_pages          = max_pages_bg,
+          max_records_per_source = max_records_bg,
+          use_ai             = use_ai_bg,
+          export_dir         = export_dir_bg,
+          log_path           = log_path_bg,
+          do_export          = do_export_bg,
+          progress_cb        = NULL,
+          status_file        = status_file_bg,
+          modal_log_file     = log_file_bg
+        )
       },
-      onRejected = function(err) {
-        removeNotification("bg_collect_notif")
-        rv$collecting <- FALSE
-        updateActionButton(session, "btn_collect_official", label = "Atualizar base")
-        
-        progress_rv$status <- "error"
-        progress_rv$detail <- paste("Erro na coleta:", err$message)
-        log_progress(paste("Erro fatal:", err$message), "Erro")
-        
-        showNotification(paste("Falha na coleta em segundo plano:", err$message), type = "error", duration = 10)
-      }
+      args = bg_args,
+      supervise = TRUE
     )
   })
 

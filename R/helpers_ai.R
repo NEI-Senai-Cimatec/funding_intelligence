@@ -120,8 +120,8 @@ ai_request <- function(prompt, timeout_sec = 45, retries = 2, log_path = NULL) {
 
   # Atraso inteligente para evitar Rate Limits de Tokens por Minuto (TPM) na Groq (plano gratuito)
   if (cfg$provider == "groq") {
-    delay <- as.numeric(Sys.getenv("GROQ_RATE_DELAY", "3"))
-    if (is.na(delay) || delay < 0) delay <- 3
+    delay <- as.numeric(Sys.getenv("GROQ_RATE_DELAY", "6"))
+    if (is.na(delay) || delay < 0) delay <- 6
     if (delay > 0) Sys.sleep(delay)
   }
 
@@ -174,8 +174,17 @@ ai_request <- function(prompt, timeout_sec = 45, retries = 2, log_path = NULL) {
   }
 
   for (i in seq_len(retries + 1)) {
-    resp <- try(httr2::req_perform(req), silent = TRUE)
-    if (!inherits(resp, "try-error")) {
+    resp <- tryCatch({
+      httr2::req_perform(req)
+    }, error = function(e) {
+      if (!is.null(e$response) && httr2::resp_status(e$response) == 429) {
+        structure(e, is_429 = TRUE)
+      } else {
+        e
+      }
+    })
+    
+    if (!inherits(resp, "error")) {
       txt <- try(httr2::resp_body_string(resp), silent = TRUE)
       if (!inherits(txt, "try-error") && nzchar(txt)) {
         parsed_res <- try(jsonlite::fromJSON(txt, simplifyVector = FALSE), silent = TRUE)
@@ -194,8 +203,14 @@ ai_request <- function(prompt, timeout_sec = 45, retries = 2, log_path = NULL) {
           return(extracted_text)
         }
       }
+    } else {
+      if (isTRUE(attr(resp, "is_429"))) {
+        if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Rate limit (429) atingido na Groq. Aguardando 15s antes da tentativa %d...", i + 1))
+        Sys.sleep(15)
+      } else {
+        Sys.sleep(min(6, i * 2))
+      }
     }
-    Sys.sleep(min(6, i * 2))
   }
   if (!is.null(log_path)) log_write(log_path, "WARN", "Falha ao consultar IA após tentativas.")
   NULL
@@ -265,7 +280,7 @@ ai_extract_fields <- function(text, current = list(), log_path = NULL) {
   if (length(extracted) == 0) return(list())
 
   # Passo 2: Skill de Auditoria e Auto-Correção (opcional via AI_VERIFY_METADATA)
-  verify_enabled <- identical(tolower(Sys.getenv("AI_VERIFY_METADATA", "false")), "true")
+  verify_enabled <- !identical(tolower(Sys.getenv("AI_VERIFY_METADATA", "true")), "false")
   if (verify_enabled) {
     extracted <- skill_verify_metadata(extracted, text, log_path)
   }

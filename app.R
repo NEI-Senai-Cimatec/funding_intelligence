@@ -870,7 +870,8 @@ server <- function(input, output, session) {
       shown <- tibble::tibble(
         ID = character(), Título = character(), Financiador = character(), País = character(),
         Prazo = character(), Tipo = character(), Área = character(), Resumo = character(),
-        `Palavras-chave` = character(), Score = character(), Status = character(), Link = character(), Rastrear = character()
+        `Palavras-chave` = character(), Score = character(), Status = character(), Link = character(),
+        Visualizar = character(), Rastrear = character()
       )
     } else {
       shown <- df |>
@@ -879,6 +880,7 @@ server <- function(input, output, session) {
           Status = vapply(status_oportunidade, badge_status_html, character(1)),
           Score = vapply(score_aderencia, score_bar_html, character(1)),
           Link = vapply(dplyr::coalesce(link_detalhe, link_origem), link_html, character(1), label = "Abrir"),
+          Visualizar = vapply(id_registro, make_view_button, character(1)),
           Rastrear = vapply(id_registro, make_click_button, character(1), label = "Rastrear")
         ) |>
         dplyr::transmute(
@@ -894,10 +896,11 @@ server <- function(input, output, session) {
           Score,
           Status,
           Link,
+          Visualizar,
           Rastrear
         )
     }
-    DT::datatable(shown, escape = FALSE, options = list(pageLength = 10, scrollX = TRUE, language = list(emptyTable = "Nenhum resultado encontrado.")))
+    DT::datatable(shown, escape = FALSE, filter = "top", options = list(pageLength = 10, scrollX = TRUE, language = list(emptyTable = "Nenhum resultado encontrado.")))
   }, server = FALSE)
 
   observeEvent(input$row_action, {
@@ -905,6 +908,130 @@ server <- function(input, output, session) {
     if (!is.null(conn)) track_opportunity(conn, input$row_action$id, status_usuario = "avaliar", observacoes = "")
     refresh_data()
     showNotification("Edital adicionado à lista de rastreamento.", type = "message")
+  })
+
+  observeEvent(input$row_view, {
+    req(input$row_view$id)
+    opp <- rv$opportunities |> dplyr::filter(id_registro == input$row_view$id)
+    if (nrow(opp) == 0) return()
+    
+    # Exibir Modal Dialog com detalhes estruturados
+    showModal(modalDialog(
+      title = tags$div(
+        style = "display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; width: 100%;",
+        tags$h3(style = "margin: 0; color: #004691; font-weight: 800; font-size: 1.35rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;", opp$titulo[[1]]),
+        modalButton("Fechar", icon = icon("close"))
+      ),
+      size = "l",
+      easyClose = TRUE,
+      footer = modalButton("Fechar"),
+      
+      # Modal Body
+      tags$div(
+        style = "padding: 10px 0; font-family: 'Inter', sans-serif;",
+        
+        # Financiador e Subtítulo
+        tags$div(
+          style = "margin-bottom: 20px; font-size: 1.05rem; color: #475569;",
+          tags$strong("Financiador: "), opp$entidade[[1]],
+          if (!is.na(opp$subtitulo[[1]]) && nzchar(opp$subtitulo[[1]])) {
+            tags$div(style = "font-style: italic; margin-top: 5px; font-size: 0.9rem; color: #64748b;", opp$subtitulo[[1]])
+          }
+        ),
+        
+        # Ficha Técnica / Metadados em Grid
+        tags$div(
+          class = "row",
+          style = "margin-bottom: 25px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-left: 0; margin-right: 0;",
+          
+          tags$div(
+            class = "col-md-4", style = "margin-bottom: 10px;",
+            tags$strong("Prazo: "), format_date_br(opp$data_limite[[1]])
+          ),
+          tags$div(
+            class = "col-md-4", style = "margin-bottom: 10px;",
+            tags$strong("Área Temática: "), opp$area_tematica[[1]] %||% "-"
+          ),
+          tags$div(
+            class = "col-md-4", style = "margin-bottom: 10px;",
+            tags$strong("Elegibilidade: "), opp$elegibilidade[[1]] %||% "-"
+          ),
+          tags$div(
+            class = "col-md-4", style = "margin-bottom: 10px;",
+            tags$strong("Tipo de Oportunidade: "), opp$tipo_oportunidade[[1]] %||% "-"
+          ),
+          tags$div(
+            class = "col-md-4", style = "margin-bottom: 10px;",
+            tags$strong("País de Origem: "), opp$pais_origem[[1]] %||% "-"
+          ),
+          tags$div(
+            class = "col-md-4", style = "margin-bottom: 10px;",
+            tags$strong("Valor Financiado: "), 
+            if (!is.na(opp$valor_financiado[[1]])) {
+              paste(opp$moeda[[1]] %||% "", format(opp$valor_financiado[[1]], big.mark = ".", decimal.mark = ","))
+            } else {
+              "-"
+            }
+          ),
+          tags$div(
+            class = "col-md-12", style = "margin-top: 10px; border-top: 1px solid #e2e8f0; padding-top: 10px;",
+            tags$strong("Palavras-chave: "),
+            tags$span(
+              style = "margin-left: 5px;",
+              HTML(paste0(
+                vapply(safe_split(opp$palavras_chave[[1]]), function(kw) {
+                  sprintf("<span class='status-badge badge-soft-info' style='margin-right: 5px; text-transform: none;'>%s</span>", htmltools::htmlEscape(kw))
+                }, character(1)),
+                collapse = ""
+              ))
+            )
+          )
+        ),
+        
+        # Resumo Inteligente (Objeto de Financiamento)
+        tags$div(
+          style = "margin-bottom: 25px;",
+          tags$h4(style = "color: #004691; border-bottom: 2px solid #e2e8f0; padding-bottom: 5px; font-weight: 700; font-size: 1.15rem;", "Objeto de Financiamento (Resumo da IA)"),
+          tags$div(
+            style = "font-size: 0.95rem; line-height: 1.6; color: #1e293b; white-space: pre-wrap;",
+            opp$descricao_resumida[[1]] %||% "Resumo não disponível."
+          )
+        ),
+        
+        # Links de Referência
+        tags$div(
+          style = "margin-bottom: 25px;",
+          tags$h4(style = "color: #004691; border-bottom: 2px solid #e2e8f0; padding-bottom: 5px; font-weight: 700; font-size: 1.15rem;", "Links de Referência"),
+          tags$ul(
+            style = "padding-left: 20px; font-size: 0.95rem; margin-bottom: 0;",
+            if (!is.na(opp$link_origem[[1]]) && nzchar(opp$link_origem[[1]])) tags$li(tags$strong("Link de Origem: "), tags$a(href = opp$link_origem[[1]], target = "_blank", opp$link_origem[[1]])),
+            if (!is.na(opp$link_detalhe[[1]]) && nzchar(opp$link_detalhe[[1]])) tags$li(tags$strong("Link de Detalhes: "), tags$a(href = opp$link_detalhe[[1]], target = "_blank", opp$link_detalhe[[1]])),
+            if (!is.na(opp$link_documento_pdf[[1]]) && nzchar(opp$link_documento_pdf[[1]])) tags$li(tags$strong("Documento PDF: "), tags$a(href = opp$link_documento_pdf[[1]], target = "_blank", opp$link_documento_pdf[[1]]))
+          )
+        ),
+        
+        # Texto Bruto Coletado (Auditoria)
+        tags$div(
+          style = "margin-bottom: 10px;",
+          tags$h4(
+            style = "color: #004691; border-bottom: 2px solid #e2e8f0; padding-bottom: 5px; font-weight: 700; font-size: 1.15rem; display: flex; justify-content: space-between; align-items: center;",
+            "Texto Bruto Coletado (Auditoria)",
+            tags$button(
+              id = "toggle_raw_text_btn",
+              class = "btn btn-sm btn-outline-secondary",
+              style = "padding: 2px 8px; font-size: 0.75rem;",
+              onclick = "var x = document.getElementById('modal_raw_text_div'); if(x.style.display === 'none'){x.style.display = 'block'; this.innerText = 'Ocultar';}else{x.style.display = 'none'; this.innerText = 'Mostrar';}",
+              "Mostrar"
+            )
+          ),
+          tags$div(
+            id = "modal_raw_text_div",
+            style = "display: none; max-height: 250px; overflow-y: auto; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; font-family: monospace; font-size: 0.8rem; white-space: pre-wrap; color: #475569;",
+            opp$texto_bruto[[1]] %||% "Nenhum texto bruto disponível."
+          )
+        )
+      )
+    ))
   })
 
   output$funders_plot <- renderPlotly({
@@ -1083,13 +1210,16 @@ server <- function(input, output, session) {
   output$recommended_table <- renderDT({
     df <- recommend_opportunities(conn, filtered_results(), rv$current_query, top_n = 15)
     if (nrow(df) == 0) {
-      shown <- tibble::tibble(Título = character(), Financiador = character(), Score = numeric(), Prazo = character(), Tipo = character(), Link = character())
+      shown <- tibble::tibble(Título = character(), Financiador = character(), Score = numeric(), Prazo = character(), Tipo = character(), Link = character(), Visualizar = character())
     } else {
       shown <- df |>
-        dplyr::mutate(Link = vapply(dplyr::coalesce(link_detalhe, link_origem), link_html, character(1), label = "Abrir")) |>
-        dplyr::transmute(Título = titulo, Financiador = entidade, Score = score_aderencia, Prazo = format_date_br(data_limite), Tipo = tipo_oportunidade, Link)
+        dplyr::mutate(
+          Link = vapply(dplyr::coalesce(link_detalhe, link_origem), link_html, character(1), label = "Abrir"),
+          Visualizar = vapply(id_registro, make_view_button, character(1))
+        ) |>
+        dplyr::transmute(Título = titulo, Financiador = entidade, Score = score_aderencia, Prazo = format_date_br(data_limite), Tipo = tipo_oportunidade, Link, Visualizar)
     }
-    DT::datatable(shown, escape = FALSE, options = list(pageLength = 10, scrollX = TRUE, language = list(emptyTable = "Nenhuma recomendação disponível.")))
+    DT::datatable(shown, escape = FALSE, filter = "top", options = list(pageLength = 10, scrollX = TRUE, language = list(emptyTable = "Nenhuma recomendação disponível.")))
   }, server = FALSE)
 
   output$profile_summary <- renderUI({

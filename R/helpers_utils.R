@@ -380,6 +380,13 @@ make_click_button <- function(id_value, label = "Rastrear", class = "btn btn-sm 
   )
 }
 
+make_view_button <- function(id_value, label = "🔍", class = "btn btn-sm btn-outline-info action-view-btn") {
+  sprintf(
+    "<button class='%s' data-id='%s' onclick=\"Shiny.setInputValue('row_view', {id: '%s', nonce: Math.random()}, {priority: 'event'})\">%s</button>",
+    class, id_value, id_value, label
+  )
+}
+
 link_html <- function(url, label = NULL) {
   if (is.na(url) || !nzchar(url)) return("-")
   label <- label %||% "Abrir"

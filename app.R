@@ -868,16 +868,17 @@ server <- function(input, output, session) {
     df <- filtered_results()
     if (nrow(df) == 0) {
       shown <- tibble::tibble(
-        ID = character(), Título = character(), Financiador = character(), País = character(),
+        ID = character(), Título = character(), Financiador = factor(), País = character(),
         Prazo = character(), Tipo = character(), Área = character(), Resumo = character(),
-        `Palavras-chave` = character(), Score = character(), Status = character(), Link = character(),
+        `Palavras-chave` = character(), Score = character(), Status = factor(), Link = character(),
         Visualizar = character(), Rastrear = character()
       )
     } else {
       shown <- df |>
         dplyr::mutate(
           Prazo = format_date_br(data_limite),
-          Status = vapply(status_oportunidade, badge_status_html, character(1)),
+          Status = as.factor(tools::toTitleCase(tolower(status_oportunidade))),
+          Financiador = as.factor(entidade),
           Score = vapply(score_aderencia, score_bar_html, character(1)),
           Link = vapply(dplyr::coalesce(link_detalhe, link_origem), link_html, character(1), label = "Abrir"),
           Visualizar = vapply(id_registro, make_view_button, character(1)),
@@ -886,7 +887,7 @@ server <- function(input, output, session) {
         dplyr::transmute(
           ID = id_registro,
           Título = titulo,
-          Financiador = entidade,
+          Financiador,
           País = pais_origem,
           Prazo,
           Tipo = tipo_oportunidade,
@@ -900,7 +901,40 @@ server <- function(input, output, session) {
           Rastrear
         )
     }
-    DT::datatable(shown, escape = FALSE, filter = "top", options = list(pageLength = 10, scrollX = TRUE, language = list(emptyTable = "Nenhum resultado encontrado.")))
+    DT::datatable(
+      shown, 
+      escape = FALSE, 
+      rownames = FALSE,
+      filter = "top", 
+      options = list(
+        pageLength = 10, 
+        scrollX = TRUE, 
+        language = list(emptyTable = "Nenhum resultado encontrado."),
+        columnDefs = list(
+          list(
+            targets = 10,
+            render = DT::JS("
+              function(data, type, row, meta) {
+                if (type === 'display') {
+                  var status = (data || 'Indefinido').toLowerCase();
+                  var cls = 'badge-soft-neutral';
+                  if (status === 'aberto') cls = 'badge-soft-open';
+                  else if (status === 'encerrando') cls = 'badge-soft-warning';
+                  else if (status === 'em breve') cls = 'badge-soft-info';
+                  else if (status === 'encerrado') cls = 'badge-soft-closed';
+                  return \"<span class='status-badge \" + cls + \"'>\" + data + \"</span>\";
+                }
+                return data;
+              }
+            ")
+          ),
+          list(
+            targets = c(0, 1, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13), 
+            searchable = FALSE
+          )
+        )
+      )
+    )
   }, server = FALSE)
 
   observeEvent(input$row_action, {
@@ -1210,16 +1244,30 @@ server <- function(input, output, session) {
   output$recommended_table <- renderDT({
     df <- recommend_opportunities(conn, filtered_results(), rv$current_query, top_n = 15)
     if (nrow(df) == 0) {
-      shown <- tibble::tibble(Título = character(), Financiador = character(), Score = numeric(), Prazo = character(), Tipo = character(), Link = character(), Visualizar = character())
+      shown <- tibble::tibble(Título = character(), Financiador = factor(), Score = numeric(), Prazo = character(), Tipo = character(), Link = character(), Visualizar = character())
     } else {
       shown <- df |>
         dplyr::mutate(
           Link = vapply(dplyr::coalesce(link_detalhe, link_origem), link_html, character(1), label = "Abrir"),
-          Visualizar = vapply(id_registro, make_view_button, character(1))
+          Visualizar = vapply(id_registro, make_view_button, character(1)),
+          Financiador = as.factor(entidade)
         ) |>
-        dplyr::transmute(Título = titulo, Financiador = entidade, Score = score_aderencia, Prazo = format_date_br(data_limite), Tipo = tipo_oportunidade, Link, Visualizar)
+        dplyr::transmute(Título = titulo, Financiador, Score = score_aderencia, Prazo = format_date_br(data_limite), Tipo = tipo_oportunidade, Link, Visualizar)
     }
-    DT::datatable(shown, escape = FALSE, filter = "top", options = list(pageLength = 10, scrollX = TRUE, language = list(emptyTable = "Nenhuma recomendação disponível.")))
+    DT::datatable(
+      shown, 
+      escape = FALSE, 
+      rownames = FALSE,
+      filter = "top", 
+      options = list(
+        pageLength = 10, 
+        scrollX = TRUE, 
+        language = list(emptyTable = "Nenhuma recomendação disponível."),
+        columnDefs = list(
+          list(targets = c(0, 2, 3, 4, 5, 6), searchable = FALSE)
+        )
+      )
+    )
   }, server = FALSE)
 
   output$profile_summary <- renderUI({

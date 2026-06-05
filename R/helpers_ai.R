@@ -65,7 +65,7 @@ get_ai_config <- function() {
   
   if (!nzchar(model)) {
     if (provider == "bluesminds") {
-      model <- "z-ai/glm-5.1"
+      model <- "moonshotai/kimi-k2.6"
     } else if (provider == "gemini") {
       model <- "gemini-1.5-flash"
     } else if (provider == "openai") {

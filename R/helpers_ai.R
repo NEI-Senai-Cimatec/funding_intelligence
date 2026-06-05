@@ -75,7 +75,7 @@ get_ai_config <- function() {
     } else if (provider == "groq") {
       model <- "llama-3.3-70b-versatile"
     } else if (provider == "openrouter") {
-      model <- "google/gemini-2.5-flash"
+      model <- "deepseek/deepseek-v4-flash"
     } else if (provider == "deepseek") {
       model <- "deepseek-chat"
     }

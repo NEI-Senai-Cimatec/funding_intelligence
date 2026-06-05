@@ -64,13 +64,12 @@ normalize_ws <- function(x) {
 null_if_empty <- function(v) {
   if (is.function(v)) return(NA_character_)
   if (is.null(v)) return(NA_character_)
-  if (length(v) == 0) return(NA_character_)
+  if (length(v) == 0) return(v)
 
   out <- tryCatch(as.character(v), error = function(e) rep(NA_character_, length(v)))
-  if (length(out) == 0) return(NA_character_)
+  if (length(out) == 0) return(out)
   out <- normalize_ws(out)
   out[is.na(out) | !nzchar(out)] <- NA_character_
-  if (length(out) == 1) return(out[[1]])
   out
 }
 

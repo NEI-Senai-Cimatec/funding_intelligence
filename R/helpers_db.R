@@ -30,8 +30,9 @@ source_catalog <- function() {
     "undp", "Programa das Nações Unidas para o Desenvolvimento", "PNUD", "Brasil", "organismo multilateral", "ONU", "https://www.undp.org/pt/brazil", "https://www.undp.org/pt/brazil/licitacoes", "html", "pt", "diária", "Licitações e oportunidades do PNUD Brasil.",
     "embrapii", "Empresa Brasileira de Pesquisa e Inovação Industrial", "EMBRAPII", "Brasil", "organização social", "contrato de gestão federal", "https://embrapii.org.br/", "https://embrapii.org.br/chamadas-publicas/", "html", "pt", "diária", "Chamadas públicas.",
     "ics", "Instituto Clima e Sociedade", "iCS", "Brasil", "fundação privada", "filantropia", "https://climaesociedade.org/", "https://climaesociedade.org/editais/", "html", "pt", "diária", "Editais e doações.",
-    "min_saude", "Ministério da Saúde", "MS", "Brasil", "ministério", "governo federal", "https://www.gov.br/saude/pt-br", "https://www.gov.br/saude/pt-br/acesso-a-informacao/acoes-e-programas/editais", "html", "pt", "diária", "Fonte complementar nacional.",
+    "min_saude", "Ministério da Saúde", "MS", "Brasil", "ministério", "governo federal", "https://www.gov.br/saude/pt-br", "https://www.gov.br/saude/pt-br/acesso-a-informacao/acoes-e-programas", "html", "pt", "diária", "Fonte complementar nacional.",
     "fapesc", "Fundação de Amparo à Pesquisa e Inovação de Santa Catarina", "FAPESC", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://fapesc.sc.gov.br/", "https://fapesc.sc.gov.br/chamadas-abertas/", "html", "pt", "diária", "Editais abertos FAPESC.",
+    "fapesb", "Fundação de Amparo à Pesquisa do Estado da Bahia", "FAPESB", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://www.fapesb.ba.gov.br/", "https://www.fapesb.ba.gov.br/editais", "html", "pt", "diária", "Editais e chamadas da FAPESB.",
     "eureka", "Eureka Network", "EUREKA", "União Europeia", "programa multilateral", "associação internacional", "https://www.eurekanetwork.org/", "https://www.eurekanetwork.org/open-calls/", "html", "en", "diária", "Chamadas abertas para cooperação tecnológica internacional."
   )
 }
@@ -313,7 +314,7 @@ init_database <- function(db_path) {
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
   create_tables(conn)
   seed_sources(conn)
-  try(DBI::dbExecute(conn, "DELETE FROM fontes_financiamento WHERE id_fonte IN (?, ?)", params = list("facepe", "fapesb")), silent = TRUE)
+  try(DBI::dbExecute(conn, "DELETE FROM fontes_financiamento WHERE id_fonte IN (?)", params = list("facepe")), silent = TRUE)
   seed_profile(conn)
   seed_saved_searches(conn)
   seed_search_history(conn)
@@ -338,7 +339,7 @@ read_app_data <- function(conn) {
         valor_financiado = suppressWarnings(as.numeric(valor_financiado))
       ),
     sources = tibble::as_tibble(read_table(conn, "fontes_financiamento")) |>
-      dplyr::filter(!(.data$id_fonte %in% c("facepe", "fapesb"))),
+      dplyr::filter(!(.data$id_fonte %in% c("facepe"))),
     saved_searches = tibble::as_tibble(read_table(conn, "buscas_salvas")),
     tracked = tibble::as_tibble(read_table(conn, "editais_rastreados")),
     history = tibble::as_tibble(read_table(conn, "historico_buscas")),

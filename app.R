@@ -533,7 +533,7 @@ server <- function(input, output, session) {
     if (isTRUE(save_history) && !is.null(conn)) {
       start_time <- Sys.time()
       region <- input$region_filter
-      available_sources <- rv$sources |> dplyr::filter(!(.data$id_fonte %in% c("facepe", "fapesb")))
+      available_sources <- rv$sources |> dplyr::filter(!(.data$id_fonte %in% c("facepe")))
       if (region == "Brasileiras") {
         available_sources <- available_sources |> dplyr::filter(pais == "Brasil")
       } else if (region == "Europeias") {
@@ -661,7 +661,7 @@ server <- function(input, output, session) {
       return()
     }
     region <- input$region_filter
-    available_sources <- rv$sources |> dplyr::filter(!(.data$id_fonte %in% c("facepe", "fapesb")))
+    available_sources <- rv$sources |> dplyr::filter(!(.data$id_fonte %in% c("facepe")))
     
     if (region == "Brasileiras") {
       available_sources <- available_sources |> dplyr::filter(pais == "Brasil")
@@ -993,7 +993,7 @@ server <- function(input, output, session) {
     } else {
       df <- rv$tracked |>
         dplyr::left_join(rv$opportunities, by = c("id_oportunidade" = "id_registro")) |>
-        dplyr::transmute(id = id_oportunidade, Título = titulo, Financiador = entidade, Prazo = format_date_br(data_limite), Status = status_usuario, Observações = observacoes)
+        dplyr::transmute(id = id_oportunidade, Título = titulo, Financiador = entidade, Prazo = format_date_br(data_limite), Status = status_usuario, Observações = observacoes.x)
     }
     DT::datatable(df, options = list(pageLength = 8, scrollX = TRUE, language = list(emptyTable = "Nenhum edital rastreado.")), selection = "single")
   }, server = FALSE)

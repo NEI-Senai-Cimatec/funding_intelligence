@@ -39,7 +39,7 @@ detect_next_page <- function(html, current_url) {
 
 source_dispatch <- function(source_row, max_pages = 5, max_records = 50, use_ai = FALSE, log_path = NULL) {
   sid <- source_row$id_fonte[[1]]
-  if (sid %in% c("facepe", "fapesb")) {
+  if (sid %in% c("facepe")) {
     return(list(records = tibble::tibble(), pages_visited = 0L, last_url = source_row$url_oportunidades[[1]]))
   }
   if (identical(sid, "fapes_es")) {
@@ -85,7 +85,7 @@ def run_playwright_stealth(url):
                 Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
                 window.chrome = { runtime: {} };
             \"\"\")
-            page.goto(url, wait_until='networkidle', timeout=45000)
+            page.goto(url, wait_until='networkidle', timeout=15000)
             content = page.content()
             browser.close()
             return {'content': content, 'ok': True}
@@ -94,8 +94,14 @@ def run_playwright_stealth(url):
 ")
     playwright_run <- reticulate::py$run_playwright_stealth(url)
     if (isTRUE(playwright_run$ok)) {
-      html <- xml2::read_html(playwright_run$content)
-      list(url = url, html = html, text = playwright_run$content, ok = TRUE, method = "playwright")
+      has_block <- grepl("attention required! \\| cloudflare|cf-challenge|ray id:|checking your browser before accessing|security challenge|access denied", tolower(playwright_run$content))
+      if (has_block) {
+        if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Bloqueio de CDN/CAPTCHA detectado via Playwright para %s.", url))
+        list(ok = FALSE)
+      } else {
+        html <- xml2::read_html(playwright_run$content)
+        list(url = url, html = html, text = playwright_run$content, ok = TRUE, method = "playwright")
+      }
     } else {
       if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Playwright falhou para %s: %s", url, playwright_run$content))
       list(ok = FALSE)
@@ -110,27 +116,39 @@ def run_playwright_stealth(url):
 safe_request_page <- function(url, log_path = NULL, use_browser_fallback = TRUE) {
   # 1. Tentar httr2 (metodo rapido)
   req <- httr2::request(url) |>
-    httr2::req_user_agent("FundingIntelligenceHub/1.1 (+local-shiny-app)") |>
+    httr2::req_user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36") |>
     httr2::req_headers(
       `Accept-Language` = "pt-BR,pt;q=0.9,en;q=0.8",
       `Accept` = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
     ) |>
-    httr2::req_timeout(45) |>
+    httr2::req_timeout(15) |>
     httr2::req_retry(max_tries = 2)
 
-  resp <- try(httr2::req_perform(req), silent = TRUE)
-  if (!inherits(resp, "try-error")) {
+  resp <- tryCatch({
+    httr2::req_perform(req)
+  }, error = function(e) {
+    if (!is.null(e$response)) return(e$response)
+    e
+  })
+
+  if (!inherits(resp, "error")) {
+    status <- httr2::resp_status(resp)
+    if (status == 404) {
+      if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("URL nao encontrada (404) para %s. Ignorando fallbacks.", url))
+      return(list(url = url, html = NULL, text = NA_character_, ok = FALSE, method = "httr2_404"))
+    }
+
     txt <- try(httr2::resp_body_string(resp), silent = TRUE)
     txt_ok <- !inherits(txt, "try-error") && length(txt) == 1 && !is.na(txt) && nzchar(txt)
     if (txt_ok) {
       html <- try(xml2::read_html(txt), silent = TRUE)
-      if (!inherits(html, "try-error")) {
+      if (!inherits(html, "try-error") && status >= 200 && status < 300) {
         # Verifica se o conteudo contem sinal obvio de captcha/bloqueio por CDN antes de aceitar
         has_block_signal <- grepl("attention required! \\| cloudflare|cf-challenge|ray id:|checking your browser before accessing|security challenge|access denied", tolower(txt))
         if (!has_block_signal) {
           return(list(url = url, html = html, text = txt, ok = TRUE, method = "httr2"))
         } else {
-          if (!is.null(log_path)) log_write(log_path, "INFO", sprintf("Bloqueio de CDN/CAPTCHA detectado via httr2 para %s. Acionando fallbacks...", url))
+          if (!is.null(log_path)) log_write(log_path, "INFO", sprintf("Bloqueio de CDN/CAPTCHA (status %d) detectado via httr2 para %s. Acionando fallbacks...", status, url))
         }
       }
     }
@@ -171,9 +189,14 @@ safe_request_page <- function(url, log_path = NULL, use_browser_fallback = TRUE)
       html_txt <- try(b$Runtime$evaluate("document.documentElement.outerHTML")$result$value, silent = TRUE)
       txt_ok <- !inherits(html_txt, "try-error") && length(html_txt) == 1 && !is.null(html_txt) && !is.na(html_txt) && nzchar(html_txt)
       if (txt_ok) {
-        html <- try(xml2::read_html(html_txt), silent = TRUE)
-        if (!inherits(html, "try-error")) {
-          return(list(url = url, html = html, text = html_txt, ok = TRUE, method = "chromote_stealth"))
+        has_block <- grepl("attention required! \\| cloudflare|cf-challenge|ray id:|checking your browser before accessing|security challenge|access denied", tolower(html_txt))
+        if (has_block) {
+          if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Bloqueio de CDN/CAPTCHA detectado via Chromote para %s.", url))
+        } else {
+          html <- try(xml2::read_html(html_txt), silent = TRUE)
+          if (!inherits(html, "try-error")) {
+            return(list(url = url, html = html, text = html_txt, ok = TRUE, method = "chromote_stealth"))
+          }
         }
       }
     }
@@ -315,7 +338,14 @@ extract_listing_candidates <- function(html, base_url, source_row) {
       )
   }
 
-  out <- dplyr::bind_rows(block_df, anchor_df) |>
+  schema <- tibble::tibble(
+    candidate_title = character(),
+    candidate_summary = character(),
+    detail_url = character(),
+    pdf_url = character(),
+    source_text = character()
+  )
+  out <- dplyr::bind_rows(schema, block_df, anchor_df) |>
     dplyr::mutate(
       candidate_title = null_if_empty(candidate_title),
       candidate_summary = null_if_empty(candidate_summary),
@@ -400,8 +430,8 @@ extract_text_from_pdf <- function(pdf_url, log_path = NULL) {
   tf <- tempfile(fileext = ".pdf")
   ok <- try({
     req <- httr2::request(pdf_url) |>
-      httr2::req_user_agent("FundingIntelligenceHub/1.1 (+local-shiny-app)") |>
-      httr2::req_timeout(60)
+      httr2::req_user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36") |>
+      httr2::req_timeout(20)
     httr2::req_perform(req, path = tf)
   }, silent = TRUE)
   if (inherits(ok, "try-error") || !file.exists(tf)) {
@@ -797,7 +827,7 @@ collect_embrapii <- collect_generic_official
 collect_ics <- collect_generic_official
 collect_min_saude <- collect_generic_official
 collect_facepe <- function(source_row, max_pages, max_records, use_ai, log_path) list(records = ensure_record_schema(tibble::tibble()), pages_visited = 0L, last_url = source_row$url_oportunidades[[1]])
-collect_fapesb <- function(source_row, max_pages, max_records, use_ai, log_path) list(records = ensure_record_schema(tibble::tibble()), pages_visited = 0L, last_url = source_row$url_oportunidades[[1]])
+collect_fapesb <- collect_generic_official
 
 collect_fapesc <- function(source_row, max_pages, max_records, use_ai, log_path) {
   pg <- safe_request_page(source_row$url_oportunidades[[1]], log_path = log_path)
@@ -1012,10 +1042,10 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
   }, silent = TRUE)
 
   sources <- tibble::as_tibble(DBI::dbReadTable(conn, "fontes_financiamento")) |>
-    dplyr::filter(!(.data$id_fonte %in% c("facepe", "fapesb")))
+    dplyr::filter(!(.data$id_fonte %in% c("facepe")))
 
   if (!is.null(source_ids) && length(source_ids) > 0) {
-    source_ids <- setdiff(source_ids, c("facepe", "fapesb"))
+    source_ids <- setdiff(source_ids, c("facepe"))
     sources <- dplyr::filter(sources, .data$id_fonte %in% source_ids)
   }
 

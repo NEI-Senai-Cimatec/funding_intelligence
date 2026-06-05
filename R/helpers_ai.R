@@ -101,7 +101,11 @@ validate_ai_config <- function() {
   is_ok
 }
 
-trim_for_ai <- function(text, max_chars = 12000) {
+trim_for_ai <- function(text, max_chars = NULL) {
+  if (is.null(max_chars)) {
+    max_chars <- as.numeric(Sys.getenv("AI_MAX_CHARS", "6000"))
+    if (is.na(max_chars) || max_chars <= 0) max_chars <- 6000
+  }
   text <- normalize_ws(text %||% "")
   if (nchar(text) <= max_chars) return(text)
   substr(text, 1, max_chars)
@@ -116,7 +120,9 @@ ai_request <- function(prompt, timeout_sec = 45, retries = 2, log_path = NULL) {
 
   # Atraso inteligente para evitar Rate Limits de Tokens por Minuto (TPM) na Groq (plano gratuito)
   if (cfg$provider == "groq") {
-    Sys.sleep(12)
+    delay <- as.numeric(Sys.getenv("GROQ_RATE_DELAY", "3"))
+    if (is.na(delay) || delay < 0) delay <- 3
+    if (delay > 0) Sys.sleep(delay)
   }
 
   req <- NULL
@@ -258,8 +264,11 @@ ai_extract_fields <- function(text, current = list(), log_path = NULL) {
   extracted <- skill_extract_metadata(text, current, log_path)
   if (length(extracted) == 0) return(list())
 
-  # Passo 2: Skill de Auditoria e Auto-Correção
-  verified <- skill_verify_metadata(extracted, text, log_path)
+  # Passo 2: Skill de Auditoria e Auto-Correção (opcional via AI_VERIFY_METADATA)
+  verify_enabled <- identical(tolower(Sys.getenv("AI_VERIFY_METADATA", "false")), "true")
+  if (verify_enabled) {
+    extracted <- skill_verify_metadata(extracted, text, log_path)
+  }
 
-  verified
+  extracted
 }

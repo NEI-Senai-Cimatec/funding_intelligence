@@ -9,7 +9,9 @@ get_ai_config <- function() {
   
   # Autodetectar provedor se não estiver configurado explicitamente
   if (!nzchar(provider)) {
-    if (nzchar(Sys.getenv("GEMINI_API_KEY"))) {
+    if (nzchar(Sys.getenv("BLUESMINDS_API_KEY"))) {
+      provider <- "bluesminds"
+    } else if (nzchar(Sys.getenv("GEMINI_API_KEY"))) {
       provider <- "gemini"
     } else if (nzchar(Sys.getenv("OPENAI_API_KEY"))) {
       provider <- "openai"
@@ -21,12 +23,16 @@ get_ai_config <- function() {
       provider <- "openrouter"
     } else if (nzchar(Sys.getenv("DEEPSEEK_API_KEY"))) {
       provider <- "deepseek"
+    } else {
+      provider <- "bluesminds"
     }
   }
   
   # Fallback para as chaves específicas do provedor se AI_API_KEY não estiver setada
   if (!nzchar(api_key)) {
-    if (provider == "gemini") {
+    if (provider == "bluesminds") {
+      api_key <- Sys.getenv("BLUESMINDS_API_KEY")
+    } else if (provider == "gemini") {
       api_key <- Sys.getenv("GEMINI_API_KEY")
     } else if (provider == "openai") {
       api_key <- Sys.getenv("OPENAI_API_KEY")
@@ -41,9 +47,10 @@ get_ai_config <- function() {
     }
   }
   
-  # URLs padrão para provedores conhecidos
   if (!nzchar(api_url)) {
-    if (provider == "openai") {
+    if (provider == "bluesminds") {
+      api_url <- "https://api.bluesminds.com/v1/chat/completions"
+    } else if (provider == "openai") {
       api_url <- "https://api.openai.com/v1/chat/completions"
     } else if (provider == "anthropic") {
       api_url <- "https://api.anthropic.com/v1/messages"
@@ -56,9 +63,10 @@ get_ai_config <- function() {
     }
   }
   
-  # Modelos padrão para provedores conhecidos
   if (!nzchar(model)) {
-    if (provider == "gemini") {
+    if (provider == "bluesminds") {
+      model <- "z-ai/glm-5.1"
+    } else if (provider == "gemini") {
       model <- "gemini-1.5-flash"
     } else if (provider == "openai") {
       model <- "gpt-4o-mini"
@@ -137,7 +145,7 @@ ai_request <- function(prompt, timeout_sec = 45, retries = 2, log_path = NULL) {
         contents = list(list(parts = list(list(text = prompt)))),
         generationConfig = list(temperature = 0.1, responseMimeType = "application/json")
       ), auto_unbox = TRUE)
-  } else if (cfg$provider %in% c("openai", "groq", "openrouter", "deepseek")) {
+  } else if (cfg$provider %in% c("openai", "groq", "openrouter", "deepseek", "bluesminds")) {
     url <- cfg$api_url
     req <- httr2::request(url) |>
       httr2::req_method("POST") |>
@@ -193,7 +201,7 @@ ai_request <- function(prompt, timeout_sec = 45, retries = 2, log_path = NULL) {
         extracted_text <- NULL
         if (cfg$provider == "gemini") {
           extracted_text <- tryCatch(parsed_res$candidates[[1]]$content$parts[[1]]$text %||% txt, error = function(e) txt)
-        } else if (cfg$provider %in% c("openai", "groq", "openrouter", "deepseek")) {
+        } else if (cfg$provider %in% c("openai", "groq", "openrouter", "deepseek", "bluesminds")) {
           extracted_text <- tryCatch(parsed_res$choices[[1]]$message$content %||% txt, error = function(e) txt)
         } else if (cfg$provider == "anthropic") {
           extracted_text <- tryCatch(parsed_res$content[[1]]$text %||% txt, error = function(e) txt)

@@ -455,7 +455,7 @@ server <- function(input, output, session) {
     key_ok <- validate_ai_config()
     if (!key_ok) {
       showNotification(
-        "Aviso de IA Desativada: Nenhuma chave de API de IA (Gemini, OpenAI, Anthropic, Groq, OpenRouter, DeepSeek) foi configurada. O enriquecimento e auditoria de editais com IA estarão desativados. Consulte o README.md para obter instruções de configuração.",
+        "Aviso de IA Desativada: Nenhuma chave de API de IA (Gemini, OpenAI, Anthropic, Groq, OpenRouter, DeepSeek, Bluesminds) foi configurada. O enriquecimento e auditoria de editais com IA estarão desativados. Consulte o README.md para obter instruções de configuração.",
         type = "warning",
         duration = NULL,
         id = "ai_missing_warning"

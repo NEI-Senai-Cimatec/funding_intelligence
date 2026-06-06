@@ -683,7 +683,7 @@ server <- function(input, output, session) {
       bslib::layout_columns(
         col_widths = c(4, 4, 4),
         numericInput("collect_max_pages", "Máx. páginas por fonte", value = 5, min = 1, max = 50),
-        numericInput("collect_max_records", "Máx. registros por fonte", value = 50, min = 1, max = 500),
+        numericInput("collect_max_records", "Máx. registros por fonte", value = 15, min = 1, max = 500),
         checkboxInput("collect_use_ai", "Usar IA para enriquecimento", value = ai_available())
       ),
       checkboxInput("collect_export", "Salvar CSV, RDS e XLSX ao final", value = TRUE),
@@ -738,6 +738,7 @@ server <- function(input, output, session) {
       status_file_bg  = normalizePath(status_file, winslash = "/", mustWork = FALSE),
       log_file_bg     = normalizePath(log_file, winslash = "/", mustWork = FALSE),
       ai_env_vars     = list(
+        BLUESMINDS_API_KEY= Sys.getenv("BLUESMINDS_API_KEY"),
         GEMINI_API_KEY    = Sys.getenv("GEMINI_API_KEY"),
         OPENAI_API_KEY    = Sys.getenv("OPENAI_API_KEY"),
         ANTHROPIC_API_KEY = Sys.getenv("ANTHROPIC_API_KEY"),
@@ -808,6 +809,8 @@ server <- function(input, output, session) {
         )
       },
       args = bg_args,
+      stdout = file.path(app_dir, "logs", "collection_stdout.log"),
+      stderr = file.path(app_dir, "logs", "collection_stderr.log"),
       supervise = TRUE
     )
   })
@@ -869,7 +872,7 @@ server <- function(input, output, session) {
     if (nrow(df) == 0) {
       shown <- tibble::tibble(
         ID = character(), Título = character(), Financiador = factor(), País = character(),
-        Prazo = character(), Tipo = character(), Área = character(), Resumo = character(),
+        Prazo = character(), Tipo = factor(), Área = character(), Resumo = character(),
         `Palavras-chave` = character(), Score = character(), Status = factor(), Link = character(),
         Visualizar = character(), Rastrear = character()
       )
@@ -879,6 +882,7 @@ server <- function(input, output, session) {
           Prazo = format_date_br(data_limite),
           Status = as.factor(tools::toTitleCase(tolower(status_oportunidade))),
           Financiador = as.factor(entidade),
+          Tipo = as.factor(tools::toTitleCase(tolower(dplyr::coalesce(tipo_oportunidade, "não especificado")))),
           Score = vapply(score_aderencia, score_bar_html, character(1)),
           Link = vapply(dplyr::coalesce(link_detalhe, link_origem), link_html, character(1), label = "Abrir"),
           Visualizar = vapply(id_registro, make_view_button, character(1)),
@@ -890,7 +894,7 @@ server <- function(input, output, session) {
           Financiador,
           País = pais_origem,
           Prazo,
-          Tipo = tipo_oportunidade,
+          Tipo,
           Área = area_tematica,
           Resumo = stringr::str_trunc(descricao_resumida, 180),
           `Palavras-chave` = palavras_chave,
@@ -929,7 +933,7 @@ server <- function(input, output, session) {
             ")
           ),
           list(
-            targets = c(0, 1, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13), 
+            targets = c(0, 1, 3, 4, 6, 7, 8, 9, 11, 12, 13), 
             searchable = FALSE
           )
         )
@@ -1244,15 +1248,16 @@ server <- function(input, output, session) {
   output$recommended_table <- renderDT({
     df <- recommend_opportunities(conn, filtered_results(), rv$current_query, top_n = 15)
     if (nrow(df) == 0) {
-      shown <- tibble::tibble(Título = character(), Financiador = factor(), Score = numeric(), Prazo = character(), Tipo = character(), Link = character(), Visualizar = character())
+      shown <- tibble::tibble(Título = character(), Financiador = factor(), Score = numeric(), Prazo = character(), Tipo = factor(), Link = character(), Visualizar = character())
     } else {
       shown <- df |>
         dplyr::mutate(
           Link = vapply(dplyr::coalesce(link_detalhe, link_origem), link_html, character(1), label = "Abrir"),
           Visualizar = vapply(id_registro, make_view_button, character(1)),
-          Financiador = as.factor(entidade)
+          Financiador = as.factor(entidade),
+          Tipo = as.factor(tools::toTitleCase(tolower(dplyr::coalesce(tipo_oportunidade, "não especificado"))))
         ) |>
-        dplyr::transmute(Título = titulo, Financiador, Score = score_aderencia, Prazo = format_date_br(data_limite), Tipo = tipo_oportunidade, Link, Visualizar)
+        dplyr::transmute(Título = titulo, Financiador, Score = score_aderencia, Prazo = format_date_br(data_limite), Tipo, Link, Visualizar)
     }
     DT::datatable(
       shown, 
@@ -1264,7 +1269,7 @@ server <- function(input, output, session) {
         scrollX = TRUE, 
         language = list(emptyTable = "Nenhuma recomendação disponível."),
         columnDefs = list(
-          list(targets = c(0, 2, 3, 4, 5, 6), searchable = FALSE)
+          list(targets = c(0, 2, 3, 5, 6), searchable = FALSE)
         )
       )
     )

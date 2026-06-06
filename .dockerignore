@@ -1,0 +1,13 @@
+.git
+.gitignore
+.Rhistory
+.RData
+.Rproj.user
+funding_intelligence.sqlite
+logs/*
+R_libs/*
+scratch/*
+data_exports/*
+Dockerfile
+docker-compose.yml
+.env

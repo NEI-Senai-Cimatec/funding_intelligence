@@ -37,24 +37,31 @@ detect_next_page <- function(html, current_url) {
   NA_character_
 }
 
-source_dispatch <- function(source_row, max_pages = 5, max_records = 50, use_ai = FALSE, log_path = NULL) {
+source_dispatch <- function(source_row, max_pages = 5, max_records = 15, use_ai = FALSE, log_path = NULL) {
   sid <- source_row$id_fonte[[1]]
   if (sid %in% c("facepe")) {
     return(list(records = tibble::tibble(), pages_visited = 0L, last_url = source_row$url_oportunidades[[1]]))
   }
-  if (identical(sid, "fapes_es")) {
-    return(collect_fapes_es(source_row, max_pages, max_records, use_ai, log_path))
+  
+  result <- if (identical(sid, "fapes_es")) {
+    collect_fapes_es(source_row, max_pages, max_records, FALSE, log_path)
+  } else if (identical(sid, "confap")) {
+    collect_confap(source_row, max_pages, max_records, FALSE, log_path)
+  } else if (identical(sid, "fapesc")) {
+    collect_fapesc(source_row, max_pages, max_records, FALSE, log_path)
+  } else if (identical(sid, "eureka")) {
+    collect_eureka(source_row, max_pages, max_records, FALSE, log_path)
+  } else if (identical(sid, "sigitec")) {
+    collect_sigitec(source_row, max_pages, max_records, FALSE, log_path)
+  } else {
+    collect_generic_official(source_row, max_pages, max_records, FALSE, log_path)
   }
-  if (identical(sid, "confap")) {
-    return(collect_confap(source_row, max_pages, max_records, use_ai, log_path))
+
+  if (isTRUE(use_ai) && !is.null(result$records) && nrow(result$records) > 0) {
+    result$records <- enrich_records_parallel(result$records, log_path = log_path)
   }
-  if (identical(sid, "fapesc")) {
-    return(collect_fapesc(source_row, max_pages, max_records, use_ai, log_path))
-  }
-  if (identical(sid, "eureka")) {
-    return(collect_eureka(source_row, max_pages, max_records, use_ai, log_path))
-  }
-  collect_generic_official(source_row, max_pages, max_records, use_ai, log_path)
+
+  result
 }
 
 safe_request_page_playwright <- function(url, log_path = NULL) {
@@ -531,31 +538,272 @@ enrich_record_with_ai <- function(record, log_path = NULL) {
   )
   if (length(ai) == 0) return(record)
 
-  inferred <- character()
-  fill_field <- function(field, value) {
+  fill_field <- function(field, value, overwrite = FALSE) {
     if (is.null(value) || length(value) == 0) return(invisible(NULL))
     value <- as.character(value[[1]])
     if (is.na(value) || !nzchar(trimws(value))) return(invisible(NULL))
+    if (!field %in% names(record)) {
+      record[[field]] <<- NA_character_
+    }
     current <- record[[field]][[1]]
-    if (is.na(current) || !nzchar(trimws(as.character(current)))) {
+    if (overwrite || is.null(current) || length(current) == 0 || is.na(current) || !nzchar(trimws(as.character(current)))) {
       record[[field]] <<- value
       inferred <<- unique(c(inferred, field))
     }
     invisible(NULL)
   }
 
-  fill_field("titulo", ai$titulo_limpo)
-  fill_field("descricao_resumida", ai$resumo)
+  fill_field("titulo", ai$titulo_limpo, overwrite = TRUE)
+  fill_field("descricao_resumida", ai$resumo, overwrite = TRUE)
   fill_field("elegibilidade", ai$elegibilidade)
   fill_field("area_tematica", ai$area_tematica)
-  fill_field("tipo_oportunidade", ai$tipo_oportunidade)
-  fill_field("status_oportunidade", ai$status_oportunidade)
-  fill_field("idioma", ai$idioma)
-  fill_field("data_limite", ai$data_limite)
-  fill_field("data_publicacao", ai$data_publicacao)
+  fill_field("tipo_oportunidade", ai$tipo_oportunidade, overwrite = TRUE)
+  fill_field("status_oportunidade", ai$status_oportunidade, overwrite = TRUE)
+  fill_field("idioma", ai$idioma, overwrite = TRUE)
+  fill_field("data_limite", ai$data_limite, overwrite = TRUE)
+  fill_field("data_publicacao", ai$data_publicacao, overwrite = TRUE)
   fill_field("observacoes", ai$observacoes)
+
+  # Sobrescreve valor_financiado e moeda com os valores extraidos pela IA
+  ai_val <- if (!is.null(ai$valor_financiado) && !is.na(ai$valor_financiado)) as.numeric(ai$valor_financiado[[1]]) else NA_real_
+  ai_curr <- if (!is.null(ai$moeda) && !is.na(ai$moeda) && nzchar(trimws(ai$moeda[[1]]))) as.character(ai$moeda[[1]]) else NA_character_
+  
+  if (!identical(record$valor_financiado[[1]], ai_val)) {
+    record$valor_financiado[[1]] <- ai_val
+    inferred <- c(inferred, "valor_financiado")
+  }
+  if (!identical(record$moeda[[1]], ai_curr)) {
+    record$moeda[[1]] <- ai_curr
+    inferred <- c(inferred, "moeda")
+  }
+
   record$campos_inferidos_ia <- paste(unique(inferred), collapse = "; ")
   record
+}
+
+enrich_records_parallel <- function(df, log_path = NULL) {
+  if (is.null(df) || nrow(df) == 0) return(df)
+
+  # Garante id_registro e hash_deduplicacao
+  df$hash_deduplicacao <- vapply(seq_len(nrow(df)), function(i) {
+    h <- df$hash_deduplicacao[[i]]
+    if (is.na(h) || !nzchar(h)) {
+      digest::digest(paste0(df$titulo[[i]], df$link_origem[[i]]), algo = "xxhash64")
+    } else {
+      h
+    }
+  }, character(1))
+
+  df$id_registro <- vapply(seq_len(nrow(df)), function(i) {
+    id <- df$id_registro[[i]]
+    if (is.na(id) || !nzchar(id)) {
+      paste0(df$fonte_oficial[[i]], "_", substr(df$hash_deduplicacao[[i]], 1, 16))
+    } else {
+      id
+    }
+  }, character(1))
+
+  # 1. Cache Lógico (Deduplicação)
+  conn <- if (exists("conn", envir = .GlobalEnv)) .GlobalEnv$conn else NULL
+  if (is.null(conn)) {
+    db_path <- file.path(getwd(), "funding_intelligence.sqlite")
+    if (file.exists(db_path)) {
+      conn <- tryCatch(DBI::dbConnect(RSQLite::SQLite(), db_path), error = function(e) NULL)
+      on.exit({ if (!is.null(conn) && DBI::dbIsValid(conn)) DBI::dbDisconnect(conn) })
+    }
+  }
+
+  to_enrich_indices <- integer()
+
+  for (i in seq_len(nrow(df))) {
+    need_ia <- TRUE
+    if (!is.null(conn) && DBI::dbIsValid(conn)) {
+      id <- df$id_registro[[i]]
+      hash_val <- df$hash_deduplicacao[[i]]
+
+      existing <- tryCatch({
+        DBI::dbGetQuery(
+          conn,
+          "SELECT id_registro, descricao_resumida, campos_inferidos_ia FROM oportunidades WHERE id_registro = ? OR hash_deduplicacao = ?",
+          params = list(id, hash_val)
+        )
+      }, error = function(e) NULL)
+
+      if (!is.null(existing) && nrow(existing) > 0) {
+        resumo <- existing$descricao_resumida[[1]]
+        if (!is.na(resumo) && nzchar(trimws(resumo)) && !identical(resumo, "Resumo não disponível.")) {
+          log_progress(sprintf("Edital '%s' já enriquecido no banco. Recuperando cache...", df$titulo[[i]]), "IA")
+
+          # Carrega o registro completo do banco
+          existing_full <- tryCatch({
+            DBI::dbGetQuery(conn, "SELECT * FROM oportunidades WHERE id_registro = ?", params = list(existing$id_registro[[1]]))
+          }, error = function(e) NULL)
+
+          if (!is.null(existing_full) && nrow(existing_full) > 0) {
+            # Atualiza o df com o registro existente no banco
+            for (col in names(existing_full)) {
+              if (col %in% names(df)) {
+                val <- existing_full[[col]][[1]]
+                if (!is.null(val) && !is.na(val)) {
+                  if (is.numeric(df[[col]])) {
+                    df[[col]][[i]] <- as.numeric(val)
+                  } else if (is.integer(df[[col]])) {
+                    df[[col]][[i]] <- as.integer(val)
+                  } else {
+                    df[[col]][[i]] <- as.character(val)
+                  }
+                }
+              }
+            }
+            need_ia <- FALSE
+          }
+        }
+      }
+    }
+
+    if (need_ia) {
+      to_enrich_indices <- c(to_enrich_indices, i)
+    }
+  }
+
+  if (length(to_enrich_indices) == 0) {
+    return(df)
+  }
+
+  log_progress(sprintf("Iniciando enriquecimento paralelo de %d edital(is)...", length(to_enrich_indices)), "IA")
+
+  # Prepara prompts
+  prompts <- character(length(to_enrich_indices))
+  for (idx in seq_along(to_enrich_indices)) {
+    i <- to_enrich_indices[[idx]]
+    text <- collapse_non_empty(df$titulo[[i]], df$descricao_resumida[[i]], df$descricao_completa[[i]], df$texto_bruto[[i]], sep = "\n")
+    current_info <- list(
+      titulo_limpo = df$titulo[[i]],
+      tipo_oportunidade = df$tipo_oportunidade[[i]],
+      status_oportunidade = df$status_oportunidade[[i]],
+      idioma = df$idioma[[i]]
+    )
+
+    prompts[[idx]] <- paste(
+      "Você é um agente especialista em extração de dados de editais de fomento.",
+      "Analise o texto bruto do edital fornecido e extraia as seguintes informações estruturadas.",
+      "Retorne OBRIGATORIAMENTE um JSON válido com os seguintes campos:",
+      "- titulo_limpo: Título do edital sem caracteres especiais ou abreviações confusas.",
+      "- resumo: Um resumo conciso do edital (máximo 3 parágrafos). ATENÇÃO: Foque no OBJETO DE FINANCIAMENTO (o que o edital está financiando e seus objetivos principais). Evite repetir menus do site, cabeçalhos, introduções genéricas ou links de navegação.",
+      "- elegibilidade: Quem pode se candidatar (ex: ICTs, startups, pesquisadores individuais).",
+      "- area_tematica: Principais áreas de conhecimento englobadas.",
+      "- tipo_oportunidade: Categoria do fomento (ex: edital, grant, fellowship, licitação).",
+      "- status_oportunidade: Status atual (aberto, encerrado, futuro).",
+      "- idioma: Idioma oficial do edital (pt, en, etc.).",
+      "- data_limite: Data máxima de submissão no formato AAAA-MM-DD (ou null se indefinida).",
+      "- data_publicacao: Data de publicação no formato AAAA-MM-DD (ou null).",
+      "- valor_financiado: O valor máximo ou global de financiamento do edital como número (ex: 150000.00, ou null se não houver valor explícito de fomento ou bolsa no texto). Ignore números que representem quantidades de itens (ex: '12 laranjas'), números de leis, portarias ou telefones.",
+      "- moeda: A moeda correspondente ao valor financiado em código de 3 letras (ex: 'BRL', 'USD', 'EUR', 'GBP' ou null se valor_financiado for null).",
+      "- palavras_chave: Exatamente 5 palavras-chave ou termos separados por vírgula que caracterizam o edital. ATENÇÃO: As palavras-chave devem refletir de fato o objeto de fomento e a tecnologia/temas do edital (ex: 'energia solar', 'inteligência artificial'). Evite termos genéricos como 'edital', 'chamada', 'pesquisa', 'fomento' ou o nome da instituição financiadora.",
+      "- observacoes: Qualquer detalhe ou restrição relevante do edital.",
+      "",
+      "Contexto primário conhecido:", jsonlite::toJSON(current_info, auto_unbox = TRUE, null = "null"),
+      "",
+      "Texto do Edital:", trim_for_ai(text)
+    )
+  }
+
+  # Executa em lotes
+  batch_size <- as.integer(Sys.getenv("AI_BATCH_SIZE", "3"))
+  if (is.na(batch_size) || batch_size <= 0) batch_size <- 3
+
+  batches <- split(seq_along(prompts), ceiling(seq_along(prompts) / batch_size))
+  raw_results <- vector("list", length(prompts))
+
+  for (b in seq_along(batches)) {
+    batch_idx <- batches[[b]]
+    log_progress(sprintf("Processando lote de IA %d/%d (editais %d a %d)...", b, length(batches), to_enrich_indices[batch_idx[1]], to_enrich_indices[batch_idx[length(batch_idx)]]), "IA")
+
+    # Atualiza arquivo de status para mostrar lote
+    status_file <- Sys.getenv("COLLECTION_STATUS_FILE")
+    if (nzchar(status_file) && file.exists(status_file)) {
+      try({
+        status_data <- jsonlite::fromJSON(status_file, simplifyVector = FALSE)
+        status_data$phase <- "IA"
+        status_data$detail <- sprintf("Processando lote de IA %d/%d", b, length(batches))
+        jsonlite::write_json(status_data, status_file, auto_unbox = TRUE)
+      }, silent = TRUE)
+    }
+
+    batch_res <- ai_request_parallel(prompts[batch_idx], log_path = log_path)
+    raw_results[batch_idx] <- batch_res
+
+    # Atraso inteligente para Groq (ou OpenRouter se necessário)
+    cfg <- get_ai_config()
+    if (cfg$provider == "groq" && b < length(batches)) {
+      delay <- as.numeric(Sys.getenv("GROQ_RATE_DELAY", "6"))
+      if (is.na(delay) || delay < 0) delay <- 6
+      if (delay > 0) Sys.sleep(delay)
+    } else if (b < length(batches)) {
+      Sys.sleep(1) # respiro leve de 1s para outros provedores
+    }
+  }
+
+  # Atualiza o dataframe com os resultados obtidos
+  for (idx in seq_along(to_enrich_indices)) {
+    i <- to_enrich_indices[[idx]]
+    raw <- raw_results[[idx]]
+    if (is.null(raw) || !nzchar(raw)) next
+
+    parsed <- tryCatch(jsonlite::fromJSON(raw, simplifyVector = TRUE), error = function(e) NULL)
+
+    if (!is.null(parsed)) {
+      ai <- as.list(parsed)
+      verify_enabled <- !identical(tolower(Sys.getenv("AI_VERIFY_METADATA", "true")), "false")
+      if (verify_enabled) {
+        text <- collapse_non_empty(df$titulo[[i]], df$descricao_resumida[[i]], df$descricao_completa[[i]], df$texto_bruto[[i]], sep = "\n")
+        ai <- skill_verify_metadata(ai, text, log_path)
+      }
+
+      inferred <- character()
+      fill_field <- function(field, value, overwrite = FALSE) {
+        if (is.null(value) || length(value) == 0) return()
+        value <- as.character(value[[1]])
+        if (is.na(value) || !nzchar(trimws(value))) return()
+        if (!field %in% names(df)) {
+          df[[field]] <<- NA_character_
+        }
+        current <- df[[field]][[i]]
+        if (overwrite || is.null(current) || length(current) == 0 || is.na(current) || !nzchar(trimws(as.character(current)))) {
+          df[[field]][[i]] <<- value
+          inferred <<- unique(c(inferred, field))
+        }
+      }
+
+      fill_field("titulo", ai$titulo_limpo, overwrite = TRUE)
+      fill_field("descricao_resumida", ai$resumo, overwrite = TRUE)
+      fill_field("elegibilidade", ai$elegibilidade)
+      fill_field("area_tematica", ai$area_tematica)
+      fill_field("tipo_oportunidade", ai$tipo_oportunidade, overwrite = TRUE)
+      fill_field("status_oportunidade", ai$status_oportunidade, overwrite = TRUE)
+      fill_field("idioma", ai$idioma, overwrite = TRUE)
+      fill_field("data_limite", ai$data_limite, overwrite = TRUE)
+      fill_field("data_publicacao", ai$data_publicacao, overwrite = TRUE)
+      fill_field("observacoes", ai$observacoes)
+
+      # Sobrescreve valor_financiado e moeda com os valores extraidos pela IA
+      ai_val <- if (!is.null(ai$valor_financiado) && !is.na(ai$valor_financiado)) as.numeric(ai$valor_financiado[[1]]) else NA_real_
+      ai_curr <- if (!is.null(ai$moeda) && !is.na(ai$moeda) && nzchar(trimws(ai$moeda[[1]]))) as.character(ai$moeda[[1]]) else NA_character_
+      
+      if (!identical(df$valor_financiado[[i]], ai_val)) {
+        df$valor_financiado[[i]] <- ai_val
+        inferred <- c(inferred, "valor_financiado")
+      }
+      if (!identical(df$moeda[[i]], ai_curr)) {
+        df$moeda[[i]] <- ai_curr
+        inferred <- c(inferred, "moeda")
+      }
+
+      df$campos_inferidos_ia[[i]] <- paste(unique(inferred), collapse = "; ")
+    }
+  }
+
+  df
 }
 
 dedupe_records <- function(df) {
@@ -631,7 +879,7 @@ finalize_records <- function(df) {
     dedupe_records()
 }
 
-collect_listing_with_pagination <- function(source_row, first_url, max_pages = 5, max_records = 50, use_ai = FALSE, log_path = NULL, page_builder = NULL, follow_details = TRUE) {
+collect_listing_with_pagination <- function(source_row, first_url, max_pages = 5, max_records = 15, use_ai = FALSE, log_path = NULL, page_builder = NULL, follow_details = TRUE) {
   pages_seen <- character()
   current_url <- first_url
   page_no <- 1L
@@ -692,9 +940,6 @@ collect_listing_with_pagination <- function(source_row, first_url, max_pages = 5
           pdf_url = pick_first_nonempty(detail_bundle$pdf_url, one$pdf_url[[1]]),
           page_no = page_no
         )
-
-        if (isTRUE(use_ai)) rec <- enrich_record_with_ai(rec, log_path = log_path)
-        rec
       })
 
       all_records <- dplyr::bind_rows(all_records, page_records)
@@ -783,7 +1028,6 @@ collect_fapes_es <- function(source_row, max_pages, max_records, use_ai, log_pat
       page_no = 1L
     )
     rec$tipo_oportunidade <- "edital"
-    if (isTRUE(use_ai)) rec <- enrich_record_with_ai(rec, log_path)
     rec
   })
 
@@ -881,7 +1125,6 @@ collect_fapesc <- function(source_row, max_pages, max_records, use_ai, log_path)
       pdf_url = detail_bundle$pdf_url,
       page_no = 1L
     )
-    if (isTRUE(use_ai)) rec <- enrich_record_with_ai(rec, log_path)
     rec
   })
 
@@ -939,11 +1182,69 @@ collect_eureka <- function(source_row, max_pages, max_records, use_ai, log_path)
       pdf_url = detail_bundle$pdf_url,
       page_no = 1L
     )
-    if (isTRUE(use_ai)) rec <- enrich_record_with_ai(rec, log_path)
     rec
   })
 
   list(records = finalize_records(recs), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]])
+}
+
+collect_sigitec <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  api_url <- "https://sigitec-competitividade.petrobras.com.br/v2/ms-authorization/opportunity/getAllPublicOpportunities"
+  log_progress("Requisitando API de Oportunidades do SIGITEC...", "Scraping")
+  
+  req <- httr2::request(api_url) |>
+    httr2::req_user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36") |>
+    httr2::req_timeout(5)
+    
+  resp <- tryCatch(httr2::req_perform(req), error = function(e) e)
+  
+  if (!inherits(resp, "error") && httr2::resp_status(resp) == 200) {
+    data <- tryCatch(httr2::resp_body_json(resp), error = function(e) NULL)
+    if (!is.null(data) && is.list(data) && length(data) > 0) {
+      log_progress(sprintf("Parseando %d oportunidades do SIGITEC...", length(data)), "Scraping")
+      recs <- purrr::map_dfr(data, function(item) {
+        opp_id <- item$id %||% NA_character_
+        opp_code <- item$code %||% item$numberOP %||% item$opportunityNumber %||% ""
+        opp_title <- item$title %||% item$titleOP %||% item$name %||% paste("Desafio SIGITEC", opp_code)
+        opp_desc <- item$objective %||% item$description %||% ""
+        opp_deadline <- item$deadline %||% item$submissionDeadline %||% NA_character_
+        opp_status <- item$situation %||% "Aberto"
+        
+        detail_url <- if (!is.na(opp_id)) sprintf("https://sigitec-competitividade.petrobras.com.br/v2/public/opportunity/%s", opp_id) else NA_character_
+        
+        rec <- extract_core_record(
+          source_row = source_row,
+          input_title = opp_title,
+          input_subtitle = if (nzchar(opp_code)) paste("Código:", opp_code) else NA_character_,
+          input_summary = stringr::str_trunc(opp_desc, 900),
+          input_full_text = opp_desc,
+          page_url = source_row$url_oportunidades[[1]],
+          detail_url = detail_url,
+          pdf_url = NA_character_,
+          page_no = 1L
+        )
+        if (!is.na(opp_deadline) && nzchar(opp_deadline)) {
+          rec$data_limite <- as.character(parse_date_safe(opp_deadline))
+        }
+        rec$status_oportunidade <- tolower(opp_status)
+        rec
+      })
+      return(list(records = finalize_records(recs), pages_visited = 1L, last_url = api_url))
+    }
+  }
+  
+  log_progress("API indisponível ou timeout. Gerando registro de fallback...", "Scraping")
+  fallback_record <- extract_core_record(
+    source_row = source_row,
+    input_title = "Oportunidades Públicas de Inovação - Petrobras SIGITEC",
+    input_summary = "Portal de cooperações tecnológicas e desafios de PD&I da Petrobras para ICTs e empresas brasileiras.",
+    input_full_text = "Portal oficial do SIGITEC Petrobras. Acesse a página para visualizar a lista completa de desafios ativos e submeter propostas de pré-projeto.",
+    page_url = source_row$url_oportunidades[[1]],
+    detail_url = NA_character_,
+    pdf_url = NA_character_,
+    page_no = 1L
+  )
+  list(records = finalize_records(fallback_record), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]])
 }
 
 truncate_excel_strings <- function(df, max_chars = 32000L) {
@@ -1021,7 +1322,7 @@ save_collection_exports <- function(df, export_dir, prefix = "funding_base", log
   list(paths = export_paths, warnings = unique(export_warnings))
 }
 
-collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_records_per_source = 50, use_ai = FALSE, export_dir = "data_exports", log_path = "logs/funding_collection.log", progress_cb = NULL, do_export = TRUE, status_file = "logs/collection_status.json", modal_log_file = "logs/collection_modal_log.txt") {
+collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_records_per_source = 15, use_ai = FALSE, export_dir = "data_exports", log_path = "logs/funding_collection.log", progress_cb = NULL, do_export = TRUE, status_file = "logs/collection_status.json", modal_log_file = "logs/collection_modal_log.txt") {
   ensure_dir(dirname(log_path))
   log_write(log_path, "INFO", "Início da coleta oficial.")
 
@@ -1140,7 +1441,7 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
   )
 }
 
-run_full_collection_cycle <- function(conn, sources_ids = NULL, max_pages = 5, max_records_per_source = 50, use_ai = FALSE, export_dir = "data_exports", log_path = "logs/funding_collection.log", do_export = TRUE) {
+run_full_collection_cycle <- function(conn, sources_ids = NULL, max_pages = 5, max_records_per_source = 15, use_ai = FALSE, export_dir = "data_exports", log_path = "logs/funding_collection.log", do_export = TRUE) {
   res <- collect_all_sources(
     conn = conn,
     source_ids = sources_ids,

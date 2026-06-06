@@ -111,30 +111,21 @@ validate_ai_config <- function() {
 
 trim_for_ai <- function(text, max_chars = NULL) {
   if (is.null(max_chars)) {
-    max_chars <- as.numeric(Sys.getenv("AI_MAX_CHARS", "6000"))
-    if (is.na(max_chars) || max_chars <= 0) max_chars <- 6000
+    max_chars <- as.numeric(Sys.getenv("AI_MAX_CHARS", "12000"))
+    if (is.na(max_chars) || max_chars <= 0) max_chars <- 12000
   }
   text <- normalize_ws(text %||% "")
   if (nchar(text) <= max_chars) return(text)
   substr(text, 1, max_chars)
 }
 
-ai_request <- function(prompt, timeout_sec = 45, retries = 2, log_path = NULL) {
-  cfg <- get_ai_config()
+ai_make_request <- function(prompt, cfg = NULL, timeout_sec = 45) {
+  if (is.null(cfg)) cfg <- get_ai_config()
   if (!nzchar(cfg$provider) || !nzchar(cfg$api_key)) {
-    if (!is.null(log_path)) log_write(log_path, "WARN", "Configuração de IA incompleta ou ausente. IA desabilitada.")
     return(NULL)
   }
 
-  # Atraso inteligente para evitar Rate Limits de Tokens por Minuto (TPM) na Groq (plano gratuito)
-  if (cfg$provider == "groq") {
-    delay <- as.numeric(Sys.getenv("GROQ_RATE_DELAY", "6"))
-    if (is.na(delay) || delay < 0) delay <- 6
-    if (delay > 0) Sys.sleep(delay)
-  }
-
   req <- NULL
-  
   if (cfg$provider == "gemini") {
     url <- sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", cfg$model, cfg$api_key)
     req <- httr2::request(url) |>
@@ -176,8 +167,27 @@ ai_request <- function(prompt, timeout_sec = 45, retries = 2, log_path = NULL) {
         max_tokens = 4000,
         temperature = 0.1
       ), auto_unbox = TRUE)
-  } else {
-    if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Provedor de IA não suportado: %s", cfg$provider))
+  }
+  req
+}
+
+ai_request <- function(prompt, timeout_sec = 45, retries = 2, log_path = NULL) {
+  cfg <- get_ai_config()
+  if (!nzchar(cfg$provider) || !nzchar(cfg$api_key)) {
+    if (!is.null(log_path)) log_write(log_path, "WARN", "Configuração de IA incompleta ou ausente. IA desabilitada.")
+    return(NULL)
+  }
+
+  # Atraso inteligente para evitar Rate Limits de Tokens por Minuto (TPM) na Groq (plano gratuito)
+  if (cfg$provider == "groq") {
+    delay <- as.numeric(Sys.getenv("GROQ_RATE_DELAY", "6"))
+    if (is.na(delay) || delay < 0) delay <- 6
+    if (delay > 0) Sys.sleep(delay)
+  }
+
+  req <- ai_make_request(prompt, cfg = cfg, timeout_sec = timeout_sec)
+  if (is.null(req)) {
+    if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Provedor de IA não suportado ou falha ao criar request para: %s", cfg$provider))
     return(NULL)
   }
 
@@ -222,6 +232,67 @@ ai_request <- function(prompt, timeout_sec = 45, retries = 2, log_path = NULL) {
   }
   if (!is.null(log_path)) log_write(log_path, "WARN", "Falha ao consultar IA após tentativas.")
   NULL
+}
+
+ai_request_parallel <- function(prompts, timeout_sec = 45, log_path = NULL) {
+  if (length(prompts) == 0) return(list())
+  cfg <- get_ai_config()
+  if (!nzchar(cfg$provider) || !nzchar(cfg$api_key)) {
+    if (!is.null(log_path)) log_write(log_path, "WARN", "Configuração de IA incompleta ou ausente. IA paralela desabilitada.")
+    return(replicate(length(prompts), NULL, simplify = FALSE))
+  }
+
+  reqs <- lapply(prompts, function(p) {
+    req <- ai_make_request(p, cfg = cfg, timeout_sec = timeout_sec)
+    if (!is.null(req)) {
+      req <- httr2::req_retry(req, max_tries = 1, is_transient = function(resp) FALSE)
+    }
+    req
+  })
+  valid_indices <- which(!vapply(reqs, is.null, logical(1)))
+  
+  if (length(valid_indices) == 0) {
+    return(replicate(length(prompts), NULL, simplify = FALSE))
+  }
+
+  valid_reqs <- reqs[valid_indices]
+
+  resps <- tryCatch({
+    httr2::req_perform_parallel(valid_reqs, on_error = "continue")
+  }, error = function(e) {
+    if (!is.null(log_path)) log_write(log_path, "ERROR", sprintf("Erro crítico no processamento paralelo do httr2: %s", e$message))
+    replicate(length(valid_reqs), structure(list(message = e$message), class = "error"))
+  })
+
+  results <- replicate(length(prompts), NULL, simplify = FALSE)
+
+  for (i in seq_along(valid_indices)) {
+    orig_idx <- valid_indices[[i]]
+    resp <- resps[[i]]
+
+    if (inherits(resp, "httr2_response")) {
+      txt <- try(httr2::resp_body_string(resp), silent = TRUE)
+      if (!inherits(txt, "try-error") && nzchar(txt)) {
+        parsed_res <- try(jsonlite::fromJSON(txt, simplifyVector = FALSE), silent = TRUE)
+        if (!inherits(parsed_res, "try-error")) {
+          extracted_text <- NULL
+          if (cfg$provider == "gemini") {
+            extracted_text <- tryCatch(parsed_res$candidates[[1]]$content$parts[[1]]$text %||% txt, error = function(e) txt)
+          } else if (cfg$provider %in% c("openai", "groq", "openrouter", "deepseek", "bluesminds")) {
+            extracted_text <- tryCatch(parsed_res$choices[[1]]$message$content %||% txt, error = function(e) txt)
+          } else if (cfg$provider == "anthropic") {
+            extracted_text <- tryCatch(parsed_res$content[[1]]$text %||% txt, error = function(e) txt)
+          }
+          results[[orig_idx]] <- extracted_text
+        }
+      }
+    } else {
+      err_msg <- if (inherits(resp, "error")) resp$message else "Erro desconhecido"
+      if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Falha na chamada paralela da IA (edital índice %d): %s", orig_idx, err_msg))
+    }
+  }
+
+  results
 }
 
 # Skill do Agente: Extração Inicial de Metadados

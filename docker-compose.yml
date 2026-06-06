@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: funding_intelligence_app
+    ports:
+      - "3838:3838"
+    volumes:
+      # Mantém a base de dados SQLite persistida no host
+      - ./funding_intelligence.sqlite:/app/funding_intelligence.sqlite
+      # Mapeia logs e exportações para o host para fácil monitoramento e acesso
+      - ./logs:/app/logs
+      - ./data_exports:/app/data_exports
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - BLUESMINDS_API_KEY=${BLUESMINDS_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+    restart: unless-stopped

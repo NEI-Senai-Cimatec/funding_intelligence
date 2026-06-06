@@ -32,8 +32,9 @@ source_catalog <- function() {
     "ics", "Instituto Clima e Sociedade", "iCS", "Brasil", "fundação privada", "filantropia", "https://climaesociedade.org/", "https://climaesociedade.org/editais/", "html", "pt", "diária", "Editais e doações.",
     "min_saude", "Ministério da Saúde", "MS", "Brasil", "ministério", "governo federal", "https://www.gov.br/saude/pt-br", "https://www.gov.br/saude/pt-br/acesso-a-informacao/acoes-e-programas", "html", "pt", "diária", "Fonte complementar nacional.",
     "fapesc", "Fundação de Amparo à Pesquisa e Inovação de Santa Catarina", "FAPESC", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://fapesc.sc.gov.br/", "https://fapesc.sc.gov.br/chamadas-abertas/", "html", "pt", "diária", "Editais abertos FAPESC.",
-    "fapesb", "Fundação de Amparo à Pesquisa do Estado da Bahia", "FAPESB", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://www.fapesb.ba.gov.br/", "https://www.fapesb.ba.gov.br/editais", "html", "pt", "diária", "Editais e chamadas da FAPESB.",
-    "eureka", "Eureka Network", "EUREKA", "União Europeia", "programa multilateral", "associação internacional", "https://www.eurekanetwork.org/", "https://www.eurekanetwork.org/open-calls/", "html", "en", "diária", "Chamadas abertas para cooperação tecnológica internacional."
+    "fapesb", "Fundação de Amparo à Pesquisa do Estado da Bahia", "FAPESB", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://www.fapesb.ba.gov.br/", "https://www.fapesb.ba.gov.br/category/edital/aberto/", "html", "pt", "diária", "Editais e chamadas da FAPESB.",
+    "eureka", "Eureka Network", "EUREKA", "União Europeia", "programa multilateral", "associação internacional", "https://www.eurekanetwork.org/", "https://www.eurekanetwork.org/open-calls/", "html", "en", "diária", "Chamadas abertas para cooperação tecnológica internacional.",
+    "sigitec", "SIGITEC PETROBRAS", "PETROBRAS", "Brasil", "empresa pública federal", "corporativo", "https://sigitec-competitividade.petrobras.com.br", "https://sigitec-competitividade.petrobras.com.br/v2/public/opportunities", "html", "pt", "diária", "Portal de oportunidades públicas do SIGITEC da Petrobras."
   )
 }
 

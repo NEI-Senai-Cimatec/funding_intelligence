@@ -2,6 +2,7 @@
 FROM rocker/r-ver:4.4.0 AS builder
 
 # Instala dependências de sistema necessárias para compilação/instalação no builder
+# libuv1-dev é necessário para compilação e carregamento do pacote 'fs' (dependência do googledrive e polite)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libcurl4-openssl-dev \
     libssl-dev \
@@ -17,6 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libfribidi-dev \
     libfontconfig1-dev \
     libprotobuf23 \
+    libuv1-dev \
     wget \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
@@ -68,6 +70,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libfribidi-dev \
     libfontconfig1-dev \
     libprotobuf23 \
+    libuv1-dev \
     python3 \
     python3-pip \
     python3-venv \

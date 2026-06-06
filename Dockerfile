@@ -38,8 +38,10 @@ WORKDIR /app
 # Copia os arquivos da aplicação
 COPY . .
 
+# Remove otelsdk (telemetria) que vem pré-instalada e causa erros de libprotobuf ausente
+RUN rm -rf /usr/local/lib/R/site-library/otelsdk
+
 # Instala pacotes do R necessários usando os binários pré-compilados do Posit Package Manager (Ubuntu Jammy)
-# Após instalação, remove otelsdk (telemetria) que causa erro ao carregar libprotobuf.so.23 ausente
 RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/jammy/latest')); \
     pkgs <- c('shiny', 'bslib', 'DT', 'dplyr', 'tidyr', 'purrr', 'stringr', 'stringi', 'lubridate', \
               'ggplot2', 'plotly', 'DBI', 'RSQLite', 'jsonlite', 'digest', 'htmltools', \
@@ -47,9 +49,14 @@ RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux
               'glue', 'progress', 'pdftools', 'polite', 'callr', 'shinycssloaders', \
               'reticulate', 'chromote', 'googledrive', 'httr', 'memoise', 'ratelimitr', 'uuid'); \
     install.packages(pkgs, dependencies = TRUE); \
-    tryCatch(remove.packages('otelsdk'), error = function(e) message('otelsdk não encontrado, ignorando')); \
-    missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; \
-    if (length(missing) > 0) stop(paste('Falha ao instalar pacotes:', paste(missing, collapse = ', ')))"
+    errors <- lapply(pkgs, function(pkg) { \
+      tryCatch({ loadNamespace(pkg); NULL }, error = function(e) list(pkg = pkg, msg = e$message)) \
+    }); \
+    errors <- errors[!vapply(errors, is.null, logical(1))]; \
+    if (length(errors) > 0) { \
+      for (err in errors) message(sprintf('Erro ao carregar %s: %s', err$pkg, err$msg)); \
+      stop(paste('Falha ao instalar pacotes:', paste(vapply(errors, function(x) x$pkg, character(1)), collapse = ', '))); \
+    }"
 
 # Define permissões adequadas para execução no container
 RUN mkdir -p logs data_exports && chmod -R 777 logs data_exports

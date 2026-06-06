@@ -1,6 +1,7 @@
 FROM rocker/r-ver:4.4.0
 
 # Instala dependências de sistema necessárias no Linux
+# libprotobuf23 fornece libprotobuf.so.23 necessário pelo otelsdk (dep transitória do R)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libcurl4-openssl-dev \
     libssl-dev \
@@ -15,6 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libharfbuzz-dev \
     libfribidi-dev \
     libfontconfig1-dev \
+    libprotobuf23 \
     python3 \
     python3-pip \
     python3-venv \
@@ -38,10 +40,8 @@ WORKDIR /app
 # Copia os arquivos da aplicação
 COPY . .
 
-# Remove otelsdk (telemetria) que vem pré-instalada e causa erros de libprotobuf ausente
-RUN rm -rf /usr/local/lib/R/site-library/otelsdk
-
 # Instala pacotes do R necessários usando os binários pré-compilados do Posit Package Manager (Ubuntu Jammy)
+# Após a instalação, remove o otelsdk (telemetria não utilizada) para manter a imagem limpa
 RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/jammy/latest')); \
     pkgs <- c('shiny', 'bslib', 'DT', 'dplyr', 'tidyr', 'purrr', 'stringr', 'stringi', 'lubridate', \
               'ggplot2', 'plotly', 'DBI', 'RSQLite', 'jsonlite', 'digest', 'htmltools', \
@@ -49,6 +49,7 @@ RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux
               'glue', 'progress', 'pdftools', 'polite', 'callr', 'shinycssloaders', \
               'reticulate', 'chromote', 'googledrive', 'httr', 'memoise', 'ratelimitr', 'uuid'); \
     install.packages(pkgs, dependencies = TRUE); \
+    tryCatch(remove.packages('otelsdk'), error = function(e) invisible(NULL)); \
     errors <- lapply(pkgs, function(pkg) { \
       tryCatch({ loadNamespace(pkg); NULL }, error = function(e) list(pkg = pkg, msg = e$message)) \
     }); \

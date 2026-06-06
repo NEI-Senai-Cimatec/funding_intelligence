@@ -44,8 +44,8 @@ RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux
               'ggplot2', 'plotly', 'DBI', 'RSQLite', 'jsonlite', 'digest', 'htmltools', \
               'rvest', 'xml2', 'httr2', 'tibble', 'readr', 'writexl', 'janitor', \
               'glue', 'progress', 'pdftools', 'polite', 'callr', 'shinycssloaders', \
-              'reticulate', 'chromote', 'googledrive'); \
-    install.packages(pkgs); \
+              'reticulate', 'chromote', 'googledrive', 'httr', 'memoise', 'ratelimitr', 'uuid'); \
+    install.packages(pkgs, dependencies = TRUE); \
     missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; \
     if (length(missing) > 0) stop(paste('Falha ao instalar pacotes:', paste(missing, collapse = \", \")))"
 

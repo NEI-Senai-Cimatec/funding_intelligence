@@ -54,8 +54,8 @@ RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux
     }); \
     errors <- errors[!vapply(errors, is.null, logical(1))]; \
     if (length(errors) > 0) { \
-      for (err in errors) message(sprintf('Erro ao carregar %s: %s', err$pkg, err$msg)); \
-      stop(paste('Falha ao instalar pacotes:', paste(vapply(errors, function(x) x$pkg, character(1)), collapse = ', '))); \
+      msg_details <- vapply(errors, function(x) sprintf('%s (%s)', x$pkg, x$msg), character(1)); \
+      stop(paste('Falha ao instalar pacotes:', paste(msg_details, collapse = '; '))); \
     }"
 
 # Define permissões adequadas para execução no container

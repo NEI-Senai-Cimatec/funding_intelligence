@@ -39,6 +39,7 @@ WORKDIR /app
 COPY . .
 
 # Instala pacotes do R necessários usando os binários pré-compilados do Posit Package Manager (Ubuntu Jammy)
+# Após instalação, remove otelsdk (telemetria) que causa erro ao carregar libprotobuf.so.23 ausente
 RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/jammy/latest')); \
     pkgs <- c('shiny', 'bslib', 'DT', 'dplyr', 'tidyr', 'purrr', 'stringr', 'stringi', 'lubridate', \
               'ggplot2', 'plotly', 'DBI', 'RSQLite', 'jsonlite', 'digest', 'htmltools', \
@@ -46,8 +47,9 @@ RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux
               'glue', 'progress', 'pdftools', 'polite', 'callr', 'shinycssloaders', \
               'reticulate', 'chromote', 'googledrive', 'httr', 'memoise', 'ratelimitr', 'uuid'); \
     install.packages(pkgs, dependencies = TRUE); \
+    tryCatch(remove.packages('otelsdk'), error = function(e) message('otelsdk não encontrado, ignorando')); \
     missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; \
-    if (length(missing) > 0) stop(paste('Falha ao instalar pacotes:', paste(missing, collapse = \", \")))"
+    if (length(missing) > 0) stop(paste('Falha ao instalar pacotes:', paste(missing, collapse = ', ')))"
 
 # Define permissões adequadas para execução no container
 RUN mkdir -p logs data_exports && chmod -R 777 logs data_exports

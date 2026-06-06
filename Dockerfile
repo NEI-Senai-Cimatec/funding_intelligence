@@ -8,6 +8,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpoppler-cpp-dev \
     sqlite3 \
     libsqlite3-dev \
+    libpng-dev \
+    libjpeg-dev \
+    libtiff-dev \
+    libfreetype6-dev \
+    libharfbuzz-dev \
+    libfribidi-dev \
+    libfontconfig1-dev \
     python3 \
     python3-pip \
     python3-venv \
@@ -31,8 +38,8 @@ WORKDIR /app
 # Copia os arquivos da aplicação
 COPY . .
 
-# Instala pacotes do R necessários e garante que a instalação foi bem-sucedida
-RUN R -e "options(repos = c(CRAN = 'https://cloud.r-project.org')); \
+# Instala pacotes do R necessários usando os binários pré-compilados do Posit Package Manager (Ubuntu Jammy)
+RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/jammy/latest')); \
     pkgs <- c('shiny', 'bslib', 'DT', 'dplyr', 'tidyr', 'purrr', 'stringr', 'stringi', 'lubridate', \
               'ggplot2', 'plotly', 'DBI', 'RSQLite', 'jsonlite', 'digest', 'htmltools', \
               'rvest', 'xml2', 'httr2', 'tibble', 'readr', 'writexl', 'janitor', \

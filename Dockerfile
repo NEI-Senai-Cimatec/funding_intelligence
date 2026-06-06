@@ -31,13 +31,16 @@ WORKDIR /app
 # Copia os arquivos da aplicação
 COPY . .
 
-# Instala pacotes do R necessários globalmente no container
+# Instala pacotes do R necessários e garante que a instalação foi bem-sucedida
 RUN R -e "options(repos = c(CRAN = 'https://cloud.r-project.org')); \
-    install.packages(c('shiny', 'bslib', 'DT', 'dplyr', 'tidyr', 'purrr', 'stringr', 'stringi', 'lubridate', \
-                       'ggplot2', 'plotly', 'DBI', 'RSQLite', 'jsonlite', 'digest', 'htmltools', \
-                       'rvest', 'xml2', 'httr2', 'tibble', 'readr', 'writexl', 'janitor', \
-                       'glue', 'progress', 'pdftools', 'polite', 'callr', 'shinycssloaders', \
-                       'reticulate', 'chromote', 'googledrive'))"
+    pkgs <- c('shiny', 'bslib', 'DT', 'dplyr', 'tidyr', 'purrr', 'stringr', 'stringi', 'lubridate', \
+              'ggplot2', 'plotly', 'DBI', 'RSQLite', 'jsonlite', 'digest', 'htmltools', \
+              'rvest', 'xml2', 'httr2', 'tibble', 'readr', 'writexl', 'janitor', \
+              'glue', 'progress', 'pdftools', 'polite', 'callr', 'shinycssloaders', \
+              'reticulate', 'chromote', 'googledrive'); \
+    install.packages(pkgs); \
+    missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; \
+    if (length(missing) > 0) stop(paste('Falha ao instalar pacotes:', paste(missing, collapse = \", \")))"
 
 # Define permissões adequadas para execução no container
 RUN mkdir -p logs data_exports && chmod -R 777 logs data_exports

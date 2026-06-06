@@ -1,7 +1,58 @@
+# ── Estágio 1: instalação e validação de pacotes (Builder) ─────────────────────
+FROM rocker/r-ver:4.4.0 AS builder
+
+# Instala dependências de sistema necessárias para compilação/instalação no builder
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libcurl4-openssl-dev \
+    libssl-dev \
+    libxml2-dev \
+    libpoppler-cpp-dev \
+    sqlite3 \
+    libsqlite3-dev \
+    libpng-dev \
+    libjpeg-dev \
+    libtiff-dev \
+    libfreetype6-dev \
+    libharfbuzz-dev \
+    libfribidi-dev \
+    libfontconfig1-dev \
+    libprotobuf23 \
+    wget \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Instala pacotes do R usando os binários pré-compilados do Posit Package Manager (Ubuntu Jammy)
+# Valida a instalação de todos os pacotes e remove o otelsdk que causa problemas de libprotobuf
+RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/jammy/latest')); \
+  pkgs <- c( \
+    'shiny', 'bslib', 'DT', 'dplyr', 'tidyr', 'purrr', \
+    'stringr', 'stringi', 'lubridate', 'ggplot2', 'plotly', \
+    'DBI', 'RSQLite', 'jsonlite', 'digest', 'htmltools', \
+    'rvest', 'xml2', 'httr2', 'tibble', 'readr', 'writexl', \
+    'janitor', 'glue', 'progress', 'pdftools', 'polite', \
+    'callr', 'shinycssloaders', 'reticulate', 'chromote', \
+    'googledrive', 'httr', 'memoise', 'ratelimitr', 'uuid' \
+  ); \
+  suppressMessages(install.packages(pkgs, dependencies = TRUE)); \
+  tryCatch(remove.packages('otelsdk'), error = function(e) invisible(NULL)); \
+  failed <- Filter( \
+    Negate(is.null), \
+    lapply(pkgs, function(pkg) { \
+      tryCatch( \
+        { loadNamespace(pkg); NULL }, \
+        error = function(e) sprintf('%s (%s)', pkg, e\$message) \
+      ) \
+    }) \
+  ); \
+  if (length(failed) > 0) \
+    stop(paste('Pacotes faltando:', paste(unlist(failed), collapse = '; '))); \
+  message('Build OK — ', length(pkgs), ' pacotes validados.') \
+"
+
+# ── Estágio 2: imagem de runtime enxuta (Runtime) ──────────────────────────────
 FROM rocker/r-ver:4.4.0
 
-# Instala dependências de sistema necessárias no Linux
-# libprotobuf23 fornece libprotobuf.so.23 necessário pelo otelsdk (dep transitória do R)
+# Instala dependências de sistema necessárias para a execução
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libcurl4-openssl-dev \
     libssl-dev \
@@ -34,30 +85,14 @@ ENV RETICULATE_PYTHON=/usr/bin/python3
 RUN pip3 install --no-cache-dir playwright && \
     playwright install --with-deps chromium
 
+# Copia a biblioteca do R compilada do estágio anterior
+COPY --from=builder /usr/local/lib/R/site-library /usr/local/lib/R/site-library
+
 # Cria diretório da aplicação
 WORKDIR /app
 
 # Copia os arquivos da aplicação
 COPY . .
-
-# Instala pacotes do R necessários usando os binários pré-compilados do Posit Package Manager (Ubuntu Jammy)
-# Após a instalação, remove o otelsdk (telemetria não utilizada) para manter a imagem limpa
-RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/jammy/latest')); \
-    pkgs <- c('shiny', 'bslib', 'DT', 'dplyr', 'tidyr', 'purrr', 'stringr', 'stringi', 'lubridate', \
-              'ggplot2', 'plotly', 'DBI', 'RSQLite', 'jsonlite', 'digest', 'htmltools', \
-              'rvest', 'xml2', 'httr2', 'tibble', 'readr', 'writexl', 'janitor', \
-              'glue', 'progress', 'pdftools', 'polite', 'callr', 'shinycssloaders', \
-              'reticulate', 'chromote', 'googledrive', 'httr', 'memoise', 'ratelimitr', 'uuid'); \
-    install.packages(pkgs, dependencies = TRUE); \
-    tryCatch(remove.packages('otelsdk'), error = function(e) invisible(NULL)); \
-    errors <- lapply(pkgs, function(pkg) { \
-      tryCatch({ loadNamespace(pkg); NULL }, error = function(e) list(pkg = pkg, msg = e$message)) \
-    }); \
-    errors <- errors[!vapply(errors, is.null, logical(1))]; \
-    if (length(errors) > 0) { \
-      msg_details <- vapply(errors, function(x) sprintf('%s (%s)', x$pkg, x$msg), character(1)); \
-      stop(paste('Falha ao instalar pacotes:', paste(msg_details, collapse = '; '))); \
-    }"
 
 # Define permissões adequadas para execução no container
 RUN mkdir -p logs data_exports && chmod -R 777 logs data_exports

@@ -7,7 +7,7 @@ required_packages <- c(
   "shiny", "bslib", "DT", "dplyr", "tidyr", "purrr", "stringr", "stringi", "lubridate",
   "ggplot2", "plotly", "DBI", "RSQLite", "jsonlite", "digest", "htmltools",
   "rvest", "xml2", "httr2", "tibble", "tools", "readr", "writexl", "janitor",
-  "glue", "progress", "pdftools", "polite", "callr", "shinycssloaders"
+  "glue", "progress", "pdftools", "polite", "callr", "shinycssloaders", "googledrive"
 )
 
 install_missing_packages <- function(pkgs) {
@@ -102,6 +102,7 @@ safe_source("R/helpers_text.R")
 safe_source("R/helpers_ai.R")
 safe_source("R/helpers_recommend.R")
 safe_source("R/helpers_collect.R")
+safe_source("R/helpers_drive.R")
 
 db_path <- app_file("funding_intelligence.sqlite")
 export_dir <- app_file("data_exports")
@@ -109,10 +110,15 @@ log_path <- app_file("logs", "funding_collection.log")
 ensure_dir(export_dir)
 ensure_dir(dirname(log_path))
 
+# Baixa a base de dados atualizada do Google Drive, se configurado
+try(drive_download_db(db_path), silent = TRUE)
+
 try(init_database(db_path), silent = TRUE)
 conn <- tryCatch(get_db_connection(db_path), error = function(e) NULL)
 onStop(function() {
   if (!is.null(conn) && DBI::dbIsValid(conn)) DBI::dbDisconnect(conn)
+  # Sincroniza a base local com o Google Drive ao fechar a aplicação
+  try(drive_upload_db(db_path), silent = TRUE)
 })
 
 build_sidebar <- function() {
@@ -350,7 +356,12 @@ server <- function(input, output, session) {
         updateActionButton(session, "btn_collect_official", label = "Atualizar base")
         progress_rv$status <- "done"
         progress_rv$percentage <- 100
-        progress_rv$detail <- "Coleta concluída com sucesso!"
+        progress_rv$detail <- "Coleta concluída! Sincronizando com o Google Drive..."
+        
+        # Sincroniza a base coletada com o Google Drive, se configurado
+        try(drive_upload_db(db_path), silent = TRUE)
+        
+        progress_rv$detail <- "Sincronização com Google Drive concluída!"
         rv$last_collect_summary <- result
         refresh_data(notify = TRUE)
         

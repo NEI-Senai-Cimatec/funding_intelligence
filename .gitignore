@@ -23,3 +23,6 @@ logs/
 
 # Generated exports
 data_exports/
+
+# Google Drive credentials file
+gdrive_credentials.json

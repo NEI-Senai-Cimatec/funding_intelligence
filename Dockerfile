@@ -33,7 +33,7 @@ RUN R -e "options(repos = c(CRAN = 'https://cloud.r-project.org')); \
                        'ggplot2', 'plotly', 'DBI', 'RSQLite', 'jsonlite', 'digest', 'htmltools', \
                        'rvest', 'xml2', 'httr2', 'tibble', 'readr', 'writexl', 'janitor', \
                        'glue', 'progress', 'pdftools', 'polite', 'callr', 'shinycssloaders', \
-                       'reticulate', 'chromote'))"
+                       'reticulate', 'chromote', 'googledrive'))"
 
 # Define permissões adequadas para execução no container
 RUN mkdir -p logs data_exports && chmod -R 777 logs data_exports

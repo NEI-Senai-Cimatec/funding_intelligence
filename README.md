@@ -1,231 +1,446 @@
 # Funding Intelligence Hub
 
-O **Funding Intelligence Hub** é uma plataforma analítica desenvolvida em **R/Shiny** projetada para automatizar o monitoramento, a busca booleana avançada e a recomendação personalizada de editais, chamadas públicas e oportunidades de financiamento científico e tecnológico nacionais e internacionais.
+O **Funding Intelligence Hub** é uma plataforma analítica desenvolvida em **R/Shiny** para automatizar o monitoramento, a busca booleana avançada e a recomendação personalizada de editais, chamadas públicas e oportunidades de financiamento científico e tecnológico — nacionais e internacionais.
 
-O sistema foi desenhado de forma extensível, coletando metadados diretamente de portais oficiais de fomento, estruturando as informações em um banco de dados local unificado, enriquecendo os registros opcionalmente com inteligência artificial (Gemini) e fornecendo um motor de recomendação com base no perfil de interesses do usuário.
+O sistema foi concebido como uma ferramenta de inteligência estratégica para pesquisadores e equipes de captação de recursos, centralizando o monitoramento de **30+ agências de fomento** em uma única interface, enriquecendo cada oportunidade com análise de IA generativa e oferecendo recomendação automática de parceiros internos com base em afinidade temática.
+
+---
+
+## ✅ Status Atual do Projeto
+
+| Componente | Status |
+|---|---|
+| Coleta multi-agência (30+ fontes) | ✅ Produção |
+| Processamento assíncrono (background) | ✅ Produção |
+| Enriquecimento com IA (multi-provedor) | ✅ Produção |
+| Prompts de qualidade (resumo + keywords) | ✅ Produção |
+| Busca booleana avançada (AST parser) | ✅ Produção |
+| Aderência dinâmica por query | ✅ Produção |
+| Recomendação de parceiros (CIMATEC) | ✅ Produção |
+| Sincronização Google Drive | ✅ Produção |
+| Containerização Docker | ✅ Produção |
+| Pipeline de auditoria da IA (anti-alucinação) | ✅ Produção |
 
 ---
 
 ## 📌 Funcionalidades Principais
 
-*   **Coleta Direta e Paginação Automatizada**: Scraping direto das fontes oficiais configuradas com paginação automática (`next`, paginação numérica e detecção de rotas).
-*   **Extração de Texto de PDFs**: Download inteligente de editais anexos em formato PDF com extração de texto bruto (`pdftools`) para busca e indexação.
-*   **Fallback com Navegador Headless**: Suporte à renderização de páginas fortemente baseadas em JavaScript através do `chromote`.
-*   **Enriquecimento Opcional com GenAI**: Integração com a API do **Google Gemini** para limpeza de títulos, identificação de prazos e estruturação precisa de elegibilidade e áreas temáticas.
-*   **Motor de Busca Booleana Completo**: Analisador sintático (*parser*) que processa consultas complexas contendo operadores lógicos `AND`, `OR`, `NOT` e agrupamentos por parênteses `( )`, além de busca de frases exatas com aspas `"`.
-*   **Recomendação Personalizada**: Cálculo automático de score de aderência baseado no perfil do usuário, histórico de pesquisas e editais favoritados.
-*   **Sugestão de Colaboradores**: Algoritmo de recomendação de parceiros acadêmicos/pesquisadores internos/externos com base no alinhamento temático da oportunidade.
-*   **Exportação Automática**: Salvamento automático e exportação dos dados consolidados em formatos analíticos: **CSV**, **RDS** (R) e **XLSX** (Excel).
+- **Coleta Automatizada com Paginação**: Scraping direto das fontes oficiais com paginação automática (detecção de `rel=next`, paginação numérica e rotas customizadas por agência).
+- **Extração de Texto de PDFs**: Download e extração de texto bruto de editais em PDF (`pdftools`) para indexação e análise.
+- **Fallback com Navegador Headless**: Suporte a páginas com JavaScript via `chromote` (protocolo DevTools) e `playwright` (via `reticulate`), com evasão stealth de CAPTCHAs.
+- **Enriquecimento com IA Generativa**: Pipeline de dois estágios — extração de metadados estruturados e auditoria automática de qualidade — usando qualquer provedor de LLM compatível.
+- **Busca Booleana Completa (AST Parser)**: Parser recursivo que converte consultas complexas com `AND`, `OR`, `NOT`, parênteses e frases exatas (`"..."`) em árvores de sintaxe abstrata avaliadas diretamente sobre o índice textual dos editais.
+- **Aderência Dinâmica por Query**: Cálculo de score de aderência em tempo real combinando a query de busca ativa com o perfil do usuário, histórico de pesquisas e editais rastreados.
+- **Recomendação de Parceiros CIMATEC**: Algoritmo de afinidade temática que recomenda pesquisadores internos para composição de consórcios, com base na sobreposição entre expertise declarada + projetos passados e o tema do edital selecionado.
+- **Sincronização Google Drive**: Backup automático do banco de dados SQLite local no Google Drive via Service Account, mantendo a base persistida na nuvem entre sessões.
+- **Exportação Automática**: Exportação dos dados em **CSV**, **RDS** e **XLSX** a cada ciclo de coleta concluído.
+- **Containerização Docker**: Imagem Docker multi-estágio pronta para deploy em produção, com Python/Playwright e Chrome pré-instalados.
 
 ---
 
-## ⚡ Otimização do Scraper & Evasão de Bloqueios (Novidades)
+## 🏗️ Arquitetura do Sistema
 
-Como parte da última otimização de infraestrutura de dados (Epic 1), foram implementadas as seguintes melhorias para lidar com bloqueios de CDNs/CAPTCHAs nas agências nacionais (CNPq, CAPES, FAPESP) e otimizar a experiência do usuário no Shiny:
-
-*   **Processamento de Coleta Assíncrona**: O acionamento da coleta de dados foi desvinculado da thread da UI do Shiny. Utilizando os pacotes `future` (com workers em modo `multisession`) e `promises`, a coleta roda em segundo plano sem travar ou congelar o dashboard. A persistência em segundo plano gerencia de forma isolada suas conexões SQLite para garantir integridade transacional.
-*   **Evasão Stealth Avançada no Chromote**: Para contornar bloqueios baseados em detecção de automação, configuramos injeções via protocolo DevTools (`Page$addScriptToEvaluateOnNewDocument`) que ocultam a propriedade `navigator.webdriver`, mockam plugins e idiomas comuns do sistema operacional, e sobrescrevem assinaturas de cabeçalho do User-Agent.
-*   **Integração com Playwright (Python)**: Implementamos um conector via `reticulate` que aciona de forma automatizada o Playwright em Python para executar navegadores headless com evasões e timeouts robustos como camada alternativa de raspagem.
-*   **Resiliência e Registro de Falhas**: A coleta de cada agência agora ocorre em um pipeline isolado com `tryCatch`. Erros de carregamento de páginas iniciais são interceptados e gravados de forma estruturada com status `"erro"` na tabela `logs_coleta`, impedindo que a falha de acesso a uma agência interrompa a varredura das demais fontes.
-
----
-
-## 🎨 Design Institucional SENAI CIMATEC & Integração Estática (Epic 2)
-
-As últimas atualizações da interface do usuário (UI) e da integração de dados alinham a aplicação às diretrizes institucionais do **SENAI CIMATEC** e garantem alta performance de renderização:
-
-*   **Identidade Visual Institucional**: Redesenho completo do CSS (`www/styles.css`) adotando as cores oficiais da marca (Azul Escuro `#004691` e Vermelho `#e30613`), com tipografia moderna (família de fontes **Inter** integrada via Google Fonts), sombras suaves e micro-animações interativas de hover e cliques.
-*   **Logotipo Integrado**: O cabeçalho da plataforma foi adaptado com uma área dedicada para exibir o logotipo oficial em formato vetorial (SVG) de alta resolução.
-*   **Consumo Exclusivo de Dados Estáticos/Locais**: O aplicativo foi estruturado para atuar offline de forma nativa e rápida. Ao iniciar ou renderizar as telas, o Shiny consome exclusivamente a base relacional local SQLite (`funding_intelligence.sqlite`), eliminando qualquer chamada ou varredura de scraping síncrona na thread principal que pudesse degradar a performance inicial.
-*   **Validação da Busca Booleana e Identificação Única**: O motor de busca avançado foi validado e otimizado para realizar buscas complexas com parênteses, frases exatas e operadores lógicos diretamente nos registros estáticos locais, mapeando corretamente a coluna com os identificadores únicos gerados (`id_registro`, ex: `capes_102cbb3bcf547cae`).
-
----
-
-## 🌍 Novas Entidades de Fomento & Filtro Regional (Epic 3)
-
-Como parte da expansão do monitoramento de editais e segmentação geográfica (Epic 3), foram implementadas as seguintes melhorias:
-
-*   **Novas Agências de Fomento**: 
-    *   **FAPESC** (Fundação de Amparo à Pesquisa e Inovação do Estado de Santa Catarina): Implementação de raspagem customizada baseada na URL oficial de chamadas abertas.
-    *   **EUREKA Network**: Integração de oportunidades europeias e transnacionais focadas em inovação industrial e desenvolvimento tecnológico cooperativo.
-*   **Otimização do Bypass de Bloqueios**: Refinamento do detector de CDN/CAPTCHA (`has_block_signal`) para eliminar falsos positivos em páginas que utilizam scripts do Cloudflare ou contêm termos de segurança comuns em JavaScript (CSP) sem bloquear o tráfego, garantindo conexões diretas bem-sucedidas.
-*   **Filtro Regional na Interface (UI)**: Inclusão do seletor `radioButtons` no painel principal permitindo filtrar instantaneamente os editais por **Bases Brasileiras**, **Bases Europeias** ou **Ambas**, atualizando reativamente os KPIs do painel, a seleção da aba "Por Financiador" e a listagem de fontes no modal de atualização de base.
-
----
-
-## 🤝 Módulo de Parcerias Estratégicas (Epic 4)
-
-A plataforma conta agora com um módulo relacional para recomendação e engajamento de parceiros de pesquisa internos do **SENAI CIMATEC**, otimizando a formação de consórcios para novos editais:
-
-*   **Modelagem Relacional de Expertises**: Implementação das tabelas `pesquisadores_vencedores` (banco de talentos com expertises declaradas) e `projetos_aprovados` (histórico de captação e editais passados aprovados), vinculadas por relações de integridade referencial no SQLite.
-*   **Algoritmo de Afinidade Temática**: Desenvolvimento de lógica avançada de recomendação em [`R/helpers_recommend.R`](file:///c:/Users/Micro/source/repos/funding_intelligence/R/helpers_recommend.R) que cruza os dados do edital selecionado com a união dos termos de expertise do pesquisador e as palavras-chave de seus projetos passados, computando um score percentual de aderência.
-*   **Integração Visual na UI**: Inclusão de um painel dinâmico `"Potenciais Parceiros (CIMATEC)"` na aba de **Editais rastreados** em [`app.R`](file:///c:/Users/Micro/source/repos/funding_intelligence/app.R). Ao selecionar um edital monitorado, a plataforma apresenta instantaneamente os pesquisadores mais indicados, seus e-mails de contato, barra de afinidade visual e a listagem de projetos já executados na temática.
-
----
-
-## 🔄 Sincronização Dinâmica de Busca — Scrape-on-Demand (Epic 5)
-
-Adição de busca híbrida em tempo real na plataforma, acionando a varredura das fontes oficiais dinamicamente no momento da pesquisa:
-
-*   **Scraping sob Demanda (Scrape-on-Demand)**: Ao acionar a busca na interface, a aplicação executa um ciclo de scraping rápido (`max_pages = 1`) nas agências da região ativa, minerando oportunidades publicadas recentemente antes de aplicar os filtros e renderizar na tela.
-*   **Controle e Resiliência via UPSERT Inteligente**: A inserção das novas oportunidades no SQLite agora utiliza a cláusula `INSERT OR IGNORE` baseada na restrição única `hash_deduplicacao` (gerada por MD5 de Título + Agência). Isso garante que editais já catalogados no banco de dados local sejam ignorados, eliminando regravações redundantes e economizando processamento.
-*   **Interface Interativa com Indicadores de Carregamento**: Integração do pacote `shinycssloaders` para exibir animações de carregamento nas tabelas e progresso passo a passo em popups (`withProgress`), mantendo a UI responsiva e amigável durante o processamento da raspagem na web.
-
----
-
-## 🤖 Agente de IA, Otimização e Feedback de UI (Epic 6)
-
-Aprimoramento do fluxo de tratamento de editais com inteligência artificial generativa e feedback resiliente na interface do usuário:
-
-*   **Agente de IA e Pipeline de Metadados**: Recomendação e utilização do modelo **Gemini 1.5/2.5 Flash** (tier gratuito robusto). Implementação de habilidades (*skills*) no agente: `skill_extract_metadata()` (para extração precisa de elegibilidade, prazo e exatamente 5 palavras-chave) e `skill_verify_metadata()` (uma skill de auditoria para prevenção de alucinações de dados).
-*   **Execução em Pipeline Estrito**: Garantia de que a coleta ocorra na ordem estrita: Scraping bruto -> Submissão do texto à IA para extração limpa e estruturada dos campos finais.
-*   **Banner de IA Ausente**: Validação inteligente de API Key no startup do app. Se a chave `GEMINI_API_KEY` estiver ausente, exibe uma mensagem instrutiva no console e uma notificação persistente amarela de alerta na UI.
-*   **Tratamento de Bloqueios de Acesso com Alerta de Busca Manual**: Monitoramento ativo de falhas técnicas intransponíveis nas agências de fomento (como CAPTCHAs severos ou quedas de IP). Quando uma falha é detectada em qualquer portal (como CNPq ou FAPESP), a interface do Shiny exibe um modal amigável alertando quais agências falharam, fornecendo links oficiais diretos e sugerindo que o usuário realize uma "Busca Manual".
-
----
-
-## 📐 Arquitetura do Sistema
-
-A aplicação adota uma organização modular em camadas de responsabilidade, separando a interface do usuário, a gestão do banco de dados, o motor de busca, o subsistema de inteligência artificial e a engine de scraping.
+A aplicação é organizada em camadas de responsabilidade bem definidas, separando a interface, a lógica de negócio, o banco de dados, o motor de coleta, o subsistema de IA e a camada de sincronização em nuvem.
 
 ```mermaid
 flowchart TD
-    subgraph Interface [Camada de Apresentação]
-        UI[app.R - Shiny UI]
-        Dashboard[Dashboard & Painéis]
-        UI --> Dashboard
+    subgraph UI [Camada de Apresentação — app.R]
+        Dashboard[Dashboard Principal]
+        TabResultados[Aba: Resultados]
+        TabRastreados[Aba: Editais Rastreados]
+        TabRecomendados[Aba: Recomendados para Mim]
+        TabFinanciador[Aba: Por Financiador]
+        TabBuscas[Aba: Buscas Salvas]
+        TabLogs[Aba: Logs de Coleta]
     end
 
-    subgraph Core [Camada de Lógica & Negócio]
-        Utils[helpers_utils.R<br/>Normalização e Parsing]
-        TextSearch[helpers_text.R<br/>Parser Booleano]
-        Recommend[helpers_recommend.R<br/>Score de Aderência]
+    subgraph Core [Camada de Lógica e Negócio]
+        Utils[helpers_utils.R\nNormalização, Datas, Hash]
+        TextSearch[helpers_text.R\nAST Parser Booleano]
+        Recommend[helpers_recommend.R\nScore de Aderência e Parceiros]
     end
 
-    subgraph Data [Camada de Coleta & Persistência]
-        Collect[helpers_collect.R<br/>Scraping & PDFs]
-        DB[helpers_db.R<br/>SQLite Schema & Seed]
-        Gemini[helpers_ai.R<br/>API Gemini]
+    subgraph Data [Camada de Dados e Coleta]
+        Collect[helpers_collect.R\nScraping, PDF, Enriquecimento Paralelo]
+        DB[helpers_db.R\nSchema SQLite, Seed, UPSERT]
+        AI[helpers_ai.R\nLLM Multi-Provedor]
+        Drive[helpers_drive.R\nGoogle Drive Sync]
+    end
+
+    subgraph Storage [Persistência]
+        SQLite[(funding_intelligence.sqlite)]
+        GDrive[(Google Drive)]
+        Exports[(data_exports/)]
     end
 
     subgraph External [Fontes Externas]
-        Websites[Portais de Fomento<br/>CNPq, CAPES, Horizon...]
-        PDFDocs[Editais em PDF]
-        GeminiAPI[Google Gemini API]
+        Fontes[30+ Portais de Fomento]
+        PDFs[Editais em PDF]
+        LLMAPIs[APIs de IA\nBluesminds · Gemini · OpenAI · Anthropic · Groq · OpenRouter · DeepSeek]
     end
 
     UI <--> Core
     Core <--> Data
-    Collect --> Websites
-    Collect --> PDFDocs
-    Gemini --> GeminiAPI
-    DB --> SQLite[(funding_intelligence.sqlite)]
+    Collect --> Fontes
+    Collect --> PDFs
+    AI --> LLMAPIs
+    DB --> SQLite
+    Drive --> GDrive
     Collect --> DB
+    DB --> Exports
+    SQLite --> Drive
 ```
 
-### 🗂️ Estrutura de Módulos (Diretório `R/`)
+---
 
-*   **[`app.R`](./app.R)**: Ponto de entrada do aplicativo Shiny. Define a estrutura da interface reativa (baseada em `bslib` e estilos customizados), as abas analíticas (Resultados, Por Financiador, Buscas Salvas, Editais Rastreados, Recomendados, Logs de Coleta) e gerencia o ciclo de reatividade do servidor.
-*   **[`R/helpers_db.R`](./R/helpers_db.R)**: Camada de persistência. Gerencia o ciclo de vida da base SQLite local (`funding_intelligence.sqlite`), cria as tabelas relacionais, gerencia os commits dos editais rastreados, histórico de buscas e perfis, além de realizar o semeio inicial (*seeding*) de dados demonstrativos.
-*   **[`R/helpers_collect.R`](./R/helpers_collect.R)**: Motor de coleta e raspagem. Despacha requisições inteligentes, executa paginação recursiva, extrai links de documentos PDF e salva exportações consolidadas de forma segura (tratando limites e codificação de caracteres).
-*   **[`R/helpers_text.R`](./R/helpers_text.R)**: Subsistema de linguística e filtragem. Implementa um lexer/parser booleano recursivo que converte consultas textuais em árvores de sintaxe abstrata (AST) para avaliar expressões complexas contra o índice textual dos editais.
-*   **[`R/helpers_recommend.R`](./R/helpers_recommend.R)**: Motor de recomendação. Avalia a aderência de cada edital cruzando metadados de elegibilidade, palavras-chave e financiador contra uma assinatura de interesses do usuário (construída dinamicamente).
-*   **[`R/helpers_ai.R`](./R/helpers_ai.R)**: Módulo de integração generativa. Constrói prompts estruturados e consulta o endpoint oficial da Google Gemini API para retornar representações JSON limpas dos editais.
-*   **[`R/helpers_utils.R`](./R/helpers_utils.R)**: Utilitários auxiliares de parsing de datas heterogêneas, conversão de moedas e normalização de strings (remoção de acentos e múltiplos espaços).
+## 📂 Estrutura de Módulos
+
+### [`app.R`](./app.R)
+Ponto de entrada do Shiny. Responsável por:
+- Inicializar o banco SQLite (baixando do Google Drive na inicialização, se configurado).
+- Definir toda a interface reativa com `bslib` e CSS customizado (`www/styles.css`).
+- Gerenciar o ciclo de reatividade do servidor: busca, filtros, exportação, rastreamento e sincronização.
+- Lançar a coleta de dados em **processo background isolado** via `callr`, evitando bloqueio da UI.
+- Fazer upload do banco atualizado ao Google Drive após cada coleta bem-sucedida ou ao encerrar a sessão (`onStop`).
+
+---
+
+### [`R/helpers_collect.R`](./R/helpers_collect.R)
+Motor de coleta, raspagem e enriquecimento. É o módulo mais extenso do sistema (~1.500 linhas). Responsável por:
+
+**Pipeline de coleta por agência:**
+1. `source_dispatch()` — despacha a estratégia correta de coleta para cada `id_fonte`.
+2. `collect_listing_with_pagination()` — navega páginas de listagem, extrai candidatos com `extract_listing_candidates()` e busca detalhes de cada oportunidade com `extract_detail_bundle()`.
+3. `extract_detail_bundle()` — baixa a página de detalhe da oportunidade e extrai o texto completo (HTML e PDF).
+4. `extract_core_record()` — monta o registro estruturado com todos os campos do schema.
+5. `finalize_records()` / `dedupe_records()` — normaliza, infere campos faltantes e deduplica por `hash_deduplicacao`.
+
+**Estratégias de requisição (em cascata):**
+- `safe_request_page()`: tenta sequencialmente `httr2` → Playwright (Python via `reticulate`) → `chromote` (R nativo com injeção stealth via DevTools).
+- Detecção e bloqueio de CDN/CAPTCHA (Cloudflare, Ray ID, Access Denied) antes de aceitar o conteúdo.
+
+**Enriquecimento paralelo com IA:**
+- `enrich_records_parallel()`: para cada registro novo, verifica cache no banco (`campos_inferidos_ia` preenchido = já processado). Registros novos são agrupados em lotes (`AI_BATCH_SIZE`) e enviados em paralelo via `httr2::req_perform_parallel()`.
+- `enrich_record_with_ai()`: enriquece registros individualmente (fluxo sequencial).
+
+**Coletores especializados:**
+- `collect_fapes_es()` — coleta PDFs diretamente da listagem de editais abertos.
+- `collect_fapesc()` — filtra links de chamadas abertas por padrão de URL/texto.
+- `collect_eureka()` — filtra chamadas por padrão `/open-calls/`.
+- `collect_sigitec()` — consome a API REST pública do SIGITEC/Petrobras.
+- `collect_confap()` — paginação por rota `/page/{n}`.
+- `collect_generic_official()` — scraping genérico com paginação automática (padrão para ~20 fontes).
+
+---
+
+### [`R/helpers_ai.R`](./R/helpers_ai.R)
+Módulo de integração com IA generativa multi-provedor. Arquitetura em camadas:
+
+**Configuração e autodetecção:**
+- `get_ai_config()` — detecta automaticamente o provedor disponível pela presença de chaves de API no ambiente (prioridade: `bluesminds` → `gemini` → `openai` → `anthropic` → `groq` → `openrouter` → `deepseek`).
+- Permite configuração manual via `AI_PROVIDER`, `AI_MODEL`, `AI_API_KEY`, `AI_API_URL`.
+
+**Prompt de Sistema (Persona Fixa):**
+```
+Você é um especialista sênior em curadoria de editais de fomento científico e tecnológico.
+Seu público é PESQUISADORES acadêmicos que buscam financiamento...
+```
+
+**Pipeline de extração em 2 estágios:**
+1. `skill_extract_metadata()` — Prompt estruturado com campos obrigatórios (`titulo_limpo`, `resumo`, `palavras_chave`, `elegibilidade`, `area_tematica`, `tipo_oportunidade`, `status_oportunidade`, `data_limite`, `data_publicacao`, `valor_financiado`, `moeda`, `observacoes`) e **regras de qualidade explícitas**:
+   - Resumo: deve responder "O que financia? Para quem? Em qual área?", com exemplos de saída boa e ruim.
+   - Palavras-chave: lista PROIBIDA de termos genéricos, institucionais e funcionais.
+2. `skill_verify_metadata()` — Auditoria automática: relê os metadados e o texto bruto, corrige resumo copiado literalmente e palavras-chave inadequadas.
+
+**Execução paralela:**
+- `ai_request_parallel()` — Envia múltiplos prompts simultaneamente via `httr2::req_perform_parallel()`.
+- Rate limiting inteligente: atraso configurável para Groq (TPM), respiro de 1s entre lotes para outros provedores.
+- Context window: até **20.000 caracteres** de texto bruto por edital (`AI_MAX_CHARS`).
+
+**Suporte nativo a APIs:**
+| Provedor | Formato de Request | System Role |
+|---|---|---|
+| Google Gemini | `systemInstruction` separado | ✅ |
+| OpenAI, Groq, Bluesminds, OpenRouter, DeepSeek | `messages[role=system]` | ✅ |
+| Anthropic | Campo `system` no body | ✅ |
+
+---
+
+### [`R/helpers_db.R`](./R/helpers_db.R)
+Camada de persistência e modelo relacional. Responsável por:
+- `create_tables()` — cria todas as tabelas com `IF NOT EXISTS` (idempotente).
+- `seed_sources()` — popula o catálogo de 30 fontes de fomento com UPSERT.
+- `upsert_opportunities()` — insere/atualiza editais com `INSERT OR REPLACE` baseado em `id_registro`.
+- `init_database()` — ponto único de inicialização: cria tabelas, semeia catálogo, perfil, buscas demo e aplica migrações de schema.
+- Migrações automáticas de schema (ex.: sanitização de `palavras_chave` legadas no formato JSON `["tag1","tag2"]` → `"tag1, tag2"`).
+
+---
+
+### [`R/helpers_text.R`](./R/helpers_text.R)
+Subsistema de linguística e busca booleana. Implementa:
+- **Lexer tokenizador**: Identifica operadores (`AND`, `OR`, `NOT`), agrupadores (`( )`), frases exatas (`"..."`) e termos simples.
+- **Parser recursivo (AST)**: Constrói uma árvore de sintaxe abstrata que representa a estrutura lógica da query.
+- **Avaliador**: Percorre a AST para testar cada edital com correspondência textual via regex.
+- `build_search_text()` — constrói o índice textual por edital concatenando colunas relevantes.
+- Normalização de texto (remoção de acentos, lowercase, whitespace) para comparação robusta.
+
+---
+
+### [`R/helpers_recommend.R`](./R/helpers_recommend.R)
+Motor de recomendação e afinidade. Implementa:
+
+**Score de aderência de editais (`compute_adherence_score`):**
+| Componente | Peso |
+|---|---|
+| Sobreposição com keywords do perfil + query ativa | 40% |
+| Sobreposição com áreas temáticas preferidas | 20% |
+| Financiador na lista de preferências | 15% |
+| Elegibilidade compatível | 15% |
+| País de origem preferido | 10% |
+
+**Assinatura de interesses dinâmica (`collect_interest_signature`):**
+Agrega: perfil do usuário + histórico de buscas (últimas 10) + editais rastreados (palavras-chave e áreas) + query ativa atual.
+
+**Recomendação de parceiros CIMATEC (`recommend_partners_for_opportunity`):**
+- Para um edital selecionado, cruza texto do edital com a união de `expertise` declarada + `palavras_chave` de projetos passados de cada pesquisador.
+- Retorna ranking com score de afinidade, projetos passados relevantes e termos correspondentes.
+
+---
+
+### [`R/helpers_drive.R`](./R/helpers_drive.R)
+Sincronização automática com Google Drive via `googledrive`. Implementa:
+- `drive_auth_service()` — autenticação via Service Account JSON (variável de ambiente `GDRIVE_SERVICE_ACCOUNT_JSON` ou conteúdo inline `GDRIVE_SERVICE_ACCOUNT_CONTENT`).
+- `drive_download_db()` — baixa o arquivo de banco do Drive na inicialização da aplicação (sobrescreve o local).
+- `drive_upload_db()` — envia o banco local atualizado ao Drive após cada coleta bem-sucedida e ao encerrar a sessão (`onStop`).
+- Todas as operações são silenciosas: falhas de autenticação ou conectividade não interrompem a aplicação.
+
+---
+
+### [`R/helpers_utils.R`](./R/helpers_utils.R)
+Utilitários compartilhados:
+- Parsing robusto de datas em múltiplos formatos (`DD/MM/YYYY`, `YYYY-MM-DD`, `Mês de YYYY` em pt-BR, etc.).
+- Normalização de texto (remoção de acentos, lowercase, squish).
+- Parsing de valores monetários (detecção de R$, US$, €, £ com notação brasileira/americana).
+- `calculate_dynamic_adherence()` — cálculo de score de aderência em tempo real para a tabela de resultados, baseado na query ativa.
+- Geração de botões de ação HTML (`btn_view_detail`, `btn_track`) com `Shiny.setInputValue`.
 
 ---
 
 ## 🗄️ Modelo de Dados (SQLite)
 
-O banco de dados local armazena o histórico do usuário e os dados minerados, garantindo acesso offline rápido:
+```
+funding_intelligence.sqlite
+├── fontes_financiamento      — Catálogo de 30 agências com URLs e metadados
+├── oportunidades             — Editais coletados e enriquecidos pela IA
+├── editais_rastreados        — Funil de candidaturas do usuário
+├── perfil_usuario            — Preferências institucionais e áreas de interesse
+├── buscas_salvas             — Consultas salvas com opção de alerta
+├── historico_buscas          — Registro cronológico de buscas executadas
+├── colaboradores             — Banco de parceiros externos classificados por expertise
+├── pesquisadores_vencedores  — Banco de talentos CIMATEC com expertise declarada
+├── projetos_aprovados        — Histórico de captação (FK → pesquisadores_vencedores)
+└── logs_coleta               — Rastreabilidade de execuções do scraper
+```
 
-*   `fontes_financiamento`: Catálogo de agências de fomento monitoradas, com URLs de oportunidades e métodos de coleta.
-*   `oportunidades`: Editais coletados com metadados extraídos (título, descrição, prazo, valor, elegibilidade, link original, pdf, idioma e campos inferidos pela IA).
-*   `editais_rastreados`: Controle do funil de candidaturas do usuário (status: *avaliar*, *prioritário*, *submetido*, *descartado*).
-*   `perfil_usuario`: Preferências institucionais, áreas de atuação e palavras-chave de interesse do pesquisador.
-*   `buscas_salvas` & `historico_buscas`: Consultas salvas pelo usuário com opção de agendamento de alertas e registro cronológico de buscas executadas.
-*   `colaboradores`: Banco de dados interno de parceiros em potencial classificados por expertise temática.
-*   `logs_coleta`: Rastreabilidade completa de todas as execuções do scraper para fins de auditoria e debugging.
+### Tabela `oportunidades` — campos principais
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `id_registro` | TEXT PK | `{fonte}_{hash16}` — identificador único determinístico |
+| `hash_deduplicacao` | TEXT UNIQUE | Hash xxHash64 de título + URL de origem |
+| `titulo` | TEXT | Título limpo pela IA |
+| `descricao_resumida` | TEXT | Resumo informativo gerado pela IA |
+| `palavras_chave` | TEXT | 5–8 termos do domínio científico/tecnológico |
+| `elegibilidade` | TEXT | Critérios específicos de elegibilidade |
+| `area_tematica` | TEXT | Áreas de conhecimento cobertas |
+| `valor_financiado` | REAL | Valor numérico máximo do financiamento |
+| `data_limite` | TEXT | Data de submissão (`YYYY-MM-DD`) |
+| `status_oportunidade` | TEXT | `aberto` / `encerrado` / `futuro` |
+| `campos_inferidos_ia` | TEXT | Lista dos campos preenchidos pela IA (controle de cache) |
+| `texto_bruto` | TEXT | Texto completo capturado para indexação e reprocessamento |
 
 ---
 
-## 🚀 Requisitos e Como Executar
+## 🌍 Agências de Fomento Monitoradas (30+)
 
-### 1. Pré-requisitos
-A aplicação requer R >= 4.0 instalado. Para instalar todas as dependências necessárias, execute o seguinte comando no R console:
+### 🇧🇷 Brasil
+CNPq, CAPES, FINEP, FAPESP, FAPERJ, FAPEMIG, FAPES/ES, FAPESC/SC, FAPESB/BA, CONFAP, BNDES, MCTI, EMBRAPII, UNDP Brasil, Ministério da Saúde, iCS (Instituto Clima e Sociedade), Petrobras SIGITEC
 
-```R
+### 🇪🇺 Europa
+Horizon Europe, ERC (European Research Council), EUREKA Network, DAAD (Alemanha)
+
+### 🌎 Internacional
+NIH (EUA), NSF (EUA), Wellcome Trust (UK), Bill & Melinda Gates Foundation (EUA), IDRC (Canadá), UNESCO, World Bank, IDB (BID)
+
+---
+
+## 🤖 Pipeline de IA — Fluxo Detalhado
+
+```
+Texto Bruto do Edital (até 20.000 chars)
+        │
+        ▼
+┌─────────────────────────────────┐
+│  STAGE 1: skill_extract_metadata │
+│  • System prompt: persona sênior │
+│  • Campos: título, resumo,        │
+│    keywords, elegibilidade,       │
+│    tipo, status, datas, valor     │
+│  • Regras explícitas de qualidade │
+│  • Exemplos bom/ruim no prompt    │
+└──────────────┬──────────────────┘
+               │ JSON
+               ▼
+┌─────────────────────────────────┐
+│  STAGE 2: skill_verify_metadata  │
+│  • Auditoria de resumo           │
+│  • Filtragem de keywords ruins   │
+│  • Validação de data_limite      │
+│  • Retorna JSON corrigido        │
+└──────────────┬──────────────────┘
+               │ JSON auditado
+               ▼
+     Salvo no banco SQLite
+     (campo campos_inferidos_ia)
+```
+
+> **Cache inteligente**: Registros com `campos_inferidos_ia` preenchido são pulados no próximo ciclo de coleta, evitando reprocessamento e consumo desnecessário de tokens.
+
+---
+
+## 🔄 Sincronização Google Drive — Fluxo
+
+```
+Inicialização do App
+    │
+    ├─ drive_download_db()  ──► Baixa SQLite do Drive (sobrescreve local)
+    │
+    ▼
+App em execução
+    │
+    ├─ [Usuário clica "Atualizar Base"]
+    │       │
+    │       ├─ Scraping em background (callr)
+    │       ├─ Enriquecimento IA paralelo
+    │       ├─ UPSERT no SQLite local
+    │       └─ drive_upload_db()  ──► Envia SQLite atualizado ao Drive
+    │
+    └─ [onStop — App encerrado]
+            └─ drive_upload_db()  ──► Sincronização final de segurança
+```
+
+> **Importante**: O app baixa a versão do Drive **somente na inicialização**. Se a aplicação reiniciar entre o clique em "Atualizar Base" e o upload, a versão mais recente ainda estará no Drive (o upload ocorre ao final da coleta, antes do restart).
+
+---
+
+## 🚀 Como Executar
+
+### Opção 1 — Local (R)
+
+#### 1. Instalar dependências
+```r
 install.packages(c(
-  "shiny", "bslib", "DT", "dplyr", "tidyr", "purrr", "stringr", "stringi", "lubridate",
-  "ggplot2", "plotly", "DBI", "RSQLite", "jsonlite", "digest", "htmltools",
-  "rvest", "xml2", "httr2", "tibble", "tools", "readr", "writexl", "janitor",
-  "glue", "progress", "pdftools", "polite", "future", "furrr"
+  "shiny", "bslib", "DT", "dplyr", "tidyr", "purrr", "stringr", "stringi",
+  "lubridate", "ggplot2", "plotly", "DBI", "RSQLite", "jsonlite", "digest",
+  "htmltools", "rvest", "xml2", "httr2", "tibble", "readr", "writexl",
+  "janitor", "glue", "progress", "pdftools", "polite", "callr",
+  "shinycssloaders", "reticulate", "chromote", "googledrive", "httr",
+  "memoise", "uuid"
 ))
 ```
 
-*Opcional para renderização de páginas com carregamento dinâmico via JS:*
-```R
-install.packages("chromote")
-```
+#### 2. Configurar o arquivo `.Renviron`
+Crie um arquivo `.Renviron` na raiz do projeto com as variáveis desejadas:
 
-### 2. Configurando a Inteligência Artificial (Opcional)
-Se você deseja utilizar a inteligência artificial para limpeza, extração de metadados avançados e auditoria contra alucinações, é necessário configurar as credenciais do provedor de IA de sua preferência no arquivo `.Renviron` (ou no ambiente).
-
-A plataforma detectará automaticamente o provedor com base nas chaves de API disponíveis no seu ambiente. 
-
-#### Opção A: Autodetecção Dinâmica (Recomendado)
-Adicione um dos seguintes blocos de chaves ao seu arquivo `.Renviron` local na raiz do projeto:
-
-*   **Google Gemini**:
-    ```env
-    GEMINI_API_KEY="sua_chave_do_google_ai_studio"
-    ```
-*   **OpenAI**:
-    ```env
-    OPENAI_API_KEY="sua_chave_da_openai"
-    ```
-*   **Anthropic (Claude)**:
-    ```env
-    ANTHROPIC_API_KEY="sua_chave_da_anthropic"
-    ```
-*   **Groq**:
-    ```env
-    GROQ_API_KEY="sua_chave_da_groq"
-    ```
-*   **OpenRouter**:
-    ```env
-    OPENROUTER_API_KEY="sua_chave_do_openrouter"
-    ```
-*   **DeepSeek**:
-    ```env
-    DEEPSEEK_API_KEY="sua_chave_do_deepseek"
-    ```
-
-#### Opção B: Configuração Manual / Customizada
-Você pode forçar o uso de um provedor, modelo ou endpoint de API customizado (como qualquer agregador ou endpoint compatível com o padrão OpenAI) definindo as seguintes variáveis no seu `.Renviron`:
 ```env
-AI_PROVIDER="groq"                      # Opções: gemini, openai, anthropic, groq, openrouter, deepseek
-AI_API_KEY="sua_chave_de_api_aqui"      # Substitui as chaves específicas se definida
-AI_MODEL="llama-3.3-70b-versatile"      # Modelo de preferência
-AI_API_URL="https://api.groq.com/openai/v1/chat/completions" # URL customizada do endpoint (opcional)
+# ── Inteligência Artificial (pelo menos uma) ──────────────────────────────────
+BLUESMINDS_API_KEY=sua_chave_bluesminds   # Provedor padrão atual
+GEMINI_API_KEY=sua_chave_gemini
+OPENAI_API_KEY=sua_chave_openai
+ANTHROPIC_API_KEY=sua_chave_anthropic
+GROQ_API_KEY=sua_chave_groq
+OPENROUTER_API_KEY=sua_chave_openrouter
+DEEPSEEK_API_KEY=sua_chave_deepseek
+
+# ── Configuração manual de provedor (opcional) ────────────────────────────────
+# AI_PROVIDER=bluesminds          # Força um provedor específico
+# AI_MODEL=moonshotai/kimi-k2.6   # Força um modelo específico
+# AI_API_URL=https://...          # Endpoint customizado (compatível OpenAI)
+# AI_MAX_CHARS=20000              # Tamanho máximo do contexto enviado à IA
+# AI_VERIFY_METADATA=true         # Habilita/desabilita auditoria de qualidade
+# AI_BATCH_SIZE=3                 # Tamanho do lote de requisições paralelas
+
+# ── Google Drive (opcional) ───────────────────────────────────────────────────
+GDRIVE_SERVICE_ACCOUNT_JSON=gdrive_credentials.json   # Caminho para o JSON
+# GDRIVE_SERVICE_ACCOUNT_CONTENT={"type":"service_account",...}  # JSON inline
+GDRIVE_FILE_ID=id_do_arquivo_no_drive
 ```
 
-O R carregará automaticamente esta variável toda vez que o projeto for aberto ou executado.
+O provedor de IA é **detectado automaticamente** com base nas chaves presentes. Se nenhuma chave estiver configurada, a IA é desabilitada silenciosamente e a coleta prossegue sem enriquecimento.
 
-### 3. Rodando o Aplicativo
-Navegue até o diretório do projeto e execute:
-
-```R
+#### 3. Executar
+```r
 shiny::runApp()
 ```
 
 ---
 
+### Opção 2 — Docker (Recomendado para Produção)
+
+A imagem Docker é **multi-estágio**: o estágio `builder` instala e valida todos os pacotes R; o estágio `runtime` copia apenas a biblioteca compilada, instala Python/Playwright/Chrome e expõe a aplicação.
+
+#### Build e execução com Docker Compose
+```bash
+# Configure as variáveis de ambiente (copie e edite)
+cp .env.example .env   # edite com suas chaves
+
+docker compose up -d
+```
+
+O `docker-compose.yml` já mapeia volumes para persistir o banco SQLite, logs e exportações no host:
+
+```yaml
+volumes:
+  - ./funding_intelligence.sqlite:/app/funding_intelligence.sqlite
+  - ./logs:/app/logs
+  - ./data_exports:/app/data_exports
+```
+
+A aplicação ficará disponível em `http://localhost:3838`.
+
+---
+
 ## 🔄 Fluxo de Trabalho do Usuário
 
-1.  **Exploração Inicial**: Ao abrir o aplicativo pela primeira vez, a base SQLite é semeada com editais demonstrativos para visualização do painel.
-2.  **Atualização da Base**: Clique em **Atualizar base** no canto superior direito para abrir o painel de coleta oficial. Selecione quais agências deseja varrer, defina os limites de páginas e ative ou desative o enriquecimento com IA.
-3.  **Filtragem e Busca Avançada**: Utilize a barra de buscas principal com lógica booleana complexa (ex: `(quântica OR quantum) AND (bolsa OR grant)`) ou refine detalhes específicos no botão **Busca avançada**.
-4.  **Rastreamento de Editais**: Identifique oportunidades interessantes na tabela de resultados e clique em **Rastrear**. A oportunidade será adicionada à aba **Editais rastreados**, onde você pode atualizar notas e status ao longo do ciclo de submissão do projeto.
-5.  **Análise de Recomendações**: Acesse a aba **Recomendados para mim** para visualizar oportunidades com alto score de aderência calculadas dinamicamente com base nas suas preferências e pesquisadores compatíveis com o tema para possíveis coautorias.
-6.  **Exportação**: A cada ciclo de coleta concluído com sucesso, bases de dados limpas e prontas para análise são gravadas em `data_exports/`.
+1. **Exploração Inicial**: Ao abrir o aplicativo pela primeira vez, a base SQLite é semeada com dados demonstrativos para visualização imediata do painel.
+2. **Atualização da Base**: Clique em **Atualizar base** para abrir o painel de coleta oficial. A varredura roda em background sem travar a UI; um indicador de progresso exibe agência por agência e a fase de enriquecimento com IA.
+3. **Busca Avançada**: Utilize a barra principal com lógica booleana complexa — ex.: `(quântica OR "tecnologia quântica") AND (bolsa OR grant) NOT licitação` — ou refine via **Busca avançada** com filtros de financiador, período, status e país.
+4. **Aderência Dinâmica**: O score de aderência de cada resultado é recalculado em tempo real com base na query ativa, integrando o perfil de interesses e histórico de buscas.
+5. **Rastreamento de Editais**: Clique em **Rastrear** em qualquer resultado para adicioná-lo à aba **Editais rastreados**, onde você acompanha o ciclo de candidatura com status e notas.
+6. **Parceiros CIMATEC**: Ao selecionar um edital rastreado, o painel de **Potenciais Parceiros** exibe os pesquisadores internos mais indicados, com score de afinidade, projetos passados e contato.
+7. **Recomendações**: A aba **Recomendados para mim** lista automaticamente os editais com maior score de aderência ao seu perfil que ainda não foram rastreados.
+8. **Exportação**: Após cada coleta, bases consolidadas são salvas automaticamente em `data_exports/` nos formatos CSV, RDS e XLSX.
+
+---
+
+## ⚙️ Variáveis de Ambiente — Referência Completa
+
+| Variável | Obrigatório | Descrição |
+|---|---|---|
+| `BLUESMINDS_API_KEY` | IA | Chave do provedor Bluesminds (padrão atual) |
+| `GEMINI_API_KEY` | IA | Chave Google Gemini |
+| `OPENAI_API_KEY` | IA | Chave OpenAI |
+| `ANTHROPIC_API_KEY` | IA | Chave Anthropic Claude |
+| `GROQ_API_KEY` | IA | Chave Groq |
+| `OPENROUTER_API_KEY` | IA | Chave OpenRouter |
+| `DEEPSEEK_API_KEY` | IA | Chave DeepSeek |
+| `AI_PROVIDER` | Não | Força o provedor (`bluesminds`, `gemini`, `openai`, `anthropic`, `groq`, `openrouter`, `deepseek`) |
+| `AI_MODEL` | Não | Modelo específico a usar |
+| `AI_API_URL` | Não | Endpoint customizado compatível com OpenAI |
+| `AI_MAX_CHARS` | Não | Contexto máximo por edital (padrão: `20000`) |
+| `AI_VERIFY_METADATA` | Não | Habilita auditoria de qualidade (padrão: `true`) |
+| `AI_BATCH_SIZE` | Não | Lote de requisições paralelas (padrão: `3`) |
+| `GROQ_RATE_DELAY` | Não | Atraso entre chamadas Groq em segundos (padrão: `6`) |
+| `GDRIVE_SERVICE_ACCOUNT_JSON` | Drive | Caminho para arquivo JSON de Service Account |
+| `GDRIVE_SERVICE_ACCOUNT_CONTENT` | Drive | Conteúdo JSON inline da Service Account |
+| `GDRIVE_FILE_ID` | Drive | ID do arquivo SQLite no Google Drive |

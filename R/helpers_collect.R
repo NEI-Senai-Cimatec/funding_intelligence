@@ -555,6 +555,7 @@ enrich_record_with_ai <- function(record, log_path = NULL) {
 
   fill_field("titulo", ai$titulo_limpo, overwrite = TRUE)
   fill_field("descricao_resumida", ai$resumo, overwrite = TRUE)
+  fill_field("palavras_chave", ai$palavras_chave, overwrite = TRUE)
   fill_field("elegibilidade", ai$elegibilidade)
   fill_field("area_tematica", ai$area_tematica)
   fill_field("tipo_oportunidade", ai$tipo_oportunidade, overwrite = TRUE)
@@ -631,7 +632,8 @@ enrich_records_parallel <- function(df, log_path = NULL) {
 
       if (!is.null(existing) && nrow(existing) > 0) {
         resumo <- existing$descricao_resumida[[1]]
-        if (!is.na(resumo) && nzchar(trimws(resumo)) && !identical(resumo, "Resumo não disponível.")) {
+        campos_ia <- existing$campos_inferidos_ia[[1]] %||% ""
+        if (!is.na(resumo) && nzchar(trimws(resumo)) && !identical(resumo, "Resumo não disponível.") && nzchar(campos_ia)) {
           log_progress(sprintf("Edital '%s' já enriquecido no banco. Recuperando cache...", df$titulo[[i]]), "IA")
 
           # Carrega o registro completo do banco
@@ -777,6 +779,7 @@ enrich_records_parallel <- function(df, log_path = NULL) {
 
       fill_field("titulo", ai$titulo_limpo, overwrite = TRUE)
       fill_field("descricao_resumida", ai$resumo, overwrite = TRUE)
+      fill_field("palavras_chave", ai$palavras_chave, overwrite = TRUE)
       fill_field("elegibilidade", ai$elegibilidade)
       fill_field("area_tematica", ai$area_tematica)
       fill_field("tipo_oportunidade", ai$tipo_oportunidade, overwrite = TRUE)

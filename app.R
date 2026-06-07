@@ -540,50 +540,7 @@ server <- function(input, output, session) {
       }
     }
     
-    # Se for busca ativa (save_history = TRUE), aciona a coleta dinâmica de fontes correspondentes
-    if (isTRUE(save_history) && !is.null(conn)) {
-      start_time <- Sys.time()
-      region <- input$region_filter
-      available_sources <- rv$sources |> dplyr::filter(!(.data$id_fonte %in% c("facepe")))
-      if (region == "Brasileiras") {
-        available_sources <- available_sources |> dplyr::filter(pais == "Brasil")
-      } else if (region == "Europeias") {
-        available_sources <- available_sources |> dplyr::filter(pais %in% c("União Europeia", "Alemanha", "Reino Unido", "Suécia", "Bélgica", "França", "Suíça", "Europa", "Itália", "Espanha", "Holanda"))
-      } else {
-        available_sources <- available_sources |> dplyr::filter(pais == "Brasil" | pais %in% c("União Europeia", "Alemanha", "Reino Unido", "Suécia", "Bélgica", "França", "Suíça", "Europa", "Itália", "Espanha", "Holanda"))
-      }
-      
-      source_ids_to_collect <- available_sources$id_fonte
-      
-      if (length(source_ids_to_collect) > 0) {
-        shiny::withProgress(message = "Pesquisando novas oportunidades na web...", value = 0, {
-          progress_cb_shiny <- function(step, total, detail) {
-            shiny::setProgress(value = step / total, detail = detail)
-          }
-          
-          tryCatch({
-            collect_all_sources(
-              conn = conn,
-              source_ids = source_ids_to_collect,
-              max_pages = 1L,
-              max_records_per_source = 3L,
-              use_ai = FALSE, # Sem IA na busca dinâmica rápida
-              export_dir = export_dir,
-              log_path = log_path,
-              progress_cb = progress_cb_shiny,
-              do_export = FALSE
-            )
-          }, error = function(e) {
-            # Ignora erros de scraping para seguir a busca
-          })
-        })
-        
-        # Alerta se houver falhas durante a busca sob demanda
-        check_and_alert_failures(start_time)
-      }
-    }
-    
-    # Atualiza a base de dados na UI
+    # Atualiza a base de dados na UI para sincronismo
     refresh_data()
     
     rv$current_query <- query_text
@@ -954,6 +911,16 @@ server <- function(input, output, session) {
     opp <- rv$opportunities |> dplyr::filter(id_registro == input$row_view$id)
     if (nrow(opp) == 0) return()
     
+    # Calcular aderência dinâmica com base no termo buscado
+    dynamic_score <- calculate_dynamic_adherence(
+      query = rv$current_query,
+      keywords = opp$palavras_chave[[1]],
+      summary = opp$descricao_resumida[[1]],
+      title = opp$titulo[[1]],
+      subtitle = opp$subtitulo[[1]],
+      default_score = opp$score_aderencia[[1]] %||% 0
+    )
+    
     # Exibir Modal Dialog com detalhes estruturados
     showModal(modalDialog(
       title = tags$div(
@@ -994,7 +961,7 @@ server <- function(input, output, session) {
             tags$div(
               style = "margin-bottom: 10px;",
               tags$strong("Aderência Geral:"),
-              HTML(score_bar_html(opp$score_aderencia[[1]] %||% 0))
+              HTML(score_bar_html(dynamic_score))
             ),
             tags$div(
               style = "margin-bottom: 10px;",

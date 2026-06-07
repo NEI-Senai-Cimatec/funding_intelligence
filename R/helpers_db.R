@@ -310,6 +310,50 @@ seed_demo_opportunities <- function(conn) {
   DBI::dbWriteTable(conn, "oportunidades", demo, append = TRUE)
 }
 
+migrate_existing_keywords <- function(conn) {
+  res <- tryCatch({
+    DBI::dbGetQuery(conn, "SELECT id_registro, titulo, subtitulo, descricao_resumida, descricao_completa, palavras_chave, campos_inferidos_ia FROM oportunidades")
+  }, error = function(e) NULL)
+  
+  if (is.null(res) || nrow(res) == 0) return(invisible(FALSE))
+  
+  updated_count <- 0
+  for (i in seq_len(nrow(res))) {
+    id <- res$id_registro[[i]]
+    kw <- res$palavras_chave[[i]]
+    inferred <- res$campos_inferidos_ia[[i]] %||% ""
+    
+    # Se não foi enriquecido via IA, vamos recalcular com o filtro de stopwords expandido
+    is_ia_kw <- grepl("palavras_chave", inferred, fixed = TRUE)
+    if (!is_ia_kw) {
+      text <- paste(
+        res$titulo[[i]] %||% "",
+        res$subtitulo[[i]] %||% "",
+        res$descricao_resumida[[i]] %||% "",
+        res$descricao_completa[[i]] %||% "",
+        collapse = "\n"
+      )
+      new_kw <- extract_keywords_simple(text)
+      
+      if (!identical(kw, new_kw)) {
+        tryCatch({
+          DBI::dbExecute(
+            conn,
+            "UPDATE oportunidades SET palavras_chave = ? WHERE id_registro = ?",
+            params = list(new_kw, id)
+          )
+          updated_count <- updated_count + 1
+        }, error = function(e) NULL)
+      }
+    }
+  }
+  
+  if (updated_count > 0) {
+    message(sprintf("[Migration] Atualizadas as palavras-chave de %d edital(is) legado(s) no banco de dados.", updated_count))
+  }
+  invisible(TRUE)
+}
+
 init_database <- function(db_path) {
   conn <- get_db_connection(db_path)
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
@@ -323,6 +367,7 @@ init_database <- function(db_path) {
   seed_demo_opportunities(conn)
   seed_pesquisadores_vencedores(conn)
   seed_projetos_aprovados(conn)
+  try(migrate_existing_keywords(conn), silent = TRUE)
   invisible(TRUE)
 }
 

@@ -218,9 +218,12 @@ extract_keywords_simple <- function(text, top_n = 8) {
   tokens <- tokens[nchar(tokens) >= 4]
   stopwords <- unique(c(
     funding_lexicon(),
-    "para", "with", "from", "that", "this", "will", "have", "your", "than",
-    "instituicao", "instituicao", "proposal", "proposals", "application", "applications",
-    "research", "programa", "program", "state", "fapes", "cnpq", "capes", "finep"
+    # Pronomes, preposições, verbos e termos comuns de conexão
+    "para", "with", "from", "that", "this", "will", "have", "your", "than", "como", "mais", "para", "com", "uma", "mais", "será", "pelo", "pela", "sobre", "entre", "onde", "quem", "seus", "suas",
+    # Palavras administrativas/procedimentais genéricas em português
+    "projeto", "projetos", "recurso", "recursos", "proposta", "propostas", "instituicao", "instituicoes", "instituição", "instituições", "bolsa", "bolsas", "execucao", "execução", "inovacao", "inovação", "proponente", "proponentes", "desenvolvimento", "desenvolvimentos", "tecnologia", "tecnologias", "apoio", "pesquisa", "pesquisas", "cientifico", "científico", "ciencia", "ciência", "chamada", "chamadas", "publica", "pública", "publico", "público", "fomento", "fomentos", "financiar", "financiamento", "financiamentos", "paragrafo", "parágrafo", "documento", "documentos", "beneficiaria", "beneficiária", "prazo", "prazos", "valor", "valores", "edital", "editais", "anexo", "anexos", "artigo", "artigos", "inciso", "incisos", "lei", "leis", "portaria", "portarias", "decreto", "decretos", "resolucao", "resolução", "pagina", "página", "paginas", "páginas", "site", "sites", "web", "link", "links", "email", "e-mail", "telefone", "telefones", "endereco", "endereço", "candidato", "candidatos", "candidatura", "candidaturas", "submissao", "submissão", "formulario", "formulário", "anual", "mensal", "diario", "diário", "devera", "deverá", "cada", "despesas", "despesa", "cientifica", "científica", "cooperacao", "cooperação", "sendo", "pode", "devem", "serao", "serão", "sobre", "pelas", "pelos", "caso", "seria", "serian", "seriam", "esta", "está", "estao", "estão",
+    # Palavras administrativas genéricas em inglês
+    "proposal", "proposals", "application", "applications", "research", "researches", "programa", "program", "programs", "state", "fapes", "cnpq", "capes", "finep", "funding", "fundings", "grant", "grants", "scholarship", "scholarships", "fellowship", "fellowships", "award", "awards", "call", "calls", "deadline", "deadlines", "eligible", "eligibility", "institution", "institutions", "candidate", "candidates", "submission", "submissions", "form", "forms", "annex", "annexes", "guideline", "guidelines", "notice", "notices", "budget", "budgets", "cost", "costs", "partner", "partners", "project", "projects", "support", "supports", "development", "developments"
   ))
   tokens <- tokens[!(tokens %in% normalize_text(stopwords))]
   if (length(tokens) == 0) return(NA_character_)
@@ -397,6 +400,46 @@ make_actions_html <- function(id_value) {
     id_value
   )
   sprintf("<div style='display: flex; gap: 4px; white-space: nowrap;'>%s%s</div>", btn_view, btn_track)
+}
+
+calculate_dynamic_adherence <- function(query, keywords, summary, title = "", subtitle = "", default_score = 0) {
+  if (is.null(query) || !nzchar(trimws(query))) {
+    return(as.integer(default_score %||% 0))
+  }
+  
+  # Normalize and clean the query string
+  query_clean <- tolower(query)
+  # Remove boolean logic symbols and punctuation
+  query_clean <- gsub("[()\"':;,!?|]", " ", query_clean)
+  query_clean <- gsub("\\b(and|or|not|&&|\\|\\||!)\\b", " ", query_clean, perl = TRUE)
+  
+  # Split into unique terms
+  words <- unlist(strsplit(query_clean, "\\s+"))
+  words <- unique(trimws(words))
+  words <- words[nzchar(words) & nchar(words) >= 3]
+  
+  if (length(words) == 0) {
+    return(as.integer(default_score %||% 0))
+  }
+  
+  # Text to search in: title, subtitle, keywords, and summary/object
+  text_to_search <- tolower(paste(
+    title %||% "",
+    subtitle %||% "",
+    keywords %||% "",
+    summary %||% "",
+    collapse = " "
+  ))
+  
+  # Count matches
+  matches <- vapply(words, function(w) {
+    w_esc <- gsub("([^a-zA-Z0-9])", "\\\\\\1", w)
+    grepl(paste0("\\b", w_esc, "\\b"), text_to_search, perl = TRUE) || grepl(w, text_to_search, fixed = TRUE)
+  }, logical(1))
+  
+  # Calculate match percentage
+  match_ratio <- sum(matches) / length(words)
+  as.integer(round(match_ratio * 100))
 }
 
 link_html <- function(url, label = NULL) {

@@ -111,15 +111,25 @@ validate_ai_config <- function() {
 
 trim_for_ai <- function(text, max_chars = NULL) {
   if (is.null(max_chars)) {
-    max_chars <- as.numeric(Sys.getenv("AI_MAX_CHARS", "12000"))
-    if (is.na(max_chars) || max_chars <= 0) max_chars <- 12000
+    max_chars <- as.numeric(Sys.getenv("AI_MAX_CHARS", "20000"))
+    if (is.na(max_chars) || max_chars <= 0) max_chars <- 20000
   }
   text <- normalize_ws(text %||% "")
   if (nchar(text) <= max_chars) return(text)
   substr(text, 1, max_chars)
 }
 
-ai_make_request <- function(prompt, cfg = NULL, timeout_sec = 45) {
+# Prompt de sistema fixo — define a persona e os padrões de qualidade da IA
+.AI_SYSTEM_PROMPT <- paste(
+  "Você é um especialista sênior em curadoria de editais de fomento científico e tecnológico.",
+  "Seu público é PESQUISADORES acadêmicos que buscam financiamento e precisam avaliar rapidamente",
+  "se um edital é relevante para sua área. Produza sempre saídas:",
+  "(1) OBJETIVAS: sem jargão burocrático ou linguagem administrativa genérica;",
+  "(2) INFORMATIVAS: respondendo o que, para quem, em qual área e quando;",
+  "(3) ESPECÍFICAS: com termos do domínio científico/tecnológico real do edital, nunca termos genéricos."
+)
+
+ai_make_request <- function(prompt, system_prompt = .AI_SYSTEM_PROMPT, cfg = NULL, timeout_sec = 60) {
   if (is.null(cfg)) cfg <- get_ai_config()
   if (!nzchar(cfg$provider) || !nzchar(cfg$api_key)) {
     return(NULL)
@@ -127,17 +137,28 @@ ai_make_request <- function(prompt, cfg = NULL, timeout_sec = 45) {
 
   req <- NULL
   if (cfg$provider == "gemini") {
+    # Gemini: system instruction separada
     url <- sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", cfg$model, cfg$api_key)
+    body <- list(
+      contents = list(list(parts = list(list(text = prompt)))),
+      generationConfig = list(temperature = 0.1, responseMimeType = "application/json")
+    )
+    if (nzchar(system_prompt %||% "")) {
+      body$systemInstruction <- list(parts = list(list(text = system_prompt)))
+    }
     req <- httr2::request(url) |>
       httr2::req_method("POST") |>
       httr2::req_timeout(timeout_sec) |>
       httr2::req_headers(`Content-Type` = "application/json") |>
-      httr2::req_body_json(list(
-        contents = list(list(parts = list(list(text = prompt)))),
-        generationConfig = list(temperature = 0.1, responseMimeType = "application/json")
-      ), auto_unbox = TRUE)
+      httr2::req_body_json(body, auto_unbox = TRUE)
   } else if (cfg$provider %in% c("openai", "groq", "openrouter", "deepseek", "bluesminds")) {
+    # OpenAI-compatível: system message separada
     url <- cfg$api_url
+    messages <- list()
+    if (nzchar(system_prompt %||% "")) {
+      messages <- c(messages, list(list(role = "system", content = system_prompt)))
+    }
+    messages <- c(messages, list(list(role = "user", content = prompt)))
     req <- httr2::request(url) |>
       httr2::req_method("POST") |>
       httr2::req_timeout(timeout_sec) |>
@@ -147,12 +168,21 @@ ai_make_request <- function(prompt, cfg = NULL, timeout_sec = 45) {
       ) |>
       httr2::req_body_json(list(
         model = cfg$model,
-        messages = list(list(role = "user", content = prompt)),
+        messages = messages,
         temperature = 0.1,
         response_format = list(type = "json_object")
       ), auto_unbox = TRUE)
   } else if (cfg$provider == "anthropic") {
     url <- cfg$api_url
+    body <- list(
+      model = cfg$model,
+      messages = list(list(role = "user", content = prompt)),
+      max_tokens = 4000,
+      temperature = 0.1
+    )
+    if (nzchar(system_prompt %||% "")) {
+      body$system <- system_prompt
+    }
     req <- httr2::request(url) |>
       httr2::req_method("POST") |>
       httr2::req_timeout(timeout_sec) |>
@@ -161,12 +191,7 @@ ai_make_request <- function(prompt, cfg = NULL, timeout_sec = 45) {
         `x-api-key` = cfg$api_key,
         `anthropic-version` = "2023-06-01"
       ) |>
-      httr2::req_body_json(list(
-        model = cfg$model,
-        messages = list(list(role = "user", content = prompt)),
-        max_tokens = 4000,
-        temperature = 0.1
-      ), auto_unbox = TRUE)
+      httr2::req_body_json(body, auto_unbox = TRUE)
   }
   req
 }
@@ -298,24 +323,58 @@ ai_request_parallel <- function(prompts, timeout_sec = 45, log_path = NULL) {
 # Skill do Agente: Extração Inicial de Metadados
 skill_extract_metadata <- function(text, current_info = list(), log_path = NULL) {
   prompt <- paste(
-    "Você é um agente especialista em extração de dados de editais de fomento.",
-    "Analise o texto bruto do edital fornecido e extraia as seguintes informações estruturadas.",
-    "Retorne OBRIGATORIAMENTE um JSON válido com os seguintes campos:",
-    "- titulo_limpo: Título do edital sem caracteres especiais ou abreviações confusas.",
-    "- resumo: Um resumo conciso do edital (máximo 3 parágrafos). ATENÇÃO: Foque no OBJETO DE FINANCIAMENTO (o que o edital está financiando e seus objetivos principais). Evite repetir menus do site, cabeçalhos, introduções genéricas ou links de navegação.",
-    "- elegibilidade: Quem pode se candidatar (ex: ICTs, startups, pesquisadores individuais).",
-    "- area_tematica: Principais áreas de conhecimento englobadas.",
-    "- tipo_oportunidade: Categoria do fomento (ex: edital, grant, fellowship, licitação).",
-    "- status_oportunidade: Status atual (aberto, encerrado, futuro).",
-    "- idioma: Idioma oficial do edital (pt, en, etc.).",
-    "- data_limite: Data máxima de submissão no formato AAAA-MM-DD (ou null se indefinida).",
-    "- data_publicacao: Data de publicação no formato AAAA-MM-DD (ou null).",
-    "- palavras_chave: Exatamente 5 palavras-chave ou termos separados por vírgula que caracterizam o edital. ATENÇÃO: As palavras-chave devem refletir de fato o objeto de fomento e a tecnologia/temas do edital (ex: 'energia solar', 'inteligência artificial'). Evite termos genéricos como 'edital', 'chamada', 'pesquisa', 'fomento' ou o nome da instituição financiadora.",
-    "- observacoes: Qualquer detalhe ou restrição relevante do edital.",
+    "Analise o texto bruto do edital fornecido e extraia as informações estruturadas abaixo.",
+    "Retorne OBRIGATORIAMENTE um JSON válido com os campos listados.",
     "",
-    "Contexto primário conhecido:", jsonlite::toJSON(current_info, auto_unbox = TRUE, null = "null"),
+    "CAMPOS OBRIGATÓRIOS:",
     "",
-    "Texto do Edital:", trim_for_ai(text)
+    "titulo_limpo: Título do edital limpo, sem caracteres especiais, numerações de seção, ruídos HTML ou abreviações inexplicadas.",
+    "",
+    "resumo: Síntese informativa do OBJETO CENTRAL de financiamento em 2 a 3 frases.",
+    "  REGRAS OBRIGATÓRIAS:",
+    "  - Responda implicitamente: O que financia? Para quem? Em quais áreas/temas? Qual o valor/prazo?",
+    "  - Escreva como se estivesse descrevendo a oportunidade para um pesquisador que nunca viu o edital.",
+    "  - NÃO copie frases do texto bruto.",
+    "  - NÃO mencione: menus do site, links, cabeçalhos, siglas não explicadas, linguagem de seção (ex: '1. FINALIDADE 1.1...').",
+    "  - EXEMPLO BOM: 'Financia projetos colaborativos de pesquisa entre instituições brasileiras e africanas nas áreas de ciência, tecnologia e inovação. Destinado a ICTs públicas e privadas em parceria formal com instituições africanas. Projetos de até R$ 150.000, com submissão até julho de 2025.'",
+    "  - EXEMPLO RUIM: 'DIRETRIZES ESPECÍFICAS DA FAPES CONFAP – 1. FINALIDADE 1.1. Apoio para a manutenção da bolsa Fapes de doutorado...'",
+    "",
+    "elegibilidade: Quem pode se candidatar. Seja específico (ex: 'Pesquisadores doutores vinculados a ICTs públicas ou privadas', 'Doutorandos com bolsa DAAD aprovada').",
+    "",
+    "area_tematica: Áreas temáticas ou de conhecimento cobertas pelo edital (ex: 'Ciência e Tecnologia, Cooperação Internacional, Saúde').",
+    "",
+    "tipo_oportunidade: Categoria do fomento — escolha um: edital, grant, fellowship, bolsa, licitação, convocatória.",
+    "",
+    "status_oportunidade: aberto, encerrado ou futuro — com base no texto e nas datas encontradas.",
+    "",
+    "idioma: Código de 2 letras do idioma principal do edital (pt, en, es, fr, de).",
+    "",
+    "data_limite: Data máxima de submissão no formato AAAA-MM-DD (ou null se não encontrada no texto).",
+    "",
+    "data_publicacao: Data de publicação/lançamento no formato AAAA-MM-DD (ou null se não encontrada).",
+    "",
+    "valor_financiado: Valor numérico máximo ou global do financiamento (ex: 150000.00), ou null.",
+    "  - IGNORE: números de leis, portarias, CPF, telefone, anos isolados, quantidades de vagas ou itens.",
+    "  - Aceite apenas valores monetários explícitos de financiamento, bolsa ou auxílio.",
+    "",
+    "moeda: Código ISO de 3 letras da moeda (BRL, USD, EUR, GBP), ou null se valor_financiado for null.",
+    "",
+    "palavras_chave: Entre 5 e 8 termos separados por vírgula que descrevam o TEMA CIENTÍFICO/TECNOLÓGICO central do edital.",
+    "  REGRAS ABSOLUTAS:",
+    "  - PREFIRA termos compostos e específicos do domínio de pesquisa.",
+    "  - PROIBIDO: nomes de instituições (CNPq, FAPES, CAPES, DAAD, Confap, Embrapii), qualquer variação de 'edital', 'chamada pública', 'seleção', 'submissão', 'proposta', 'fomento', 'projeto', 'pesquisa', 'bolsa', 'prazo', 'período', 'processo', 'programa', 'recurso', 'custeio', 'apoio', 'acordo', 'convênio'.",
+    "  - PROIBIDO: palavras funcionais e genéricas como 'estar', 'cada', 'através', 'para', 'durante', 'sendo', 'deverá', 'conforme', anos isolados (2024, 2025).",
+    "  - CORRETO (exemplos): 'cooperação científica internacional, mobilidade acadêmica, tecnologia da informação, inteligência artificial, saúde pública, transição energética, biotecnologia, desenvolvimento sustentável'",
+    "  - INCORRETO (exemplos): 'daad, confap, 2025, doutorado, estar, período, seleção, através, pesquisa, fomento'",
+    "",
+    "observacoes: Restrições, contrapartidas, exigências específicas ou informações críticas para o pesquisador.",
+    "  Exemplos: 'Exige parceria formal com instituição alemã aprovada pelo DAAD', 'Somente para bolsistas já aprovados em seleção prévia'.",
+    "",
+    "Contexto já extraído (use como ponto de partida, corrija se necessário):",
+    jsonlite::toJSON(current_info, auto_unbox = TRUE, null = "null"),
+    "",
+    "=== TEXTO DO EDITAL ===",
+    trim_for_ai(text)
   )
 
   raw <- ai_request(prompt, log_path = log_path)
@@ -331,15 +390,29 @@ skill_verify_metadata <- function(metadata, raw_text, log_path = NULL) {
   if (length(metadata) == 0) return(metadata)
 
   prompt <- paste(
-    "Você é um auditor de controle de qualidade de IA.",
-    "Sua tarefa é verificar se as informações extraídas de um edital condizem com o texto original do edital.",
-    "Analise as informações abaixo e verifique se há contradições ou 'alucinações' em relação ao texto bruto fornecido.",
-    "Preste atenção especial à data_limite e à elegibilidade.",
-    "Corrija os valores se necessário e retorne o JSON final corrigido.",
+    "Você é um auditor de qualidade de dados de editais de fomento.",
+    "Revise os metadados extraídos e verifique os seguintes pontos:",
     "",
-    "Informações extraídas preliminares:", jsonlite::toJSON(metadata, auto_unbox = TRUE, null = "null"),
+    "1. RESUMO: O campo 'resumo' descreve claramente o OBJETO DO FINANCIAMENTO (o que financia, para quem, em qual área)?",
+    "   - Se o resumo for uma cópia do texto bruto, uma lista de seções (ex: '1. FINALIDADE 1.1...') ou texto de navegação de site, REESCREVA-O de forma sintética e informativa.",
+    "   - O resumo deve ter no máximo 3 frases e responder: O que financia? Para quem? Em qual área?",
     "",
-    "Texto bruto do Edital:", trim_for_ai(raw_text)
+    "2. PALAVRAS-CHAVE: O campo 'palavras_chave' contém termos do domínio científico/tecnológico do edital?",
+    "   - Remova qualquer palavra que seja: nome de instituição, termo administrativo (edital, seleção, pesquisa, fomento, bolsa, prazo, período), palavra funcional (estar, cada, através, durante, sendo, deverá).",
+    "   - Substitua por termos específicos do tema real do edital.",
+    "   - Mantenha entre 5 e 8 termos compostos e específicos.",
+    "",
+    "3. DATA_LIMITE: A data_limite está presente no texto e no formato AAAA-MM-DD?",
+    "",
+    "4. ELEGIBILIDADE: A elegibilidade está específica (não apenas 'pesquisadores' genérico)?",
+    "",
+    "Retorne o JSON completo corrigido com todos os campos originais.",
+    "",
+    "Metadados extraídos para revisão:",
+    jsonlite::toJSON(metadata, auto_unbox = TRUE, null = "null"),
+    "",
+    "=== TEXTO BRUTO DO EDITAL ===",
+    trim_for_ai(raw_text, max_chars = 10000)
   )
 
   raw <- ai_request(prompt, log_path = log_path)

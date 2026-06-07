@@ -882,10 +882,12 @@ server <- function(input, output, session) {
     df <- filtered_results()
     if (nrow(df) == 0) {
       shown <- tibble::tibble(
-        ID = character(), Título = character(), Financiador = factor(), País = character(),
-        Prazo = character(), Tipo = factor(), Área = character(), Resumo = character(),
-        `Palavras-chave` = character(), Score = character(), Status = factor(), Link = character(),
-        Visualizar = character(), Rastrear = character()
+        ID = character(),
+        Título = character(),
+        Financiador = factor(),
+        Prazo = character(),
+        Status = factor(),
+        Ações = character()
       )
     } else {
       shown <- df |>
@@ -893,41 +895,32 @@ server <- function(input, output, session) {
           Prazo = format_date_br(data_limite),
           Status = as.factor(tools::toTitleCase(tolower(status_oportunidade))),
           Financiador = as.factor(entidade),
-          Tipo = as.factor(tools::toTitleCase(tolower(dplyr::coalesce(tipo_oportunidade, "não especificado")))),
-          Score = vapply(score_aderencia, score_bar_html, character(1)),
-          Link = vapply(dplyr::coalesce(link_detalhe, link_origem), link_html, character(1), label = "Abrir"),
-          Visualizar = vapply(id_registro, make_view_button, character(1)),
-          Rastrear = vapply(id_registro, make_click_button, character(1), label = "Rastrear")
+          Título = stringr::str_trunc(titulo, 90),
+          Ações = vapply(id_registro, make_actions_html, character(1))
         ) |>
         dplyr::transmute(
           ID = id_registro,
-          Título = titulo,
+          Título,
           Financiador,
-          País = pais_origem,
           Prazo,
-          Tipo,
-          Área = area_tematica,
-          Resumo = stringr::str_trunc(descricao_resumida, 180),
-          `Palavras-chave` = palavras_chave,
-          Score,
           Status,
-          Link,
-          Visualizar,
-          Rastrear
+          Ações
         )
     }
     DT::datatable(
       shown, 
       escape = FALSE, 
       rownames = FALSE,
-      filter = "top", 
+      filter = "none", 
       options = list(
         pageLength = 10, 
         scrollX = TRUE, 
+        searching = FALSE,
         language = list(emptyTable = "Nenhum resultado encontrado."),
         columnDefs = list(
+          list(targets = 0, visible = FALSE),
           list(
-            targets = 10,
+            targets = 4,
             render = DT::JS("
               function(data, type, row, meta) {
                 if (type === 'display') {
@@ -943,10 +936,7 @@ server <- function(input, output, session) {
               }
             ")
           ),
-          list(
-            targets = c(0, 1, 3, 4, 6, 7, 8, 9, 11, 12, 13), 
-            searchable = FALSE
-          )
+          list(targets = c(0, 5), searchable = FALSE, orderable = FALSE)
         )
       )
     )
@@ -967,9 +957,15 @@ server <- function(input, output, session) {
     # Exibir Modal Dialog com detalhes estruturados
     showModal(modalDialog(
       title = tags$div(
-        style = "display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; width: 100%;",
-        tags$h3(style = "margin: 0; color: #004691; font-weight: 800; font-size: 1.35rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;", opp$titulo[[1]]),
-        modalButton("Fechar", icon = icon("close"))
+        style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+        tags$h3(style = "margin: 0; color: #004691; font-weight: 800; font-size: 1.4rem; white-space: normal; line-height: 1.3; text-align: left;", opp$titulo[[1]]),
+        tags$button(
+          type = "button",
+          class = "btn-close",
+          `data-bs-dismiss` = "modal",
+          `aria-label` = "Close",
+          style = "margin-left: 15px;"
+        )
       ),
       size = "l",
       easyClose = TRUE,
@@ -977,106 +973,137 @@ server <- function(input, output, session) {
       
       # Modal Body
       tags$div(
-        style = "padding: 10px 0; font-family: 'Inter', sans-serif;",
+        style = "padding: 15px 0; font-family: 'Inter', sans-serif;",
         
         # Financiador e Subtítulo
         tags$div(
-          style = "margin-bottom: 20px; font-size: 1.05rem; color: #475569;",
-          tags$strong("Financiador: "), opp$entidade[[1]],
+          style = "margin-bottom: 25px; border-left: 4px solid #e30613; padding-left: 15px;",
+          tags$span(style = "font-size: 0.85rem; text-transform: uppercase; font-weight: 700; color: #e30613; letter-spacing: 0.5px;", "Entidade Financiadora"),
+          tags$h4(style = "margin: 2px 0 0 0; color: #0f172a; font-weight: 700; font-size: 1.2rem;", opp$entidade[[1]]),
           if (!is.na(opp$subtitulo[[1]]) && nzchar(opp$subtitulo[[1]])) {
-            tags$div(style = "font-style: italic; margin-top: 5px; font-size: 0.9rem; color: #64748b;", opp$subtitulo[[1]])
+            tags$div(style = "font-style: italic; margin-top: 5px; font-size: 0.95rem; color: #475569;", opp$subtitulo[[1]])
           }
         ),
-        
-        # Ficha Técnica / Metadados em Grid
+
+        # Score de Aderência e Palavras-chave
         tags$div(
-          class = "row",
-          style = "margin-bottom: 25px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-left: 0; margin-right: 0;",
-          
-          tags$div(
-            class = "col-md-4", style = "margin-bottom: 10px;",
-            tags$strong("Prazo: "), format_date_br(opp$data_limite[[1]])
-          ),
-          tags$div(
-            class = "col-md-4", style = "margin-bottom: 10px;",
-            tags$strong("Área Temática: "), opp$area_tematica[[1]] %||% "-"
-          ),
-          tags$div(
-            class = "col-md-4", style = "margin-bottom: 10px;",
-            tags$strong("Elegibilidade: "), opp$elegibilidade[[1]] %||% "-"
-          ),
-          tags$div(
-            class = "col-md-4", style = "margin-bottom: 10px;",
-            tags$strong("Tipo de Oportunidade: "), opp$tipo_oportunidade[[1]] %||% "-"
-          ),
-          tags$div(
-            class = "col-md-4", style = "margin-bottom: 10px;",
-            tags$strong("País de Origem: "), opp$pais_origem[[1]] %||% "-"
-          ),
-          tags$div(
-            class = "col-md-4", style = "margin-bottom: 10px;",
-            tags$strong("Valor Financiado: "), 
-            if (!is.na(opp$valor_financiado[[1]])) {
-              paste(opp$moeda[[1]] %||% "", format(opp$valor_financiado[[1]], big.mark = ".", decimal.mark = ","))
-            } else {
-              "-"
-            }
-          ),
-          tags$div(
-            class = "col-md-12", style = "margin-top: 10px; border-top: 1px solid #e2e8f0; padding-top: 10px;",
-            tags$strong("Palavras-chave: "),
-            tags$span(
-              style = "margin-left: 5px;",
-              HTML(paste0(
-                vapply(safe_split(opp$palavras_chave[[1]]), function(kw) {
-                  sprintf("<span class='status-badge badge-soft-info' style='margin-right: 5px; text-transform: none;'>%s</span>", htmltools::htmlEscape(kw))
-                }, character(1)),
-                collapse = ""
-              ))
+          style = "margin-bottom: 25px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 15px;",
+          tags$h5(style = "color: #1e40af; font-weight: 700; margin-bottom: 12px; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.5px;", "Análise de Afinidade (IA)"),
+          bslib::layout_columns(
+            col_widths = c(6, 6),
+            tags$div(
+              style = "margin-bottom: 10px;",
+              tags$strong("Aderência Geral:"),
+              HTML(score_bar_html(opp$score_aderencia[[1]] %||% 0))
+            ),
+            tags$div(
+              style = "margin-bottom: 10px;",
+              tags$strong("Palavras-chave Identificadas:"),
+              tags$div(
+                style = "margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px;",
+                HTML(paste0(
+                  vapply(safe_split(opp$palavras_chave[[1]]), function(kw) {
+                    sprintf("<span class='status-badge badge-soft-info' style='text-transform: none; font-size: 0.7rem;'>%s</span>", htmltools::htmlEscape(kw))
+                  }, character(1)),
+                  collapse = ""
+                ))
+              )
             )
           )
         ),
         
-        # Resumo Inteligente (Objeto de Financiamento)
+        # Objeto de Financiamento (Resumo da IA)
         tags$div(
-          style = "margin-bottom: 25px;",
-          tags$h4(style = "color: #004691; border-bottom: 2px solid #e2e8f0; padding-bottom: 5px; font-weight: 700; font-size: 1.15rem;", "Objeto de Financiamento (Resumo da IA)"),
+          style = "margin-bottom: 25px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);",
+          tags$h5(style = "color: #004691; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; font-weight: 700; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 0.5px;", "Objeto de Financiamento"),
           tags$div(
-            style = "font-size: 0.95rem; line-height: 1.6; color: #1e293b; white-space: pre-wrap;",
+            style = "font-size: 0.95rem; line-height: 1.7; color: #1e293b; white-space: pre-wrap; text-align: justify;",
             opp$descricao_resumida[[1]] %||% "Resumo não disponível."
+          )
+        ),
+
+        # Ficha Técnica / Metadados em Grid
+        tags$div(
+          style = "margin-bottom: 25px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px;",
+          tags$h5(style = "color: #475569; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; font-weight: 700; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 15px;", "Ficha Técnica do Edital"),
+          tags$div(
+            class = "row",
+            tags$div(
+              class = "col-md-4", style = "margin-bottom: 15px;",
+              tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Prazo Limite"),
+              tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", format_date_br(opp$data_limite[[1]]))
+            ),
+            tags$div(
+              class = "col-md-4", style = "margin-bottom: 15px;",
+              tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Área Temática"),
+              tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", opp$area_tematica[[1]] %||% "-")
+            ),
+            tags$div(
+              class = "col-md-4", style = "margin-bottom: 15px;",
+              tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Elegibilidade"),
+              tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", opp$elegibilidade[[1]] %||% "-")
+            ),
+            tags$div(
+              class = "col-md-4", style = "margin-bottom: 15px;",
+              tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Tipo de Oportunidade"),
+              tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", opp$tipo_oportunidade[[1]] %||% "-")
+            ),
+            tags$div(
+              class = "col-md-4", style = "margin-bottom: 15px;",
+              tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "País de Origem"),
+              tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", opp$pais_origem[[1]] %||% "-")
+            ),
+            tags$div(
+              class = "col-md-4", style = "margin-bottom: 15px;",
+              tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Orçamento Estimado"),
+              tags$div(
+                style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;",
+                if (!is.na(opp$valor_financiado[[1]])) {
+                  paste(opp$moeda[[1]] %||% "", format(opp$valor_financiado[[1]], big.mark = ".", decimal.mark = ","))
+                } else {
+                  "Ver documentação oficial"
+                }
+              )
+            )
           )
         ),
         
         # Links de Referência
         tags$div(
           style = "margin-bottom: 25px;",
-          tags$h4(style = "color: #004691; border-bottom: 2px solid #e2e8f0; padding-bottom: 5px; font-weight: 700; font-size: 1.15rem;", "Links de Referência"),
-          tags$ul(
-            style = "padding-left: 20px; font-size: 0.95rem; margin-bottom: 0;",
-            if (!is.na(opp$link_origem[[1]]) && nzchar(opp$link_origem[[1]])) tags$li(tags$strong("Link de Origem: "), tags$a(href = opp$link_origem[[1]], target = "_blank", opp$link_origem[[1]])),
-            if (!is.na(opp$link_detalhe[[1]]) && nzchar(opp$link_detalhe[[1]])) tags$li(tags$strong("Link de Detalhes: "), tags$a(href = opp$link_detalhe[[1]], target = "_blank", opp$link_detalhe[[1]])),
-            if (!is.na(opp$link_documento_pdf[[1]]) && nzchar(opp$link_documento_pdf[[1]])) tags$li(tags$strong("Documento PDF: "), tags$a(href = opp$link_documento_pdf[[1]], target = "_blank", opp$link_documento_pdf[[1]]))
+          tags$h5(style = "color: #004691; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; font-weight: 700; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 0.5px;", "Documentos e Links Oficiais"),
+          tags$div(
+            style = "margin-top: 10px; display: flex; flex-direction: column; gap: 8px; font-size: 0.95rem;",
+            if (!is.na(opp$link_origem[[1]]) && nzchar(opp$link_origem[[1]])) {
+              tags$div(tags$strong("Portal da Oportunidade: "), tags$a(href = opp$link_origem[[1]], target = "_blank", style = "color: #004691; font-weight: 600;", "Acessar Portal de Origem ↗"))
+            },
+            if (!is.na(opp$link_detalhe[[1]]) && nzchar(opp$link_detalhe[[1]])) {
+              tags$div(tags$strong("Página de Detalhes: "), tags$a(href = opp$link_detalhe[[1]], target = "_blank", style = "color: #004691; font-weight: 600;", "Acessar Edital Completo ↗"))
+            },
+            if (!is.na(opp$link_documento_pdf[[1]]) && nzchar(opp$link_documento_pdf[[1]])) {
+              tags$div(tags$strong("Documento de Diretrizes (PDF): "), tags$a(href = opp$link_documento_pdf[[1]], target = "_blank", style = "color: #e30613; font-weight: 600;", "Baixar Edital em PDF 📥"))
+            }
           )
         ),
         
-        # Texto Bruto Coletado (Auditoria)
+        # Texto Bruto Coletado (Auditoria) - Colapsável
         tags$div(
           style = "margin-bottom: 10px;",
-          tags$h4(
-            style = "color: #004691; border-bottom: 2px solid #e2e8f0; padding-bottom: 5px; font-weight: 700; font-size: 1.15rem; display: flex; justify-content: space-between; align-items: center;",
-            "Texto Bruto Coletado (Auditoria)",
+          tags$h5(
+            style = "color: #64748b; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; font-weight: 700; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.5px; display: flex; justify-content: space-between; align-items: center;",
+            "Conteúdo Bruto (Auditoria)",
             tags$button(
               id = "toggle_raw_text_btn",
               class = "btn btn-sm btn-outline-secondary",
               style = "padding: 2px 8px; font-size: 0.75rem;",
-              onclick = "var x = document.getElementById('modal_raw_text_div'); if(x.style.display === 'none'){x.style.display = 'block'; this.innerText = 'Ocultar';}else{x.style.display = 'none'; this.innerText = 'Mostrar';}",
-              "Mostrar"
+              onclick = "var x = document.getElementById('modal_raw_text_div'); if(x.style.display === 'none'){x.style.display = 'block'; this.innerText = 'Ocultar Texto';}else{x.style.display = 'none'; this.innerText = 'Mostrar Texto';}",
+              "Mostrar Texto"
             )
           ),
           tags$div(
             id = "modal_raw_text_div",
-            style = "display: none; max-height: 250px; overflow-y: auto; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; font-family: monospace; font-size: 0.8rem; white-space: pre-wrap; color: #475569;",
-            opp$texto_bruto[[1]] %||% "Nenhum texto bruto disponível."
+            style = "display: none; max-height: 200px; overflow-y: auto; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; font-family: monospace; font-size: 0.8rem; white-space: pre-wrap; color: #475569; margin-top: 10px;",
+            opp$texto_bruto[[1]] %||% "Nenhum texto bruto disponível para este edital."
           )
         )
       )

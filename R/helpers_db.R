@@ -354,6 +354,7 @@ migrate_existing_keywords <- function(conn) {
 }
 
 cleanup_database_opportunities <- function(conn) {
+  # 1. Limpeza por Heurísticas Estáticas (incluindo novos filtros de retificações e Finep)
   res <- tryCatch({
     DBI::dbGetQuery(conn, "SELECT id_registro, titulo, descricao_resumida, link_origem, link_detalhe, texto_bruto FROM oportunidades")
   }, error = function(e) NULL)
@@ -372,9 +373,9 @@ cleanup_database_opportunities <- function(conn) {
     if (exists("is_funding_opportunity_heuristics", mode = "function")) {
       is_funding <- is_funding_opportunity_heuristics(title = title, description = desc, url = url, body_text = body_text)
     } else {
-      # Fallback
+      # Fallback básico
       t_norm <- tolower(title)
-      if (grepl("manual do cartao|cobranca administrativa|carta de servico|mapa de fomento|bolsas e projetos vigentes|acoes e programas|strategic plan|membros do comite|perguntas frequentes|faq|contato|quem somos|links uteis|tutoriais|tutorial|instrucoes para envio", t_norm)) {
+      if (grepl("manual do cartao|cobranca administrativa|carta de servico|mapa de fomento|bolsas e projetos vigentes|acoes e programas|strategic plan|membros do comite|perguntas frequentes|faq|contato|quem somos|links uteis|tutoriais|tutorial|instrucoes para envio|retificacao|alteracao|aditivo|resultado|esclarecimento", t_norm)) {
         is_funding <- FALSE
       }
     }
@@ -392,6 +393,45 @@ cleanup_database_opportunities <- function(conn) {
       }, error = function(e) NULL)
     }
   }
+
+  # 2. Deduplicação Retroativa de Editais com o Mesmo Nome por Entidade
+  res_dedupe <- tryCatch({
+    DBI::dbGetQuery(conn, "SELECT id_registro, entidade, titulo, status_oportunidade, data_limite, texto_bruto, descricao_resumida FROM oportunidades")
+  }, error = function(e) NULL)
+
+  if (!is.null(res_dedupe) && nrow(res_dedupe) > 0 && exists("normalize_text", mode = "function") && exists("parse_date_safe", mode = "function")) {
+    res_dedupe$title_norm <- vapply(res_dedupe$titulo, normalize_text, character(1))
+    res_dedupe$parsed_date <- parse_date_safe(res_dedupe$data_limite)
+    res_dedupe$status_priority <- dplyr::case_when(
+      res_dedupe$status_oportunidade == "aberto" ~ 1L,
+      res_dedupe$status_oportunidade == "futuro" ~ 2L,
+      res_dedupe$status_oportunidade == "encerrado" ~ 3L,
+      TRUE ~ 4L
+    )
+    res_dedupe$content_len <- nchar(dplyr::coalesce(res_dedupe$texto_bruto, "")) + nchar(dplyr::coalesce(res_dedupe$descricao_resumida, ""))
+
+    keep_ids <- res_dedupe |>
+      dplyr::arrange(
+        status_priority,
+        dplyr::desc(parsed_date),
+        dplyr::desc(content_len)
+      ) |>
+      dplyr::distinct(entidade, title_norm, .keep_all = TRUE) |>
+      dplyr::pull(id_registro)
+
+    all_ids <- res_dedupe$id_registro
+    to_delete_dedupe <- setdiff(all_ids, keep_ids)
+
+    if (length(to_delete_dedupe) > 0) {
+      message(sprintf("[DB Cleanup] Removendo %d registro(s) duplicado(s)/obsoletos do banco...", length(to_delete_dedupe)))
+      for (id in to_delete_dedupe) {
+        tryCatch({
+          DBI::dbExecute(conn, "DELETE FROM oportunidades WHERE id_registro = ?", params = list(id))
+        }, error = function(e) NULL)
+      }
+    }
+  }
+
   invisible(TRUE)
 }
 

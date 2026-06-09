@@ -252,10 +252,30 @@ is_funding_opportunity_heuristics <- function(title, description = "", url = "",
     "/regulamentos", "/como-usar", "/archive", "/privacidade", 
     "/lgpd", "/politica-de-privacidade", "/contatos", "/fale-conosco",
     "/equipe", "/quem-somos", "/sobre-nos", "/servicos-ao-cidadao",
-    "/perguntas-frequentes", "/faq", "/documentos"
+    "/perguntas-frequentes", "/faq", "/documentos",
+    "/acesso-a-informacao", "/institucional", "/financiamento-via-credito",
+    "/financiamento-reembolsavel", "retificacao", "retificado",
+    "prorrogacao", "aditivo", "errata", "gabarito", "homologacao",
+    "perguntas-frequentes", "perguntas_frequentes",
+    "nota-de-esclarecimento", "anexo"
   )
+  
   if (any(vapply(invalid_url_patterns, function(pat) grepl(pat, u_norm, fixed = TRUE), logical(1)))) {
     return(FALSE)
+  }
+
+  # Ignorar alterações que não sejam climáticas
+  if (grepl("alteracao", u_norm, fixed = TRUE)) {
+    if (!grepl("alteracoes-climaticas|alteracao-climatica", u_norm)) {
+      return(FALSE)
+    }
+  }
+
+  # Bloquear resultados/recursos na URL
+  if (grepl("resultado", u_norm, fixed = TRUE) && !grepl("resultado-recursos|recursos-naturais", u_norm)) {
+    if (grepl("resultado-final|resultado-preliminar|resultado_final|resultado_preliminar|/resultados/", u_norm)) {
+      return(FALSE)
+    }
   }
 
   # 2. Regras de descarte pelo Título (remover manuais, procedimentos, páginas genéricas)
@@ -269,10 +289,29 @@ is_funding_opportunity_heuristics <- function(title, description = "", url = "",
     "membros do comite", "perguntas frequentes", "faq", "contato", "quem somos",
     "links uteis", "documentos importantes", "tutoriais", "tutorial",
     "instrucoes para envio", "privacidade e protecao de dados",
-    "temas em destaque", "carta de servicos ao cidadao", "archive"
+    "temas em destaque", "carta de servicos ao cidadao", "archive",
+    "retificacao", "retificacoes", "prorrogacao",
+    "prorrogacoes", "termo aditivo", "aditivo", "errata", "gabarito",
+    "esclarecimento", "esclarecimentos", "nota de esclarecimento", "homologacao",
+    "oportunidades - finep", "oportunidades de financiamento",
+    "financiamento via credito", "financiamento para inovacao", "a finep"
   )
 
-  if (any(vapply(invalid_title_patterns, function(pat) grepl(pat, t_norm, fixed = TRUE), logical(1)))) {
+  for (pat in invalid_title_patterns) {
+    if (grepl(pat, t_norm, fixed = TRUE)) {
+      return(FALSE)
+    }
+  }
+
+  # Ignorar alteração no título se não for climática
+  if (grepl("alteracao", t_norm, fixed = TRUE)) {
+    if (!grepl("alteracoes climaticas|alteracao climatica", t_norm)) {
+      return(FALSE)
+    }
+  }
+
+  # Julgamentos, recursos ou resultados específicos
+  if (grepl("resultado final|resultado preliminar|resultado provisorio|resultado de recurso|fase de recurso|prazo de recurso|julgamento da chamada|homologacao do resultado", t_norm)) {
     return(FALSE)
   }
 
@@ -284,7 +323,18 @@ is_funding_opportunity_heuristics <- function(title, description = "", url = "",
     return(FALSE)
   }
 
-  # 4. Caso o título seja apenas um texto de navegação/link quebrado
+  # 4. Caso o título seja apenas um arquivo de retificação/anexo/resultado
+  if (grepl("\\.pdf$", t_norm) && 
+      (grepl("alteracao", t_norm) || 
+       grepl("retificacao", t_norm) || 
+       grepl("aditivo", t_norm) || 
+       grepl("anexo", t_norm) || 
+       grepl("resultado", t_norm) || 
+       grepl("prorrogacao", t_norm))) {
+    return(FALSE)
+  }
+
+  # 5. Caso o título seja apenas um texto de navegação/link quebrado
   if (t_norm %in% c("link", "este link", "aqui", "clique aqui", "saiba mais", "visualizar", "abrir")) {
     return(FALSE)
   }
@@ -784,9 +834,9 @@ enrich_records_parallel <- function(df, log_path = NULL) {
       "",
       "CAMPOS OBRIGATÓRIOS:",
       "",
-      "e_edital_fomento: Valor booleano (true ou false). Deve ser true apenas se o texto for de fato uma oportunidade de fomento, edital, chamada pública, grant, fellowship, bolsa, convocatória ou oportunidade de financiamento ativa, futura ou mesmo encerrada recentemente. Deve ser false se o texto for apenas um manual administrativo, notícias gerais, procedimentos/tutoriais de relatórios, página de membros de comitê/painel, planos estratégicos gerais, relatórios institucionais ou páginas de navegação que não constituem uma oportunidade direta de financiamento/fomento.",
+      "e_edital_fomento: Valor booleano (true ou false). Deve ser true apenas se o texto for de fato uma oportunidade principal de fomento, edital, chamada pública, grant, fellowship, bolsa ou convocatória ativa, futura ou mesmo encerrada recentemente. Deve ser false se o texto for apenas uma retificação, alteração, prorrogação de prazo, termo aditivo, errata, resultado de edital existente, ou se for um manual administrativo, notícias gerais, procedimentos de relatórios, membros de comitê, planos estratégicos gerais, relatórios institucionais ou páginas descrevendo linhas de crédito permanentes e serviços de financiamento contínuos (não-editais).",
       "",
-      "motivo_descarte: Texto curto descrevendo a razão do descarte se e_edital_fomento for false (ex: 'Manual de cartão de pesquisa', 'Instruções para envio de relatórios de atividades', 'Notícia institucional', 'Página geral de membros do painel'). Se e_edital_fomento for true, este campo deve ser null.",
+      "motivo_descarte: Texto curto descrevendo a razão do descarte se e_edital_fomento for false (ex: 'Manual de cartão de pesquisa', 'Instruções para relatórios', 'Notícia institucional', 'Retificação de edital', 'Guia de linha de crédito permanente'). Se e_edital_fomento for true, este campo deve ser null.",
       "",
       "titulo_limpo: Título do edital limpo, sem caracteres especiais, numerações de seção, ruídos HTML ou abreviações inexplicadas.",
       "",
@@ -958,16 +1008,26 @@ enrich_records_parallel <- function(df, log_path = NULL) {
 
 dedupe_records <- function(df) {
   if (is.null(df) || nrow(df) == 0) return(tibble::tibble())
+  
   df |>
     dplyr::mutate(
       title_norm = normalize_text(titulo),
-      date_norm = as.character(parse_date_safe(data_limite)),
-      url_norm = dplyr::coalesce(link_detalhe, link_documento_pdf, link_origem),
-      dedupe_key = dplyr::coalesce(hash_deduplicacao, make_hash(entidade, title_norm, url_norm, date_norm))
+      parsed_date = parse_date_safe(data_limite),
+      status_priority = dplyr::case_when(
+        status_oportunidade == "aberto" ~ 1L,
+        status_oportunidade == "futuro" ~ 2L,
+        status_oportunidade == "encerrado" ~ 3L,
+        TRUE ~ 4L
+      ),
+      content_len = nchar(dplyr::coalesce(texto_bruto, "")) + nchar(dplyr::coalesce(descricao_resumida, ""))
     ) |>
-    dplyr::arrange(dplyr::desc(nchar(dplyr::coalesce(texto_bruto, "")))) |>
-    dplyr::distinct(dedupe_key, .keep_all = TRUE) |>
-    dplyr::select(-title_norm, -date_norm, -url_norm, -dedupe_key)
+    dplyr::arrange(
+      status_priority,
+      dplyr::desc(parsed_date),
+      dplyr::desc(content_len)
+    ) |>
+    dplyr::distinct(entidade, title_norm, .keep_all = TRUE) |>
+    dplyr::select(-title_norm, -parsed_date, -status_priority, -content_len)
 }
 
 infer_area_from_text_one <- function(text) {

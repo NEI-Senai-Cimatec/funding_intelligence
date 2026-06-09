@@ -246,25 +246,19 @@ ui <- bslib::page_sidebar(
   ),
   
   tags$footer(
-    class = "app-footer",
+    class = "app-footer-centered",
     tags$div(
-      class = "footer-container",
-      tags$div(
-        class = "footer-section branding",
-        tags$h4("SENAI CIMATEC"),
-        tags$p("NEI - Núcleo de Economia Industrial")
-      ),
-      tags$div(
-        class = "footer-section authors",
-        tags$h5("Autores"),
-        tags$p("David Franco Regalado"),
-        tags$p("Ítalo Ferreira da Silva"),
-        tags$p("Raphael de Oliveira Silva")
+      class = "footer-top-centered",
+      tags$p(
+        icon("map-marker-alt"), " SENAI CIMATEC – Salvador, Bahia | ",
+        icon("phone"), " Atendimento técnico e parcerias institucionais"
       )
     ),
+    tags$hr(class = "footer-divider"),
     tags$div(
-      class = "footer-bottom",
-      tags$p(sprintf("© %s Funding Intelligence Hub. Todos os direitos reservados.", format(Sys.Date(), "%Y")))
+      class = "footer-bottom-centered",
+      tags$p(sprintf("© %s Núcleo de Economia Industrial – SENAI CIMATEC. Transformando conhecimento econômico em vantagem competitiva.", format(Sys.Date(), "%Y"))),
+      tags$p(icon("chart-line"), " NEI • Inteligência para a Indústria e Políticas Públicas")
     )
   )
 )

@@ -239,6 +239,59 @@ text_has_funding_signal <- function(text) {
   }, logical(1))
 }
 
+is_funding_opportunity_heuristics <- function(title, description = "", url = "", body_text = "") {
+  # Normalizar entradas (remover acentos, minúsculo, espaços múltiplos)
+  t_norm <- normalize_text(title %||% "")
+  d_norm <- normalize_text(description %||% "")
+  u_norm <- tolower(url %||% "")
+  b_norm <- normalize_text(body_text %||% "")
+
+  # 1. Regras de descarte pelo URL (notícias, institucionais, privacidade, etc.)
+  invalid_url_patterns <- c(
+    "/noticias", "/noticia", "/tv-", "/tv/", "/video", "/membros", 
+    "/regulamentos", "/como-usar", "/archive", "/privacidade", 
+    "/lgpd", "/politica-de-privacidade", "/contatos", "/fale-conosco",
+    "/equipe", "/quem-somos", "/sobre-nos", "/servicos-ao-cidadao",
+    "/perguntas-frequentes", "/faq", "/documentos"
+  )
+  if (any(vapply(invalid_url_patterns, function(pat) grepl(pat, u_norm, fixed = TRUE), logical(1)))) {
+    return(FALSE)
+  }
+
+  # 2. Regras de descarte pelo Título (remover manuais, procedimentos, páginas genéricas)
+  invalid_title_patterns <- c(
+    "manual do cartao", "cobranca administrativa", "carta de servico",
+    "mapa de fomento", "bolsas e projetos vigentes", "acesso a informacao",
+    "lgpd", "privacidade e protecao", "formict", "lei do bem",
+    "acoes e programas", "este link", "qualifications and eligibility",
+    "noticias", "tv fapesc", "sobre a finep", "financiamento nao reembolsavel",
+    "strategic plan", "ebook", "relatorio de atividades", "como usar",
+    "membros do comite", "perguntas frequentes", "faq", "contato", "quem somos",
+    "links uteis", "documentos importantes", "tutoriais", "tutorial",
+    "instrucoes para envio", "privacidade e protecao de dados",
+    "temas em destaque", "carta de servicos ao cidadao", "archive"
+  )
+
+  if (any(vapply(invalid_title_patterns, function(pat) grepl(pat, t_norm, fixed = TRUE), logical(1)))) {
+    return(FALSE)
+  }
+
+  # 3. Regras específicas sobre e-books, manuais e materiais institucionais
+  if (grepl("daad 2025 confap", t_norm) || 
+      grepl("fapes 20 anos", t_norm) || 
+      grepl("ebook", t_norm) ||
+      grepl("relatorio anual", t_norm)) {
+    return(FALSE)
+  }
+
+  # 4. Caso o título seja apenas um texto de navegação/link quebrado
+  if (t_norm %in% c("link", "este link", "aqui", "clique aqui", "saiba mais", "visualizar", "abrir")) {
+    return(FALSE)
+  }
+
+  return(TRUE)
+}
+
 extract_meta_title <- function(html) {
   if (is.null(html)) return(NA_character_)
   h1 <- try(rvest::html_element(html, "h1"), silent = TRUE)
@@ -363,6 +416,14 @@ extract_listing_candidates <- function(html, base_url, source_row) {
       pdf_url = null_if_empty(pdf_url)
     ) |>
     dplyr::filter(!is.na(candidate_title) | !is.na(detail_url) | !is.na(pdf_url)) |>
+    dplyr::filter(vapply(seq_len(dplyr::n()), function(idx) {
+      is_funding_opportunity_heuristics(
+        title = candidate_title[[idx]],
+        description = candidate_summary[[idx]],
+        url = dplyr::coalesce(detail_url[[idx]], pdf_url[[idx]], ""),
+        body_text = source_text[[idx]]
+      )
+    }, logical(1))) |>
     dplyr::mutate(canonical_url = dplyr::coalesce(detail_url, pdf_url, candidate_title)) |>
     dplyr::distinct(canonical_url, .keep_all = TRUE) |>
     dplyr::select(-canonical_url) |>
@@ -379,7 +440,15 @@ extract_listing_candidates <- function(html, base_url, source_row) {
         pdf_url = pdfs,
         source_text = extract_page_summary(html)
       ) |>
-        dplyr::distinct(pdf_url, .keep_all = TRUE)
+        dplyr::distinct(pdf_url, .keep_all = TRUE) |>
+        dplyr::filter(vapply(seq_len(dplyr::n()), function(idx) {
+          is_funding_opportunity_heuristics(
+            title = title[[idx]],
+            description = summary[[idx]],
+            url = pdf_url[[idx]],
+            body_text = source_text[[idx]]
+          )
+        }, logical(1)))
     }
   }
 
@@ -540,6 +609,22 @@ enrich_record_with_ai <- function(record, log_path = NULL) {
   )
   if (length(ai) == 0) return(record)
 
+  # Verifica se a IA classificou como nao-edital
+  is_edital <- TRUE
+  if (!is.null(ai$e_edital_fomento)) {
+    val <- ai$e_edital_fomento[[1]]
+    if (is.logical(val)) {
+      is_edital <- val
+    } else if (is.character(val)) {
+      is_edital <- !tolower(val) %in% c("false", "f")
+    }
+  }
+
+  if (!is_edital) {
+    log_progress(sprintf("Descartando edital '%s' via classificação de IA (Motivo: %s)", record$titulo[[1]], ai$motivo_descarte[[1]] %||% "não especificado"), "IA")
+    return(tibble::tibble())
+  }
+
   fill_field <- function(field, value, overwrite = FALSE) {
     if (is.null(value) || length(value) == 0) return(invisible(NULL))
     value <- as.character(value[[1]])
@@ -555,6 +640,7 @@ enrich_record_with_ai <- function(record, log_path = NULL) {
     invisible(NULL)
   }
 
+  inferred <- character()
   fill_field("titulo", ai$titulo_limpo, overwrite = TRUE)
   fill_field("descricao_resumida", ai$resumo, overwrite = TRUE)
   fill_field("palavras_chave", ai$palavras_chave, overwrite = TRUE)
@@ -586,6 +672,8 @@ enrich_record_with_ai <- function(record, log_path = NULL) {
 
 enrich_records_parallel <- function(df, log_path = NULL) {
   if (is.null(df) || nrow(df) == 0) return(df)
+
+  df$keep_record <- TRUE
 
   # Garante id_registro e hash_deduplicacao
   df$hash_deduplicacao <- vapply(seq_len(nrow(df)), function(i) {
@@ -671,6 +759,8 @@ enrich_records_parallel <- function(df, log_path = NULL) {
   }
 
   if (length(to_enrich_indices) == 0) {
+    df <- df[df$keep_record, ]
+    df$keep_record <- NULL
     return(df)
   }
 
@@ -693,6 +783,10 @@ enrich_records_parallel <- function(df, log_path = NULL) {
       "Retorne OBRIGATORIAMENTE um JSON válido com os campos listados.",
       "",
       "CAMPOS OBRIGATÓRIOS:",
+      "",
+      "e_edital_fomento: Valor booleano (true ou false). Deve ser true apenas se o texto for de fato uma oportunidade de fomento, edital, chamada pública, grant, fellowship, bolsa, convocatória ou oportunidade de financiamento ativa, futura ou mesmo encerrada recentemente. Deve ser false se o texto for apenas um manual administrativo, notícias gerais, procedimentos/tutoriais de relatórios, página de membros de comitê/painel, planos estratégicos gerais, relatórios institucionais ou páginas de navegação que não constituem uma oportunidade direta de financiamento/fomento.",
+      "",
+      "motivo_descarte: Texto curto descrevendo a razão do descarte se e_edital_fomento for false (ex: 'Manual de cartão de pesquisa', 'Instruções para envio de relatórios de atividades', 'Notícia institucional', 'Página geral de membros do painel'). Se e_edital_fomento for true, este campo deve ser null.",
       "",
       "titulo_limpo: Título do edital limpo, sem caracteres especiais, numerações de seção, ruídos HTML ou abreviações inexplicadas.",
       "",
@@ -796,6 +890,23 @@ enrich_records_parallel <- function(df, log_path = NULL) {
         ai <- skill_verify_metadata(ai, text, log_path)
       }
 
+      # Verifica se a IA classificou como nao-edital
+      is_edital <- TRUE
+      if (!is.null(ai$e_edital_fomento)) {
+        val <- ai$e_edital_fomento[[1]]
+        if (is.logical(val)) {
+          is_edital <- val
+        } else if (is.character(val)) {
+          is_edital <- !tolower(val) %in% c("false", "f")
+        }
+      }
+
+      if (!is_edital) {
+        df$keep_record[[i]] <- FALSE
+        log_progress(sprintf("Descartando edital '%s' via classificação de IA (Motivo: %s)", df$titulo[[i]], ai$motivo_descarte[[1]] %||% "não especificado"), "IA")
+        next
+      }
+
       inferred <- character()
       fill_field <- function(field, value, overwrite = FALSE) {
         if (is.null(value) || length(value) == 0) return()
@@ -840,6 +951,8 @@ enrich_records_parallel <- function(df, log_path = NULL) {
     }
   }
 
+  df <- df[df$keep_record, ]
+  df$keep_record <- NULL
   df
 }
 
@@ -897,6 +1010,19 @@ ensure_record_schema <- function(df) {
 finalize_records <- function(df) {
   if (is.null(df) || nrow(df) == 0) return(ensure_record_schema(tibble::tibble()))
   df <- ensure_record_schema(df)
+
+  # Filtrar registros usando a heurística estática
+  valid_idx <- vapply(seq_len(nrow(df)), function(i) {
+    is_funding_opportunity_heuristics(
+      title = df$titulo[[i]],
+      description = df$descricao_resumida[[i]],
+      url = dplyr::coalesce(df$link_detalhe[[i]], df$link_documento_pdf[[i]], df$link_origem[[i]], ""),
+      body_text = df$texto_bruto[[i]]
+    )
+  }, logical(1))
+  df <- df[valid_idx, ]
+  
+  if (nrow(df) == 0) return(ensure_record_schema(tibble::tibble()))
 
   lang_guess <- infer_language_simple(df$texto_bruto)
   status_guess <- classify_status(df$data_limite, df$data_abertura, df$data_encerramento, df$texto_bruto)
@@ -1147,7 +1273,8 @@ collect_fapesc <- function(source_row, max_pages, max_records, use_ai, log_path)
   texts <- rvest::html_text2(links)
 
   valid_idx <- !is.na(hrefs) & nzchar(hrefs) & 
-    (grepl("edital|chamada|fapesc", tolower(hrefs)) | grepl("edital|chamada|submiss", tolower(texts))) &
+    (grepl("edital|chamada|submiss|oportunidade", tolower(hrefs)) | 
+     grepl("edital|chamada|submiss|oportunidade", tolower(texts))) &
     !grepl("wp-content/uploads", hrefs)
 
   hrefs <- hrefs[valid_idx]
@@ -1289,18 +1416,8 @@ collect_sigitec <- function(source_row, max_pages, max_records, use_ai, log_path
     }
   }
   
-  log_progress("API indisponível ou timeout. Gerando registro de fallback...", "Scraping")
-  fallback_record <- extract_core_record(
-    source_row = source_row,
-    input_title = "Oportunidades Públicas de Inovação - Petrobras SIGITEC",
-    input_summary = "Portal de cooperações tecnológicas e desafios de PD&I da Petrobras para ICTs e empresas brasileiras.",
-    input_full_text = "Portal oficial do SIGITEC Petrobras. Acesse a página para visualizar a lista completa de desafios ativos e submeter propostas de pré-projeto.",
-    page_url = source_row$url_oportunidades[[1]],
-    detail_url = NA_character_,
-    pdf_url = NA_character_,
-    page_no = 1L
-  )
-  list(records = finalize_records(fallback_record), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]])
+  log_progress("API indisponível, timeout ou sem oportunidades. Nenhuma oportunidade coletada.", "Scraping")
+  list(records = ensure_record_schema(tibble::tibble()), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]])
 }
 
 truncate_excel_strings <- function(df, max_chars = 32000L) {

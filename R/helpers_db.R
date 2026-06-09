@@ -353,6 +353,48 @@ migrate_existing_keywords <- function(conn) {
   invisible(TRUE)
 }
 
+cleanup_database_opportunities <- function(conn) {
+  res <- tryCatch({
+    DBI::dbGetQuery(conn, "SELECT id_registro, titulo, descricao_resumida, link_origem, link_detalhe, texto_bruto FROM oportunidades")
+  }, error = function(e) NULL)
+  
+  if (is.null(res) || nrow(res) == 0) return(invisible(FALSE))
+  
+  to_delete <- character()
+  for (i in seq_len(nrow(res))) {
+    id <- res$id_registro[[i]]
+    title <- res$titulo[[i]] %||% ""
+    desc <- res$descricao_resumida[[i]] %||% ""
+    url <- res$link_detalhe[[i]] %||% res$link_origem[[i]] %||% ""
+    body_text <- res$texto_bruto[[i]] %||% ""
+    
+    is_funding <- TRUE
+    if (exists("is_funding_opportunity_heuristics", mode = "function")) {
+      is_funding <- is_funding_opportunity_heuristics(title = title, description = desc, url = url, body_text = body_text)
+    } else {
+      # Fallback
+      t_norm <- tolower(title)
+      if (grepl("manual do cartao|cobranca administrativa|carta de servico|mapa de fomento|bolsas e projetos vigentes|acoes e programas|strategic plan|membros do comite|perguntas frequentes|faq|contato|quem somos|links uteis|tutoriais|tutorial|instrucoes para envio", t_norm)) {
+        is_funding <- FALSE
+      }
+    }
+    
+    if (!is_funding) {
+      to_delete <- c(to_delete, id)
+    }
+  }
+  
+  if (length(to_delete) > 0) {
+    message(sprintf("[DB Cleanup] Removendo %d registro(s) inválido(s)/não-editais do banco...", length(to_delete)))
+    for (id in to_delete) {
+      tryCatch({
+        DBI::dbExecute(conn, "DELETE FROM oportunidades WHERE id_registro = ?", params = list(id))
+      }, error = function(e) NULL)
+    }
+  }
+  invisible(TRUE)
+}
+
 init_database <- function(db_path) {
   conn <- get_db_connection(db_path)
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
@@ -366,6 +408,7 @@ init_database <- function(db_path) {
   seed_demo_opportunities(conn)
   seed_pesquisadores_vencedores(conn)
   seed_projetos_aprovados(conn)
+  try(cleanup_database_opportunities(conn), silent = TRUE)
   try(migrate_existing_keywords(conn), silent = TRUE)
   invisible(TRUE)
 }

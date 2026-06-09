@@ -15,13 +15,12 @@ source_catalog <- function() {
     "fapes_es", "Fundação de Amparo à Pesquisa e Inovação do Espírito Santo", "FAPES", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://fapes.es.gov.br/", "https://fapes.es.gov.br/Editais/Abertos", "html", "pt", "diária", "Editais abertos com PDFs.",
     "confap", "Conselho Nacional das Fundações Estaduais de Amparo à Pesquisa", "CONFAP", "Brasil", "rede de fomento", "organização de coordenação", "https://confap.org.br/", "https://confap.org.br/pt/editais", "html", "pt", "diária", "Editais paginados por ano e status.",
     "bndes", "Banco Nacional de Desenvolvimento Econômico e Social", "BNDES", "Brasil", "banco de desenvolvimento", "empresa pública federal", "https://www.bndes.gov.br/", "https://www.bndes.gov.br/wps/vanityurl/chamadadeinovacao", "html", "pt", "diária", "Chamadas de inovação.",
-    "mcti", "Ministério da Ciência, Tecnologia e Inovação", "MCTI", "Brasil", "ministério", "governo federal", "https://www.gov.br/mcti/pt-br", "https://www.gov.br/mcti/pt-br/acesso-a-informacao/editais", "html", "pt", "diária", "Editais do ministério.",
-    "horizon_europe", "Horizon Europe", "HEU", "União Europeia", "programa multilateral", "união supranacional", "https://research-and-innovation.ec.europa.eu/", "https://research-and-innovation.ec.europa.eu/funding/funding-opportunities/funding-programmes-and-open-calls/horizon-europe_en", "html", "en", "diária", "Programa europeu e chamadas abertas.",
-    "erc", "European Research Council", "ERC", "União Europeia", "agência internacional", "união supranacional", "https://erc.europa.eu/", "https://erc.europa.eu/apply-grant", "html", "en", "diária", "Grant schemes and application pages.",
+    "mcti", "Ministério da Ciência, Tecnologia e Inovação", "MCTI", "Brasil", "ministério", "governo federal", "https://www.gov.br/mcti/pt-br", "https://www.gov.br/mcti/pt-br/centrais-de-conteudo/comunicados-mcti", "html", "pt", "diária", "Editais do ministério.",
+    "horizon_europe", "Horizon Europe", "HEU", "União Europeia", "programa multilateral", "união supranacional", "https://research-and-innovation.ec.europa.eu/", "https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals?order=DESC&pageNumber=1&pageSize=50&sortBy=relevance&keywords=HORIZON&isExactMatch=true&status=31094501,31094502,31094503", "html", "en", "diária", "Programa europeu e chamadas abertas.",
+    "erc", "European Research Council", "ERC", "União Europeia", "agência internacional", "união supranacional", "https://erc.europa.eu/", "https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals?order=DESC&pageNumber=1&pageSize=50&sortBy=startDate&status=31094501,31094502&programmePart=43108406&frameworkProgramme=43108390&isExactMatch=true", "html", "en", "diária", "Grant schemes and application pages.",
     "nih", "National Institutes of Health", "NIH", "Estados Unidos", "agência internacional", "governo nacional", "https://grants.nih.gov/", "https://grants.nih.gov/funding/explore-nih-opportunities", "html", "en", "diária", "Grant opportunities portal.",
-    "nsf", "U.S. National Science Foundation", "NSF", "Estados Unidos", "agência internacional", "governo nacional", "https://www.nsf.gov/", "https://www.nsf.gov/funding/getting-started", "html", "en", "diária", "Funding portal.",
     "wellcome", "Wellcome", "Wellcome", "Reino Unido", "fundação privada", "filantropia", "https://wellcome.org/", "https://wellcome.org/grant-funding/schemes", "html", "en", "diária", "Schemes and funding opportunities.",
-    "gates", "Bill & Melinda Gates Foundation", "Gates", "Estados Unidos", "fundação privada", "filantropia", "https://www.gatesfoundation.org/", "https://www.gatesfoundation.org/about/how-we-work/grant-opportunities", "html", "en", "diária", "Grant opportunities.",
+    "gates", "Bill & Melinda Gates Foundation", "Gates", "Estados Unidos", "fundação privada", "filantropia", "https://www.gatesfoundation.org/", "https://gcgh.grandchallenges.org/grant-opportunities", "html", "en", "diária", "Grant opportunities.",
     "idrc", "International Development Research Centre", "IDRC", "Canadá", "organismo internacional", "governo nacional", "https://idrc-crdi.ca/", "https://idrc-crdi.ca/en/funding", "html", "en", "diária", "Funding page.",
     "unesco", "UNESCO", "UNESCO", "Internacional", "organismo multilateral", "ONU", "https://www.unesco.org/", "https://www.unesco.org/en/tags/call", "html", "en", "diária", "Calls and opportunities tagged call.",
     "daad", "German Academic Exchange Service", "DAAD", "Alemanha", "agência internacional", "cooperação acadêmica", "https://www2.daad.de/", "https://www2.daad.de/deutschland/stipendium/datenbank/en/21148-scholarship-database/?back=1&origin=1", "html", "en", "diária", "Scholarship database.",
@@ -359,7 +358,7 @@ init_database <- function(db_path) {
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
   create_tables(conn)
   seed_sources(conn)
-  try(DBI::dbExecute(conn, "DELETE FROM fontes_financiamento WHERE id_fonte IN (?)", params = list("facepe")), silent = TRUE)
+  try(DBI::dbExecute(conn, "DELETE FROM fontes_financiamento WHERE id_fonte IN (?, ?)", params = list("facepe", "nsf")), silent = TRUE)
   seed_profile(conn)
   seed_saved_searches(conn)
   seed_search_history(conn)

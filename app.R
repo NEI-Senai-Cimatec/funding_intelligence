@@ -89,7 +89,7 @@ if (!exists("ensure_dir", mode = "function")) {
 
 safe_source <- function(path) {
   full_path <- app_file(path)
-  out <- try(source(full_path, local = TRUE, encoding = "UTF-8"), silent = TRUE)
+  out <- try(source(full_path, local = parent.frame(), encoding = "UTF-8"), silent = TRUE)
   if (inherits(out, "try-error")) {
     warning(sprintf("Não foi possível carregar %s. O app seguirá com fallbacks quando possível.", full_path), call. = FALSE)
   }
@@ -242,6 +242,29 @@ ui <- bslib::page_sidebar(
     bslib::nav_panel(
       "Logs",
       DTOutput("logs_table")
+    )
+  ),
+  
+  tags$footer(
+    class = "app-footer",
+    tags$div(
+      class = "footer-container",
+      tags$div(
+        class = "footer-section branding",
+        tags$h4("SENAI CIMATEC"),
+        tags$p("NEI - Núcleo de Economia Industrial")
+      ),
+      tags$div(
+        class = "footer-section authors",
+        tags$h5("Autores"),
+        tags$p("David Franco Regalado"),
+        tags$p("Ítalo Ferreira da Silva"),
+        tags$p("Raphael de Oliveira Silva")
+      )
+    ),
+    tags$div(
+      class = "footer-bottom",
+      tags$p(sprintf("© %s Funding Intelligence Hub. Todos os direitos reservados.", format(Sys.Date(), "%Y")))
     )
   )
 )

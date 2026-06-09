@@ -49,6 +49,8 @@ source_dispatch <- function(source_row, max_pages = 5, max_records = 15, use_ai 
     collect_confap(source_row, max_pages, max_records, FALSE, log_path)
   } else if (identical(sid, "fapesc")) {
     collect_fapesc(source_row, max_pages, max_records, FALSE, log_path)
+  } else if (identical(sid, "finep")) {
+    collect_finep(source_row, max_pages, max_records, FALSE, log_path)
   } else if (identical(sid, "eureka")) {
     collect_eureka(source_row, max_pages, max_records, FALSE, log_path)
   } else if (identical(sid, "sigitec")) {
@@ -1084,7 +1086,27 @@ collect_fapes_es <- function(source_row, max_pages, max_records, use_ai, log_pat
 
 collect_cnpq <- collect_generic_official
 collect_capes <- collect_generic_official
-collect_finep <- collect_generic_official
+collect_finep <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  page_builder <- function(page_no) {
+    if (page_no <= 1) return(source_row$url_oportunidades[[1]])
+    base_url <- source_row$url_oportunidades[[1]]
+    offset <- (page_no - 1) * 10
+    if (grepl("\\?", base_url)) {
+      sprintf("%s&start=%d", base_url, offset)
+    } else {
+      sprintf("%s?start=%d", base_url, offset)
+    }
+  }
+  collect_listing_with_pagination(
+    source_row = source_row,
+    first_url = page_builder(1),
+    max_pages = max_pages,
+    max_records = max_records,
+    use_ai = use_ai,
+    log_path = log_path,
+    page_builder = page_builder
+  )
+}
 collect_fapesp <- collect_generic_official
 collect_faperj <- collect_generic_official
 collect_fapemig <- collect_generic_official
@@ -1093,7 +1115,6 @@ collect_mcti <- collect_generic_official
 collect_horizon_europe <- collect_generic_official
 collect_erc <- collect_generic_official
 collect_nih <- collect_generic_official
-collect_nsf <- collect_generic_official
 collect_wellcome <- collect_generic_official
 collect_gates <- collect_generic_official
 collect_idrc <- collect_generic_official

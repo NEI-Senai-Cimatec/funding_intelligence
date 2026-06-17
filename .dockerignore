@@ -11,3 +11,5 @@ data_exports/*
 Dockerfile
 docker-compose.yml
 .env
+gdrive_credentials.json
+*.json

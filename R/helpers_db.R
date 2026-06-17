@@ -1,6 +1,12 @@
 get_db_connection <- function(db_path) {
   ensure_dir(dirname(db_path))
-  DBI::dbConnect(RSQLite::SQLite(), db_path)
+  conn <- DBI::dbConnect(RSQLite::SQLite(), db_path)
+  # Ativar WAL mode e timeout de concorrência (10s) para evitar "database locked"
+  try({
+    DBI::dbExecute(conn, "PRAGMA journal_mode = WAL;")
+    DBI::dbExecute(conn, "PRAGMA busy_timeout = 10000;")
+  }, silent = TRUE)
+  return(conn)
 }
 
 source_catalog <- function() {
@@ -506,6 +512,15 @@ upsert_opportunities <- function(conn, opportunities_df) {
   )
 
   inserted <- 0L
+  in_transaction <- FALSE
+  DBI::dbBegin(conn)
+  in_transaction <- TRUE
+  on.exit({
+    if (in_transaction && DBI::dbIsValid(conn)) {
+      try(DBI::dbRollback(conn), silent = TRUE)
+    }
+  }, add = TRUE)
+
   for (i in seq_len(nrow(df))) {
     row <- as.list(df[i, , drop = FALSE])
     row <- lapply(row, function(x) {
@@ -537,6 +552,8 @@ upsert_opportunities <- function(conn, opportunities_df) {
     if (affected > 0) inserted <- inserted + 1L
   }
 
+  DBI::dbCommit(conn)
+  in_transaction <- FALSE
   invisible(inserted)
 }
 

@@ -15,6 +15,8 @@ get_ai_config <- function() {
       provider <- "gemini"
     } else if (nzchar(Sys.getenv("OPENAI_API_KEY"))) {
       provider <- "openai"
+    } else if (nzchar(Sys.getenv("NVIDIA_API_KEY"))) {
+      provider <- "nvidia"
     } else if (nzchar(Sys.getenv("ANTHROPIC_API_KEY"))) {
       provider <- "anthropic"
     } else if (nzchar(Sys.getenv("GROQ_API_KEY"))) {
@@ -36,6 +38,8 @@ get_ai_config <- function() {
       api_key <- Sys.getenv("GEMINI_API_KEY")
     } else if (provider == "openai") {
       api_key <- Sys.getenv("OPENAI_API_KEY")
+    } else if (provider == "nvidia") {
+      api_key <- Sys.getenv("NVIDIA_API_KEY")
     } else if (provider == "anthropic") {
       api_key <- Sys.getenv("ANTHROPIC_API_KEY")
     } else if (provider == "groq") {
@@ -52,6 +56,8 @@ get_ai_config <- function() {
       api_url <- "https://api.bluesminds.com/v1/chat/completions"
     } else if (provider == "openai") {
       api_url <- "https://api.openai.com/v1/chat/completions"
+    } else if (provider == "nvidia") {
+      api_url <- "https://integrate.api.nvidia.com/v1/chat/completions"
     } else if (provider == "anthropic") {
       api_url <- "https://api.anthropic.com/v1/messages"
     } else if (provider == "groq") {
@@ -70,6 +76,8 @@ get_ai_config <- function() {
       model <- "gemini-1.5-flash"
     } else if (provider == "openai") {
       model <- "gpt-4o-mini"
+    } else if (provider == "nvidia") {
+      model <- "nvidia/nemotron-3-super-120b-a12b"
     } else if (provider == "anthropic") {
       model <- "claude-3-5-haiku-latest"
     } else if (provider == "groq") {
@@ -99,7 +107,7 @@ validate_ai_config <- function() {
   is_ok <- nzchar(cfg$provider) && nzchar(cfg$api_key)
   if (!is_ok) {
     message("----------------------------------------------------------------------")
-    message("AVISO: Nenhuma chave de API de IA (Gemini, OpenAI, Anthropic, Groq, OpenRouter, DeepSeek) configurada!")
+    message("AVISO: Nenhuma chave de API de IA (Gemini, OpenAI, Nvidia, Anthropic, Groq, OpenRouter, DeepSeek) configurada!")
     message("O processamento com Inteligência Artificial (IA) estará desativado.")
     message("Para habilitar a IA, configure sua chave no arquivo .Renviron (ex: GEMINI_API_KEY ou OPENAI_API_KEY).")
     message("----------------------------------------------------------------------")
@@ -151,7 +159,7 @@ ai_make_request <- function(prompt, system_prompt = .AI_SYSTEM_PROMPT, cfg = NUL
       httr2::req_timeout(timeout_sec) |>
       httr2::req_headers(`Content-Type` = "application/json") |>
       httr2::req_body_json(body, auto_unbox = TRUE)
-  } else if (cfg$provider %in% c("openai", "groq", "openrouter", "deepseek", "bluesminds")) {
+  } else if (cfg$provider %in% c("openai", "groq", "openrouter", "deepseek", "bluesminds", "nvidia")) {
     # OpenAI-compatível: system message separada
     url <- cfg$api_url
     messages <- list()
@@ -203,59 +211,50 @@ ai_request <- function(prompt, timeout_sec = 45, retries = 2, log_path = NULL) {
     return(NULL)
   }
 
-  # Atraso inteligente para evitar Rate Limits de Tokens por Minuto (TPM) na Groq (plano gratuito)
-  if (cfg$provider == "groq") {
-    delay <- as.numeric(Sys.getenv("GROQ_RATE_DELAY", "6"))
-    if (is.na(delay) || delay < 0) delay <- 6
-    if (delay > 0) Sys.sleep(delay)
-  }
-
   req <- ai_make_request(prompt, cfg = cfg, timeout_sec = timeout_sec)
   if (is.null(req)) {
     if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Provedor de IA não suportado ou falha ao criar request para: %s", cfg$provider))
     return(NULL)
   }
 
-  for (i in seq_len(retries + 1)) {
-    resp <- tryCatch({
-      httr2::req_perform(req)
-    }, error = function(e) {
-      if (!is.null(e$response) && httr2::resp_status(e$response) == 429) {
-        structure(e, is_429 = TRUE)
-      } else {
-        e
+  # Configurar retries nativos do httr2 com backoff exponencial + jitter
+  req <- req |>
+    httr2::req_retry(
+      max_tries = retries + 1,
+      backoff = function(i) 2^i + stats::runif(1, 0, 1),
+      is_transient = function(resp) {
+        status <- httr2::resp_status(resp)
+        status == 429 || status >= 500
       }
-    })
+    )
+
+  resp <- tryCatch({
+    httr2::req_perform(req)
+  }, error = function(e) {
+    if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Erro de rede/timeout na chamada de IA: %s", e$message))
+    NULL
+  })
+
+  if (is.null(resp)) return(NULL)
+
+  txt <- try(httr2::resp_body_string(resp), silent = TRUE)
+  if (!inherits(txt, "try-error") && nzchar(txt)) {
+    parsed_res <- try(jsonlite::fromJSON(txt, simplifyVector = FALSE), silent = TRUE)
+    if (inherits(parsed_res, "try-error")) return(NULL)
     
-    if (!inherits(resp, "error")) {
-      txt <- try(httr2::resp_body_string(resp), silent = TRUE)
-      if (!inherits(txt, "try-error") && nzchar(txt)) {
-        parsed_res <- try(jsonlite::fromJSON(txt, simplifyVector = FALSE), silent = TRUE)
-        if (inherits(parsed_res, "try-error")) next
-        
-        extracted_text <- NULL
-        if (cfg$provider == "gemini") {
-          extracted_text <- tryCatch(parsed_res$candidates[[1]]$content$parts[[1]]$text %||% txt, error = function(e) txt)
-        } else if (cfg$provider %in% c("openai", "groq", "openrouter", "deepseek", "bluesminds")) {
-          extracted_text <- tryCatch(parsed_res$choices[[1]]$message$content %||% txt, error = function(e) txt)
-        } else if (cfg$provider == "anthropic") {
-          extracted_text <- tryCatch(parsed_res$content[[1]]$text %||% txt, error = function(e) txt)
-        }
-        
-        if (!is.null(extracted_text) && nzchar(extracted_text)) {
-          return(extracted_text)
-        }
-      }
-    } else {
-      if (isTRUE(attr(resp, "is_429"))) {
-        if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Rate limit (429) atingido na Groq. Aguardando 15s antes da tentativa %d...", i + 1))
-        Sys.sleep(15)
-      } else {
-        Sys.sleep(min(6, i * 2))
-      }
+    extracted_text <- NULL
+    if (cfg$provider == "gemini") {
+      extracted_text <- tryCatch(parsed_res$candidates[[1]]$content$parts[[1]]$text %||% txt, error = function(e) txt)
+    } else if (cfg$provider %in% c("openai", "groq", "openrouter", "deepseek", "bluesminds", "nvidia")) {
+      extracted_text <- tryCatch(parsed_res$choices[[1]]$message$content %||% txt, error = function(e) txt)
+    } else if (cfg$provider == "anthropic") {
+      extracted_text <- tryCatch(parsed_res$content[[1]]$text %||% txt, error = function(e) txt)
+    }
+    
+    if (!is.null(extracted_text) && nzchar(extracted_text)) {
+      return(extracted_text)
     }
   }
-  if (!is.null(log_path)) log_write(log_path, "WARN", "Falha ao consultar IA após tentativas.")
   NULL
 }
 
@@ -270,7 +269,15 @@ ai_request_parallel <- function(prompts, timeout_sec = 45, log_path = NULL) {
   reqs <- lapply(prompts, function(p) {
     req <- ai_make_request(p, cfg = cfg, timeout_sec = timeout_sec)
     if (!is.null(req)) {
-      req <- httr2::req_retry(req, max_tries = 1, is_transient = function(resp) FALSE)
+      req <- req |>
+        httr2::req_retry(
+          max_tries = 5,
+          backoff = function(i) 2^i + stats::runif(1, 0, 1),
+          is_transient = function(resp) {
+            status <- httr2::resp_status(resp)
+            status == 429 || status >= 500
+          }
+        )
     }
     req
   })
@@ -303,7 +310,7 @@ ai_request_parallel <- function(prompts, timeout_sec = 45, log_path = NULL) {
           extracted_text <- NULL
           if (cfg$provider == "gemini") {
             extracted_text <- tryCatch(parsed_res$candidates[[1]]$content$parts[[1]]$text %||% txt, error = function(e) txt)
-          } else if (cfg$provider %in% c("openai", "groq", "openrouter", "deepseek", "bluesminds")) {
+          } else if (cfg$provider %in% c("openai", "groq", "openrouter", "deepseek", "bluesminds", "nvidia")) {
             extracted_text <- tryCatch(parsed_res$choices[[1]]$message$content %||% txt, error = function(e) txt)
           } else if (cfg$provider == "anthropic") {
             extracted_text <- tryCatch(parsed_res$content[[1]]$text %||% txt, error = function(e) txt)

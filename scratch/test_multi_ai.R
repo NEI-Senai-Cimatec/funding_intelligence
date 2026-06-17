@@ -5,7 +5,7 @@ source("R/helpers_ai.R")
 message("--- TESTANDO AUTODETECÇÃO ---")
 
 # Limpa o ambiente antes do teste
-Sys.unsetenv(c("GEMINI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "DEEPSEEK_API_KEY", "AI_PROVIDER", "AI_MODEL", "AI_API_KEY", "AI_API_URL"))
+Sys.unsetenv(c("BLUESMINDS_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY", "NVIDIA_API_KEY", "ANTHROPIC_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "DEEPSEEK_API_KEY", "AI_PROVIDER", "AI_MODEL", "AI_API_KEY", "AI_API_URL"))
 
 message("Caso 1: Nenhuma variável de ambiente definida")
 cfg <- get_ai_config()
@@ -44,7 +44,18 @@ stopifnot(cfg$api_url == "https://api.groq.com/openai/v1/chat/completions")
 stopifnot(ai_available())
 Sys.unsetenv("GROQ_API_KEY")
 
-message("\nCaso 5: Customização total via AI_PROVIDER, AI_MODEL, AI_API_KEY e AI_API_URL")
+message("\nCaso 5: Apenas NVIDIA_API_KEY definida")
+Sys.setenv(NVIDIA_API_KEY = "dummy_nvidia_key")
+cfg <- get_ai_config()
+print(cfg)
+stopifnot(cfg$provider == "nvidia")
+stopifnot(cfg$model == "nvidia/nemotron-3-super-120b-a12b")
+stopifnot(cfg$api_key == "dummy_nvidia_key")
+stopifnot(cfg$api_url == "https://integrate.api.nvidia.com/v1/chat/completions")
+stopifnot(ai_available())
+Sys.unsetenv("NVIDIA_API_KEY")
+
+message("\nCaso 6: Customização total via AI_PROVIDER, AI_MODEL, AI_API_KEY e AI_API_URL")
 Sys.setenv(
   AI_PROVIDER = "custom_openai",
   AI_MODEL = "deepseek-reasoner",

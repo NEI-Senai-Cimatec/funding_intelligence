@@ -55,6 +55,7 @@ if (length(missing_after_install) > 0) {
 
 invisible(lapply(required_packages, library, character.only = TRUE))
 # callr::r_bg() é usado para execução em background (sem future)
+.GlobalEnv$.global_scraping_active <- FALSE
 
 get_app_dir <- function() {
   ofiles <- character(0)
@@ -264,6 +265,21 @@ ui <- bslib::page_sidebar(
 )
 
 server <- function(input, output, session) {
+  # Referência local de sessão para rastreamento de processos Callr
+  bg_proc_ref <- NULL
+
+  # Cleanup automático ao fechar a sessão do navegador
+  session$onSessionEnded(function() {
+    if (!is.null(bg_proc_ref) && bg_proc_ref$is_alive()) {
+      message(sprintf("[callr] Sessão encerrada. Matando processo background ativo (PID: %d)", bg_proc_ref$get_pid()))
+      try(bg_proc_ref$kill(), silent = TRUE)
+    }
+    # Libera o semáforo global se fomos nós que iniciamos a coleta
+    if (isTRUE(rv$collecting)) {
+      .GlobalEnv$.global_scraping_active <- FALSE
+    }
+  })
+
   rv <- reactiveValues(
     opportunities = tibble::tibble(),
     sources = tibble::tibble(),
@@ -354,6 +370,7 @@ server <- function(input, output, session) {
     # Detectar quando o processo background terminou
     proc <- rv$bg_process
     if (!is.null(proc) && !proc$is_alive()) {
+      .GlobalEnv$.global_scraping_active <- FALSE
       result <- tryCatch(proc$get_result(), error = function(e) e)
       rv$bg_process <- NULL
       
@@ -483,7 +500,7 @@ server <- function(input, output, session) {
     key_ok <- validate_ai_config()
     if (!key_ok) {
       showNotification(
-        "Aviso de IA Desativada: Nenhuma chave de API de IA (Gemini, OpenAI, Anthropic, Groq, OpenRouter, DeepSeek, Bluesminds) foi configurada. O enriquecimento e auditoria de editais com IA estarão desativados. Consulte o README.md para obter instruções de configuração.",
+        "Aviso de IA Desativada: Nenhuma chave de API de IA (Gemini, OpenAI, Nvidia, Anthropic, Groq, OpenRouter, DeepSeek, Bluesminds) foi configurada. O enriquecimento e auditoria de editais com IA estarão desativados. Consulte o README.md para obter instruções de configuração.",
         type = "warning",
         duration = NULL,
         id = "ai_missing_warning"
@@ -638,6 +655,7 @@ server <- function(input, output, session) {
     removeModal()
     refresh_data()
     showNotification("Busca salva com sucesso.", type = "message")
+    try(drive_upload_db(db_path), silent = TRUE)
   })
 
   observeEvent(input$btn_collect_official, {
@@ -680,8 +698,8 @@ server <- function(input, output, session) {
     req(conn)
     removeModal()
 
-    if (isTRUE(rv$collecting)) {
-      showNotification("A coleta de dados ja esta em andamento em segundo plano.", type = "warning")
+    if (isTRUE(rv$collecting) || isTRUE(.GlobalEnv$.global_scraping_active)) {
+      showNotification("A coleta de dados já está em andamento em segundo plano por outro processo.", type = "warning")
       return()
     }
 
@@ -705,6 +723,7 @@ server <- function(input, output, session) {
     }, silent = TRUE)
 
     rv$collecting <- TRUE
+    .GlobalEnv$.global_scraping_active <- TRUE
     rv$bg_start_time <- Sys.time()
     updateActionButton(session, "btn_collect_official", label = "Coletando...")
     showNotification("Coleta iniciada. Acompanhe pelo modal de progresso.", type = "message", id = "bg_collect_notif", duration = 8)
@@ -726,6 +745,7 @@ server <- function(input, output, session) {
         BLUESMINDS_API_KEY= Sys.getenv("BLUESMINDS_API_KEY"),
         GEMINI_API_KEY    = Sys.getenv("GEMINI_API_KEY"),
         OPENAI_API_KEY    = Sys.getenv("OPENAI_API_KEY"),
+        NVIDIA_API_KEY    = Sys.getenv("NVIDIA_API_KEY"),
         ANTHROPIC_API_KEY = Sys.getenv("ANTHROPIC_API_KEY"),
         GROQ_API_KEY      = Sys.getenv("GROQ_API_KEY"),
         OPENROUTER_API_KEY= Sys.getenv("OPENROUTER_API_KEY"),
@@ -798,6 +818,7 @@ server <- function(input, output, session) {
       stderr = file.path(app_dir, "logs", "collection_stderr.log"),
       supervise = TRUE
     )
+    bg_proc_ref <<- rv$bg_process
   })
 
   base_results <- reactive({
@@ -921,6 +942,7 @@ server <- function(input, output, session) {
     if (!is.null(conn)) track_opportunity(conn, input$row_action$id, status_usuario = "avaliar", observacoes = "")
     refresh_data()
     showNotification("Edital adicionado à lista de rastreamento.", type = "message")
+    try(drive_upload_db(db_path), silent = TRUE)
   })
 
   observeEvent(input$row_view, {
@@ -1257,6 +1279,7 @@ server <- function(input, output, session) {
     update_tracked_opportunity(conn, rv$selected_tracked_id, input$tracked_status_input, input$tracked_notes_input %||% "")
     refresh_data()
     showNotification("Rastreamento atualizado.", type = "message")
+    try(drive_upload_db(db_path), silent = TRUE)
   })
 
   observeEvent(input$btn_remove_tracked, {
@@ -1265,6 +1288,7 @@ server <- function(input, output, session) {
     rv$selected_tracked_id <- NULL
     refresh_data()
     showNotification("Item removido da lista de rastreamento.", type = "message")
+    try(drive_upload_db(db_path), silent = TRUE)
   })
 
   output$recommended_table <- renderDT({

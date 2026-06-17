@@ -54,23 +54,23 @@ RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux
 # ── Estágio 2: imagem de runtime enxuta (Runtime) ──────────────────────────────
 FROM rocker/r-ver:4.4.0
 
-# Instala dependências de sistema necessárias para a execução
+# Instala dependências de runtime necessárias para a execução
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libcurl4-openssl-dev \
-    libssl-dev \
-    libxml2-dev \
-    libpoppler-cpp-dev \
+    libcurl4 \
+    openssl \
+    libxml2 \
+    libpoppler-cpp9v5 \
     sqlite3 \
-    libsqlite3-dev \
-    libpng-dev \
-    libjpeg-dev \
-    libtiff-dev \
-    libfreetype6-dev \
-    libharfbuzz-dev \
-    libfribidi-dev \
-    libfontconfig1-dev \
+    libsqlite3-0 \
+    libpng16-16 \
+    libjpeg62-turbo \
+    libtiff5 \
+    libfreetype6 \
+    libharfbuzz0b \
+    libfribidi0 \
+    libfontconfig1 \
     libprotobuf23 \
-    libuv1-dev \
+    libuv1 \
     python3 \
     python3-pip \
     python3-venv \
@@ -83,22 +83,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Configura ambiente Python para o reticulate
 ENV RETICULATE_PYTHON=/usr/bin/python3
+# Configura o diretório compartilhado dos browsers do Playwright
+ENV PLAYWRIGHT_BROWSERS_PATH=/usr/local/share/playwright
 
-# Instala dependências Python (Playwright) e navegadores
-RUN pip3 install --no-cache-dir playwright && \
-    playwright install --with-deps chromium
+# Instala dependências Python (Playwright + Stealth) e baixa o chromium para o local compartilhado
+RUN pip3 install --no-cache-dir playwright playwright-stealth && \
+    playwright install --with-deps chromium && \
+    chmod -R 755 /usr/local/share/playwright
 
 # Copia a biblioteca do R compilada do estágio anterior
 COPY --from=builder /usr/local/lib/R/site-library /usr/local/lib/R/site-library
 
-# Cria diretório da aplicação
+# Cria diretório da aplicação e configura permissões
 WORKDIR /app
 
 # Copia os arquivos da aplicação
 COPY . .
 
-# Define permissões adequadas para execução no container
-RUN mkdir -p logs data_exports && chmod -R 777 logs data_exports
+# Cria usuário não-privilegiado 'shiny' e ajusta permissões
+RUN groupadd -r shiny && useradd -r -g shiny -d /home/shiny -m shiny && \
+    mkdir -p logs data_exports && \
+    chown -R shiny:shiny /app && \
+    chmod -R 755 logs data_exports
+
+# Executa o container com o usuário não-privilegiado
+USER shiny
 
 # Expõe a porta padrão do Shiny
 EXPOSE 3838

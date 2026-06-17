@@ -14,6 +14,8 @@
 
 # Local database file
 funding_intelligence.sqlite
+funding_intelligence.sqlite-shm
+funding_intelligence.sqlite-wal
 
 # Local R package library folder
 R_libs/

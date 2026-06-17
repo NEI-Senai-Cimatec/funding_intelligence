@@ -280,7 +280,12 @@ safe_html_text <- function(node) {
     if (length(node) == 0) return(NA_character_)
     node <- node[[1]]
   }
-  out <- tryCatch(rvest::html_text2(node, preserve_nbsp = FALSE), error = function(e) NA_character_)
+  # Clone para evitar mutação indesejada do DOM original
+  node_copy <- tryCatch(xml2::xml_clone(node), error = function(e) node)
+  try({
+    xml2::xml_remove(xml2::xml_find_all(node_copy, ".//script|.//style|.//iframe|.//noscript|.//svg"))
+  }, silent = TRUE)
+  out <- tryCatch(rvest::html_text2(node_copy, preserve_nbsp = FALSE), error = function(e) NA_character_)
   normalize_ws(out)
 }
 

@@ -76,7 +76,7 @@ flowchart TD
     subgraph External [Fontes Externas]
         Fontes[30+ Portais de Fomento]
         PDFs[Editais em PDF]
-        LLMAPIs[APIs de IA\nBluesminds · Gemini · OpenAI · Anthropic · Groq · OpenRouter · DeepSeek]
+        LLMAPIs[APIs de IA\nBluesminds · Gemini · OpenAI · Nvidia · Anthropic · Groq · OpenRouter · DeepSeek]
     end
 
     UI <--> Core
@@ -137,7 +137,7 @@ Motor de coleta, raspagem e enriquecimento. É o módulo mais extenso do sistema
 Módulo de integração com IA generativa multi-provedor. Arquitetura em camadas:
 
 **Configuração e autodetecção:**
-- `get_ai_config()` — detecta automaticamente o provedor disponível pela presença de chaves de API no ambiente (prioridade: `bluesminds` → `gemini` → `openai` → `anthropic` → `groq` → `openrouter` → `deepseek`).
+- `get_ai_config()` — detecta automaticamente o provedor disponível pela presença de chaves de API no ambiente (prioridade: `bluesminds` → `gemini` → `openai` → `nvidia` → `anthropic` → `groq` → `openrouter` → `deepseek`).
 - Permite configuração manual via `AI_PROVIDER`, `AI_MODEL`, `AI_API_KEY`, `AI_API_URL`.
 
 **Prompt de Sistema (Persona Fixa):**
@@ -161,7 +161,7 @@ Seu público é PESQUISADORES acadêmicos que buscam financiamento...
 | Provedor | Formato de Request | System Role |
 |---|---|---|
 | Google Gemini | `systemInstruction` separado | ✅ |
-| OpenAI, Groq, Bluesminds, OpenRouter, DeepSeek | `messages[role=system]` | ✅ |
+| OpenAI, Groq, Bluesminds, OpenRouter, DeepSeek, Nvidia | `messages[role=system]` | ✅ |
 | Anthropic | Campo `system` no body | ✅ |
 
 ---
@@ -333,6 +333,49 @@ App em execução
 
 ---
 
+## 🛡️ Melhorias de Arquitetura, Resiliência e DevSecOps
+
+O Funding Intelligence Hub passou por uma revisão rigorosa focada em confiabilidade para o ambiente do SENAI CIMATEC:
+
+### 1. Concorrência e Persistência Resiliente
+* **SQLite em Modo WAL**: O banco de dados SQLite local agora utiliza o modo *Write-Ahead Logging* (`PRAGMA journal_mode = WAL;`), o que permite leituras simultâneas da interface do usuário mesmo durante transações de escrita do scraper.
+* **Busy Timeout**: Configurado um tempo limite de concorrência (`busy_timeout = 10000`) para fazer com que conexões de leitura de sessão aguardem até 10 segundos antes de falhar, reduzindo os erros de "database locked" a zero.
+* **Transações ACID**: Operações de atualização em lote de editais (`upsert_opportunities`) agora são processadas dentro de transações de banco atômicas (`dbBegin`/`dbCommit`), acelerando o tempo de persistência e minimizando travas de gravação.
+* **Sincronização Imediata com Drive**: Modificações no banco (como salvar buscas ou rastrear editais) acionam de imediato o upload para a nuvem. Isso elimina o risco de perda de dados caso o container de produção sofra um shutdown inesperado (onde o hook `onStop` original do Shiny falhava em rodar).
+
+### 2. Controle de Processos Background (callr)
+* **Prevenção de Concorrência de Scraping**: Implementação de um semáforo global no servidor Shiny impedindo que múltiplos usuários rodem coletas concorrentes que poderiam estourar cotas de APIs ou corromper a base de dados.
+* **Prevenção de Processos Zumbis**: Adicionado o hook `session$onSessionEnded(...)` que monitora o término das sessões de navegador e elimina (`kill()`) de imediato qualquer processo R/Playwright filho órfão.
+
+### 3. Coleta Stealth e Resiliência de Scraping
+* **HEAD Connection Check**: Nova função `is_host_alive()` no início da requisição que avalia a saúde de rede da agência. Caso o portal esteja offline (DNS inválido ou timeout de conexão), os fallbacks pesados (Playwright/Chrome) são abortados de antemão.
+* **playwright-stealth**: Integração da biblioteca `playwright-stealth` no reticulate Python para camuflagem completa de fingerprints de automação contra WAFs rígidos (como Cloudflare).
+* **Sanitização de HTML**: O motor de extração agora limpa programaticamente as tags `<script>`, `<style>`, `<noscript>`, `<svg>` e `<iframe>` do DOM dos portais antes de extrair o texto de oportunidades. Isso reduz o consumo de tokens de contexto da IA e melhora a qualidade do indexador booleano.
+
+### 4. Resiliência do Pipeline de IA
+* **Backoff Exponencial com Jitter**: Substituição dos loops de retry manuais por tratamentos nativos do `httr2` (`httr2::req_retry()`) com tempo de espera incremental e variação aleatória (*jitter*) para contornar limites de requisição HTTP 429 e timeouts em chamadas normais e paralelas.
+
+### 5. Docker e Segurança de Produção
+* **Docker Non-Root**: O container de runtime não executa mais como `root`. Foi configurado um usuário restrito do sistema (`shiny`) e permissões explícitas no diretório `/app`.
+* **Playwright Shared Cache**: Configurada a variável de ambiente `PLAYWRIGHT_BROWSERS_PATH=/usr/local/share/playwright` com permissões adequadas para permitir acesso de leitura dos navegadores pelo usuário sem privilégios.
+* **Prevenção de Vazamentos (DevSecOps)**: O arquivo `.dockerignore` agora impede a cópia acidental de chaves locais do Google Drive (`gdrive_credentials.json`) para a imagem Docker final.
+* **Healthchecks**: Adicionado monitoramento nativo no Docker Compose para testar periodicamente a disponibilidade HTTP do Shiny.
+
+### 6. Execução de Testes de Validação
+Os scripts de teste localizados em `scratch/` validam a estabilidade das melhorias:
+```bash
+# Testar concorrência SQLite em modo WAL
+Rscript scratch/test_db_concurrency.R
+
+# Testar requisições stealth e ping de conexões
+Rscript scratch/test_stealth_request.R
+
+# Testar retries com backoff exponencial da IA
+Rscript scratch/test_ai_backoff.R
+```
+
+---
+
 ## 🚀 Como Executar
 
 ### Opção 1 — Local (R)
@@ -357,6 +400,7 @@ Crie um arquivo `.Renviron` na raiz do projeto com as variáveis desejadas:
 BLUESMINDS_API_KEY=sua_chave_bluesminds   # Provedor padrão atual
 GEMINI_API_KEY=sua_chave_gemini
 OPENAI_API_KEY=sua_chave_openai
+NVIDIA_API_KEY=sua_chave_nvidia
 ANTHROPIC_API_KEY=sua_chave_anthropic
 GROQ_API_KEY=sua_chave_groq
 OPENROUTER_API_KEY=sua_chave_openrouter
@@ -430,11 +474,12 @@ A aplicação ficará disponível em `http://localhost:3838`.
 | `BLUESMINDS_API_KEY` | IA | Chave do provedor Bluesminds (padrão atual) |
 | `GEMINI_API_KEY` | IA | Chave Google Gemini |
 | `OPENAI_API_KEY` | IA | Chave OpenAI |
+| `NVIDIA_API_KEY` | IA | Chave NVIDIA Build (NIM) |
 | `ANTHROPIC_API_KEY` | IA | Chave Anthropic Claude |
 | `GROQ_API_KEY` | IA | Chave Groq |
 | `OPENROUTER_API_KEY` | IA | Chave OpenRouter |
 | `DEEPSEEK_API_KEY` | IA | Chave DeepSeek |
-| `AI_PROVIDER` | Não | Força o provedor (`bluesminds`, `gemini`, `openai`, `anthropic`, `groq`, `openrouter`, `deepseek`) |
+| `AI_PROVIDER` | Não | Força o provedor (`bluesminds`, `gemini`, `openai`, `nvidia`, `anthropic`, `groq`, `openrouter`, `deepseek`) |
 | `AI_MODEL` | Não | Modelo específico a usar |
 | `AI_API_URL` | Não | Endpoint customizado compatível com OpenAI |
 | `AI_MAX_CHARS` | Não | Contexto máximo por edital (padrão: `20000`) |

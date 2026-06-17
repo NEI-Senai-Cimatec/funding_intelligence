@@ -88,12 +88,16 @@ def run_playwright_stealth(url):
                 timezone_id='America/Sao_Paulo'
             )
             page = context.new_page()
-            page.add_init_script(\"\"\"
-                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-                Object.defineProperty(navigator, 'languages', { get: () => ['pt-BR', 'pt', 'en-US', 'en'] });
-                Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
-                window.chrome = { runtime: {} };
-            \"\"\")
+            try:
+                from playwright_stealth import stealth_sync
+                stealth_sync(page)
+            except ImportError:
+                page.add_init_script(\"\"\"
+                    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                    Object.defineProperty(navigator, 'languages', { get: () => ['pt-BR', 'pt', 'en-US', 'en'] });
+                    Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+                    window.chrome = { runtime: {} };
+                \"\"\")
             page.goto(url, wait_until='networkidle', timeout=15000)
             content = page.content()
             browser.close()
@@ -122,7 +126,28 @@ def run_playwright_stealth(url):
   res
 }
 
+is_host_alive <- function(url) {
+  tryCatch({
+    req <- httr2::request(url) |>
+      httr2::req_method("HEAD") |>
+      httr2::req_timeout(3)
+    httr2::req_perform(req)
+    TRUE
+  }, error = function(e) {
+    msg <- conditionMessage(e)
+    if (grepl("Could not resolve host|Could not resolve hostname|Timeout was reached|Connection refused|Failed to connect", msg, ignore.case = TRUE)) {
+      return(FALSE)
+    }
+    TRUE
+  })
+}
+
 safe_request_page <- function(url, log_path = NULL, use_browser_fallback = TRUE) {
+  if (!is_host_alive(url)) {
+    if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Host offline ou inacessivel: %s. Pulando requisicoes antecipadamente.", url))
+    return(list(url = url, html = NULL, text = NA_character_, ok = FALSE, method = "ping_failed"))
+  }
+
   # 1. Tentar httr2 (metodo rapido)
   req <- httr2::request(url) |>
     httr2::req_user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36") |>

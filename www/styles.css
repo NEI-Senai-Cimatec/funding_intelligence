@@ -20,8 +20,53 @@ body {
 .app-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  width: 100%;
   gap: 1.5rem;
   padding: 0.5rem 0;
+}
+
+/* Header Status Widget */
+.header-status-widget {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background-color: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 999px !important;
+  padding: 0.4rem 1rem !important;
+  font-size: 0.825rem !important;
+  font-weight: 700 !important;
+  color: #1e293b !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.header-status-widget:hover {
+  background-color: #f1f5f9 !important;
+  border-color: #94a3b8 !important;
+  transform: translateY(-1px) !important;
+}
+
+@keyframes pulse-sync {
+  0% { opacity: 0.7; }
+  50% { opacity: 1; }
+  100% { opacity: 0.7; }
+}
+
+.status-syncing {
+  animation: pulse-sync 1.5s infinite ease-in-out;
+  color: #004691 !important;
+}
+
+.status-active {
+  animation: pulse-sync 1.5s infinite ease-in-out;
+  color: #ea580c !important;
+}
+
+.status-success {
+  color: #16a34a !important;
 }
 
 .logo-container {

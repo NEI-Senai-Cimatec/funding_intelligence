@@ -124,9 +124,54 @@ onStop(function() {
 
 build_sidebar <- function() {
   bslib::sidebar(
-    open = "closed",
-    width = 0,
-    tags$div(style = "display:none;")
+    title = tags$div(
+      style = "display: flex; align-items: center; gap: 8px; font-weight: 700; color: #004691;",
+      tags$i(class = "fa fa-filter"), "Filtros Rápidos"
+    ),
+    open = "desktop",
+    width = 320,
+    selectizeInput(
+      "filter_funder", 
+      label = tags$span(tags$i(class = "fa fa-university"), " Financiador"),
+      choices = NULL, 
+      multiple = TRUE, 
+      options = list(placeholder = "Todos os financiadores")
+    ),
+    selectizeInput(
+      "filter_area", 
+      label = tags$span(tags$i(class = "fa fa-laptop-code"), " Área Temática"),
+      choices = NULL, 
+      multiple = TRUE, 
+      options = list(placeholder = "Todas as áreas")
+    ),
+    selectizeInput(
+      "filter_status", 
+      label = tags$span(tags$i(class = "fa fa-info-circle"), " Status"),
+      choices = NULL, 
+      multiple = TRUE, 
+      options = list(placeholder = "Todos os status")
+    ),
+    selectizeInput(
+      "filter_type", 
+      label = tags$span(tags$i(class = "fa fa-tags"), " Tipo de Oportunidade"),
+      choices = NULL, 
+      multiple = TRUE, 
+      options = list(placeholder = "Todos os tipos")
+    ),
+    selectizeInput(
+      "filter_language", 
+      label = tags$span(tags$i(class = "fa fa-language"), " Idioma"),
+      choices = NULL, 
+      multiple = TRUE, 
+      options = list(placeholder = "Todos os idiomas")
+    ),
+    tags$hr(style = "margin: 1rem 0; border-color: #cbd5e1;"),
+    actionButton(
+      "btn_clear_filters", 
+      "Limpar Filtros", 
+      class = "btn-outline-secondary w-100", 
+      icon = icon("redo")
+    )
   )
 }
 
@@ -135,14 +180,18 @@ ui <- bslib::page_sidebar(
   title = tags$div(
     class = "app-header",
     tags$div(
-      class = "logo-container",
-      tags$img(src = "senai_cimatec.jpg", height = "36px", alt = "SENAI CIMATEC")
+      style = "display: flex; align-items: center; gap: 1.5rem;",
+      tags$div(
+        class = "logo-container",
+        tags$img(src = "senai_cimatec.jpg", height = "36px", alt = "SENAI CIMATEC")
+      ),
+      tags$div(
+        class = "app-title-main",
+        h2("Funding Intelligence Hub"),
+        p("Busca booleana, monitoramento de editais e recomendação a partir do banco local.")
+      )
     ),
-    tags$div(
-      class = "app-title-main",
-      h2("Funding Intelligence Hub"),
-      p("Busca booleana, monitoramento de editais e recomendação a partir do banco local.")
-    )
+    uiOutput("header_status")
   ),
   theme = bslib::bs_theme(version = 5, bootswatch = "flatly", primary = "#004691", secondary = "#0f172a"),
   sidebar = build_sidebar(),
@@ -164,12 +213,24 @@ ui <- bslib::page_sidebar(
     class = "search-card",
     bslib::layout_columns(
       col_widths = c(5, 3, 1, 1, 1, 1),
-      textInput("search_query", "Barra de busca principal", value = "", placeholder = "Ex.: (health OR medical devices) AND innovation NOT veterinary"),
+      textInput(
+        "search_query", 
+        label = tags$span(
+          "Barra de busca principal ",
+          tags$span(
+            style = "cursor: pointer; color: #004691; margin-left: 4px;",
+            onclick = "Shiny.setInputValue('click_search_help', Math.random(), {priority: 'event'})",
+            tags$i(class = "fa fa-question-circle")
+          )
+        ),
+        value = "", 
+        placeholder = "Ex.: (health OR medical devices) AND innovation NOT veterinary"
+      ),
       radioButtons("region_filter", "Região das fontes", choices = c("Brasileiras", "Europeias", "Ambas"), selected = "Ambas", inline = TRUE),
-      actionButton("btn_search", "Buscar", class = "btn-primary action-top"),
-      actionButton("btn_advanced", "Busca avançada", class = "btn-outline-primary action-top"),
-      actionButton("btn_save_search", "Salvar busca", class = "btn-outline-secondary action-top"),
-      actionButton("btn_collect_official", "Atualizar base", class = "btn-success action-top")
+      actionButton("btn_search", "Buscar", class = "btn-primary action-top", icon = icon("search")),
+      actionButton("btn_advanced", "Busca avançada", class = "btn-outline-primary action-top", icon = icon("sliders-h")),
+      actionButton("btn_save_search", "Salvar busca", class = "btn-outline-secondary action-top", icon = icon("bookmark")),
+      actionButton("btn_collect_official", "Atualizar base", class = "btn-success action-top", icon = icon("sync"))
     )
   ),
 
@@ -275,7 +336,7 @@ server <- function(input, output, session) {
       try(bg_proc_ref$kill(), silent = TRUE)
     }
     # Libera o semáforo global se fomos nós que iniciamos a coleta
-    if (isTRUE(rv$collecting)) {
+    if (isTRUE(isolate(rv$collecting))) {
       .GlobalEnv$.global_scraping_active <- FALSE
     }
   })
@@ -293,8 +354,24 @@ server <- function(input, output, session) {
     advanced_filters = list(),
     last_collect_summary = list(msg = "Base pronta.", n = 0L, exports = NULL),
     selected_tracked_id = NULL,
-    collecting = FALSE
+    collecting = FALSE,
+    drive_status = "idle"
   )
+
+  # Wrapper para upload seguro no Google Drive com atualização de status visual
+  safe_drive_upload <- function() {
+    rv$drive_status <- "uploading"
+    shiny::withProgress(message = "Sincronizando com Google Drive...", {
+      tryCatch({
+        drive_upload_db(db_path)
+        rv$drive_status <- "idle"
+      }, error = function(e) {
+        rv$drive_status <- "error"
+        showNotification(paste("Erro ao sincronizar com Google Drive:", e$message), type = "error")
+        rv$drive_status <- "idle"
+      })
+    })
+  }
 
   refresh_data <- function(notify = FALSE) {
     data <- tryCatch(
@@ -393,7 +470,7 @@ server <- function(input, output, session) {
         progress_rv$detail <- "Coleta concluída! Sincronizando com o Google Drive..."
         
         # Sincroniza a base coletada com o Google Drive, se configurado
-        try(drive_upload_db(db_path), silent = TRUE)
+        safe_drive_upload()
         
         progress_rv$detail <- "Sincronização com Google Drive concluída!"
         rv$last_collect_summary <- result
@@ -655,7 +732,7 @@ server <- function(input, output, session) {
     removeModal()
     refresh_data()
     showNotification("Busca salva com sucesso.", type = "message")
-    try(drive_upload_db(db_path), silent = TRUE)
+    safe_drive_upload()
   })
 
   observeEvent(input$btn_collect_official, {
@@ -846,8 +923,109 @@ server <- function(input, output, session) {
       # Ambas (Mantém brasileiras e europeias)
       df <- df |> dplyr::filter(pais_origem == "Brasil" | pais_origem %in% c("União Europeia", "Alemanha", "Reino Unido", "Suécia", "Bélgica", "França", "Suíça", "Europa", "Itália", "Espanha", "Holanda"))
     }
+
+    # Filtros Rápidos do Sidebar
+    if (length(input$filter_funder) > 0) {
+      df <- df |> dplyr::filter(entidade %in% input$filter_funder)
+    }
+    if (length(input$filter_area) > 0) {
+      df <- df |> dplyr::filter(area_tematica %in% input$filter_area)
+    }
+    if (length(input$filter_status) > 0) {
+      df <- df |> dplyr::filter(status_oportunidade %in% input$filter_status)
+    }
+    if (length(input$filter_type) > 0) {
+      df <- df |> dplyr::filter(tipo_oportunidade %in% input$filter_type)
+    }
+    if (length(input$filter_language) > 0) {
+      df <- df |> dplyr::filter(idioma %in% input$filter_language)
+    }
     
     dplyr::arrange(df, dplyr::desc(score_aderencia), parse_date_safe(data_limite))
+  })
+
+  # Atualizador dinâmico de escolhas dos filtros no sidebar
+  observe({
+    opps <- rv$opportunities
+    req(nrow(opps) > 0)
+    
+    # Financiador
+    funder_choices <- sort(unique(opps$entidade))
+    updateSelectizeInput(session, "filter_funder", choices = funder_choices, selected = input$filter_funder)
+    
+    # Área Temática
+    area_choices <- sort(unique(opps$area_tematica[!is.na(opps$area_tematica) & opps$area_tematica != ""]))
+    updateSelectizeInput(session, "filter_area", choices = area_choices, selected = input$filter_area)
+    
+    # Status
+    status_choices <- sort(unique(opps$status_oportunidade[!is.na(opps$status_oportunidade) & opps$status_oportunidade != ""]))
+    status_display <- setNames(status_choices, tools::toTitleCase(status_choices))
+    updateSelectizeInput(session, "filter_status", choices = status_display, selected = input$filter_status)
+    
+    # Tipo de Oportunidade
+    type_choices <- sort(unique(opps$tipo_oportunidade[!is.na(opps$tipo_oportunidade) & opps$tipo_oportunidade != ""]))
+    updateSelectizeInput(session, "filter_type", choices = type_choices, selected = input$filter_type)
+    
+    # Idioma
+    lang_choices <- sort(unique(opps$idioma[!is.na(opps$idioma) & opps$idioma != ""]))
+    lang_display <- setNames(lang_choices, toupper(lang_choices))
+    updateSelectizeInput(session, "filter_language", choices = lang_display, selected = input$filter_language)
+  })
+
+  # Evento para limpar todos os filtros rápidos do sidebar
+  observeEvent(input$btn_clear_filters, {
+    updateSelectizeInput(session, "filter_funder", selected = character(0))
+    updateSelectizeInput(session, "filter_area", selected = character(0))
+    updateSelectizeInput(session, "filter_status", selected = character(0))
+    updateSelectizeInput(session, "filter_type", selected = character(0))
+    updateSelectizeInput(session, "filter_language", selected = character(0))
+  })
+
+  # Renderizador de status persistente no header da aplicação
+  output$header_status <- renderUI({
+    status_info <- if (isTRUE(rv$drive_status == "uploading")) {
+      list(icon = "sync fa-spin status-syncing", label = "Sincronizando GDrive...", class = "status-syncing")
+    } else if (isTRUE(progress_rv$status == "running")) {
+      list(icon = "robot fa-spin status-active", label = "Coleta Ativa (Background)", class = "status-active")
+    } else {
+      list(icon = "check-circle status-success", label = "Base Sincronizada", class = "status-success")
+    }
+    
+    tags$button(
+      id = "btn_header_status",
+      class = sprintf("btn header-status-widget %s", status_info$class),
+      onclick = "Shiny.setInputValue('click_header_status', Math.random(), {priority: 'event'})",
+      tags$i(class = sprintf("fa fa-%s", status_info$icon)),
+      tags$span(class = "status-label", style = "margin-left: 6px;", status_info$label)
+    )
+  })
+
+  # Clique no status do header abre o modal se houver coleta rodando
+  observeEvent(input$click_header_status, {
+    if (progress_rv$status == "running" || progress_rv$status == "done" || progress_rv$status == "error") {
+      show_progress_modal()
+    } else {
+      showNotification("A base local está atualizada e sincronizada com o Google Drive.", type = "message")
+    }
+  })
+
+  # Exibe modal informativo de sintaxe de busca
+  observeEvent(input$click_search_help, {
+    showModal(modalDialog(
+      title = span(style = "font-weight: bold; color: #004691; display: flex; align-items: center; gap: 6px;", 
+                   tags$i(class = "fa fa-lightbulb text-warning"), "Guia de Busca Booleana"),
+      easyClose = TRUE,
+      p("A barra de busca suporta termos e expressões complexas utilizando operadores booleanos:"),
+      tags$ul(
+        tags$li(tags$strong("AND:"), " Ambos os termos devem estar presentes. Ex: ", tags$code("saúde AND tecnologia")),
+        tags$li(tags$strong("OR:"), " Pelo menos um dos termos deve estar presente. Ex: ", tags$code("computação OR eletrônica")),
+        tags$li(tags$strong("NOT:"), " Exclui termos indesejados. Ex: ", tags$code("inovação NOT veterinária")),
+        tags$li(tags$strong("Aspas (\" \"):"), " Busca exata. Ex: ", tags$code("\"inteligência artificial\"")),
+        tags$li(tags$strong("Parênteses (( )):"), " Organiza a prioridade. Ex: ", tags$code("(sensores OR robótica) AND saúde"))
+      ),
+      p(style = "color: #64748b; font-size: 0.85rem; margin-top: 10px;", "Aviso: Operadores lógicos (AND, OR, NOT) devem ser escritos em maiúsculo."),
+      footer = modalButton("Entendi")
+    ))
   })
 
   output$total_editais <- renderText(nrow(filtered_results()))
@@ -880,6 +1058,7 @@ server <- function(input, output, session) {
         ID = character(),
         Título = character(),
         Financiador = factor(),
+        `Aderência <i class='fa fa-info-circle text-info' title='Afinidade semântica calculada dinamicamente com base nos termos de busca.'></i>` = character(),
         Prazo = character(),
         Status = factor(),
         Ações = character()
@@ -887,6 +1066,7 @@ server <- function(input, output, session) {
     } else {
       shown <- df |>
         dplyr::mutate(
+          Aderência = vapply(score_aderencia, score_bar_html, character(1)),
           Prazo = format_date_br(data_limite),
           Status = as.factor(tools::toTitleCase(tolower(status_oportunidade))),
           Financiador = as.factor(entidade),
@@ -897,6 +1077,7 @@ server <- function(input, output, session) {
           ID = id_registro,
           Título,
           Financiador,
+          `Aderência <i class='fa fa-info-circle text-info' title='Afinidade semântica calculada dinamicamente com base nos termos de busca.'></i>` = Aderência,
           Prazo,
           Status,
           Ações
@@ -915,7 +1096,7 @@ server <- function(input, output, session) {
         columnDefs = list(
           list(targets = 0, visible = FALSE),
           list(
-            targets = 4,
+            targets = 5,
             render = DT::JS("
               function(data, type, row, meta) {
                 if (type === 'display') {
@@ -931,7 +1112,7 @@ server <- function(input, output, session) {
               }
             ")
           ),
-          list(targets = c(0, 5), searchable = FALSE, orderable = FALSE)
+          list(targets = c(0, 6), searchable = FALSE, orderable = FALSE)
         )
       )
     )
@@ -942,7 +1123,7 @@ server <- function(input, output, session) {
     if (!is.null(conn)) track_opportunity(conn, input$row_action$id, status_usuario = "avaliar", observacoes = "")
     refresh_data()
     showNotification("Edital adicionado à lista de rastreamento.", type = "message")
-    try(drive_upload_db(db_path), silent = TRUE)
+    safe_drive_upload()
   })
 
   observeEvent(input$row_view, {
@@ -991,110 +1172,117 @@ server <- function(input, output, session) {
           }
         ),
 
-        # Score de Aderência e Palavras-chave
+        # 2-Column Responsive Layout
         tags$div(
-          style = "margin-bottom: 25px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 15px;",
-          tags$h5(style = "color: #1e40af; font-weight: 700; margin-bottom: 12px; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.5px;", "Análise de Afinidade (IA)"),
-          bslib::layout_columns(
-            col_widths = c(6, 6),
+          class = "row",
+          # Coluna Esquerda (7 colunas)
+          tags$div(
+            class = "col-md-7", style = "margin-bottom: 20px;",
+            # Score de Aderência e Palavras-chave
             tags$div(
-              style = "margin-bottom: 10px;",
-              tags$strong("Aderência Geral:"),
-              HTML(score_bar_html(dynamic_score))
-            ),
-            tags$div(
-              style = "margin-bottom: 10px;",
-              tags$strong("Palavras-chave Identificadas:"),
+              style = "margin-bottom: 25px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 15px;",
+              tags$h5(style = "color: #1e40af; font-weight: 700; margin-bottom: 12px; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.5px;", "Análise de Afinidade (IA)"),
               tags$div(
-                style = "margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px;",
-                HTML(paste0(
-                  vapply(safe_split(opp$palavras_chave[[1]]), function(kw) {
-                    sprintf("<span class='status-badge badge-soft-info' style='text-transform: none; font-size: 0.7rem;'>%s</span>", htmltools::htmlEscape(kw))
-                  }, character(1)),
-                  collapse = ""
-                ))
+                style = "margin-bottom: 10px;",
+                tags$strong("Aderência Geral:"),
+                HTML(score_bar_html(dynamic_score))
+              ),
+              tags$div(
+                style = "margin-bottom: 10px;",
+                tags$strong("Palavras-chave Identificadas:"),
+                tags$div(
+                  style = "margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px;",
+                  HTML(paste0(
+                    vapply(safe_split(opp$palavras_chave[[1]]), function(kw) {
+                      sprintf("<span class='status-badge badge-soft-info' style='text-transform: none; font-size: 0.7rem;'>%s</span>", htmltools::htmlEscape(kw))
+                    }, character(1)),
+                    collapse = ""
+                  ))
+                )
               )
-            )
-          )
-        ),
-        
-        # Objeto de Financiamento (Resumo da IA)
-        tags$div(
-          style = "margin-bottom: 25px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);",
-          tags$h5(style = "color: #004691; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; font-weight: 700; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 0.5px;", "Objeto de Financiamento"),
-          tags$div(
-            style = "font-size: 0.95rem; line-height: 1.7; color: #1e293b; white-space: pre-wrap; text-align: justify;",
-            opp$descricao_resumida[[1]] %||% "Resumo não disponível."
-          )
-        ),
-
-        # Ficha Técnica / Metadados em Grid
-        tags$div(
-          style = "margin-bottom: 25px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px;",
-          tags$h5(style = "color: #475569; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; font-weight: 700; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 15px;", "Ficha Técnica do Edital"),
-          tags$div(
-            class = "row",
-            tags$div(
-              class = "col-md-4", style = "margin-bottom: 15px;",
-              tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Prazo Limite"),
-              tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", format_date_br(opp$data_limite[[1]]))
             ),
+            # Objeto de Financiamento (Resumo da IA)
             tags$div(
-              class = "col-md-4", style = "margin-bottom: 15px;",
-              tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Área Temática"),
-              tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", opp$area_tematica[[1]] %||% "-")
-            ),
-            tags$div(
-              class = "col-md-4", style = "margin-bottom: 15px;",
-              tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Elegibilidade"),
-              tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", opp$elegibilidade[[1]] %||% "-")
-            ),
-            tags$div(
-              class = "col-md-4", style = "margin-bottom: 15px;",
-              tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Tipo de Oportunidade"),
-              tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", opp$tipo_oportunidade[[1]] %||% "-")
-            ),
-            tags$div(
-              class = "col-md-4", style = "margin-bottom: 15px;",
-              tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "País de Origem"),
-              tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", opp$pais_origem[[1]] %||% "-")
-            ),
-            tags$div(
-              class = "col-md-4", style = "margin-bottom: 15px;",
-              tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Orçamento Estimado"),
+              style = "margin-bottom: 25px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);",
+              tags$h5(style = "color: #004691; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; font-weight: 700; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 0.5px;", "Objeto de Financiamento"),
               tags$div(
-                style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;",
-                if (!is.na(opp$valor_financiado[[1]])) {
-                  paste(opp$moeda[[1]] %||% "", format(opp$valor_financiado[[1]], big.mark = ".", decimal.mark = ","))
-                } else {
-                  "Ver documentação oficial"
+                style = "font-size: 0.95rem; line-height: 1.7; color: #1e293b; white-space: pre-wrap; text-align: justify;",
+                opp$descricao_resumida[[1]] %||% "Resumo não disponível."
+              )
+            ),
+            # Links de Referência
+            tags$div(
+              style = "margin-bottom: 25px;",
+              tags$h5(style = "color: #004691; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; font-weight: 700; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 0.5px;", "Documentos e Links Oficiais"),
+              tags$div(
+                style = "margin-top: 10px; display: flex; flex-direction: column; gap: 8px; font-size: 0.95rem;",
+                if (!is.na(opp$link_origem[[1]]) && nzchar(opp$link_origem[[1]])) {
+                  tags$div(tags$strong("Portal da Oportunidade: "), tags$a(href = opp$link_origem[[1]], target = "_blank", style = "color: #004691; font-weight: 600;", "Acessar Portal de Origem ↗"))
+                },
+                if (!is.na(opp$link_detalhe[[1]]) && nzchar(opp$link_detalhe[[1]])) {
+                  tags$div(tags$strong("Página de Detalhes: "), tags$a(href = opp$link_detalhe[[1]], target = "_blank", style = "color: #004691; font-weight: 600;", "Acessar Edital Completo ↗"))
+                },
+                if (!is.na(opp$link_documento_pdf[[1]]) && nzchar(opp$link_documento_pdf[[1]])) {
+                  tags$div(tags$strong("Documento de Diretrizes (PDF): "), tags$a(href = opp$link_documento_pdf[[1]], target = "_blank", style = "color: #e30613; font-weight: 600;", "Baixar Edital em PDF 📥"))
                 }
               )
             )
-          )
-        ),
-        
-        # Links de Referência
-        tags$div(
-          style = "margin-bottom: 25px;",
-          tags$h5(style = "color: #004691; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; font-weight: 700; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 0.5px;", "Documentos e Links Oficiais"),
+          ),
+          
+          # Coluna Direita (5 colunas)
           tags$div(
-            style = "margin-top: 10px; display: flex; flex-direction: column; gap: 8px; font-size: 0.95rem;",
-            if (!is.na(opp$link_origem[[1]]) && nzchar(opp$link_origem[[1]])) {
-              tags$div(tags$strong("Portal da Oportunidade: "), tags$a(href = opp$link_origem[[1]], target = "_blank", style = "color: #004691; font-weight: 600;", "Acessar Portal de Origem ↗"))
-            },
-            if (!is.na(opp$link_detalhe[[1]]) && nzchar(opp$link_detalhe[[1]])) {
-              tags$div(tags$strong("Página de Detalhes: "), tags$a(href = opp$link_detalhe[[1]], target = "_blank", style = "color: #004691; font-weight: 600;", "Acessar Edital Completo ↗"))
-            },
-            if (!is.na(opp$link_documento_pdf[[1]]) && nzchar(opp$link_documento_pdf[[1]])) {
-              tags$div(tags$strong("Documento de Diretrizes (PDF): "), tags$a(href = opp$link_documento_pdf[[1]], target = "_blank", style = "color: #e30613; font-weight: 600;", "Baixar Edital em PDF 📥"))
-            }
+            class = "col-md-5", style = "margin-bottom: 20px;",
+            # Destaque de Elegibilidade (Vermelho/Laranja claro)
+            tags$div(
+              style = "margin-bottom: 20px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);",
+              tags$h5(style = "color: #c2410c; margin-top: 0; margin-bottom: 12px; font-weight: 700; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;", 
+                       tags$i(class = "fa fa-user-shield"), "Elegibilidade"),
+              tags$div(
+                style = "font-size: 0.95rem; font-weight: 700; color: #7c2d12; line-height: 1.5; white-space: pre-wrap;",
+                opp$elegibilidade[[1]] %||% "Não especificada."
+              )
+            ),
+            # Ficha Técnica Rápida
+            tags$div(
+              style = "background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px;",
+              tags$h5(style = "color: #475569; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; font-weight: 700; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 15px; margin-top: 0;", "Ficha Rápida"),
+              tags$div(
+                style = "display: flex; flex-direction: column; gap: 15px;",
+                tags$div(
+                  tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Prazo Limite"),
+                  tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", format_date_br(opp$data_limite[[1]]))
+                ),
+                tags$div(
+                  tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Área Temática"),
+                  tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", opp$area_tematica[[1]] %||% "-")
+                ),
+                tags$div(
+                  tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Tipo de Oportunidade"),
+                  tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", opp$tipo_oportunidade[[1]] %||% "-")
+                ),
+                tags$div(
+                  tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "País de Origem"),
+                  tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", opp$pais_origem[[1]] %||% "-")
+                ),
+                tags$div(
+                  tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Orçamento Estimado"),
+                  tags$div(
+                    style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;",
+                    if (!is.na(opp$valor_financiado[[1]])) {
+                      paste(opp$moeda[[1]] %||% "", format(opp$valor_financiado[[1]], big.mark = ".", decimal.mark = ","))
+                    } else {
+                      "Ver documentação oficial"
+                    }
+                  )
+                )
+              )
+            )
           )
         ),
         
         # Texto Bruto Coletado (Auditoria) - Colapsável
         tags$div(
-          style = "margin-bottom: 10px;",
+          style = "margin-top: 25px; margin-bottom: 10px;",
           tags$h5(
             style = "color: #64748b; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; font-weight: 700; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.5px; display: flex; justify-content: space-between; align-items: center;",
             "Conteúdo Bruto (Auditoria)",
@@ -1279,7 +1467,7 @@ server <- function(input, output, session) {
     update_tracked_opportunity(conn, rv$selected_tracked_id, input$tracked_status_input, input$tracked_notes_input %||% "")
     refresh_data()
     showNotification("Rastreamento atualizado.", type = "message")
-    try(drive_upload_db(db_path), silent = TRUE)
+    safe_drive_upload()
   })
 
   observeEvent(input$btn_remove_tracked, {
@@ -1288,7 +1476,7 @@ server <- function(input, output, session) {
     rv$selected_tracked_id <- NULL
     refresh_data()
     showNotification("Item removido da lista de rastreamento.", type = "message")
-    try(drive_upload_db(db_path), silent = TRUE)
+    safe_drive_upload()
   })
 
   output$recommended_table <- renderDT({

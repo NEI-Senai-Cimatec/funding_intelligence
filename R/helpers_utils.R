@@ -243,7 +243,7 @@ parse_money_text <- function(text) {
     TRUE ~ NA_character_
   )
   value <- suppressWarnings({
-    m <- stringr::str_extract(txt, "(R\\$|US\\$|USD|EUR|€|CAD|GBP|£)?\\s*[0-9][0-9\\., ]+")
+    m <- stringr::str_extract(txt, "(R\\$|US\\$|USD|EUR|€|CAD|GBP|£)\\s*[0-9][0-9\\., ]+")
     safe_numeric(m)
   })
   list(value = value, currency = currency)
@@ -309,7 +309,8 @@ resolve_url <- function(base_url, href) {
     scheme <- if (is.null(scheme) || !nzchar(scheme)) "https" else scheme
     return(paste0(scheme, ":", href))
   }
-  out <- tryCatch(xml2::url_absolute(href, base_url), error = function(e) NA_character_)
+  href_enc <- tryCatch(utils::URLencode(href, repeated = FALSE), error = function(e) href)
+  out <- tryCatch(xml2::url_absolute(href_enc, base_url), error = function(e) NA_character_)
   if (length(out) == 0 || is.na(out) || !nzchar(out)) return(NA_character_)
   out
 }

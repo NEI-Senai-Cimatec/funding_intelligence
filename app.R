@@ -1260,6 +1260,36 @@ server <- function(input, output, session) {
                   tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Tipo de Oportunidade"),
                   tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", opp$tipo_oportunidade[[1]] %||% "-")
                 ),
+                if (!is.na(opp$modalidade[[1]]) && nzchar(opp$modalidade[[1]])) {
+                  tags$div(
+                    tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Modalidade de Fomento"),
+                    tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", opp$modalidade[[1]])
+                  )
+                },
+                if (!is.na(opp$publico_alvo[[1]]) && nzchar(opp$publico_alvo[[1]])) {
+                  tags$div(
+                    tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Público-Alvo"),
+                    tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", opp$publico_alvo[[1]])
+                  )
+                },
+                if (!is.na(opp$nivel_academico[[1]]) && nzchar(opp$nivel_academico[[1]])) {
+                  tags$div(
+                    tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Nível Acadêmico"),
+                    tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", opp$nivel_academico[[1]])
+                  )
+                },
+                if (!is.na(opp$data_abertura[[1]]) && nzchar(opp$data_abertura[[1]])) {
+                  tags$div(
+                    tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Data de Abertura"),
+                    tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", format_date_br(opp$data_abertura[[1]]))
+                  )
+                },
+                if (!is.na(opp$data_encerramento[[1]]) && nzchar(opp$data_encerramento[[1]])) {
+                  tags$div(
+                    tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Data de Encerramento"),
+                    tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", format_date_br(opp$data_encerramento[[1]]))
+                  )
+                },
                 tags$div(
                   tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "País de Origem"),
                   tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", opp$pais_origem[[1]] %||% "-")

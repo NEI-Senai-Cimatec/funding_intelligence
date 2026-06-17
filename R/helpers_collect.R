@@ -398,6 +398,35 @@ extract_page_summary <- function(html, max_chars = 1200) {
   stringr::str_squish(stringr::str_sub(paste(txt, collapse = " "), 1, max_chars))
 }
 
+extract_candidate_links <- function(html, base_url, source_id) {
+  anchors <- try(rvest::html_elements(html, "a[href]"), silent = TRUE)
+  if (inherits(anchors, "try-error") || length(anchors) == 0) return(tibble::tibble())
+  
+  hrefs <- rvest::html_attr(anchors, "href")
+  abs_urls <- vapply(hrefs, function(h) resolve_url(base_url, h), character(1))
+  
+  valid <- !is.na(abs_urls) & nzchar(abs_urls)
+  if (!any(valid)) return(tibble::tibble())
+  
+  anchors <- anchors[valid]
+  abs_urls <- abs_urls[valid]
+  
+  anchor_texts <- vapply(anchors, safe_html_text, character(1))
+  container_texts <- vapply(anchors, function(a) {
+    parent <- try(rvest::html_parent(a), silent = TRUE)
+    nearest_block_text(a) %||% (if (!inherits(parent, "try-error")) safe_html_text(parent) else "") %||% ""
+  }, character(1))
+  
+  is_pdf <- grepl("\\.pdf($|\\?)", abs_urls, ignore.case = TRUE)
+  
+  tibble::tibble(
+    anchor_text = anchor_texts,
+    container_text = container_texts,
+    href = abs_urls,
+    is_pdf = is_pdf
+  )
+}
+
 extract_listing_candidates <- function(html, base_url, source_row) {
   if (is.null(html)) return(tibble::tibble())
 
@@ -702,8 +731,16 @@ enrich_record_with_ai <- function(record, log_path = NULL) {
 
   fill_field <- function(field, value, overwrite = FALSE) {
     if (is.null(value) || length(value) == 0) return(invisible(NULL))
-    value <- as.character(value[[1]])
+    if (length(value) > 1) {
+      value <- paste(vapply(value, as.character, character(1)), collapse = "; ")
+    } else {
+      value <- as.character(value[[1]])
+    }
     if (is.na(value) || !nzchar(trimws(value))) return(invisible(NULL))
+    if (field == "palavras_chave") {
+      value <- gsub(",\\s*", "; ", value)
+      value <- gsub(";+", ";", value)
+    }
     if (!field %in% names(record)) {
       record[[field]] <<- NA_character_
     }
@@ -727,6 +764,11 @@ enrich_record_with_ai <- function(record, log_path = NULL) {
   fill_field("data_limite", ai$data_limite, overwrite = TRUE)
   fill_field("data_publicacao", ai$data_publicacao, overwrite = TRUE)
   fill_field("observacoes", ai$observacoes)
+  fill_field("modalidade", ai$modalidade, overwrite = TRUE)
+  fill_field("publico_alvo", ai$publico_alvo, overwrite = TRUE)
+  fill_field("nivel_academico", ai$nivel_academico, overwrite = TRUE)
+  fill_field("data_abertura", ai$data_abertura, overwrite = TRUE)
+  fill_field("data_encerramento", ai$data_encerramento, overwrite = TRUE)
 
   # Sobrescreve valor_financiado e moeda com os valores extraidos pela IA
   ai_val <- if (!is.null(ai$valor_financiado) && !is.na(ai$valor_financiado)) as.numeric(ai$valor_financiado[[1]]) else NA_real_
@@ -894,6 +936,16 @@ enrich_records_parallel <- function(df, log_path = NULL) {
       "",
       "moeda: Código ISO de 3 letras da moeda (BRL, USD, EUR, GBP), ou null se valor_financiado for null.",
       "",
+      "modalidade: Tipo de modalidade de fomento (ex: 'Bolsa de Fixação de Doutores', 'Auxílio Individual à Pesquisa', 'Subvenção Econômica', 'Cooperação Internacional', ou null).",
+      "",
+      "publico_alvo: Público-alvo da oportunidade (ex: 'Pesquisadores', 'ICTs públicas ou privadas', 'Startups', 'Empresas de grande porte', ou null).",
+      "",
+      "nivel_academico: Nível acadêmico exigido (ex: 'Pós-Doutorado', 'Doutorado', 'Mestrado', 'Graduação', 'Técnico', ou 'Não aplicável' se não houver exigência acadêmica específica, ou null).",
+      "",
+      "data_abertura: Data de início das submissões ou abertura das inscrições no formato AAAA-MM-DD (ou null se não encontrada).",
+      "",
+      "data_encerramento: Data de encerramento do projeto, vigência final das bolsas ou fim absoluto das atividades no formato AAAA-MM-DD (ou null se não encontrada).",
+      "",
       "palavras_chave: Entre 5 e 8 termos separados por vírgula que descrevam o TEMA CIENTÍFICO/TECNOLÓGICO central do edital.",
       "  REGRAS ABSOLUTAS:",
       "  - PREFIRA termos compostos e específicos do domínio de pesquisa.",
@@ -985,8 +1037,16 @@ enrich_records_parallel <- function(df, log_path = NULL) {
       inferred <- character()
       fill_field <- function(field, value, overwrite = FALSE) {
         if (is.null(value) || length(value) == 0) return()
-        value <- as.character(value[[1]])
+        if (length(value) > 1) {
+          value <- paste(vapply(value, as.character, character(1)), collapse = "; ")
+        } else {
+          value <- as.character(value[[1]])
+        }
         if (is.na(value) || !nzchar(trimws(value))) return()
+        if (field == "palavras_chave") {
+          value <- gsub(",\\s*", "; ", value)
+          value <- gsub(";+", ";", value)
+        }
         if (!field %in% names(df)) {
           df[[field]] <<- NA_character_
         }
@@ -1008,6 +1068,11 @@ enrich_records_parallel <- function(df, log_path = NULL) {
       fill_field("data_limite", ai$data_limite, overwrite = TRUE)
       fill_field("data_publicacao", ai$data_publicacao, overwrite = TRUE)
       fill_field("observacoes", ai$observacoes)
+      fill_field("modalidade", ai$modalidade, overwrite = TRUE)
+      fill_field("publico_alvo", ai$publico_alvo, overwrite = TRUE)
+      fill_field("nivel_academico", ai$nivel_academico, overwrite = TRUE)
+      fill_field("data_abertura", ai$data_abertura, overwrite = TRUE)
+      fill_field("data_encerramento", ai$data_encerramento, overwrite = TRUE)
 
       # Sobrescreve valor_financiado e moeda com os valores extraidos pela IA
       ai_val <- if (!is.null(ai$valor_financiado) && !is.na(ai$valor_financiado)) as.numeric(ai$valor_financiado[[1]]) else NA_real_

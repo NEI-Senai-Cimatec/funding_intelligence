@@ -507,8 +507,12 @@ upsert_opportunities <- function(conn, opportunities_df) {
   }
   df <- df[, cols, drop = FALSE]
 
-  sql_insert_ignore <- paste0(
-    "INSERT OR IGNORE INTO oportunidades (", paste(cols, collapse = ", "), ") VALUES (", paste(paste0(":", cols), collapse = ", "), ")"
+  cols_no_pk <- setdiff(cols, "id_registro")
+  update_clause <- paste(paste0(cols_no_pk, " = excluded.", cols_no_pk), collapse = ", ")
+  sql_upsert <- paste0(
+    "INSERT INTO oportunidades (", paste(cols, collapse = ", "), ") VALUES (", 
+    paste(paste0(":", cols), collapse = ", "), ") ON CONFLICT(id_registro) DO UPDATE SET ", 
+    update_clause
   )
 
   inserted <- 0L
@@ -544,7 +548,7 @@ upsert_opportunities <- function(conn, opportunities_df) {
     }
 
     affected <- tryCatch({
-      DBI::dbExecute(conn, sql_insert_ignore, params = row)
+      DBI::dbExecute(conn, sql_upsert, params = row)
     }, error = function(e) {
       0L
     })

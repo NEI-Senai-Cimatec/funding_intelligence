@@ -77,7 +77,7 @@ get_ai_config <- function() {
     } else if (provider == "openai") {
       model <- "gpt-4o-mini"
     } else if (provider == "nvidia") {
-      model <- "nvidia/nemotron-3-super-120b-a12b"
+      model <- "meta/llama-3.3-70b-instruct"
     } else if (provider == "anthropic") {
       model <- "claude-3-5-haiku-latest"
     } else if (provider == "groq") {
@@ -223,7 +223,8 @@ ai_request <- function(prompt, timeout_sec = 45, retries = 2, log_path = NULL) {
       max_tries = retries + 1,
       backoff = function(i) 2^i + stats::runif(1, 0, 1),
       is_transient = function(resp) {
-        status <- httr2::resp_status(resp)
+        if (inherits(resp, "error")) return(TRUE)
+        status <- tryCatch(httr2::resp_status(resp), error = function(e) 500)
         status == 429 || status >= 500
       }
     )
@@ -274,7 +275,8 @@ ai_request_parallel <- function(prompts, timeout_sec = 45, log_path = NULL) {
           max_tries = 5,
           backoff = function(i) 2^i + stats::runif(1, 0, 1),
           is_transient = function(resp) {
-            status <- httr2::resp_status(resp)
+            if (inherits(resp, "error")) return(TRUE)
+            status <- tryCatch(httr2::resp_status(resp), error = function(e) 500)
             status == 429 || status >= 500
           }
         )
@@ -369,6 +371,16 @@ skill_extract_metadata <- function(text, current_info = list(), log_path = NULL)
     "  - Aceite apenas valores monetários explícitos de financiamento, bolsa ou auxílio.",
     "",
     "moeda: Código ISO de 3 letras da moeda (BRL, USD, EUR, GBP), ou null se valor_financiado for null.",
+    "",
+    "modalidade: Tipo de modalidade de fomento (ex: 'Bolsa de Fixação de Doutores', 'Auxílio Individual à Pesquisa', 'Subvenção Econômica', 'Cooperação Internacional', ou null).",
+    "",
+    "publico_alvo: Público-alvo da oportunidade (ex: 'Pesquisadores', 'ICTs públicas ou privadas', 'Startups', 'Empresas de grande porte', ou null).",
+    "",
+    "nivel_academico: Nível acadêmico exigido (ex: 'Pós-Doutorado', 'Doutorado', 'Mestrado', 'Graduação', 'Técnico', ou 'Não aplicável' se não houver exigência acadêmica específica, ou null).",
+    "",
+    "data_abertura: Data de início das submissões ou abertura das inscrições no formato AAAA-MM-DD (ou null se não encontrada).",
+    "",
+    "data_encerramento: Data de encerramento do projeto, vigência final das bolsas ou fim absoluto das atividades no formato AAAA-MM-DD (ou null se não encontrada).",
     "",
     "palavras_chave: Entre 5 e 8 termos separados por vírgula que descrevam o TEMA CIENTÍFICO/TECNOLÓGICO central do edital.",
     "  REGRAS ABSOLUTAS:",

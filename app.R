@@ -34,10 +34,14 @@ install_missing_packages <- function(pkgs) {
   invisible(TRUE)
 }
 
-missing_packages <- required_packages[!vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)]
-if (length(missing_packages) > 0) {
-  install_missing_packages(missing_packages)
+is_posit_connect <- nzchar(Sys.getenv("CONNECT_SERVER")) || nzchar(Sys.getenv("CONNECT_API_KEY"))
+if (!is_posit_connect) {
+  missing_packages <- required_packages[!vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)]
+  if (length(missing_packages) > 0) {
+    install_missing_packages(missing_packages)
+  }
 }
+
 
 missing_after_install <- required_packages[!vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing_after_install) > 0) {

@@ -4293,7 +4293,7 @@
       "checksum": "e1cf5c706006f6a50efa152b73bc1715"
     },
     "app.R": {
-      "checksum": "4532d4584b79af5cf60dd46fcf04ab28"
+      "checksum": "c5f678f1e8db40343c83f85e491319f8"
     },
     "data_exports/funding_intelligence_base_20260605_143205.csv": {
       "checksum": "d5bdb43de8c9cca66868f0f21f00208a"
@@ -6520,6 +6520,9 @@
     },
     "scratch/db_audit.R": {
       "checksum": "c273ad678b2f2aaf420ab85ff2f37615"
+    },
+    "scratch/find_igraph_dep.R": {
+      "checksum": "94d8a045c4f18601486e1dc8536ab4c1"
     },
     "scratch/fix_gdrive_db.R": {
       "checksum": "c2309c45a70e2e8e8c36e21519b4784b"

@@ -57,6 +57,8 @@ if (length(missing_after_install) > 0) {
   )
 }
 
+library(janitor)
+library(polite)
 invisible(lapply(required_packages, library, character.only = TRUE))
 # callr::r_bg() é usado para execução em background (sem future)
 .GlobalEnv$.global_scraping_active <- FALSE

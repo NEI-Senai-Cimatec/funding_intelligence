@@ -453,3 +453,71 @@ link_html <- function(url, label = NULL) {
   label <- label %||% "Abrir"
   sprintf("<a href='%s' target='_blank' rel='noopener noreferrer'>%s</a>", url, label)
 }
+
+clean_edital_title <- function(title) {
+  if (is.null(title) || is.na(title) || !nzchar(title)) return(NA_character_)
+  
+  # Se parecer um nome de arquivo (termina com extensões comuns ou não tem espaços e tem extensão)
+  if (grepl("\\.(pdf|docx|xlsx|zip)$", title, ignore.case = TRUE) || !grepl(" ", title)) {
+    # Remove extensão
+    title <- tools::file_path_sans_ext(title)
+    # Substitui underlines e hifens por espaços
+    title <- gsub("[_-]", " ", title)
+    # Insere espaço entre letras minúsculas/números e maiúsculas
+    title <- gsub("([a-z0-9])([A-Z])", "\\1 \\2", title)
+    # Insere espaço entre letras e números
+    title <- gsub("([a-zA-Z])([0-9])", "\\1 \\2", title)
+    title <- gsub("([0-9])([a-zA-Z])", "\\1 \\2", title)
+    # Tenta separar preposições e conjunções em português que possam estar coladas
+    # ex: "FamiliaePoliticas" -> "Familia e Politicas", "PublicasnoBrasil" -> "Publicas no Brasil"
+    title <- gsub("(\\b[A-Za-z]+a)e(\\b|\\s|[A-Z])", "\\1 e \\2", title)
+    title <- gsub("(\\b[A-Za-z]+o)e(\\b|\\s|[A-Z])", "\\1 e \\2", title)
+    title <- gsub("(\\b[A-Za-z]+[a-z])no(\\b|\\s|[A-Z])", "\\1 no \\2", title)
+    title <- gsub("(\\b[A-Za-z]+[a-z])na(\\b|\\s|[A-Z])", "\\1 na \\2", title)
+    title <- gsub("(\\b[A-Za-z]+[a-z])de(\\b|\\s|[A-Z])", "\\1 de \\2", title)
+    title <- gsub("(\\b[A-Za-z]+[a-z])do(\\b|\\s|[A-Z])", "\\1 do \\2", title)
+    title <- gsub("(\\b[A-Za-z]+[a-z])da(\\b|\\s|[A-Z])", "\\1 da \\2", title)
+    title <- gsub("(\\b[A-Za-z]+[a-z])para(\\b|\\s|[A-Z])", "\\1 para \\2", title)
+    title <- gsub("(\\b[A-Za-z]+[a-z])em(\\b|\\s|[A-Z])", "\\1 em \\2", title)
+    
+    # Normaliza espaços
+    title <- trimws(gsub("\\s+", " ", title))
+  }
+  
+  title
+}
+
+is_current_year_record <- function(pub_date_str, limit_date_str, title, text) {
+  current_year <- as.integer(format(Sys.Date(), "%Y"))
+  
+  pub_date <- parse_date_safe(pub_date_str)
+  limit_date <- parse_date_safe(limit_date_str)
+  
+  pub_year <- if (!is.na(pub_date)) as.integer(format(pub_date, "%Y")) else NA_integer_
+  limit_year <- if (!is.na(limit_date)) as.integer(format(limit_date, "%Y")) else NA_integer_
+  
+  # Se tiver data de publicação, valida pelo ano corrente
+  if (!is.na(pub_year)) {
+    if (pub_year == current_year) return(TRUE)
+    if (pub_year < current_year) return(FALSE)
+  }
+  
+  # Se tiver data limite, valida pelo ano corrente
+  if (!is.na(limit_year)) {
+    if (limit_year == current_year) return(TRUE)
+    if (limit_year < current_year) return(FALSE)
+  }
+  
+  # Heurística: se mencionar o ano corrente em formato de ano no título ou texto
+  year_pattern <- sprintf("\\b%d\\b", current_year)
+  if (grepl(year_pattern, title %||% "")) return(TRUE)
+  if (grepl(year_pattern, text %||% "")) return(TRUE)
+  
+  # Se mencionar anos passados recentes e nenhum 2026, consideramos edital antigo
+  past_years <- (current_year - 5):(current_year - 1)
+  past_patterns <- paste0("\\b", past_years, "\\b")
+  has_past_year <- any(vapply(past_patterns, function(p) grepl(p, title %||% "") || grepl(p, text %||% ""), logical(1)))
+  if (has_past_year) return(FALSE)
+  
+  TRUE
+}

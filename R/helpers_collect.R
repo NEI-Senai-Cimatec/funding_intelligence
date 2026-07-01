@@ -1163,6 +1163,19 @@ finalize_records <- function(df) {
   
   if (nrow(df) == 0) return(ensure_record_schema(tibble::tibble()))
 
+  # Filtrar para manter apenas editais do ano corrente (Requisito 3)
+  current_year_idx <- vapply(seq_len(nrow(df)), function(i) {
+    is_current_year_record(
+      pub_date_str = df$data_publicacao[[i]],
+      limit_date_str = df$data_limite[[i]],
+      title = df$titulo[[i]],
+      text = df$texto_bruto[[i]]
+    )
+  }, logical(1))
+  df <- df[current_year_idx, ]
+  
+  if (nrow(df) == 0) return(ensure_record_schema(tibble::tibble()))
+
   lang_guess <- infer_language_simple(df$texto_bruto)
   status_guess <- classify_status(df$data_limite, df$data_abertura, df$data_encerramento, df$texto_bruto)
   area_guess <- vapply(df$texto_bruto, infer_area_from_text_one, character(1))
@@ -1293,7 +1306,7 @@ collect_generic_official <- function(source_row, max_pages, max_records, use_ai,
 collect_cnpq <- collect_generic_official
 
 collect_capes <- function(source_row, max_pages, max_records, use_ai, log_path) {
-  base_api <- "https://www.gov.br/capes/++api++/pt-br/centrais-de-conteudo/editais"
+  base_api <- "https://www.gov.br/capes/++api++/pt-br/@search"
   page_url <- source_row$url_oportunidades[[1]]
 
   # --- ETAPA 1: Tentar API Plone REST ---
@@ -1303,7 +1316,7 @@ collect_capes <- function(source_row, max_pages, max_records, use_ai, log_path) 
   page_size <- 50L
 
   while (length(all_items) < max_records && b_start < max_pages * page_size) {
-    url <- sprintf("%s?b_start=%d&b_size=%d", base_api, b_start, page_size)
+    url <- sprintf("%s?path=/pt-br/centrais-de-conteudo/editais&sort_on=effective&sort_order=descending&b_start=%d&b_size=%d", base_api, b_start, page_size)
     req <- httr2::request(url) |>
       httr2::req_user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36") |>
       httr2::req_timeout(10)
@@ -1344,11 +1357,21 @@ collect_capes <- function(source_row, max_pages, max_records, use_ai, log_path) 
         } else {
           pub_date <- NA_character_
         }
+        
+        # Download PDF and extract text to get real content
+        pdf_txt <- extract_text_from_pdf(pdf_url, log_path = log_path)
+        clean_title <- clean_edital_title(item$title %||% basename(item$`@id`))
+        summary_txt <- if (!is.na(pdf_txt) && nzchar(pdf_txt)) {
+          stringr::str_squish(stringr::str_sub(pdf_txt, 1, 900))
+        } else {
+          clean_title
+        }
+
         rec <- extract_core_record(
           source_row = source_row,
-          input_title = item$title %||% basename(item$`@id`),
-          input_summary = item$title %||% "",
-          input_full_text = item$title %||% "",
+          input_title = clean_title,
+          input_summary = summary_txt,
+          input_full_text = pdf_txt %||% clean_title,
           page_url = page_url,
           detail_url = item$`@id`,
           pdf_url = pdf_url,

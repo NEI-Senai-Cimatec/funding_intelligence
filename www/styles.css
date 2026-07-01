@@ -10,8 +10,11 @@ body {
 }
 
 /* Estrutura do Cabeçalho */
-.navbar, .navbar-expand-lg, .navbar-expand-md, .bg-light, .bg-primary, .app-header {
+.navbar, .navbar-expand-lg, .navbar-expand-md, .bg-light, .bg-primary, .app-header, .bslib-page-sidebar > .navbar {
+  background-color: #ffffff !important;
+  background: #ffffff !important;
   box-shadow: none !important;
+  border: none !important;
   border-bottom: none !important;
   opacity: 1 !important;
   filter: none !important;

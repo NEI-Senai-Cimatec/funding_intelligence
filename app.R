@@ -340,6 +340,10 @@ ui <- bslib::page_sidebar(
       tags$p(
         style = "color: #64748b; font-size: 0.8rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
         tags$i(class = "fa-solid fa-atom", style = "color: #004691;"), " QuIIN • Associação tecnológica"
+      ),
+      tags$p(
+        style = "color: #64748b; font-size: 0.8rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
+        "Curador responsável: David Franco Regalado, Ítalo Ferreira da Silva e João Carlos Pereira Passos."
       )
     )
   )

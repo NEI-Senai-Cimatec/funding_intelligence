@@ -1294,16 +1294,23 @@ collect_cnpq <- collect_generic_official
 
 collect_capes <- function(source_row, max_pages, max_records, use_ai, log_path) {
   base_api <- "https://www.gov.br/capes/++api++/pt-br/centrais-de-conteudo/editais"
-  page_size <- 50L
+  page_url <- source_row$url_oportunidades[[1]]
+
+  # --- ETAPA 1: Tentar API Plone REST ---
+  log_progress("CAPES: Tentando API Plone REST...", "Scraping")
   all_items <- list()
   b_start <- 0L
+  page_size <- 50L
 
   while (length(all_items) < max_records && b_start < max_pages * page_size) {
     url <- sprintf("%s?b_start=%d&b_size=%d", base_api, b_start, page_size)
     req <- httr2::request(url) |>
       httr2::req_user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36") |>
       httr2::req_timeout(10)
-    resp <- tryCatch(httr2::req_perform(req), error = function(e) NULL)
+    resp <- tryCatch(httr2::req_perform(req), error = function(e) {
+      log_progress(sprintf("CAPES: API Plone falhou: %s", conditionMessage(e)), "Scraping")
+      NULL
+    })
     if (is.null(resp) || httr2::resp_status(resp) != 200) break
 
     data <- tryCatch(httr2::resp_body_json(resp), error = function(e) NULL)
@@ -1314,47 +1321,89 @@ collect_capes <- function(source_row, max_pages, max_records, use_ai, log_path) 
     b_start <- b_start + page_size
   }
 
-  if (length(all_items) == 0) {
-    return(list(records = ensure_record_schema(tibble::tibble()), pages_visited = 0L, last_url = base_api))
+  if (length(all_items) > 0) {
+    log_progress(sprintf("CAPES: API Plone retornou %d itens. Filtrando...", length(all_items)), "Scraping")
+
+    filtered <- Filter(function(item) {
+      if (item$mime_type != "application/pdf") return(FALSE)
+      title <- tolower(item$title %||% "")
+      if (nchar(title) < 10) return(FALSE)
+      if (grepl("altera|retifica|prorroga|resultado|errata|anexo|ata\\s|lista|planilha|formulario|termo", title)) return(FALSE)
+      pub_date <- item$effective %||% ""
+      if (nzchar(pub_date) && substr(pub_date, 1, 4) < "2000") return(FALSE)
+      TRUE
+    }, all_items)
+
+    if (length(filtered) > max_records) filtered <- filtered[seq_len(max_records)]
+
+    if (length(filtered) > 0) {
+      log_progress(sprintf("CAPES: %d editais válidos após filtro.", length(filtered)), "Scraping")
+      recs <- purrr::map_dfr(filtered, function(item) {
+        pdf_url <- paste0(item$`@id`, "/@@display-file/file")
+        pub_date <- item$effective %||% NA_character_
+        if (!is.na(pub_date) && nzchar(pub_date)) {
+          pub_date <- as.character(as.Date(substr(pub_date, 1, 10)))
+        } else {
+          pub_date <- NA_character_
+        }
+        rec <- extract_core_record(
+          source_row = source_row,
+          input_title = item$title %||% basename(item$`@id`),
+          input_summary = item$title %||% "",
+          input_full_text = item$title %||% "",
+          page_url = page_url,
+          detail_url = item$`@id`,
+          pdf_url = pdf_url,
+          page_no = 1L
+        )
+        if (!is.na(pub_date)) rec$data_publicacao <- pub_date
+        rec
+      })
+      pages_visited <- ceiling(b_start / page_size)
+      return(list(records = finalize_records(recs), pages_visited = max(1L, pages_visited), last_url = base_api))
+    }
   }
 
-  filtered <- Filter(function(item) {
-    if (item$mime_type != "application/pdf") return(FALSE)
-    title <- tolower(item$title %||% "")
-    if (nchar(title) < 10) return(FALSE)
-    if (grepl("altera|retifica|prorroga|resultado|errata|anexo|ata\\s|lista|planilha|formulario|termo", title)) return(FALSE)
-    pub_date <- item$effective %||% ""
-    if (nzchar(pub_date) && substr(pub_date, 1, 4) < "2000") return(FALSE)
-    TRUE
-  }, all_items)
+  # --- ETAPA 2: Fallback Playwright ---
+  log_progress("CAPES: API Plone indisponível. Usando Playwright...", "Scraping")
+  pg <- safe_request_page(page_url, log_path = log_path)
+  if (!isTRUE(pg$ok) || is.null(pg$html)) {
+    log_progress("CAPES: Playwright também falhou.", "Scraping")
+    return(list(records = ensure_record_schema(tibble::tibble()), pages_visited = 0L, last_url = page_url))
+  }
 
-  if (length(filtered) > max_records) filtered <- filtered[seq_len(max_records)]
+  log_progress("CAPES: Playwright renderizou a página. Extraindo candidatos...", "Scraping")
+  candidates <- extract_listing_candidates(pg$html, page_url, source_row)
+  log_progress(sprintf("CAPES: %d candidatos extraídos via Playwright.", nrow(candidates)), "Scraping")
 
-  recs <- purrr::map_dfr(filtered, function(item) {
-    pdf_url <- paste0(item$`@id`, "/@@display-file/file")
-    pub_date <- item$effective %||% NA_character_
-    if (!is.na(pub_date) && nzchar(pub_date)) {
-      pub_date <- as.character(as.Date(substr(pub_date, 1, 10)))
-    } else {
-      pub_date <- NA_character_
-    }
+  if (nrow(candidates) == 0) {
+    return(list(records = ensure_record_schema(tibble::tibble()), pages_visited = 1L, last_url = page_url))
+  }
 
-    rec <- extract_core_record(
-      source_row = source_row,
-      input_title = item$title %||% basename(item$`@id`),
-      input_summary = item$title %||% "",
-      input_full_text = item$title %||% "",
-      page_url = source_row$url_oportunidades[[1]],
-      detail_url = item$`@id`,
+  recs <- purrr::map_dfr(seq_len(nrow(candidates)), function(i) {
+    detail_url <- candidates$detail_url[[i]]
+    pdf_url <- candidates$pdf_url[[i]]
+
+    detail_bundle <- extract_detail_bundle(
+      detail_url = detail_url,
+      page_url = page_url,
       pdf_url = pdf_url,
+      log_path = log_path
+    )
+
+    extract_core_record(
+      source_row = source_row,
+      input_title = pick_first_nonempty(detail_bundle$detail_title, candidates$candidate_title[[i]]),
+      input_summary = pick_first_nonempty(detail_bundle$detail_summary, candidates$candidate_summary[[i]]),
+      input_full_text = detail_bundle$full_text,
+      page_url = page_url,
+      detail_url = detail_url,
+      pdf_url = detail_bundle$pdf_url,
       page_no = 1L
     )
-    if (!is.na(pub_date)) rec$data_publicacao <- pub_date
-    rec
   })
 
-  pages_visited <- ceiling(b_start / page_size)
-  list(records = finalize_records(recs), pages_visited = max(1L, pages_visited), last_url = base_api)
+  list(records = finalize_records(recs), pages_visited = 1L, last_url = page_url)
 }
 
 collect_finep <- function(source_row, max_pages, max_records, use_ai, log_path) {

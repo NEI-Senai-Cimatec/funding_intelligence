@@ -39,22 +39,9 @@ detect_next_page <- function(html, current_url) {
 
 source_dispatch <- function(source_row, max_pages = 5, max_records = 15, use_ai = FALSE, log_path = NULL) {
   sid <- source_row$id_fonte[[1]]
-  if (sid %in% c("facepe")) {
-    return(list(records = tibble::tibble(), pages_visited = 0L, last_url = source_row$url_oportunidades[[1]]))
-  }
   
-  result <- if (identical(sid, "fapes_es")) {
-    collect_fapes_es(source_row, max_pages, max_records, FALSE, log_path)
-  } else if (identical(sid, "confap")) {
-    collect_confap(source_row, max_pages, max_records, FALSE, log_path)
-  } else if (identical(sid, "fapesc")) {
-    collect_fapesc(source_row, max_pages, max_records, FALSE, log_path)
-  } else if (identical(sid, "finep")) {
+  result <- if (identical(sid, "finep")) {
     collect_finep(source_row, max_pages, max_records, FALSE, log_path)
-  } else if (identical(sid, "eureka")) {
-    collect_eureka(source_row, max_pages, max_records, FALSE, log_path)
-  } else if (identical(sid, "sigitec")) {
-    collect_sigitec(source_row, max_pages, max_records, FALSE, log_path)
   } else {
     collect_generic_official(source_row, max_pages, max_records, FALSE, log_path)
   }
@@ -1301,65 +1288,6 @@ collect_generic_official <- function(source_row, max_pages, max_records, use_ai,
   )
 }
 
-collect_confap <- function(source_row, max_pages, max_records, use_ai, log_path) {
-  page_builder <- function(page_no) {
-    if (page_no <= 1) return(source_row$url_oportunidades[[1]])
-    sprintf("%s/page/%s", sub("/$", "", source_row$url_oportunidades[[1]]), page_no)
-  }
-  collect_listing_with_pagination(
-    source_row = source_row,
-    first_url = page_builder(1),
-    max_pages = max_pages,
-    max_records = max_records,
-    use_ai = use_ai,
-    log_path = log_path,
-    page_builder = page_builder
-  )
-}
-
-collect_fapes_es <- function(source_row, max_pages, max_records, use_ai, log_path) {
-  pg <- safe_request_page(source_row$url_oportunidades[[1]], log_path = log_path)
-  if (!isTRUE(pg$ok) || is.null(pg$html)) {
-    return(list(records = ensure_record_schema(tibble::tibble()), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]]))
-  }
-
-  pdfs <- extract_pdf_links(pg$html, source_row$url_oportunidades[[1]])
-  pdfs <- pdfs[!is.na(pdfs) & nzchar(pdfs)]
-  if (length(pdfs) > max_records) pdfs <- pdfs[seq_len(max_records)]
-
-  recs <- purrr::map_dfr(seq_along(pdfs), function(i) {
-    pdf_url <- pdfs[[i]]
-    pdf_text <- extract_text_from_pdf(pdf_url, log_path = log_path)
-    rec <- extract_core_record(
-      source_row = source_row,
-      input_title = basename(pdf_url),
-      input_summary = stringr::str_sub(pdf_text, 1, 900),
-      input_full_text = pdf_text,
-      page_url = source_row$url_oportunidades[[1]],
-      detail_url = NA_character_,
-      pdf_url = pdf_url,
-      page_no = 1L
-    )
-    rec$tipo_oportunidade <- "edital"
-    rec
-  })
-
-  if (nrow(recs) == 0) {
-    recs <- extract_core_record(
-      source_row = source_row,
-      input_title = "Editais abertos FAPES",
-      input_summary = extract_page_summary(pg$html),
-      input_full_text = extract_page_summary(pg$html, max_chars = 3000),
-      page_url = source_row$url_oportunidades[[1]],
-      detail_url = NA_character_,
-      pdf_url = NA_character_,
-      page_no = 1L
-    )
-  }
-
-  list(records = finalize_records(recs), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]])
-}
-
 collect_cnpq <- collect_generic_official
 collect_capes <- collect_generic_official
 collect_finep <- function(source_row, max_pages, max_records, use_ai, log_path) {
@@ -1383,192 +1311,9 @@ collect_finep <- function(source_row, max_pages, max_records, use_ai, log_path) 
     page_builder = page_builder
   )
 }
-collect_fapesp <- collect_generic_official
-collect_faperj <- collect_generic_official
-collect_fapemig <- collect_generic_official
-collect_bndes <- collect_generic_official
-collect_mcti <- collect_generic_official
 collect_horizon_europe <- collect_generic_official
 collect_erc <- collect_generic_official
-collect_nih <- collect_generic_official
-collect_wellcome <- collect_generic_official
-collect_gates <- collect_generic_official
-collect_idrc <- collect_generic_official
-collect_unesco <- collect_generic_official
-collect_daad <- collect_generic_official
-collect_world_bank <- collect_generic_official
-collect_idb <- collect_generic_official
-collect_undp <- collect_generic_official
-collect_embrapii <- collect_generic_official
-collect_ics <- collect_generic_official
-collect_min_saude <- collect_generic_official
-collect_facepe <- function(source_row, max_pages, max_records, use_ai, log_path) list(records = ensure_record_schema(tibble::tibble()), pages_visited = 0L, last_url = source_row$url_oportunidades[[1]])
 collect_fapesb <- collect_generic_official
-
-collect_fapesc <- function(source_row, max_pages, max_records, use_ai, log_path) {
-  pg <- safe_request_page(source_row$url_oportunidades[[1]], log_path = log_path)
-  if (!isTRUE(pg$ok) || is.null(pg$html)) {
-    return(list(records = ensure_record_schema(tibble::tibble()), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]]))
-  }
-
-  links <- try({
-    rvest::html_elements(pg$html, "article a, .entry-content a, .content a, main a, a[href]")
-  }, silent = TRUE)
-
-  if (inherits(links, "try-error") || length(links) == 0) {
-    return(list(records = ensure_record_schema(tibble::tibble()), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]]))
-  }
-
-  hrefs <- rvest::html_attr(links, "href")
-  texts <- rvest::html_text2(links)
-
-  valid_idx <- !is.na(hrefs) & nzchar(hrefs) & 
-    (grepl("edital|chamada|submiss|oportunidade", tolower(hrefs)) | 
-     grepl("edital|chamada|submiss|oportunidade", tolower(texts))) &
-    !grepl("wp-content/uploads", hrefs)
-
-  hrefs <- hrefs[valid_idx]
-  texts <- texts[valid_idx]
-
-  hrefs <- vapply(hrefs, function(h) resolve_url(source_row$url_oportunidades[[1]], h), character(1))
-
-  unique_links <- tibble::tibble(url = hrefs, text = texts) |>
-    dplyr::distinct(url, .keep_all = TRUE) |>
-    dplyr::filter(nzchar(text))
-
-  if (nrow(unique_links) == 0) {
-    return(list(records = ensure_record_schema(tibble::tibble()), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]]))
-  }
-
-  if (nrow(unique_links) > max_records) {
-    unique_links <- unique_links[seq_len(max_records), ]
-  }
-
-  recs <- purrr::map_dfr(seq_len(nrow(unique_links)), function(i) {
-    row <- unique_links[i, ]
-    detail_bundle <- extract_detail_bundle(detail_url = row$url[[1]], page_url = source_row$url_oportunidades[[1]], log_path = log_path)
-
-    rec <- extract_core_record(
-      source_row = source_row,
-      input_title = pick_first_nonempty(detail_bundle$detail_title, row$text[[1]]),
-      input_summary = pick_first_nonempty(detail_bundle$detail_summary, row$text[[1]]),
-      input_full_text = pick_first_nonempty(detail_bundle$full_text, row$text[[1]]),
-      page_url = source_row$url_oportunidades[[1]],
-      detail_url = row$url[[1]],
-      pdf_url = detail_bundle$pdf_url,
-      page_no = 1L
-    )
-    rec
-  })
-
-  list(records = finalize_records(recs), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]])
-}
-
-collect_eureka <- function(source_row, max_pages, max_records, use_ai, log_path) {
-  pg <- safe_request_page(source_row$url_oportunidades[[1]], log_path = log_path)
-  if (!isTRUE(pg$ok) || is.null(pg$html)) {
-    return(list(records = ensure_record_schema(tibble::tibble()), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]]))
-  }
-
-  links <- try({
-    rvest::html_elements(pg$html, "a[href]")
-  }, silent = TRUE)
-
-  if (inherits(links, "try-error") || length(links) == 0) {
-    return(list(records = ensure_record_schema(tibble::tibble()), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]]))
-  }
-
-  hrefs <- rvest::html_attr(links, "href")
-  texts <- rvest::html_text2(links)
-
-  valid_idx <- !is.na(hrefs) & nzchar(hrefs) & 
-    (grepl("/open-calls/|/call-for-", hrefs) | grepl("open call|call for", tolower(texts)))
-
-  hrefs <- hrefs[valid_idx]
-  texts <- texts[valid_idx]
-
-  hrefs <- vapply(hrefs, function(h) resolve_url(source_row$url_oportunidades[[1]], h), character(1))
-
-  unique_links <- tibble::tibble(url = hrefs, text = texts) |>
-    dplyr::distinct(url, .keep_all = TRUE) |>
-    dplyr::filter(nzchar(text))
-
-  if (nrow(unique_links) == 0) {
-    return(list(records = ensure_record_schema(tibble::tibble()), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]]))
-  }
-
-  if (nrow(unique_links) > max_records) {
-    unique_links <- unique_links[seq_len(max_records), ]
-  }
-
-  recs <- purrr::map_dfr(seq_len(nrow(unique_links)), function(i) {
-    row <- unique_links[i, ]
-    detail_bundle <- extract_detail_bundle(detail_url = row$url[[1]], page_url = source_row$url_oportunidades[[1]], log_path = log_path)
-
-    rec <- extract_core_record(
-      source_row = source_row,
-      input_title = pick_first_nonempty(detail_bundle$detail_title, row$text[[1]]),
-      input_summary = pick_first_nonempty(detail_bundle$detail_summary, row$text[[1]]),
-      input_full_text = pick_first_nonempty(detail_bundle$full_text, row$text[[1]]),
-      page_url = source_row$url_oportunidades[[1]],
-      detail_url = row$url[[1]],
-      pdf_url = detail_bundle$pdf_url,
-      page_no = 1L
-    )
-    rec
-  })
-
-  list(records = finalize_records(recs), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]])
-}
-
-collect_sigitec <- function(source_row, max_pages, max_records, use_ai, log_path) {
-  api_url <- "https://sigitec-competitividade.petrobras.com.br/v2/ms-authorization/opportunity/getAllPublicOpportunities"
-  log_progress("Requisitando API de Oportunidades do SIGITEC...", "Scraping")
-  
-  req <- httr2::request(api_url) |>
-    httr2::req_user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36") |>
-    httr2::req_timeout(5)
-    
-  resp <- tryCatch(httr2::req_perform(req), error = function(e) e)
-  
-  if (!inherits(resp, "error") && httr2::resp_status(resp) == 200) {
-    data <- tryCatch(httr2::resp_body_json(resp), error = function(e) NULL)
-    if (!is.null(data) && is.list(data) && length(data) > 0) {
-      log_progress(sprintf("Parseando %d oportunidades do SIGITEC...", length(data)), "Scraping")
-      recs <- purrr::map_dfr(data, function(item) {
-        opp_id <- item$id %||% NA_character_
-        opp_code <- item$code %||% item$numberOP %||% item$opportunityNumber %||% ""
-        opp_title <- item$title %||% item$titleOP %||% item$name %||% paste("Desafio SIGITEC", opp_code)
-        opp_desc <- item$objective %||% item$description %||% ""
-        opp_deadline <- item$deadline %||% item$submissionDeadline %||% NA_character_
-        opp_status <- item$situation %||% "Aberto"
-        
-        detail_url <- if (!is.na(opp_id)) sprintf("https://sigitec-competitividade.petrobras.com.br/v2/public/opportunity/%s", opp_id) else NA_character_
-        
-        rec <- extract_core_record(
-          source_row = source_row,
-          input_title = opp_title,
-          input_subtitle = if (nzchar(opp_code)) paste("Código:", opp_code) else NA_character_,
-          input_summary = stringr::str_trunc(opp_desc, 900),
-          input_full_text = opp_desc,
-          page_url = source_row$url_oportunidades[[1]],
-          detail_url = detail_url,
-          pdf_url = NA_character_,
-          page_no = 1L
-        )
-        if (!is.na(opp_deadline) && nzchar(opp_deadline)) {
-          rec$data_limite <- as.character(parse_date_safe(opp_deadline))
-        }
-        rec$status_oportunidade <- tolower(opp_status)
-        rec
-      })
-      return(list(records = finalize_records(recs), pages_visited = 1L, last_url = api_url))
-    }
-  }
-  
-  log_progress("API indisponível, timeout ou sem oportunidades. Nenhuma oportunidade coletada.", "Scraping")
-  list(records = ensure_record_schema(tibble::tibble()), pages_visited = 1L, last_url = source_row$url_oportunidades[[1]])
-}
 
 truncate_excel_strings <- function(df, max_chars = 32000L) {
   # Convert to plain data.frame to prevent tibble Rcpp compatibility issues
@@ -1665,11 +1410,9 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
     if (file.exists(log_file)) file.remove(log_file)
   }, silent = TRUE)
 
-  sources <- tibble::as_tibble(DBI::dbReadTable(conn, "fontes_financiamento")) |>
-    dplyr::filter(!(.data$id_fonte %in% c("facepe")))
+  sources <- tibble::as_tibble(DBI::dbReadTable(conn, "fontes_financiamento"))
 
   if (!is.null(source_ids) && length(source_ids) > 0) {
-    source_ids <- setdiff(source_ids, c("facepe"))
     sources <- dplyr::filter(sources, .data$id_fonte %in% source_ids)
   }
 

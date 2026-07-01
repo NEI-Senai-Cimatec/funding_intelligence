@@ -747,14 +747,14 @@ server <- function(input, output, session) {
       return()
     }
     region <- input$region_filter
-    available_sources <- rv$sources |> dplyr::filter(!(.data$id_fonte %in% c("facepe")))
+    available_sources <- rv$sources
     
     if (region == "Brasileiras") {
       available_sources <- available_sources |> dplyr::filter(pais == "Brasil")
     } else if (region == "Europeias") {
-      available_sources <- available_sources |> dplyr::filter(pais %in% c("União Europeia", "Alemanha", "Reino Unido", "Suécia", "Bélgica", "França", "Suíça", "Europa", "Itália", "Espanha", "Holanda"))
+      available_sources <- available_sources |> dplyr::filter(pais %in% c("União Europeia"))
     } else {
-      available_sources <- available_sources |> dplyr::filter(pais == "Brasil" | pais %in% c("União Europeia", "Alemanha", "Reino Unido", "Suécia", "Bélgica", "França", "Suíça", "Europa", "Itália", "Espanha", "Holanda"))
+      available_sources <- available_sources
     }
     
     choices <- stats::setNames(available_sources$id_fonte, paste0(available_sources$sigla, " — ", available_sources$nome_fonte))
@@ -924,10 +924,10 @@ server <- function(input, output, session) {
     if (region == "Brasileiras") {
       df <- df |> dplyr::filter(pais_origem == "Brasil")
     } else if (region == "Europeias") {
-      df <- df |> dplyr::filter(pais_origem %in% c("União Europeia", "Alemanha", "Reino Unido", "Suécia", "Bélgica", "França", "Suíça", "Europa", "Itália", "Espanha", "Holanda"))
+      df <- df |> dplyr::filter(pais_origem %in% c("União Europeia"))
     } else {
       # Ambas (Mantém brasileiras e europeias)
-      df <- df |> dplyr::filter(pais_origem == "Brasil" | pais_origem %in% c("União Europeia", "Alemanha", "Reino Unido", "Suécia", "Bélgica", "França", "Suíça", "Europa", "Itália", "Espanha", "Holanda"))
+      df <- df |> dplyr::filter(pais_origem == "Brasil" | pais_origem %in% c("União Europeia"))
     }
 
     # Filtros Rápidos do Sidebar

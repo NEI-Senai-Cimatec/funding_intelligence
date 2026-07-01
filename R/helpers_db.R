@@ -15,31 +15,9 @@ source_catalog <- function() {
     "cnpq", "Conselho Nacional de Desenvolvimento Científico e Tecnológico", "CNPq", "Brasil", "agência pública nacional", "governo federal", "https://www.gov.br/cnpq/pt-br", "https://www.gov.br/cnpq/pt-br/chamadas/abertas-para-submissao", "html", "pt", "diária", "Portal gov.br com chamadas abertas e links para detalhes.",
     "capes", "Coordenação de Aperfeiçoamento de Pessoal de Nível Superior", "CAPES", "Brasil", "agência pública nacional", "governo federal", "https://www.gov.br/capes/pt-br", "https://www.gov.br/capes/pt-br/assuntos/editais-e-resultados-capes", "html", "pt", "diária", "Página de editais e resultados.",
     "finep", "Financiadora de Estudos e Projetos", "FINEP", "Brasil", "agência pública nacional", "governo federal", "https://www.finep.gov.br/", "https://www.finep.gov.br/chamadas-publicas/chamadaspublicas?situacao=aberta", "html", "pt", "diária", "Chamadas públicas abertas.",
-    "fapesp", "Fundação de Amparo à Pesquisa do Estado de São Paulo", "FAPESP", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://fapesp.br/", "https://fapesp.br/oportunidades/", "html", "pt", "diária", "Oportunidades de bolsas e auxílios.",
-    "faperj", "Fundação Carlos Chagas Filho de Amparo à Pesquisa do Estado do Rio de Janeiro", "FAPERJ", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://www.faperj.br/", "https://www.faperj.br/?id=28.5.7", "html", "pt", "diária", "Lista anual de editais e chamadas.",
-    "fapemig", "Fundação de Amparo à Pesquisa do Estado de Minas Gerais", "FAPEMIG", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://fapemig.br/", "https://fapemig.br/oportunidades/chamadas-e-editais", "html", "pt", "diária", "Chamadas e editais.",
-    "fapes_es", "Fundação de Amparo à Pesquisa e Inovação do Espírito Santo", "FAPES", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://fapes.es.gov.br/", "https://fapes.es.gov.br/Editais/Abertos", "html", "pt", "diária", "Editais abertos com PDFs.",
-    "confap", "Conselho Nacional das Fundações Estaduais de Amparo à Pesquisa", "CONFAP", "Brasil", "rede de fomento", "organização de coordenação", "https://confap.org.br/", "https://confap.org.br/pt/editais", "html", "pt", "diária", "Editais paginados por ano e status.",
-    "bndes", "Banco Nacional de Desenvolvimento Econômico e Social", "BNDES", "Brasil", "banco de desenvolvimento", "empresa pública federal", "https://www.bndes.gov.br/", "https://www.bndes.gov.br/wps/vanityurl/chamadadeinovacao", "html", "pt", "diária", "Chamadas de inovação.",
-    "mcti", "Ministério da Ciência, Tecnologia e Inovação", "MCTI", "Brasil", "ministério", "governo federal", "https://www.gov.br/mcti/pt-br", "https://www.gov.br/mcti/pt-br/centrais-de-conteudo/comunicados-mcti", "html", "pt", "diária", "Editais do ministério.",
-    "horizon_europe", "Horizon Europe", "HEU", "União Europeia", "programa multilateral", "união supranacional", "https://research-and-innovation.ec.europa.eu/", "https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals?order=DESC&pageNumber=1&pageSize=50&sortBy=relevance&keywords=HORIZON&isExactMatch=true&status=31094501,31094502,31094503", "html", "en", "diária", "Programa europeu e chamadas abertas.",
-    "erc", "European Research Council", "ERC", "União Europeia", "agência internacional", "união supranacional", "https://erc.europa.eu/", "https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals?order=DESC&pageNumber=1&pageSize=50&sortBy=startDate&status=31094501,31094502&programmePart=43108406&frameworkProgramme=43108390&isExactMatch=true", "html", "en", "diária", "Grant schemes and application pages.",
-    "nih", "National Institutes of Health", "NIH", "Estados Unidos", "agência internacional", "governo nacional", "https://grants.nih.gov/", "https://grants.nih.gov/funding/explore-nih-opportunities", "html", "en", "diária", "Grant opportunities portal.",
-    "wellcome", "Wellcome", "Wellcome", "Reino Unido", "fundação privada", "filantropia", "https://wellcome.org/", "https://wellcome.org/grant-funding/schemes", "html", "en", "diária", "Schemes and funding opportunities.",
-    "gates", "Bill & Melinda Gates Foundation", "Gates", "Estados Unidos", "fundação privada", "filantropia", "https://www.gatesfoundation.org/", "https://gcgh.grandchallenges.org/grant-opportunities", "html", "en", "diária", "Grant opportunities.",
-    "idrc", "International Development Research Centre", "IDRC", "Canadá", "organismo internacional", "governo nacional", "https://idrc-crdi.ca/", "https://idrc-crdi.ca/en/funding", "html", "en", "diária", "Funding page.",
-    "unesco", "UNESCO", "UNESCO", "Internacional", "organismo multilateral", "ONU", "https://www.unesco.org/", "https://www.unesco.org/en/tags/call", "html", "en", "diária", "Calls and opportunities tagged call.",
-    "daad", "German Academic Exchange Service", "DAAD", "Alemanha", "agência internacional", "cooperação acadêmica", "https://www2.daad.de/", "https://www2.daad.de/deutschland/stipendium/datenbank/en/21148-scholarship-database/?back=1&origin=1", "html", "en", "diária", "Scholarship database.",
-    "world_bank", "World Bank", "World Bank", "Internacional", "banco de desenvolvimento", "multilateral", "https://www.worldbank.org/", "https://projects.worldbank.org/en/projects-operations/opportunities", "html", "en", "diária", "Opportunities page.",
-    "idb", "Inter-American Development Bank", "IDB", "Internacional", "banco de desenvolvimento", "multilateral", "https://www.iadb.org/", "https://www.iadb.org/en/how-we-can-work-together/calls-proposals", "html", "en", "diária", "Calls for proposals.",
-    "undp", "Programa das Nações Unidas para o Desenvolvimento", "PNUD", "Brasil", "organismo multilateral", "ONU", "https://www.undp.org/pt/brazil", "https://www.undp.org/pt/brazil/licitacoes", "html", "pt", "diária", "Licitações e oportunidades do PNUD Brasil.",
-    "embrapii", "Empresa Brasileira de Pesquisa e Inovação Industrial", "EMBRAPII", "Brasil", "organização social", "contrato de gestão federal", "https://embrapii.org.br/", "https://embrapii.org.br/chamadas-publicas/", "html", "pt", "diária", "Chamadas públicas.",
-    "ics", "Instituto Clima e Sociedade", "iCS", "Brasil", "fundação privada", "filantropia", "https://climaesociedade.org/", "https://climaesociedade.org/editais/", "html", "pt", "diária", "Editais e doações.",
-    "min_saude", "Ministério da Saúde", "MS", "Brasil", "ministério", "governo federal", "https://www.gov.br/saude/pt-br", "https://www.gov.br/saude/pt-br/acesso-a-informacao/acoes-e-programas", "html", "pt", "diária", "Fonte complementar nacional.",
-    "fapesc", "Fundação de Amparo à Pesquisa e Inovação de Santa Catarina", "FAPESC", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://fapesc.sc.gov.br/", "https://fapesc.sc.gov.br/chamadas-abertas/", "html", "pt", "diária", "Editais abertos FAPESC.",
     "fapesb", "Fundação de Amparo à Pesquisa do Estado da Bahia", "FAPESB", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://www.fapesb.ba.gov.br/", "https://www.fapesb.ba.gov.br/category/edital/aberto/", "html", "pt", "diária", "Editais e chamadas da FAPESB.",
-    "eureka", "Eureka Network", "EUREKA", "União Europeia", "programa multilateral", "associação internacional", "https://www.eurekanetwork.org/", "https://www.eurekanetwork.org/open-calls/", "html", "en", "diária", "Chamadas abertas para cooperação tecnológica internacional.",
-    "sigitec", "SIGITEC PETROBRAS", "PETROBRAS", "Brasil", "empresa pública federal", "corporativo", "https://sigitec-competitividade.petrobras.com.br", "https://sigitec-competitividade.petrobras.com.br/v2/public/opportunities", "html", "pt", "diária", "Portal de oportunidades públicas do SIGITEC da Petrobras."
+    "horizon_europe", "Horizon Europe", "HEU", "União Europeia", "programa multilateral", "união supranacional", "https://research-and-innovation.ec.europa.eu/", "https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals?order=DESC&pageNumber=1&pageSize=50&sortBy=relevance&keywords=HORIZON&isExactMatch=true&status=31094501,31094502,31094503", "html", "en", "diária", "Programa europeu e chamadas abertas.",
+    "erc", "European Research Council", "ERC", "União Europeia", "agência internacional", "união supranacional", "https://erc.europa.eu/", "https://ec.europa.eu/info/funding-tenders/opportunities/portal/screen/opportunities/calls-for-proposals?order=DESC&pageNumber=1&pageSize=50&sortBy=startDate&status=31094501,31094502&programmePart=43108406&frameworkProgramme=43108390&isExactMatch=true", "html", "en", "diária", "Grant schemes and application pages."
   )
 }
 
@@ -207,7 +185,7 @@ seed_profile <- function(conn) {
     palavras_chave_preferidas = "quântica; tecnologia quântica; comunicação quântica; sensores quânticos; computação quântica",
     areas_preferidas = "Tecnologias Quânticas; Comunicação Quântica; Sensores Quânticos; Computação Quântica",
     paises_preferidos = "Brasil; União Europeia; Estados Unidos; Canadá",
-    financiadores_preferidos = "CNPq; FINEP; FAPES; Horizon Europe; NIH",
+    financiadores_preferidos = "CNPq; CAPES; FINEP; FAPESB; Horizon Europe; ERC",
     tipos_oportunidade_preferidos = "grant; edital; fellowship; scholarship",
     elegibilidade_preferida = "ICTs; universidades; pesquisadores; empresas",
     updated_at = as.character(Sys.time())
@@ -446,7 +424,7 @@ init_database <- function(db_path) {
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
   create_tables(conn)
   seed_sources(conn)
-  try(DBI::dbExecute(conn, "DELETE FROM fontes_financiamento WHERE id_fonte IN (?, ?)", params = list("facepe", "nsf")), silent = TRUE)
+  try(DBI::dbExecute(conn, "DELETE FROM fontes_financiamento WHERE id_fonte NOT IN (?, ?, ?, ?, ?, ?)", params = list("cnpq", "capes", "finep", "fapesb", "horizon_europe", "erc")), silent = TRUE)
   seed_profile(conn)
   seed_saved_searches(conn)
   seed_search_history(conn)
@@ -472,8 +450,7 @@ read_app_data <- function(conn) {
         data_hora_coleta = parse_datetime_safe(data_hora_coleta),
         valor_financiado = suppressWarnings(as.numeric(valor_financiado))
       ),
-    sources = tibble::as_tibble(read_table(conn, "fontes_financiamento")) |>
-      dplyr::filter(!(.data$id_fonte %in% c("facepe"))),
+    sources = tibble::as_tibble(read_table(conn, "fontes_financiamento")),
     saved_searches = tibble::as_tibble(read_table(conn, "buscas_salvas")),
     tracked = tibble::as_tibble(read_table(conn, "editais_rastreados")),
     history = tibble::as_tibble(read_table(conn, "historico_buscas")),

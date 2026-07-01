@@ -1329,8 +1329,6 @@ collect_capes <- function(source_row, max_pages, max_records, use_ai, log_path) 
       title <- tolower(item$title %||% "")
       if (nchar(title) < 10) return(FALSE)
       if (grepl("altera|retifica|prorroga|resultado|errata|anexo|ata\\s|lista|planilha|formulario|termo", title)) return(FALSE)
-      pub_date <- item$effective %||% ""
-      if (nzchar(pub_date) && substr(pub_date, 1, 4) < "2000") return(FALSE)
       TRUE
     }, all_items)
 

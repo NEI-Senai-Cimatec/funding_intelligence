@@ -111,6 +111,9 @@ safe_source("R/helpers_recommend.R")
 safe_source("R/helpers_collect.R")
 safe_source("R/helpers_drive.R")
 
+# Registra a pasta logos como recurso estático do Shiny
+shiny::addResourcePath("logos", app_file("logos"))
+
 db_path <- app_file("funding_intelligence.sqlite")
 export_dir <- app_file("data_exports")
 log_path <- app_file("logs", "funding_collection.log")
@@ -202,7 +205,7 @@ ui <- bslib::page_sidebar(
   theme = bslib::bs_theme(version = 5, bootswatch = "flatly", primary = "#004691", secondary = "#0f172a"),
   sidebar = build_sidebar(),
   tags$head(
-    tags$link(rel = "stylesheet", type = "text/css", href = "styles.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = paste0("styles.css?v=", as.integer(Sys.time()))),
     tags$script("
       Shiny.addCustomMessageHandler('scroll-logs', function(message) {
         setTimeout(function() {
@@ -315,18 +318,29 @@ ui <- bslib::page_sidebar(
   
   tags$footer(
     class = "app-footer-centered",
+    style = "background-color: #E9E9E9; color: #64748b; border-top: 4px solid #004691; box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05); padding: 2.5rem 2rem 2rem 2rem; margin-top: 3rem; text-align: center; border-radius: 12px 12px 0 0;",
+    tags$div(
+      style = "text-align: center; margin-bottom: 15px;",
+      tags$img(src = "logos/logos.png", style = "max-height: 90px; width: auto; display: block; margin: 0 auto 10px auto;", alt = "Logo QuIIN")
+    ),
     tags$div(
       class = "footer-top-centered",
       tags$p(
-        icon("map-marker-alt"), " SENAI CIMATEC – Salvador, Bahia | ",
-        icon("phone"), " Atendimento técnico e parcerias institucionais"
+        style = "color: #334155; font-size: 0.95rem; margin: 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
+        tags$i(class = "fa fa-map-marker-alt", style = "color: #004691;"), " SENAI CIMATEC – Salvador, Bahia"
       )
     ),
-    tags$hr(class = "footer-divider"),
+    tags$hr(class = "footer-divider", style = "border-top: 1px solid #e2e8f0; margin: 1.25rem auto; max-width: 1200px; opacity: 0.8;"),
     tags$div(
       class = "footer-bottom-centered",
-      tags$p(sprintf("© %s Núcleo de Economia Industrial – SENAI CIMATEC. Transformando conhecimento econômico em vantagem competitiva.", format(Sys.Date(), "%Y"))),
-      tags$p(icon("chart-line"), " NEI • Inteligência para a Indústria e Políticas Públicas")
+      tags$p(
+        style = "color: #475569; font-size: 0.85rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
+        sprintf("© %s Núcleo de Economia Industrial – SENAI CIMATEC. Transformando conhecimento econômico em vantagem competitiva.", format(Sys.Date(), "%Y"))
+      ),
+      tags$p(
+        style = "color: #64748b; font-size: 0.8rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
+        tags$i(class = "fa-solid fa-atom", style = "color: #004691;"), " QuIIN • Associação tecnológica"
+      )
     )
   )
 )

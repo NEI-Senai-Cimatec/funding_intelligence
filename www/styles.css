@@ -393,17 +393,18 @@ main {
 
 /* Footer Styles */
 .app-footer-centered {
-  background-color: #050d1e; /* Rich dark navy matching the example */
-  color: #94a3b8;
-  padding: 2rem 2rem 1.5rem 2rem;
+  background-color: #E9E9E9;
+  color: #64748b;
+  padding: 2.5rem 2rem 2rem 2rem;
   margin-top: 3rem;
   text-align: center;
   border-top: 4px solid #004691;
   border-radius: 12px 12px 0 0;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05); /* Premium shadow */
 }
 
 .footer-top-centered p {
-  color: #e2e8f0;
+  color: #334155;
   font-size: 0.95rem;
   margin: 0;
   display: flex;
@@ -413,15 +414,15 @@ main {
 }
 
 .footer-top-centered i {
-  color: #ffffff;
+  color: #004691;
   font-size: 0.9rem;
 }
 
 .footer-divider {
-  border-top: 1px solid #1e293b;
+  border-top: 1px solid #e2e8f0;
   margin: 1.25rem auto;
   max-width: 1200px;
-  opacity: 0.4;
+  opacity: 0.8;
 }
 
 .footer-bottom-centered p {
@@ -435,12 +436,12 @@ main {
 }
 
 .footer-bottom-centered p:first-child {
-  color: #94a3b8;
+  color: #475569;
   font-size: 0.85rem;
 }
 
 .footer-bottom-centered i {
-  color: #94a3b8;
+  color: #004691;
   font-size: 0.8rem;
 }
 

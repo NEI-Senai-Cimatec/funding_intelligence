@@ -162,6 +162,16 @@ create_tables <- function(conn) {
       palavras_chave TEXT,
       FOREIGN KEY(pesquisador_id) REFERENCES pesquisadores_vencedores(id)
     )")
+
+  DBI::dbExecute(conn, "
+    CREATE TABLE IF NOT EXISTS metrics_coleta (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fonte TEXT,
+      timestamp TEXT,
+      metric_type TEXT,
+      metric_value REAL,
+      context TEXT
+    )")
 }
 
 seed_sources <- function(conn) {
@@ -572,4 +582,67 @@ update_tracked_opportunity <- function(conn, id_oportunidade, status_usuario, ob
 
 delete_tracked_opportunity <- function(conn, id_oportunidade) {
   DBI::dbExecute(conn, "DELETE FROM editais_rastreados WHERE id_oportunidade = ?", params = list(id_oportunidade))
+}
+
+
+# --- Métricas de Performance ---
+
+log_metric <- function(conn, fonte, metric_type, value, context = NULL) {
+  tryCatch({
+    ctx_json <- if (!is.null(context)) jsonlite::toJSON(context, auto_unbox = TRUE) else NULL
+    DBI::dbExecute(conn,
+      "INSERT INTO metrics_coleta (fonte, timestamp, metric_type, metric_value, context) VALUES (?, ?, ?, ?, ?)",
+      params = list(fonte, as.character(Sys.time()), metric_type, value, ctx_json)
+    )
+  }, silent = TRUE)
+}
+
+get_latency_by_source <- function(conn, hours = 24) {
+  tryCatch({
+    DBI::dbGetQuery(conn, "
+      SELECT fonte, AVG(metric_value) as avg_latency, COUNT(*) as n_requests
+      FROM metrics_coleta
+      WHERE metric_type = 'http_latency' AND timestamp > datetime('now', ?)
+      GROUP BY fonte ORDER BY avg_latency DESC
+    ", params = list(paste0("-", hours, " hours")))
+  }, error = function(e) data.frame())
+}
+
+get_block_rate <- function(conn, hours = 24) {
+  tryCatch({
+    DBI::dbGetQuery(conn, "
+      SELECT fonte,
+             SUM(CASE WHEN json_extract(context, '$.blocked') = 1 THEN 1 ELSE 0 END) as blocks,
+             COUNT(*) as total,
+             ROUND(100.0 * SUM(CASE WHEN json_extract(context, '$.blocked') = 1 THEN 1 ELSE 0 END) / COUNT(*), 2) as block_pct
+      FROM metrics_coleta
+      WHERE metric_type = 'http_request' AND timestamp > datetime('now', ?)
+      GROUP BY fonte
+    ", params = list(paste0("-", hours, " hours")))
+  }, error = function(e) data.frame())
+}
+
+get_ai_provider_usage <- function(conn, hours = 24) {
+  tryCatch({
+    DBI::dbGetQuery(conn, "
+      SELECT json_extract(context, '$.provider') as provider,
+             AVG(metric_value) as avg_latency,
+             COUNT(*) as n_requests
+      FROM metrics_coleta
+      WHERE metric_type = 'ai_request' AND timestamp > datetime('now', ?)
+      GROUP BY provider
+    ", params = list(paste0("-", hours, " hours")))
+  }, error = function(e) data.frame())
+}
+
+get_collection_throughput <- function(conn, hours = 24) {
+  tryCatch({
+    DBI::dbGetQuery(conn, "
+      SELECT fonte, SUM(metric_value) as total_records,
+             COUNT(*) as n_sources
+      FROM metrics_coleta
+      WHERE metric_type = 'source_records' AND timestamp > datetime('now', ?)
+      GROUP BY fonte ORDER BY total_records DESC
+    ", params = list(paste0("-", hours, " hours")))
+  }, error = function(e) data.frame())
 }

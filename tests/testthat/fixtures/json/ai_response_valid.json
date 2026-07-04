@@ -1,0 +1,13 @@
+{
+  "tipo_oportunidade": "edital",
+  "status_oportunidade": "aberto",
+  "idioma": "pt",
+  "data_limite": "2025-06-30",
+  "valor_financiado": 150000,
+  "moeda": "BRL",
+  "palavras_chave": "biotecnologia;saude;ciencia;tecnologia;educacao",
+  "e_edital_fomento": true,
+  "motivo_descarte": null,
+  "resumo": "Edital de fomento para projetos de biotecnologia na area de saude.",
+  "elegibilidade": "Pesquisadores vinculados a instituicoes de ensino superior"
+}

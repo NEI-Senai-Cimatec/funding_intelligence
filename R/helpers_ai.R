@@ -97,9 +97,134 @@ get_ai_config <- function() {
   )
 }
 
+get_ai_batch_config <- function() {
+  cfg <- get_ai_config()
+  defaults <- list(
+    groq = list(batch_size = 8L, delay_between = 6),
+    openai = list(batch_size = 5L, delay_between = 2),
+    gemini = list(batch_size = 8L, delay_between = 1),
+    anthropic = list(batch_size = 3L, delay_between = 3),
+    bluesminds = list(batch_size = 5L, delay_between = 2),
+    nvidia = list(batch_size = 5L, delay_between = 2),
+    openrouter = list(batch_size = 5L, delay_between = 2),
+    deepseek = list(batch_size = 5L, delay_between = 2)
+  )
+  d <- defaults[[cfg$provider]] %||% list(batch_size = 3L, delay_between = 2)
+  d$batch_size <- as.integer(Sys.getenv("AI_BATCH_SIZE", as.character(d$batch_size)))
+  d$delay_between <- as.numeric(Sys.getenv("AI_DELAY_BETWEEN_BATCHES", as.character(d$delay_between)))
+  if (is.na(d$batch_size) || d$batch_size <= 0L) d$batch_size <- 3L
+  if (is.na(d$delay_between) || d$delay_between < 0) d$delay_between <- 2
+  d
+}
+
+
+# --- Fallback entre Provedores IA ---
+
+.FALLBACK_ORDER <- c("groq", "openai", "gemini", "anthropic", "nvidia", 
+                      "deepseek", "openrouter", "bluesminds")
+.KEY_ENV_MAP <- c(
+  groq = "GROQ_API_KEY", openai = "OPENAI_API_KEY", gemini = "GEMINI_API_KEY",
+  anthropic = "ANTHROPIC_API_KEY", nvidia = "NVIDIA_API_KEY", deepseek = "DEEPSEEK_API_KEY",
+  openrouter = "OPENROUTER_API_KEY", bluesminds = "BLUESMINDS_API_KEY"
+)
+
+build_ai_fallback_chain <- function() {
+  primary <- Sys.getenv("AI_PROVIDER")
+  chain <- character()
+  if (nzchar(primary) && primary %in% .FALLBACK_ORDER) {
+    chain <- primary
+  }
+  for (p in .FALLBACK_ORDER) {
+    if (p %in% chain) next
+    key_env <- .KEY_ENV_MAP[[p]]
+    if (nzchar(Sys.getenv(key_env))) {
+      chain <- c(chain, p)
+    }
+  }
+  chain
+}
+
+get_ai_config_for <- function(provider) {
+  old_provider <- Sys.getenv("AI_PROVIDER", unset = "")
+  Sys.setenv(AI_PROVIDER = provider)
+  cfg <- get_ai_config()
+  if (nzchar(old_provider)) {
+    Sys.setenv(AI_PROVIDER = old_provider)
+  } else {
+    Sys.unsetenv("AI_PROVIDER")
+  }
+  cfg
+}
+
+# Circuit breaker
+.ai_failures <- new.env(parent = emptyenv())
+
+record_ai_failure <- function(provider) {
+  key <- paste0(provider, "_failures")
+  count <- get0(key, envir = .ai_failures, inherits = FALSE) %||% 0L
+  assign(key, count + 1L, envir = .ai_failures)
+  if (count + 1L >= 3L) {
+    assign(paste0(provider, "_cooldown"), Sys.time() + 300, envir = .ai_failures)
+  }
+}
+
+is_ai_provider_available <- function(provider) {
+  cooldown <- get0(paste0(provider, "_cooldown"), envir = .ai_failures, inherits = FALSE)
+  if (!is.null(cooldown) && Sys.time() < cooldown) return(FALSE)
+  TRUE
+}
+
+reset_ai_provider <- function(provider) {
+  try(rm(list = paste0(provider, "_failures"), envir = .ai_failures, inherits = FALSE), silent = TRUE)
+  try(rm(list = paste0(provider, "_cooldown"), envir = .ai_failures, inherits = FALSE), silent = TRUE)
+}
+
+ai_request_with_fallback <- function(prompt, timeout_sec = 45, retries = 2, log_path = NULL, conn = NULL) {
+  chain <- build_ai_fallback_chain()
+  chain <- chain[vapply(chain, is_ai_provider_available, logical(1))]
+  
+  for (provider in chain) {
+    cfg <- get_ai_config_for(provider)
+    result <- ai_request(prompt, cfg = cfg, timeout_sec = timeout_sec, retries = retries, log_path = log_path, conn = conn)
+    if (!is.null(result)) {
+      reset_ai_provider(provider)
+      return(result)
+    }
+    record_ai_failure(provider)
+    if (!is.null(log_path)) log_write(log_path, "WARN", 
+      sprintf("Fallback: provedor %s falhou, tentando próximo", provider))
+  }
+  NULL
+}
+
 ai_available <- function() {
   cfg <- get_ai_config()
   nzchar(cfg$provider) && nzchar(cfg$api_key)
+}
+
+ai_healthcheck <- function(timeout_sec = 10) {
+  cfg <- get_ai_config()
+  if (!nzchar(cfg$provider) || !nzchar(cfg$api_key)) {
+    return(list(ok = FALSE, provider = cfg$provider, error = "Chave não configurada"))
+  }
+
+  test_prompt <- 'Responda apenas: {"status": "ok"}'
+  req <- ai_make_request(test_prompt, cfg = cfg, timeout_sec = timeout_sec)
+  if (is.null(req)) {
+    return(list(ok = FALSE, provider = cfg$provider, error = "Provedor não suportado"))
+  }
+
+  resp <- tryCatch(httr2::req_perform(req), error = function(e) NULL)
+  if (is.null(resp)) {
+    return(list(ok = FALSE, provider = cfg$provider, error = "Timeout ou erro de rede"))
+  }
+
+  status <- tryCatch(httr2::resp_status(resp), error = function(e) 500)
+  if (status >= 400) {
+    return(list(ok = FALSE, provider = cfg$provider, error = sprintf("HTTP %d", status)))
+  }
+
+  list(ok = TRUE, provider = cfg$provider, model = cfg$model)
 }
 
 validate_ai_config <- function() {
@@ -204,8 +329,9 @@ ai_make_request <- function(prompt, system_prompt = .AI_SYSTEM_PROMPT, cfg = NUL
   req
 }
 
-ai_request <- function(prompt, timeout_sec = 45, retries = 2, log_path = NULL) {
-  cfg <- get_ai_config()
+ai_request <- function(prompt, timeout_sec = 45, retries = 2, log_path = NULL, conn = NULL, cfg = NULL) {
+  start_time <- Sys.time()
+  if (is.null(cfg)) cfg <- get_ai_config()
   if (!nzchar(cfg$provider) || !nzchar(cfg$api_key)) {
     if (!is.null(log_path)) log_write(log_path, "WARN", "Configuração de IA incompleta ou ausente. IA desabilitada.")
     return(NULL)
@@ -217,45 +343,63 @@ ai_request <- function(prompt, timeout_sec = 45, retries = 2, log_path = NULL) {
     return(NULL)
   }
 
-  # Configurar retries nativos do httr2 com backoff exponencial + jitter
-  req <- req |>
-    httr2::req_retry(
-      max_tries = retries + 1,
-      backoff = function(i) 2^i + stats::runif(1, 0, 1),
-      is_transient = function(resp) {
-        if (inherits(resp, "error")) return(TRUE)
-        status <- tryCatch(httr2::resp_status(resp), error = function(e) 500)
-        status == 429 || status >= 500
-      }
-    )
+  # Retry manual com suporte a Retry-After header
+  for (attempt in seq_len(retries + 1)) {
+    resp <- tryCatch({
+      httr2::req_perform(req)
+    }, error = function(e) {
+      if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Erro de rede/timeout na chamada de IA (tentativa %d/%d): %s", attempt, retries + 1, e$message))
+      NULL
+    })
 
-  resp <- tryCatch({
-    httr2::req_perform(req)
-  }, error = function(e) {
-    if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Erro de rede/timeout na chamada de IA: %s", e$message))
-    NULL
-  })
-
-  if (is.null(resp)) return(NULL)
-
-  txt <- try(httr2::resp_body_string(resp), silent = TRUE)
-  if (!inherits(txt, "try-error") && nzchar(txt)) {
-    parsed_res <- try(jsonlite::fromJSON(txt, simplifyVector = FALSE), silent = TRUE)
-    if (inherits(parsed_res, "try-error")) return(NULL)
-    
-    extracted_text <- NULL
-    if (cfg$provider == "gemini") {
-      extracted_text <- tryCatch(parsed_res$candidates[[1]]$content$parts[[1]]$text %||% txt, error = function(e) txt)
-    } else if (cfg$provider %in% c("openai", "groq", "openrouter", "deepseek", "bluesminds", "nvidia")) {
-      extracted_text <- tryCatch(parsed_res$choices[[1]]$message$content %||% txt, error = function(e) txt)
-    } else if (cfg$provider == "anthropic") {
-      extracted_text <- tryCatch(parsed_res$content[[1]]$text %||% txt, error = function(e) txt)
+    if (is.null(resp)) {
+      if (attempt <= retries) Sys.sleep(2^attempt + stats::runif(1, 0, 1))
+      next
     }
-    
-    if (!is.null(extracted_text) && nzchar(extracted_text)) {
-      return(extracted_text)
+
+    status <- tryCatch(httr2::resp_status(resp), error = function(e) 500)
+
+    if (status == 429 && attempt <= retries) {
+      retry_after <- tryCatch(httr2::resp_header(resp, "Retry-After"), error = function(e) NULL)
+      delay <- if (!is.null(retry_after)) {
+        val <- suppressWarnings(as.numeric(retry_after))
+        if (!is.na(val) && val > 0) val else 2^attempt + stats::runif(1, 0, 1)
+      } else {
+        2^attempt + stats::runif(1, 0, 1)
+      }
+      if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("429 de %s — aguardando %.1fs (tentativa %d/%d)", cfg$provider, delay, attempt, retries + 1))
+      Sys.sleep(delay)
+      next
+    }
+
+    if (status >= 500 && attempt <= retries) {
+      Sys.sleep(2^attempt + stats::runif(1, 0, 1))
+      next
+    }
+
+    txt <- try(httr2::resp_body_string(resp), silent = TRUE)
+    if (!inherits(txt, "try-error") && nzchar(txt)) {
+      parsed_res <- try(jsonlite::fromJSON(txt, simplifyVector = FALSE), silent = TRUE)
+      if (inherits(parsed_res, "try-error")) return(NULL)
+      
+      extracted_text <- NULL
+      if (cfg$provider == "gemini") {
+        extracted_text <- tryCatch(parsed_res$candidates[[1]]$content$parts[[1]]$text %||% txt, error = function(e) txt)
+      } else if (cfg$provider %in% c("openai", "groq", "openrouter", "deepseek", "bluesminds", "nvidia")) {
+        extracted_text <- tryCatch(parsed_res$choices[[1]]$message$content %||% txt, error = function(e) txt)
+      } else if (cfg$provider == "anthropic") {
+        extracted_text <- tryCatch(parsed_res$content[[1]]$text %||% txt, error = function(e) txt)
+      }
+      
+      if (!is.null(extracted_text) && nzchar(extracted_text)) {
+        elapsed <- as.numeric(Sys.time() - start_time, units = "secs")
+        if (!is.null(conn)) log_metric(conn, cfg$provider, "ai_request", elapsed, list(provider = cfg$provider, model = cfg$model, status = status))
+        return(extracted_text)
+      }
     }
   }
+  elapsed <- as.numeric(Sys.time() - start_time, units = "secs")
+  if (!is.null(conn)) log_metric(conn, cfg$provider, "ai_request", elapsed, list(provider = cfg$provider, model = cfg$model, status = "failed"))
   NULL
 }
 
@@ -268,20 +412,7 @@ ai_request_parallel <- function(prompts, timeout_sec = 45, log_path = NULL) {
   }
 
   reqs <- lapply(prompts, function(p) {
-    req <- ai_make_request(p, cfg = cfg, timeout_sec = timeout_sec)
-    if (!is.null(req)) {
-      req <- req |>
-        httr2::req_retry(
-          max_tries = 5,
-          backoff = function(i) 2^i + stats::runif(1, 0, 1),
-          is_transient = function(resp) {
-            if (inherits(resp, "error")) return(TRUE)
-            status <- tryCatch(httr2::resp_status(resp), error = function(e) 500)
-            status == 429 || status >= 500
-          }
-        )
-    }
-    req
+    ai_make_request(p, cfg = cfg, timeout_sec = timeout_sec)
   })
   valid_indices <- which(!vapply(reqs, is.null, logical(1)))
   
@@ -299,13 +430,51 @@ ai_request_parallel <- function(prompts, timeout_sec = 45, log_path = NULL) {
   })
 
   results <- replicate(length(prompts), NULL, simplify = FALSE)
+  retry_indices <- integer()
 
   for (i in seq_along(valid_indices)) {
     orig_idx <- valid_indices[[i]]
     resp <- resps[[i]]
 
     if (inherits(resp, "httr2_response")) {
+      status <- tryCatch(httr2::resp_status(resp), error = function(e) 500)
+      if (status == 429) {
+        retry_after <- tryCatch(httr2::resp_header(resp, "Retry-After"), error = function(e) NULL)
+        delay <- if (!is.null(retry_after)) {
+          val <- suppressWarnings(as.numeric(retry_after))
+          if (!is.na(val) && val > 0) val else 5
+        } else 5
+        if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("429 paralelo em %s — retry individual após %.1fs (edital %d)", cfg$provider, delay, orig_idx))
+        Sys.sleep(delay)
+        retry_indices <- c(retry_indices, orig_idx)
+        next
+      }
+
       txt <- try(httr2::resp_body_string(resp), silent = TRUE)
+      if (!inherits(txt, "try-error") && nzchar(txt)) {
+        parsed_res <- try(jsonlite::fromJSON(txt, simplifyVector = FALSE), silent = TRUE)
+        if (inherits(parsed_res, "try-error")) next
+        extracted_text <- NULL
+        if (cfg$provider == "gemini") {
+          extracted_text <- tryCatch(parsed_res$candidates[[1]]$content$parts[[1]]$text %||% txt, error = function(e) txt)
+        } else if (cfg$provider %in% c("openai", "groq", "openrouter", "deepseek", "bluesminds", "nvidia")) {
+          extracted_text <- tryCatch(parsed_res$choices[[1]]$message$content %||% txt, error = function(e) txt)
+        } else if (cfg$provider == "anthropic") {
+          extracted_text <- tryCatch(parsed_res$content[[1]]$text %||% txt, error = function(e) txt)
+        }
+        results[[orig_idx]] <- extracted_text
+      }
+    } else {
+      err_msg <- if (inherits(resp, "error")) resp$message else "Erro desconhecido"
+      if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Falha na chamada paralela da IA (edital índice %d): %s", orig_idx, err_msg))
+    }
+  }
+
+  # Retry individual para 429
+  for (orig_idx in retry_indices) {
+    retry_resp <- tryCatch(httr2::req_perform(reqs[[orig_idx]]), error = function(e) NULL)
+    if (!is.null(retry_resp) && inherits(retry_resp, "httr2_response")) {
+      txt <- try(httr2::resp_body_string(retry_resp), silent = TRUE)
       if (!inherits(txt, "try-error") && nzchar(txt)) {
         parsed_res <- try(jsonlite::fromJSON(txt, simplifyVector = FALSE), silent = TRUE)
         if (!inherits(parsed_res, "try-error")) {
@@ -320,18 +489,16 @@ ai_request_parallel <- function(prompts, timeout_sec = 45, log_path = NULL) {
           results[[orig_idx]] <- extracted_text
         }
       }
-    } else {
-      err_msg <- if (inherits(resp, "error")) resp$message else "Erro desconhecido"
-      if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Falha na chamada paralela da IA (edital índice %d): %s", orig_idx, err_msg))
     }
   }
 
   results
 }
 
-# Skill do Agente: Extração Inicial de Metadados
-skill_extract_metadata <- function(text, current_info = list(), log_path = NULL) {
-  prompt <- paste(
+# ── Prompt unificado de extração de metadados (fonte única da verdade) ────────
+
+build_extraction_prompt <- function(text, current_info = list()) {
+  paste(
     "Analise o texto bruto do edital fornecido e extraia as informações estruturadas abaixo.",
     "Retorne OBRIGATORIAMENTE um JSON válido com os campos listados.",
     "",
@@ -399,17 +566,29 @@ skill_extract_metadata <- function(text, current_info = list(), log_path = NULL)
     "=== TEXTO DO EDITAL ===",
     trim_for_ai(text)
   )
+}
 
-  raw <- ai_request(prompt, log_path = log_path)
+# Skill do Agente: Extração Inicial de Metadados
+skill_extract_metadata <- function(text, current_info = list(), log_path = NULL, conn = NULL) {
+  prompt <- build_extraction_prompt(text, current_info)
+
+  raw <- ai_request_with_fallback(prompt, log_path = log_path, conn = conn)
   if (is.null(raw)) return(list())
 
   parsed <- tryCatch(jsonlite::fromJSON(raw, simplifyVector = TRUE), error = function(e) NULL)
   if (is.null(parsed)) return(list())
-  as.list(parsed)
+
+  result <- validate_ai_output(as.list(parsed))
+  if (!is.null(log_path) && length(result$warnings) > 0) {
+    for (w in result$warnings) {
+      log_write(log_path, "WARN", sprintf("Validação IA: %s", w))
+    }
+  }
+  result$output
 }
 
 # Skill do Agente: Auditoria de Controle de Qualidade (Evasão de Alucinações)
-skill_verify_metadata <- function(metadata, raw_text, log_path = NULL) {
+skill_verify_metadata <- function(metadata, raw_text, log_path = NULL, conn = NULL) {
   if (length(metadata) == 0) return(metadata)
 
   prompt <- paste(
@@ -442,27 +621,156 @@ skill_verify_metadata <- function(metadata, raw_text, log_path = NULL) {
     trim_for_ai(raw_text, max_chars = 10000)
   )
 
-  raw <- ai_request(prompt, log_path = log_path)
+  raw <- ai_request_with_fallback(prompt, log_path = log_path, conn = conn)
   if (is.null(raw)) return(metadata)
 
   parsed <- tryCatch(jsonlite::fromJSON(raw, simplifyVector = TRUE), error = function(e) NULL)
   if (is.null(parsed)) return(metadata)
-  as.list(parsed)
+  result <- validate_ai_output(as.list(parsed))
+  result$output
 }
 
 # Pipeline do Agente: Executa as skills sequencialmente
-ai_extract_fields <- function(text, current = list(), log_path = NULL) {
+ai_extract_fields <- function(text, current = list(), log_path = NULL, conn = NULL) {
   if (!ai_available()) return(list())
 
   # Passo 1: Skill de Extração de Metadados
-  extracted <- skill_extract_metadata(text, current, log_path)
+  extracted <- skill_extract_metadata(text, current, log_path, conn = conn)
   if (length(extracted) == 0) return(list())
 
   # Passo 2: Skill de Auditoria e Auto-Correção (opcional via AI_VERIFY_METADATA)
   verify_enabled <- !identical(tolower(Sys.getenv("AI_VERIFY_METADATA", "true")), "false")
   if (verify_enabled) {
-    extracted <- skill_verify_metadata(extracted, text, log_path)
+    extracted <- skill_verify_metadata(extracted, text, log_path, conn = conn)
   }
 
   extracted
+}
+
+
+# --- Validação de Schema IA ---
+
+.AI_ENUMS <- list(
+  tipo_oportunidade = c("edital", "grant", "fellowship", "bolsa", "licitação", "licitacao",
+                        "convocatória", "convocatoria", "chamada", "projeto", "programa",
+                        "auxílio", "auxilio", "financiamento", "apoio", "incentivo"),
+  status_oportunidade = c("aberto", "encerrado", "futuro", "encerrando", "em andamento",
+                          "em breve", "suspenso", "cancelado"),
+  idioma = c("pt", "en", "es", "fr", "de", "it", "zh", "ja"),
+  moeda = c("BRL", "USD", "EUR", "GBP", "CAD", "ARS", "CLP", "COP")
+)
+
+normalize_ai_date <- function(value) {
+  if (is.null(value) || is.na(value)) return(NA_character_)
+  val <- as.character(value)
+  if (!nzchar(val) || val %in% c("null", "NULL", "N/A", "n/a", "a definir", "A definir", "a Definir")) {
+    return(NA_character_)
+  }
+  val <- trimws(val)
+  d <- tryCatch(lubridate::ymd(val, quiet = TRUE), error = function(e) NA)
+  if (!is.na(d)) return(as.character(d))
+  d <- tryCatch(lubridate::dmy(val, quiet = TRUE), error = function(e) NA)
+  if (!is.na(d)) return(as.character(d))
+  d <- tryCatch(lubridate::mdy(val, quiet = TRUE), error = function(e) NA)
+  if (!is.na(d)) return(as.character(d))
+  NA_character_
+}
+
+validate_date_field <- function(value) {
+  normalized <- normalize_ai_date(value)
+  list(valid = !is.na(normalized), normalized = normalized)
+}
+
+validate_numeric_field <- function(value) {
+  if (is.null(value) || is.na(value)) return(list(valid = TRUE, normalized = NA_real_))
+  val <- as.character(value)
+  val <- gsub("[^0-9.,]", "", val)
+  val <- gsub(",", ".", val)
+  num <- suppressWarnings(as.numeric(val))
+  list(valid = !is.na(num) && num >= 0, normalized = num)
+}
+
+validate_enum_field <- function(value, allowed) {
+  if (is.null(value) || is.na(value)) return(list(valid = TRUE, normalized = NA_character_))
+  val <- tolower(trimws(as.character(value)))
+  if (!nzchar(val)) return(list(valid = TRUE, normalized = NA_character_))
+  # Mapeamento de sinônimos
+  synonyms <- list(
+    "bolsa" = "bolsa", "scholarship" = "bolsa", "fellowship" = "fellowship",
+    "edital" = "edital", "call" = "chamada", "chamada" = "chamada",
+    "open" = "aberto", "aberto" = "aberto", "closed" = "encerrado",
+    "encerrado" = "encerrado", "upcoming" = "futuro", "futuro" = "futuro",
+    "ongoing" = "em andamento", "em andamento" = "em andamento",
+    "pt-br" = "pt", "portuguese" = "pt", "english" = "en", "spanish" = "es"
+  )
+  resolved <- synonyms[[val]] %||% val
+  valid <- resolved %in% allowed
+  list(valid = valid, normalized = if (valid) resolved else val)
+}
+
+validate_language_code <- function(value) {
+  validate_enum_field(value, .AI_ENUMS$idioma)
+}
+
+validate_keyword_count <- function(value, min_kw = 5, max_kw = 8) {
+  if (is.null(value) || is.na(value)) return(list(valid = FALSE, count = 0L))
+  kws <- safe_split(as.character(value))
+  count <- length(kws)
+  list(valid = count >= min_kw && count <= max_kw, count = count, keywords = kws)
+}
+
+validate_ai_output <- function(ai_list) {
+  if (is.null(ai_list) || length(ai_list) == 0) return(list(valid = TRUE, errors = character(), warnings = character()))
+
+  errors <- character()
+  warnings <- character()
+
+  # Validar datas
+  for (date_field in c("data_limite", "data_publicacao", "data_abertura", "data_encerramento")) {
+    if (!is.null(ai_list[[date_field]])) {
+      v <- validate_date_field(ai_list[[date_field]])
+      if (!v$valid) {
+        warnings <- c(warnings, sprintf("Campo '%s': formato de data inválido ('%s') — aceito como está", date_field, ai_list[[date_field]]))
+      } else if (!is.na(v$normalized) && !identical(as.character(ai_list[[date_field]]), v$normalized)) {
+        ai_list[[date_field]] <- v$normalized
+        warnings <- c(warnings, sprintf("Campo '%s': normalizado de '%s' para '%s'", date_field, ai_list[[date_field]], v$normalized))
+      }
+    }
+  }
+
+  # Validar enums
+  enum_validations <- list(
+    tipo_oportunidade = .AI_ENUMS$tipo_oportunidade,
+    status_oportunidade = .AI_ENUMS$status_oportunidade,
+    idioma = .AI_ENUMS$idioma,
+    moeda = .AI_ENUMS$moeda
+  )
+  for (enum_field in names(enum_validations)) {
+    if (!is.null(ai_list[[enum_field]])) {
+      v <- validate_enum_field(ai_list[[enum_field]], enum_validations[[enum_field]])
+      if (!v$valid) {
+        warnings <- c(warnings, sprintf("Campo '%s': valor '%s' fora do enum permitido — aceito como está", enum_field, ai_list[[enum_field]]))
+      } else if (!is.na(v$normalized) && !identical(tolower(as.character(ai_list[[enum_field]])), v$normalized)) {
+        ai_list[[enum_field]] <- v$normalized
+      }
+    }
+  }
+
+  # Validar numérico
+  if (!is.null(ai_list$valor_financiado)) {
+    v <- validate_numeric_field(ai_list$valor_financiado)
+    if (!v$valid) {
+      warnings <- c(warnings, sprintf("Campo 'valor_financiado': valor não numérico ('%s') — aceito como está", ai_list$valor_financiado))
+    }
+  }
+
+  # Validar palavras-chave
+  if (!is.null(ai_list$palavras_chave)) {
+    v <- validate_keyword_count(ai_list$palavras_chave)
+    if (!v$count == 0) {
+      warnings <- c(warnings, sprintf("Campo 'palavras_chave': %d termos (esperado 5-8) — aceito como está", v$count))
+    }
+  }
+
+  list(valid = length(errors) == 0, errors = errors, warnings = warnings, output = ai_list)
 }

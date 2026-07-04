@@ -37,19 +37,38 @@ detect_next_page <- function(html, current_url) {
   NA_character_
 }
 
-source_dispatch <- function(source_row, max_pages = 5, max_records = 15, use_ai = FALSE, log_path = NULL) {
-  sid <- source_row$id_fonte[[1]]
-  
-  result <- if (identical(sid, "capes")) {
-    collect_capes(source_row, max_pages, max_records, FALSE, log_path)
-  } else if (identical(sid, "finep")) {
-    collect_finep(source_row, max_pages, max_records, FALSE, log_path)
+
+# --- Collector Registry ---
+.collector_registry <- new.env(parent = emptyenv())
+
+register_collector <- function(source_id, fn, description = "") {
+  assign(source_id, list(fn = fn, description = description), envir = .collector_registry)
+}
+
+get_collector <- function(source_id) {
+  entry <- get0(source_id, envir = .collector_registry, inherits = FALSE)
+  if (is.null(entry)) {
+    list(fn = collect_generic_official, description = "Generic HTML scraper")
   } else {
-    collect_generic_official(source_row, max_pages, max_records, FALSE, log_path)
+    entry
   }
+}
+
+source_dispatch <- function(source_row, max_pages = 5, max_records = 15, use_ai = FALSE, log_path = NULL, conn = NULL) {
+  sid <- source_row$id_fonte[[1]]
+  collector <- get_collector(sid)
+  
+  result <- tryCatch(
+    collector$fn(source_row, max_pages, max_records, FALSE, log_path),
+    error = function(e) {
+      log_write(log_path, "ERROR", sprintf("Falha no collector '%s' para %s: %s", 
+                collector$description, sid, e$message))
+      NULL
+    }
+  )
 
   if (isTRUE(use_ai) && !is.null(result$records) && nrow(result$records) > 0) {
-    result$records <- enrich_records_parallel(result$records, log_path = log_path)
+    result$records <- enrich_records_parallel(result$records, log_path = log_path, conn = conn)
   }
 
   result
@@ -63,15 +82,16 @@ safe_request_page_playwright <- function(url, log_path = NULL) {
   if (inherits(py_playwright, "try-error")) {
     return(list(ok = FALSE))
   }
+  current_ua <- get_random_ua()
   res <- tryCatch({
-    reticulate::py_run_string("
+    reticulate::py_run_string(sprintf("
 def run_playwright_stealth(url):
     from playwright.sync_api import sync_playwright
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             context = browser.new_context(
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                user_agent='%s',
                 viewport={'width': 1920, 'height': 1080},
                 locale='pt-BR',
                 timezone_id='America/Sao_Paulo'
@@ -93,7 +113,7 @@ def run_playwright_stealth(url):
             return {'content': content, 'ok': True}
     except Exception as e:
         return {'content': str(e), 'ok': False}
-")
+"))
     playwright_run <- reticulate::py$run_playwright_stealth(url)
     if (isTRUE(playwright_run$ok)) {
       has_block <- grepl("attention required! \\| cloudflare|cf-challenge|ray id:|checking your browser before accessing|security challenge|access denied", tolower(playwright_run$content))
@@ -131,18 +151,57 @@ is_host_alive <- function(url) {
   })
 }
 
-safe_request_page <- function(url, log_path = NULL, use_browser_fallback = TRUE) {
+chromote_wait_for_content <- function(session, max_wait = 15, min_wait = 2, check_interval = 0.5) {
+  start_time <- Sys.time()
+  last_length <- 0L
+  stable_count <- 0L
+  
+  while (as.numeric(Sys.time() - start_time, units = "secs") < max_wait) {
+    Sys.sleep(check_interval)
+    
+    html_length <- tryCatch(
+      nchar(session$Runtime$evaluate("document.documentElement.outerHTML")$result$value),
+      error = function(e) 0L
+    )
+    
+    if (html_length == last_length && html_length > 0L) {
+      stable_count <- stable_count + 1L
+      if (stable_count >= 3L) break
+    } else {
+      stable_count <- 0L
+    }
+    last_length <- html_length
+  }
+  
+  elapsed <- as.numeric(Sys.time() - start_time, units = "secs")
+  if (elapsed < min_wait) Sys.sleep(min_wait - elapsed)
+  
+  invisible(TRUE)
+}
+
+safe_request_page <- function(url, log_path = NULL, use_browser_fallback = TRUE, conn = NULL) {
+  start_time <- Sys.time()
+  .scrape_rate_limiter$wait_if_needed(url)
   if (!is_host_alive(url)) {
     if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Host offline ou inacessivel: %s. Pulando requisicoes antecipadamente.", url))
     return(list(url = url, html = NULL, text = NA_character_, ok = FALSE, method = "ping_failed"))
   }
 
   # 1. Tentar httr2 (metodo rapido)
+  hdrs <- build_scrape_headers()
   req <- httr2::request(url) |>
-    httr2::req_user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36") |>
+    httr2::req_user_agent(hdrs$`User-Agent`) |>
     httr2::req_headers(
-      `Accept-Language` = "pt-BR,pt;q=0.9,en;q=0.8",
-      `Accept` = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+      `Accept-Language` = hdrs$`Accept-Language`,
+      `Accept` = hdrs$`Accept`,
+      `Accept-Encoding` = hdrs$`Accept-Encoding`,
+      `Connection` = hdrs$`Connection`,
+      `Upgrade-Insecure-Requests` = hdrs$`Upgrade-Insecure-Requests`,
+      `Sec-Fetch-Dest` = hdrs$`Sec-Fetch-Dest`,
+      `Sec-Fetch-Mode` = hdrs$`Sec-Fetch-Mode`,
+      `Sec-Fetch-Site` = hdrs$`Sec-Fetch-Site`,
+      `Sec-Fetch-User` = hdrs$`Sec-Fetch-User`,
+      `Cache-Control` = hdrs$`Cache-Control`
     ) |>
     httr2::req_timeout(15) |>
     httr2::req_retry(max_tries = 2)
@@ -166,12 +225,15 @@ safe_request_page <- function(url, log_path = NULL, use_browser_fallback = TRUE)
     if (txt_ok) {
       html <- try(xml2::read_html(txt), silent = TRUE)
       if (!inherits(html, "try-error") && status >= 200 && status < 300) {
-        # Verifica se o conteudo contem sinal obvio de captcha/bloqueio por CDN antes de aceitar
         has_block_signal <- grepl("attention required! \\| cloudflare|cf-challenge|ray id:|checking your browser before accessing|security challenge|access denied", tolower(txt))
         if (!has_block_signal) {
+          elapsed <- as.numeric(Sys.time() - start_time, units = "secs")
+          if (!is.null(conn)) log_metric(conn, extract_domain(url), "http_latency", elapsed, list(url = url, status = status, method = "httr2", blocked = FALSE))
           return(list(url = url, html = html, text = txt, ok = TRUE, method = "httr2"))
         } else {
           if (!is.null(log_path)) log_write(log_path, "INFO", sprintf("Bloqueio de CDN/CAPTCHA (status %d) detectado via httr2 para %s. Acionando fallbacks...", status, url))
+          elapsed <- as.numeric(Sys.time() - start_time, units = "secs")
+          if (!is.null(conn)) log_metric(conn, extract_domain(url), "http_latency", elapsed, list(url = url, status = status, method = "httr2", blocked = TRUE))
         }
       }
     }
@@ -180,7 +242,11 @@ safe_request_page <- function(url, log_path = NULL, use_browser_fallback = TRUE)
   # 2. Tentar Playwright (se habilitado/instalado via reticulate)
   if (isTRUE(use_browser_fallback)) {
     pw_res <- safe_request_page_playwright(url, log_path = log_path)
-    if (isTRUE(pw_res$ok)) return(pw_res)
+    if (isTRUE(pw_res$ok)) {
+      elapsed <- as.numeric(Sys.time() - start_time, units = "secs")
+      if (!is.null(conn)) log_metric(conn, extract_domain(url), "http_latency", elapsed, list(url = url, status = 200, method = "playwright", blocked = FALSE))
+      return(pw_res)
+    }
   }
 
   # 3. Tentar Chromote Stealth (R nativo)
@@ -204,11 +270,15 @@ safe_request_page <- function(url, log_path = NULL, use_browser_fallback = TRUE)
       
       try(b$Page$addScriptToEvaluateOnNewDocument(source = js_stealth_code), silent = TRUE)
       try(b$Network$setUserAgentOverride(
-        userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        userAgent = get_random_ua()
       ), silent = TRUE)
       
       try(b$Page$navigate(url), silent = TRUE)
-      Sys.sleep(5)
+      chromote_wait_for_content(b, 
+        max_wait = as.numeric(Sys.getenv("CHROMOTE_MAX_WAIT", "15")),
+        min_wait = as.numeric(Sys.getenv("CHROMOTE_MIN_WAIT", "2")),
+        check_interval = as.numeric(Sys.getenv("CHROMOTE_CHECK_INTERVAL", "0.5"))
+      )
       html_txt <- try(b$Runtime$evaluate("document.documentElement.outerHTML")$result$value, silent = TRUE)
       txt_ok <- !inherits(html_txt, "try-error") && length(html_txt) == 1 && !is.null(html_txt) && !is.na(html_txt) && nzchar(html_txt)
       if (txt_ok) {
@@ -218,6 +288,8 @@ safe_request_page <- function(url, log_path = NULL, use_browser_fallback = TRUE)
         } else {
           html <- try(xml2::read_html(html_txt), silent = TRUE)
           if (!inherits(html, "try-error")) {
+            elapsed <- as.numeric(Sys.time() - start_time, units = "secs")
+            if (!is.null(conn)) log_metric(conn, extract_domain(url), "http_latency", elapsed, list(url = url, status = 200, method = "chromote_stealth", blocked = FALSE))
             return(list(url = url, html = html, text = html_txt, ok = TRUE, method = "chromote_stealth"))
           }
         }
@@ -598,12 +670,30 @@ extract_detail_bundle <- function(detail_url = NA_character_, page_url = NA_char
 }
 
 extract_text_from_pdf <- function(pdf_url, log_path = NULL) {
+  .scrape_rate_limiter$wait_if_needed(pdf_url)
   tf <- tempfile(fileext = ".pdf")
+  hdrs <- build_scrape_headers()
   ok <- try({
     req <- httr2::request(pdf_url) |>
-      httr2::req_user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36") |>
+      httr2::req_user_agent(hdrs$`User-Agent`) |>
+      httr2::req_headers(
+        `Accept` = "application/pdf,*/*",
+        `Accept-Language` = hdrs$`Accept-Language`,
+        `Accept-Encoding` = hdrs$`Accept-Encoding`
+      ) |>
       httr2::req_timeout(20)
-    httr2::req_perform(req, path = tf)
+    resp <- httr2::req_perform(req, path = tf)
+    ct <- httr2::resp_header(resp, "Content-Type") %||% ""
+    if (!grepl("pdf|octet-stream", ct, ignore.case = TRUE) && file.exists(tf)) {
+      if (file.info(tf)$size < 500) {
+        txt_content <- try(readLines(tf, warn = FALSE), silent = TRUE)
+        if (!inherits(txt_content, "try-error") && any(grepl("html|login|captcha|cloudflare", txt_content, ignore.case = TRUE))) {
+          if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("PDF download retornou HTML/CAPTCHA para %s", pdf_url))
+          unlink(tf)
+          return(NA_character_)
+        }
+      }
+    }
   }, silent = TRUE)
   if (inherits(ok, "try-error") || !file.exists(tf)) {
     if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Falha ao baixar PDF %s", pdf_url))
@@ -718,65 +808,13 @@ enrich_record_with_ai <- function(record, log_path = NULL) {
     return(tibble::tibble())
   }
 
-  fill_field <- function(field, value, overwrite = FALSE) {
-    if (is.null(value) || length(value) == 0) return(invisible(NULL))
-    if (length(value) > 1) {
-      value <- paste(vapply(value, as.character, character(1)), collapse = "; ")
-    } else {
-      value <- as.character(value[[1]])
-    }
-    if (is.na(value) || !nzchar(trimws(value))) return(invisible(NULL))
-    if (field == "palavras_chave") {
-      value <- gsub(",\\s*", "; ", value)
-      value <- gsub(";+", ";", value)
-    }
-    if (!field %in% names(record)) {
-      record[[field]] <<- NA_character_
-    }
-    current <- record[[field]][[1]]
-    if (overwrite || is.null(current) || length(current) == 0 || is.na(current) || !nzchar(trimws(as.character(current)))) {
-      record[[field]] <<- value
-      inferred <<- unique(c(inferred, field))
-    }
-    invisible(NULL)
-  }
-
   inferred <- character()
-  fill_field("titulo", ai$titulo_limpo, overwrite = TRUE)
-  fill_field("descricao_resumida", ai$resumo, overwrite = TRUE)
-  fill_field("palavras_chave", ai$palavras_chave, overwrite = TRUE)
-  fill_field("elegibilidade", ai$elegibilidade)
-  fill_field("area_tematica", ai$area_tematica)
-  fill_field("tipo_oportunidade", ai$tipo_oportunidade, overwrite = TRUE)
-  fill_field("status_oportunidade", ai$status_oportunidade, overwrite = TRUE)
-  fill_field("idioma", ai$idioma, overwrite = TRUE)
-  fill_field("data_limite", ai$data_limite, overwrite = TRUE)
-  fill_field("data_publicacao", ai$data_publicacao, overwrite = TRUE)
-  fill_field("observacoes", ai$observacoes)
-  fill_field("modalidade", ai$modalidade, overwrite = TRUE)
-  fill_field("publico_alvo", ai$publico_alvo, overwrite = TRUE)
-  fill_field("nivel_academico", ai$nivel_academico, overwrite = TRUE)
-  fill_field("data_abertura", ai$data_abertura, overwrite = TRUE)
-  fill_field("data_encerramento", ai$data_encerramento, overwrite = TRUE)
-
-  # Sobrescreve valor_financiado e moeda com os valores extraidos pela IA
-  ai_val <- if (!is.null(ai$valor_financiado) && !is.na(ai$valor_financiado)) as.numeric(ai$valor_financiado[[1]]) else NA_real_
-  ai_curr <- if (!is.null(ai$moeda) && !is.na(ai$moeda) && nzchar(trimws(ai$moeda[[1]]))) as.character(ai$moeda[[1]]) else NA_character_
-  
-  if (!identical(record$valor_financiado[[1]], ai_val)) {
-    record$valor_financiado[[1]] <- ai_val
-    inferred <- c(inferred, "valor_financiado")
-  }
-  if (!identical(record$moeda[[1]], ai_curr)) {
-    record$moeda[[1]] <- ai_curr
-    inferred <- c(inferred, "moeda")
-  }
-
+  apply_ai_fields_to_df(ai, record, 1L, inferred)
   record$campos_inferidos_ia <- paste(unique(inferred), collapse = "; ")
   record
 }
 
-enrich_records_parallel <- function(df, log_path = NULL) {
+enrich_records_parallel <- function(df, log_path = NULL, conn = NULL) {
   if (is.null(df) || nrow(df) == 0) return(df)
 
   df$keep_record <- TRUE
@@ -801,7 +839,6 @@ enrich_records_parallel <- function(df, log_path = NULL) {
   }, character(1))
 
   # 1. Cache Lógico (Deduplicação)
-  conn <- if (exists("conn", envir = .GlobalEnv)) .GlobalEnv$conn else NULL
   if (is.null(conn)) {
     db_path <- file.path(getwd(), "funding_intelligence.sqlite")
     if (file.exists(db_path)) {
@@ -872,7 +909,7 @@ enrich_records_parallel <- function(df, log_path = NULL) {
 
   log_progress(sprintf("Iniciando enriquecimento paralelo de %d edital(is)...", length(to_enrich_indices)), "IA")
 
-  # Prepara prompts
+  # Prepara prompts (usando função unificada de helpers_ai.R)
   prompts <- character(length(to_enrich_indices))
   for (idx in seq_along(to_enrich_indices)) {
     i <- to_enrich_indices[[idx]]
@@ -884,79 +921,12 @@ enrich_records_parallel <- function(df, log_path = NULL) {
       idioma = df$idioma[[i]]
     )
 
-    prompts[[idx]] <- paste(
-      "Analise o texto bruto do edital fornecido e extraia as informações estruturadas abaixo.",
-      "Retorne OBRIGATORIAMENTE um JSON válido com os campos listados.",
-      "",
-      "CAMPOS OBRIGATÓRIOS:",
-      "",
-      "e_edital_fomento: Valor booleano (true ou false). Deve ser true apenas se o texto for de fato uma oportunidade principal de fomento, edital, chamada pública, grant, fellowship, bolsa ou convocatória ativa, futura ou mesmo encerrada recentemente. Deve ser false se o texto for apenas uma retificação, alteração, prorrogação de prazo, termo aditivo, errata, resultado de edital existente, ou se for um manual administrativo, notícias gerais, procedimentos de relatórios, membros de comitê, planos estratégicos gerais, relatórios institucionais ou páginas descrevendo linhas de crédito permanentes e serviços de financiamento contínuos (não-editais).",
-      "",
-      "motivo_descarte: Texto curto descrevendo a razão do descarte se e_edital_fomento for false (ex: 'Manual de cartão de pesquisa', 'Instruções para relatórios', 'Notícia institucional', 'Retificação de edital', 'Guia de linha de crédito permanente'). Se e_edital_fomento for true, este campo deve ser null.",
-      "",
-      "titulo_limpo: Título do edital limpo, sem caracteres especiais, numerações de seção, ruídos HTML ou abreviações inexplicadas.",
-      "",
-      "resumo: Síntese informativa do OBJETO CENTRAL de financiamento em 2 a 3 frases.",
-      "  REGRAS OBRIGATÓRIAS:",
-      "  - Responda implicitamente: O que financia? Para quem? Em quais áreas/temas? Qual o valor/prazo?",
-      "  - Escreva como se estivesse descrevendo a oportunidade para um pesquisador que nunca viu o edital.",
-      "  - NÃO copie frases do texto bruto.",
-      "  - NÃO mencione: menus do site, links, cabeçalhos, siglas não explicadas, linguagem de seção (ex: '1. FINALIDADE 1.1...').",
-      "  - EXEMPLO BOM: 'Financia projetos colaborativos de pesquisa entre instituições brasileiras e africanas nas áreas de ciência, tecnologia e inovação. Destinado a ICTs públicas e privadas em parceria formal com instituições africanas. Projetos de até R$ 150.000, com submissão até julho de 2025.'",
-      "  - EXEMPLO RUIM: 'DIRETRIZES ESPECÍFICAS DA FAPES CONFAP – 1. FINALIDADE 1.1. Apoio para a manutenção da bolsa Fapes de doutorado...'",
-      "",
-      "elegibilidade: Quem pode se candidatar. Seja específico (ex: 'Pesquisadores doutores vinculados a ICTs públicas ou privadas', 'Doutorandos com bolsa DAAD aprovada').",
-      "",
-      "area_tematica: Áreas temáticas ou de conhecimento cobertas pelo edital (ex: 'Ciência e Tecnologia, Cooperação Internacional, Saúde').",
-      "",
-      "tipo_oportunidade: Categoria do fomento — escolha um: edital, grant, fellowship, bolsa, licitação, convocatória.",
-      "",
-      "status_oportunidade: aberto, encerrado ou futuro — com base no texto e nas datas encontradas.",
-      "",
-      "idioma: Código de 2 letras do idioma principal do edital (pt, en, es, fr, de).",
-      "",
-      "data_limite: Data máxima de submissão no formato AAAA-MM-DD (ou null se não encontrada no texto).",
-      "",
-      "data_publicacao: Data de publicação/lançamento no formato AAAA-MM-DD (ou null se não encontrada).",
-      "",
-      "valor_financiado: Valor numérico máximo ou global do financiamento (ex: 150000.00), ou null.",
-      "  - IGNORE: números de leis, portarias, CPF, telefone, anos isolados, quantidades de vagas ou itens.",
-      "  - Aceite apenas valores monetários explícitos de financiamento, bolsa ou auxílio.",
-      "",
-      "moeda: Código ISO de 3 letras da moeda (BRL, USD, EUR, GBP), ou null se valor_financiado for null.",
-      "",
-      "modalidade: Tipo de modalidade de fomento (ex: 'Bolsa de Fixação de Doutores', 'Auxílio Individual à Pesquisa', 'Subvenção Econômica', 'Cooperação Internacional', ou null).",
-      "",
-      "publico_alvo: Público-alvo da oportunidade (ex: 'Pesquisadores', 'ICTs públicas ou privadas', 'Startups', 'Empresas de grande porte', ou null).",
-      "",
-      "nivel_academico: Nível acadêmico exigido (ex: 'Pós-Doutorado', 'Doutorado', 'Mestrado', 'Graduação', 'Técnico', ou 'Não aplicável' se não houver exigência acadêmica específica, ou null).",
-      "",
-      "data_abertura: Data de início das submissões ou abertura das inscrições no formato AAAA-MM-DD (ou null se não encontrada).",
-      "",
-      "data_encerramento: Data de encerramento do projeto, vigência final das bolsas ou fim absoluto das atividades no formato AAAA-MM-DD (ou null se não encontrada).",
-      "",
-      "palavras_chave: Entre 5 e 8 termos separados por vírgula que descrevam o TEMA CIENTÍFICO/TECNOLÓGICO central do edital.",
-      "  REGRAS ABSOLUTAS:",
-      "  - PREFIRA termos compostos e específicos do domínio de pesquisa.",
-      "  - PROIBIDO: nomes de instituições (CNPq, FAPES, CAPES, DAAD, Confap, Embrapii), qualquer variação de 'edital', 'chamada pública', 'seleção', 'submissão', 'proposta', 'fomento', 'projeto', 'pesquisa', 'bolsa', 'prazo', 'período', 'processo', 'programa', 'recurso', 'custeio', 'apoio', 'acordo', 'convênio'.",
-      "  - PROIBIDO: palavras funcionais e genéricas como 'estar', 'cada', 'através', 'para', 'durante', 'sendo', 'deverá', 'conforme', anos isolados (2024, 2025).",
-      "  - CORRETO (exemplos): 'cooperação científica internacional, mobilidade acadêmica, tecnologia da informação, inteligência artificial, saúde pública, transição energética, biotecnologia, desenvolvimento sustentável'",
-      "  - INCORRETO (exemplos): 'daad, confap, 2025, doutorado, estar, período, seleção, através, pesquisa, fomento'",
-      "",
-      "observacoes: Restrições, contrapartidas, exigências específicas ou informações críticas para o pesquisador.",
-      "  Exemplos: 'Exige parceria formal com instituição alemã aprovada pelo DAAD', 'Somente para bolsistas já aprovados em seleção prévia'.",
-      "",
-      "Contexto já extraído (use como ponto de partida, corrija se necessário):",
-      jsonlite::toJSON(current_info, auto_unbox = TRUE, null = "null"),
-      "",
-      "=== TEXTO DO EDITAL ===",
-      trim_for_ai(text)
-    )
+    prompts[[idx]] <- build_extraction_prompt(text, current_info)
   }
 
-  # Executa em lotes
-  batch_size <- as.integer(Sys.getenv("AI_BATCH_SIZE", "3"))
-  if (is.na(batch_size) || batch_size <= 0) batch_size <- 3
+  # Executa em lotes (tamanho adaptativo por provedor)
+  batch_cfg <- get_ai_batch_config()
+  batch_size <- batch_cfg$batch_size
 
   batches <- split(seq_along(prompts), ceiling(seq_along(prompts) / batch_size))
   raw_results <- vector("list", length(prompts))
@@ -976,17 +946,14 @@ enrich_records_parallel <- function(df, log_path = NULL) {
       }, silent = TRUE)
     }
 
-    batch_res <- ai_request_parallel(prompts[batch_idx], log_path = log_path)
+    batch_res <- lapply(prompts[batch_idx], function(p) {
+      ai_request_with_fallback(p, log_path = log_path, conn = conn)
+    })
     raw_results[batch_idx] <- batch_res
 
-    # Atraso inteligente para Groq (ou OpenRouter se necessário)
-    cfg <- get_ai_config()
-    if (cfg$provider == "groq" && b < length(batches)) {
-      delay <- as.numeric(Sys.getenv("GROQ_RATE_DELAY", "6"))
-      if (is.na(delay) || delay < 0) delay <- 6
-      if (delay > 0) Sys.sleep(delay)
-    } else if (b < length(batches)) {
-      Sys.sleep(1) # respiro leve de 1s para outros provedores
+    # Atraso entre lotes (configurável por provedor)
+    if (b < length(batches) && batch_cfg$delay_between > 0) {
+      Sys.sleep(batch_cfg$delay_between)
     }
   }
 
@@ -1024,58 +991,7 @@ enrich_records_parallel <- function(df, log_path = NULL) {
       }
 
       inferred <- character()
-      fill_field <- function(field, value, overwrite = FALSE) {
-        if (is.null(value) || length(value) == 0) return()
-        if (length(value) > 1) {
-          value <- paste(vapply(value, as.character, character(1)), collapse = "; ")
-        } else {
-          value <- as.character(value[[1]])
-        }
-        if (is.na(value) || !nzchar(trimws(value))) return()
-        if (field == "palavras_chave") {
-          value <- gsub(",\\s*", "; ", value)
-          value <- gsub(";+", ";", value)
-        }
-        if (!field %in% names(df)) {
-          df[[field]] <<- NA_character_
-        }
-        current <- df[[field]][[i]]
-        if (overwrite || is.null(current) || length(current) == 0 || is.na(current) || !nzchar(trimws(as.character(current)))) {
-          df[[field]][[i]] <<- value
-          inferred <<- unique(c(inferred, field))
-        }
-      }
-
-      fill_field("titulo", ai$titulo_limpo, overwrite = TRUE)
-      fill_field("descricao_resumida", ai$resumo, overwrite = TRUE)
-      fill_field("palavras_chave", ai$palavras_chave, overwrite = TRUE)
-      fill_field("elegibilidade", ai$elegibilidade)
-      fill_field("area_tematica", ai$area_tematica)
-      fill_field("tipo_oportunidade", ai$tipo_oportunidade, overwrite = TRUE)
-      fill_field("status_oportunidade", ai$status_oportunidade, overwrite = TRUE)
-      fill_field("idioma", ai$idioma, overwrite = TRUE)
-      fill_field("data_limite", ai$data_limite, overwrite = TRUE)
-      fill_field("data_publicacao", ai$data_publicacao, overwrite = TRUE)
-      fill_field("observacoes", ai$observacoes)
-      fill_field("modalidade", ai$modalidade, overwrite = TRUE)
-      fill_field("publico_alvo", ai$publico_alvo, overwrite = TRUE)
-      fill_field("nivel_academico", ai$nivel_academico, overwrite = TRUE)
-      fill_field("data_abertura", ai$data_abertura, overwrite = TRUE)
-      fill_field("data_encerramento", ai$data_encerramento, overwrite = TRUE)
-
-      # Sobrescreve valor_financiado e moeda com os valores extraidos pela IA
-      ai_val <- if (!is.null(ai$valor_financiado) && !is.na(ai$valor_financiado)) as.numeric(ai$valor_financiado[[1]]) else NA_real_
-      ai_curr <- if (!is.null(ai$moeda) && !is.na(ai$moeda) && nzchar(trimws(ai$moeda[[1]]))) as.character(ai$moeda[[1]]) else NA_character_
-      
-      if (!identical(df$valor_financiado[[i]], ai_val)) {
-        df$valor_financiado[[i]] <- ai_val
-        inferred <- c(inferred, "valor_financiado")
-      }
-      if (!identical(df$moeda[[i]], ai_curr)) {
-        df$moeda[[i]] <- ai_curr
-        inferred <- c(inferred, "moeda")
-      }
-
+      apply_ai_fields_to_df(ai, df, i, inferred)
       df$campos_inferidos_ia[[i]] <- paste(unique(inferred), collapse = "; ")
     }
   }
@@ -1317,8 +1233,13 @@ collect_capes <- function(source_row, max_pages, max_records, use_ai, log_path) 
 
   while (length(all_items) < max_records && b_start < max_pages * page_size) {
     url <- sprintf("%s?path=/pt-br/centrais-de-conteudo/editais&sort_on=effective&sort_order=descending&b_start=%d&b_size=%d", base_api, b_start, page_size)
+    hdrs <- build_scrape_headers()
     req <- httr2::request(url) |>
-      httr2::req_user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36") |>
+      httr2::req_user_agent(hdrs$`User-Agent`) |>
+      httr2::req_headers(
+        `Accept` = "application/json,*/*",
+        `Accept-Language` = hdrs$`Accept-Language`
+      ) |>
       httr2::req_timeout(10)
     resp <- tryCatch(httr2::req_perform(req), error = function(e) {
       log_progress(sprintf("CAPES: API Plone falhou: %s", conditionMessage(e)), "Scraping")
@@ -1582,7 +1503,8 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
         max_pages = max_pages,
         max_records = max_records_per_source,
         use_ai = use_ai,
-        log_path = log_path
+        log_path = log_path,
+        conn = conn
       )
     }, error = function(e) {
       log_write(log_path, "ERROR", sprintf("Falha na fonte %s: %s", sid, e$message))
@@ -1598,6 +1520,7 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
     })
     n_inserted <- upsert_opportunities(conn, recs)
     inserted_total <- inserted_total + n_inserted
+    log_metric(conn, sid, "source_records", n_inserted, list(source_id = sid, pages = result$pages_visited %||% 0L))
     log_collection(
       conn = conn,
       fonte = sid,
@@ -1609,6 +1532,7 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
       url = result$last_url %||% src$url_oportunidades[[1]]
     )
     processed <- processed + 1L
+    if (i < total) Sys.sleep(1)
   }
 
   final_df <- tibble::as_tibble(DBI::dbReadTable(conn, "oportunidades"))
@@ -1658,3 +1582,7 @@ run_full_collection_cycle <- function(conn, sources_ids = NULL, max_pages = 5, m
   res$data <- tibble::as_tibble(DBI::dbReadTable(conn, "oportunidades"))
   res
 }
+
+# Auto-registrar collectors (após definição de todas as funções)
+register_collector("capes", collect_capes, "CAPES Plone API + HTML fallback")
+register_collector("finep", collect_finep, "FINEP custom pagination")

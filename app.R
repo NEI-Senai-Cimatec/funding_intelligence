@@ -131,6 +131,24 @@ onStop(function() {
   try(drive_upload_db(db_path), silent = TRUE)
 })
 
+# Rodar testes automaticamente no startup (se configurado)
+if (identical(Sys.getenv("RUN_STARTUP_TESTS"), "true") && requireNamespace("testthat", quietly = TRUE)) {
+  tryCatch({
+    test_dir <- file.path(getwd(), "tests", "testthat")
+    if (dir.exists(test_dir)) {
+      test_results <- testthat::test_dir(test_dir, reporter = "summary")
+      n_failed <- sum(vapply(test_results, function(r) r$failed, integer(1)) > 0)
+      if (n_failed > 0) {
+        warning(sprintf("Startup tests: %d teste(s) falhou(s)", n_failed))
+      } else {
+        message("Startup tests: todos os testes passaram")
+      }
+    }
+  }, error = function(e) {
+    message(sprintf("Startup tests: erro ao executar testes - %s", e$message))
+  })
+}
+
 build_sidebar <- function() {
   bslib::sidebar(
     title = tags$div(
@@ -606,6 +624,16 @@ server <- function(input, output, session) {
         duration = NULL,
         id = "ai_missing_warning"
       )
+    } else {
+      ai_health <- tryCatch(ai_healthcheck(), error = function(e) list(ok = FALSE, error = e$message))
+      if (!isTRUE(ai_health$ok)) {
+        showNotification(
+          paste("Aviso: IA indisponível —", ai_health$error, ". Enriquecimento desativado."),
+          type = "warning", duration = NULL, id = "ai_health_warning"
+        )
+      } else {
+        message(sprintf("IA saudável: %s (%s)", ai_health$provider, ai_health$model))
+      }
     }
   })
 

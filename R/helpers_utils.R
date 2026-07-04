@@ -521,3 +521,168 @@ is_current_year_record <- function(pub_date_str, limit_date_str, title, text) {
   
   TRUE
 }
+
+# ── Pool rotativo de User-Agents e headers centralizados ──────────────────────
+
+.USER_AGENTS <- c(
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Safari/605.1.15",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0"
+)
+
+get_random_ua <- function() {
+  sample(.USER_AGENTS, 1L)
+}
+
+build_scrape_headers <- function(ua = NULL) {
+  if (is.null(ua)) ua <- get_random_ua()
+  list(
+    `User-Agent` = ua,
+    `Accept` = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    `Accept-Language` = "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+    `Accept-Encoding` = "gzip, deflate, br",
+    `Connection` = "keep-alive",
+    `Upgrade-Insecure-Requests` = "1",
+    `Sec-Fetch-Dest` = "document",
+    `Sec-Fetch-Mode` = "navigate",
+    `Sec-Fetch-Site` = "none",
+    `Sec-Fetch-User` = "?1",
+    `Cache-Control` = "max-age=0"
+  )
+}
+
+# ── Função unificada de preenchimento de campos via IA ────────────────────────
+
+#' Preenche um campo de um dataframe com valor extraído pela IA.
+#' Modifica `target_df` e `inferred_fields` no escopo pai via `<<-`.
+#'
+#' @param field Nome do campo a preencher.
+#' @param value Valor extraído pela IA.
+#' @param overwrite Se TRUE, sobrescreve valor existente.
+#' @param target_df Dataframe alvo (será modificado via <<-).
+#' @param row_idx Índice da linha a modificar (para dataframes multi-linha).
+#' @param inferred_fields Vetor de campos já inferidos (será modificado via <<-).
+fill_ai_field <- function(field, value, overwrite = FALSE,
+                          target_df, row_idx = 1L, inferred_fields) {
+  if (is.null(value) || length(value) == 0) return(invisible(NULL))
+  if (length(value) > 1) {
+    value <- paste(vapply(value, as.character, character(1)), collapse = "; ")
+  } else {
+    value <- as.character(value[[1]])
+  }
+  if (is.na(value) || !nzchar(trimws(value))) return(invisible(NULL))
+
+  if (field == "palavras_chave") {
+    value <- gsub(",\\s*", "; ", value)
+    value <- gsub(";+", ";", value)
+  }
+
+  if (!field %in% names(target_df)) {
+    target_df[[field]] <<- NA_character_
+  }
+
+  current <- target_df[[field]][[row_idx]]
+  if (overwrite || is.null(current) || length(current) == 0 ||
+      is.na(current) || !nzchar(trimws(as.character(current)))) {
+    target_df[[field]][[row_idx]] <<- value
+    inferred_fields <<- unique(c(inferred_fields, field))
+  }
+  invisible(NULL)
+}
+
+#' Aplica todos os campos de IA extraídos a um dataframe.
+#' Modifica `target_df` e retorna o vetor de campos inferidos.
+#'
+#' @param ai Lista de campos extraídos pela IA.
+#' @param target_df Dataframe alvo.
+#' @param row_idx Índice da linha.
+#' @param inferred_fields Vetor de campos inferidos (pass-by-reference via <<-).
+apply_ai_fields_to_df <- function(ai, target_df, row_idx, inferred_fields) {
+  fill_ai_field("titulo", ai$titulo_limpo, overwrite = TRUE, target_df, row_idx, inferred_fields)
+  fill_ai_field("descricao_resumida", ai$resumo, overwrite = TRUE, target_df, row_idx, inferred_fields)
+  fill_ai_field("palavras_chave", ai$palavras_chave, overwrite = TRUE, target_df, row_idx, inferred_fields)
+  fill_ai_field("elegibilidade", ai$elegibilidade, target_df, row_idx, inferred_fields)
+  fill_ai_field("area_tematica", ai$area_tematica, target_df, row_idx, inferred_fields)
+  fill_ai_field("tipo_oportunidade", ai$tipo_oportunidade, overwrite = TRUE, target_df, row_idx, inferred_fields)
+  fill_ai_field("status_oportunidade", ai$status_oportunidade, overwrite = TRUE, target_df, row_idx, inferred_fields)
+  fill_ai_field("idioma", ai$idioma, overwrite = TRUE, target_df, row_idx, inferred_fields)
+  fill_ai_field("data_limite", ai$data_limite, overwrite = TRUE, target_df, row_idx, inferred_fields)
+  fill_ai_field("data_publicacao", ai$data_publicacao, overwrite = TRUE, target_df, row_idx, inferred_fields)
+  fill_ai_field("observacoes", ai$observacoes, target_df, row_idx, inferred_fields)
+  fill_ai_field("modalidade", ai$modalidade, overwrite = TRUE, target_df, row_idx, inferred_fields)
+  fill_ai_field("publico_alvo", ai$publico_alvo, overwrite = TRUE, target_df, row_idx, inferred_fields)
+  fill_ai_field("nivel_academico", ai$nivel_academico, overwrite = TRUE, target_df, row_idx, inferred_fields)
+  fill_ai_field("data_abertura", ai$data_abertura, overwrite = TRUE, target_df, row_idx, inferred_fields)
+  fill_ai_field("data_encerramento", ai$data_encerramento, overwrite = TRUE, target_df, row_idx, inferred_fields)
+
+  # valor_financiado e moeda (tipos especiais)
+  ai_val <- if (!is.null(ai$valor_financiado) && !is.na(ai$valor_financiado)) as.numeric(ai$valor_financiado[[1]]) else NA_real_
+  ai_curr <- if (!is.null(ai$moeda) && !is.na(ai$moeda) && nzchar(trimws(ai$moeda[[1]]))) as.character(ai$moeda[[1]]) else NA_character_
+
+  if (!identical(target_df$valor_financiado[[row_idx]], ai_val)) {
+    target_df$valor_financiado[[row_idx]] <<- ai_val
+    inferred_fields <<- unique(c(inferred_fields, "valor_financiado"))
+  }
+  if (!identical(target_df$moeda[[row_idx]], ai_curr)) {
+    target_df$moeda[[row_idx]] <<- ai_curr
+    inferred_fields <<- unique(c(inferred_fields, "moeda"))
+  }
+
+  invisible(NULL)
+}
+
+
+# --- Rate Limiting por Domínio ---
+
+extract_domain <- function(url) {
+  parsed <- tryCatch(xml2::url_parse(url), error = function(e) NULL)
+  if (is.null(parsed) || is.na(parsed$server)) return("")
+  paste0(parsed$server, if (!is.na(parsed$port)) paste0(":", parsed$port))
+}
+
+DomainRateLimiter <- R6::R6Class("DomainRateLimiter",
+  public = list(
+    last_request = NULL,
+    min_delay_same = NULL,
+    min_delay_diff = NULL,
+    last_domain = NULL,
+
+    initialize = function(min_delay_same = 2.0, min_delay_diff = 0.5) {
+      self$last_request <- new.env(parent = emptyenv())
+      self$min_delay_same <- min_delay_same
+      self$min_delay_diff <- min_delay_diff
+      self$last_domain <- ""
+    },
+
+    wait_if_needed = function(url) {
+      domain <- extract_domain(url)
+      if (!nzchar(domain)) return(invisible(NULL))
+
+      now <- as.numeric(Sys.time())
+      last <- now
+      if (exists(domain, envir = self$last_request, inherits = FALSE)) {
+        last <- get(domain, envir = self$last_request, inherits = FALSE)
+      }
+
+      delay <- if (identical(domain, self$last_domain)) self$min_delay_same else self$min_delay_diff
+      elapsed <- now - last
+      if (elapsed < delay) {
+        Sys.sleep(delay - elapsed)
+      }
+
+      assign(domain, as.numeric(Sys.time()), envir = self$last_request)
+      self$last_domain <- domain
+      invisible(NULL)
+    }
+  )
+)
+
+.scrape_rate_limiter <- DomainRateLimiter$new(
+  min_delay_same = as.numeric(Sys.getenv("SCRAPE_DOMAIN_DELAY", "2.0")),
+  min_delay_diff = as.numeric(Sys.getenv("SCRAPE_DIFF_DELAY", "0.5"))
+)

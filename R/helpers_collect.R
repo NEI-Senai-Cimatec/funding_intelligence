@@ -1349,25 +1349,189 @@ collect_capes <- function(source_row, max_pages, max_records, use_ai, log_path) 
 }
 
 collect_finep <- function(source_row, max_pages, max_records, use_ai, log_path) {
-  page_builder <- function(page_no) {
-    if (page_no <= 1) return(source_row$url_oportunidades[[1]])
-    base_url <- source_row$url_oportunidades[[1]]
-    offset <- (page_no - 1) * 10
-    if (grepl("\\?", base_url)) {
-      sprintf("%s&start=%d", base_url, offset)
-    } else {
-      sprintf("%s?start=%d", base_url, offset)
-    }
+  #' Coleta oportunidades da FINEP via API REST pública (Liferay Headless Delivery)
+  #' Filtra automaticamente por: situação = Aberta
+
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[FINEP][%s] %s", level, msg))
   }
-  collect_listing_with_pagination(
-    source_row = source_row,
-    first_url = page_builder(1),
-    max_pages = max_pages,
-    max_records = max_records,
-    use_ai = use_ai,
-    log_path = log_path,
-    page_builder = page_builder
-  )
+
+  base_url <- "https://www.finep.gov.br/o/c/chamadapublicas"
+  page_size <- 250
+  all_items <- list()
+  page <- 1
+  total_count <- NULL
+
+  .log("INFO", "Iniciando coleta FINEP via API REST...")
+  
+  repeat {
+    # Construir URL da página
+    url <- sprintf("%s?sort=dataDePublicacao:desc&page=%d&pageSize=%d", base_url, page, page_size)
+    
+    .log("INFO", sprintf("Buscando página %d: %s", page, url))
+    
+    # Fazer requisição GET
+    response <- tryCatch({
+      httr::GET(url, httr::timeout(60))
+    }, error = function(e) {
+      .log("ERROR", sprintf("Erro na requisição: %s", e$message))
+      NULL
+    })
+    
+    if (is.null(response) || httr::status_code(response) != 200) {
+      .log("WARN", "Falha na requisição, interrompendo paginação")
+      break
+    }
+    
+    # Parsear JSON
+    data <- tryCatch({
+      httr::content(response, as = "parsed", type = "application/json")
+    }, error = function(e) {
+      .log("ERROR", sprintf("Erro ao parsear JSON: %s", e$message))
+      NULL
+    })
+    
+    if (is.null(data) || is.null(data$items)) {
+      .log("WARN", "Resposta vazia ou inválida")
+      break
+    }
+    
+    # Atualizar total na primeira página
+    if (is.null(total_count)) {
+      total_count <- data$totalCount
+      .log("INFO", sprintf("Total de registros: %d", total_count))
+    }
+    
+    # Filtrar itens: situação Aberta (inclui ICT e outros públicos)
+    filtered_items <- Filter(function(item) {
+      # Verificar se situação é aberta
+      is_aberta <- !is.null(item$situacao) && item$situacao$key == "aberta"
+      is_aberta
+    }, data$items)
+    
+    all_items <- c(all_items, filtered_items)
+    
+    .log("INFO", sprintf("Página %d: %d itens total, %d filtrados (Aberta)", 
+                                         page, length(data$items), length(filtered_items)))
+    
+    # Verificar se chegou ao fim
+    if (length(data$items) < page_size || page >= ceiling(total_count / page_size)) {
+      break
+    }
+    
+    # Limite de páginas
+    if (page >= max_pages) {
+      .log("WARN", sprintf("Limite de %d páginas atingido", max_pages))
+      break
+    }
+    
+    page <- page + 1
+    
+    # Rate limiting
+    Sys.sleep(0.5)
+  }
+  
+  .log("INFO", sprintf("Total de itens coletados (Aberta): %d", length(all_items)))
+  
+  # Limitar ao max_records
+  if (length(all_items) > max_records) {
+    all_items <- all_items[1:max_records]
+    .log("WARN", sprintf("Limitado a %d registros", max_records))
+  }
+  
+  # Converter para tibble no formato esperado
+  if (length(all_items) == 0) {
+    .log("WARN", "Nenhum item encontrado após filtros")
+    return(list(records = tibble::tibble(), pages_visited = as.integer(page - 1L), last_url = NA_character_))
+  }
+  
+  records <- lapply(all_items, function(item) {
+    # Montar link de detalhe
+    link_detalhe <- sprintf("https://www.finep.gov.br/e/chamada-publica/222684/%d", item$id)
+    
+    # Extrair datas
+    data_publicacao <- if (!is.null(item$dataDePublicacao)) {
+      as.character(as.Date(sub("T.*", "", item$dataDePublicacao)))
+    } else NA_character_
+    
+    data_limite <- if (!is.null(item$prazoProposto)) {
+      as.character(as.Date(sub("T.*", "", item$prazoProposto)))
+    } else NA_character_
+    
+    # Extrair público alvo
+    publico_alvo <- if (length(item$publicoAlvo) > 0) {
+      paste(sapply(item$publicoAlvo, function(pa) pa$name), collapse = "; ")
+    } else NA_character_
+    
+    # Extrair tema
+    tema <- if (!is.null(item$temaPrincipal) && !is.null(item$temaPrincipal$name)) {
+      item$temaPrincipal$name
+    } else NA_character_
+    
+    # Extrair região
+    regiao <- if (!is.null(item$regiao) && !is.null(item$regiao$name)) {
+      item$regiao$name
+    } else NA_character_
+    
+    # Tipo de oportunidade
+    tipo_oportunidade <- if (!is.null(item$tipoDeOportunidade) && !is.null(item$tipoDeOportunidade$name)) {
+      item$tipoDeOportunidade$name
+    } else NA_character_
+    
+    # Contrapartida
+    contrapartida <- if (!is.null(item$contrapartida) && !is.null(item$contrapartida$name)) {
+      item$contrapartida$name
+    } else NA_character_
+    
+    # Criar hash de deduplicação
+    hash_input <- paste0(item$titulo, "|", link_detalhe)
+    hash_dedup <- digest::digest(hash_input, algo = "xxhash64")
+    
+    # Montar registro no schema padrão
+    tibble::tibble(
+      id_registro = sprintf("finep_%s", substr(hash_dedup, 1, 16)),
+      entidade = "FINEP",
+      pais_origem = "Brasil",
+      titulo = item$titulo,
+      subtitulo = NA_character_,
+      descricao_resumida = substr(item$descricaoRawText, 1, 500),
+      descricao_completa = item$descricaoRawText,
+      tipo_oportunidade = tipo_oportunidade,
+      modalidade = NA_character_,
+      area_tematica = tema,
+      palavras_chave = NA_character_,
+      elegibilidade = NA_character_,
+      publico_alvo = publico_alvo,
+      nivel_academico = NA_character_,
+      instituicao_financiadora = "Financiadora de Estudos e Projetos - FINEP",
+      valor_financiado = NA_real_,
+      moeda = NA_character_,
+      data_publicacao = data_publicacao,
+      data_abertura = NA_character_,
+      data_limite = data_limite,
+      data_encerramento = NA_character_,
+      status_oportunidade = "aberto",
+      link_origem = "https://www.finep.gov.br/oportunidades",
+      link_detalhe = link_detalhe,
+      link_documento_pdf = NA_character_,
+      idioma = "pt",
+      localidade = regiao,
+      observacoes = contrapartida,
+      texto_bruto = item$descricaoRawText,
+      pagina_coletada = 1L,
+      fonte_oficial = "finep",
+      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      hash_deduplicacao = hash_dedup,
+      campos_inferidos_ia = NA_character_
+    )
+  })
+  
+  df <- dplyr::bind_rows(records)
+  
+  .log("INFO", sprintf("FINEP: %d registros finais coletados", nrow(df)))
+  
+  return(list(records = df, pages_visited = as.integer(page - 1L), last_url = url))
 }
 collect_horizon_europe <- collect_generic_official
 collect_erc <- collect_generic_official

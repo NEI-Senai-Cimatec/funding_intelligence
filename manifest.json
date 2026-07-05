@@ -5019,7 +5019,7 @@
       "checksum": "8faea6cf3c95cc94ba115a0517ff5dc8"
     },
     "Dockerfile": {
-      "checksum": "69ca0c04b6363a7a9ae59aab33377d11"
+      "checksum": "1845520677f7d4508e47848977324725"
     },
     "funding_intelligence.sqlite": {
       "checksum": "4d7c13a904651b171026c574b7c974ff"
@@ -5054,11 +5054,14 @@
     "logs/search_stdout.log": {
       "checksum": "d41d8cd98f00b204e9800998ecf8427e"
     },
+    "logs/test.log": {
+      "checksum": "000dccbd824166d181706e21c8c13584"
+    },
     "R/helpers_ai.R": {
       "checksum": "8a8be9a1d41aae34ed39d773af8e3ece"
     },
     "R/helpers_collect.R": {
-      "checksum": "0ac29e4af56834801010caaae1f88b4b"
+      "checksum": "bf0384dc2fdbf835120896fd57cc3853"
     },
     "R/helpers_db.R": {
       "checksum": "2c8c554d913ed762f5534d1b5b59f3bc"

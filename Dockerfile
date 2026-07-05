@@ -57,6 +57,7 @@ FROM rocker/r-ver:4.4.0
 # Instala dependências de runtime necessárias para a execução
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libcurl4 \
+    curl \
     openssl \
     libxml2 \
     libpoppler-cpp9v5 \

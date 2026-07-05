@@ -1534,7 +1534,282 @@ collect_finep <- function(source_row, max_pages, max_records, use_ai, log_path) 
   return(list(records = df, pages_visited = as.integer(page - 1L), last_url = url))
 }
 collect_horizon_europe <- collect_generic_official
-collect_erc <- collect_generic_official
+collect_erc <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  #' Coleta oportunidades do ERC via API REST pública (EU F&T Portal Search API)
+  #' Busca múltiplos termos ("ERC 2026", "ERC StG", "ERC AdG", "ERC PoC", "ERC CoG")
+  #' Usa form-data filter para frameworkProgramme=43108390 + pós-filtro para programmeDivision=43108406
+  #' NOTA: A API ignora filtros JSON no body — usa form-data + pós-processamento
+
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[ERC][%s] %s", level, msg))
+  }
+
+  api_url <- "https://api.tech.ec.europa.eu/search-api/prod/rest/search"
+  all_items <- list()
+  seen_ids <- character(0)
+
+  # Query filter para HEU (frameworkProgramme=43108390) via form-data
+  heu_query <- '{"bool":{"must":[{"terms":{"frameworkProgramme":["43108390"]}}]}}'
+
+  # Múltiplos termos de busca para cobrir diferentes chamadas ERC
+  # "ERC 2026" e "ERC StG 2026" retornam itens CLOSED; os termos abaixo encontram itens abertos
+  search_terms <- c("ERC AdG 2026", "ERC PoC 2026")
+
+  .log("INFO", "Iniciando coleta ERC via API REST...")
+
+  for (term in search_terms) {
+    .log("INFO", sprintf("Buscando termo: %s", term))
+
+    search_text <- utils::URLencode(term, reserved = TRUE)
+    url <- sprintf("%s?apiKey=SEDIA&text=%s&pageNumber=1&pageSize=100&sortBy=es_SortDate&orderBy=DESC",
+                   api_url, search_text)
+    tmp_file <- tempfile(fileext = ".json")
+    on.exit(unlink(tmp_file), add = TRUE)
+
+    # Usar form-data (--data-urlencode) em vez de JSON body (-d)
+    # O JSON body é ignorado pela API; form-data funciona com termos específicos
+    curl_args <- c(
+      "-s", "--max-time", "60",
+      "-X", "POST", url,
+      "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+      "-H", "Referer: https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
+      "-H", "Origin: https://ec.europa.eu",
+      "-H", "Accept: application/json, text/plain, */*",
+      "-H", "Content-Type: application/x-www-form-urlencoded",
+      "--data-urlencode", paste0("query=", heu_query),
+      "-o", tmp_file
+    )
+
+    exit_code <- tryCatch(
+      system2("curl.exe", args = curl_args, stdout = FALSE, stderr = FALSE),
+      error = function(e) {
+        .log("ERROR", sprintf("Erro ao executar curl para '%s': %s", term, e$message))
+        1
+      }
+    )
+
+    # Verificar se o arquivo foi criado
+    if (!file.exists(tmp_file) || file.size(tmp_file) == 0) {
+      .log("WARN", sprintf("Falha na requisição para '%s' (arquivo não criado)", term))
+      next
+    }
+
+    data <- tryCatch({
+      jsonlite::fromJSON(tmp_file, simplifyVector = FALSE)
+    }, error = function(e) {
+      .log("ERROR", sprintf("Erro ao parsear JSON para '%s': %s", term, e$message))
+      NULL
+    })
+
+    if (is.null(data) || is.null(data$results)) {
+      .log("WARN", sprintf("Resposta vazia ou inválida para '%s'", term))
+      next
+    }
+
+    .log("INFO", sprintf("Termo '%s': %d resultados brutos", term, length(data$results)))
+
+    # Pós-filtrar: manter apenas tópicos ERC do Horizon Europe
+    for (item in data$results) {
+      md <- item$metadata
+      if (is.null(md)) next
+      if (is.data.frame(md)) md <- as.list(md)
+
+      # Verificar DATASOURCE = "SEDIA" (topics, não projetos)
+      ds <- md$DATASOURCE
+      if (!is.null(ds)) {
+        ds_val <- if (is.list(ds)) ds[[1]] else ds[1]
+        if (is.na(ds_val) || ds_val != "SEDIA") next
+      } else next
+
+      # Verificar frameworkProgramme = 43108390 (Horizon Europe)
+      fp <- md$frameworkProgramme
+      if (!is.null(fp)) {
+        fp_val <- if (is.list(fp)) fp[[1]] else fp[1]
+        if (is.na(fp_val) || !grepl("43108390", fp_val)) next
+      } else next
+
+      # Verificar programmeDivision contém 43108406 (ERC)
+      pd <- md$programmeDivision
+      if (!is.null(pd)) {
+        pd_vals <- if (is.list(pd)) unlist(pd) else pd
+        if (!any(grepl("43108406", pd_vals))) next
+      } else next
+
+      # Excluir status Closed (31094503)
+      status <- md$status
+      if (!is.null(status)) {
+        status_val <- if (is.list(status)) status[[1]] else status[1]
+        if (!is.na(status_val) && grepl("31094503", status_val)) next
+      }
+
+      all_items <- c(all_items, list(item))
+    }
+
+    .log("INFO", sprintf("Termo '%s': %d itens ERC acumulados (brutos)", term, length(all_items)))
+
+    if (length(all_items) >= max_records * 5) break
+    Sys.sleep(0.5)
+  }
+
+  # Deduplicar por callIdentifier — preferir versão em inglês
+  .log("INFO", sprintf("Deduplicando %d itens brutos...", length(all_items)))
+  dedup_map <- list()
+  for (item in all_items) {
+    md <- item$metadata
+    if (is.null(md)) next
+    if (is.data.frame(md)) md <- as.list(md)
+    call_id <- if (!is.null(md$callIdentifier)) {
+      v <- md$callIdentifier; if (is.list(v)) v[[1]] else v[1]
+    } else NA_character_
+    if (is.na(call_id)) next
+
+    titulo <- if (!is.null(md$title)) {
+      v <- md$title; if (is.list(v)) v[[1]] else v[1]
+    } else ""
+    is_english <- !is.na(titulo) && Encoding(titulo) == "unknown"
+
+    if (is.null(dedup_map[[call_id]])) {
+      dedup_map[[call_id]] <- list(item = item, is_english = is_english)
+    } else if (is_english && !dedup_map[[call_id]]$is_english) {
+      dedup_map[[call_id]] <- list(item = item, is_english = TRUE)
+      .log("INFO", sprintf("Substituído '%s' por versão em inglês", call_id))
+    }
+  }
+  all_items <- lapply(dedup_map, function(x) x$item)
+  .log("INFO", sprintf("Após deduplicação: %d itens únicos", length(all_items)))
+
+  .log("INFO", sprintf("Total de itens ERC coletados: %d", length(all_items)))
+
+  if (length(all_items) > max_records) {
+    all_items <- all_items[1:max_records]
+    .log("WARN", sprintf("Limitado a %d registros", max_records))
+  }
+
+  if (length(all_items) == 0) {
+    .log("WARN", "Nenhum item ERC encontrado")
+    return(list(records = tibble::tibble(), pages_visited = 0L, last_url = api_url))
+  }
+
+  records <- purrr::map_dfr(all_items, function(item) {
+    md <- item$metadata
+    # Converter data.frame para lista se necessário
+    if (is.data.frame(md)) md <- as.list(md)
+
+    # Extrair campos do metadata (helper para extrair valor de lista/data.frame)
+    extract_field <- function(x, default = NA_character_) {
+      if (is.null(x)) return(default)
+      val <- if (is.list(x)) x[[1]] else x[1]
+      if (is.na(val)) return(default)
+      as.character(val)
+    }
+
+    # Extrair campos do metadata
+    titulo <- extract_field(md$title)
+    call_id <- extract_field(md$callIdentifier)
+    descricao_html <- extract_field(md$descriptionByte)
+
+    # Limpar HTML da descrição
+    descricao_text <- gsub("<[^>]+>", " ", descricao_html)
+    descricao_text <- gsub("&amp;", "&", descricao_text)
+    descricao_text <- gsub("&nbsp;", " ", descricao_text)
+    descricao_text <- gsub("\\s+", " ", trimws(descricao_text))
+
+    # Datas
+    data_abertura <- extract_field(md$startDate)
+    if (!is.na(data_abertura)) {
+      data_abertura <- as.character(as.Date(sub("T.*", "", data_abertura)))
+    }
+
+    data_limite <- extract_field(md$deadlineDate)
+    if (!is.na(data_limite)) {
+      data_limite <- as.character(as.Date(sub("T.*", "", data_limite)))
+    }
+
+    # Status
+    status_code <- extract_field(md$status)
+    status <- if (!is.na(status_code)) {
+      if (grepl("31094501", status_code)) "aberto"
+      else if (grepl("31094502", status_code)) "aberto"
+      else if (grepl("31094503", status_code)) "encerrado"
+      else "desconhecido"
+    } else "desconhecido"
+
+    # Programa
+    programa <- extract_field(md$esST_programAbbreviation)
+
+    # Tipo de ação
+    tipo_acao <- extract_field(md$typesOfAction)
+
+    # Budget (extrair do budgetOverview JSON)
+    budget <- NA_real_
+    budget_raw <- extract_field(md$budgetOverview)
+    if (!is.na(budget_raw)) {
+      budget_json <- tryCatch(jsonlite::fromJSON(budget_raw, simplifyVector = FALSE), error = function(e) NULL)
+      if (!is.null(budget_json$budgetTopicActionMap)) {
+        for (key in names(budget_json$budgetTopicActionMap)) {
+          actions <- budget_json$budgetTopicActionMap[[key]]
+          for (act in actions) {
+            if (!is.null(act$budgetYearMap)) {
+              for (yr in names(act$budgetYearMap)) {
+                val <- suppressWarnings(as.numeric(act$budgetYearMap[[yr]]))
+                if (!is.na(val)) budget <- val
+              }
+            }
+          }
+        }
+      }
+    }
+
+    # URL de detalhe
+    link_detalhe <- extract_field(md$esST_URL, default = item$url)
+
+    # Hash de deduplicação
+    hash_input <- paste0(call_id, "|", titulo)
+    hash_dedup <- digest::digest(hash_input, algo = "xxhash64")
+
+    tibble::tibble(
+      id_registro = sprintf("erc_%s", substr(hash_dedup, 1, 16)),
+      entidade = "ERC",
+      pais_origem = "União Europeia",
+      titulo = titulo,
+      subtitulo = call_id,
+      descricao_resumida = substr(descricao_text, 1, 500),
+      descricao_completa = descricao_text,
+      tipo_oportunidade = tipo_acao,
+      modalidade = NA_character_,
+      area_tematica = programa,
+      palavras_chave = call_id,
+      elegibilidade = NA_character_,
+      publico_alvo = NA_character_,
+      nivel_academico = NA_character_,
+      instituicao_financiadora = "European Research Council",
+      valor_financiado = budget,
+      moeda = if (!is.na(budget) && budget > 0) "EUR" else NA_character_,
+      data_publicacao = data_abertura,
+      data_abertura = data_abertura,
+      data_limite = data_limite,
+      data_encerramento = NA_character_,
+      status_oportunidade = status,
+      link_origem = "https://erc.europa.eu/",
+      link_detalhe = link_detalhe,
+      link_documento_pdf = NA_character_,
+      idioma = "en",
+      localidade = NA_character_,
+      observacoes = NA_character_,
+      texto_bruto = paste(titulo, descricao_text, sep = "\n\n"),
+      pagina_coletada = 1L,
+      fonte_oficial = "erc",
+      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      hash_deduplicacao = hash_dedup,
+      campos_inferidos_ia = NA_character_
+    )
+  })
+
+  .log("INFO", sprintf("ERC: %d registros finais coletados", nrow(records)))
+
+  return(list(records = records, pages_visited = length(search_terms), last_url = api_url))
+}
 collect_fapesb <- collect_generic_official
 
 truncate_excel_strings <- function(df, max_chars = 32000L) {
@@ -1750,3 +2025,4 @@ run_full_collection_cycle <- function(conn, sources_ids = NULL, max_pages = 5, m
 # Auto-registrar collectors (após definição de todas as funções)
 register_collector("capes", collect_capes, "CAPES Plone API + HTML fallback")
 register_collector("finep", collect_finep, "FINEP custom pagination")
+register_collector("erc", collect_erc, "EU F&T Portal REST API (Horizon Europe/ERC)")

@@ -2398,15 +2398,30 @@ save_collection_exports <- function(df, export_dir, prefix = "funding_base", log
 
   tryCatch({
     xlsx_df <- truncate_excel_strings(clean_df)
-    writexl::write_xlsx(list(oportunidades = xlsx_df), xlsx_path)
-    export_paths <- c(export_paths, xlsx_path)
-    if (any(vapply(names(clean_df), function(nm) {
-      if (!is.character(clean_df[[nm]])) return(FALSE)
-      nch <- nchar(clean_df[[nm]], type = "chars")
-      any(!is.na(nch) & nch > 32000L, na.rm = TRUE)
-    }, logical(1)))) {
-      export_warnings <<- c(export_warnings, "Exportação XLSX gerada com truncamento de textos acima de 32.000 caracteres.")
+    if (is.null(xlsx_df) || !is.data.frame(xlsx_df) || ncol(xlsx_df) == 0 || nrow(xlsx_df) == 0) {
+      export_warnings <<- c(export_warnings, "Exportação XLSX ignorada: dataframe vazio ou inválido.")
       if (!is.null(log_path)) log_write(log_path, "WARN", export_warnings[[length(export_warnings)]])
+    } else {
+      # Remover colunas list que writexl não consegue processar
+      list_cols <- vapply(xlsx_df, is.list, logical(1))
+      if (any(list_cols)) {
+        xlsx_df <- xlsx_df[, !list_cols, drop = FALSE]
+      }
+      if (ncol(xlsx_df) > 0) {
+        writexl::write_xlsx(list(oportunidades = xlsx_df), xlsx_path)
+        export_paths <- c(export_paths, xlsx_path)
+        if (any(vapply(names(clean_df), function(nm) {
+          if (!is.character(clean_df[[nm]])) return(FALSE)
+          nch <- nchar(clean_df[[nm]], type = "chars")
+          any(!is.na(nch) & nch > 32000L, na.rm = TRUE)
+        }, logical(1)))) {
+          export_warnings <<- c(export_warnings, "Exportação XLSX gerada com truncamento de textos acima de 32.000 caracteres.")
+          if (!is.null(log_path)) log_write(log_path, "WARN", export_warnings[[length(export_warnings)]])
+        }
+      } else {
+        export_warnings <<- c(export_warnings, "Exportação XLSX ignorada: nenhuma coluna válida após remoção de list columns.")
+        if (!is.null(log_path)) log_write(log_path, "WARN", export_warnings[[length(export_warnings)]])
+      }
     }
   }, error = function(e) {
     export_warnings <<- c(export_warnings, paste0("Falha ao exportar XLSX: ", e$message))

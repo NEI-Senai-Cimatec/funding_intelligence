@@ -779,11 +779,12 @@ fix_polyglotr_encoding <- function(s) {
   # Corrige double-encoding causado pelo polyglotr no Windows
   # polyglotr retorna strings com bytes UTF-8 interpretados como Latin-1
   # Esta funcao reverte: UTF-8 chars -> Latin-1 bytes -> UTF-8 chars
-  if (is.null(s) || !is.character(s) || length(s) == 0) return(s)
+  if (is.null(s) || !is.character(s) || length(s) == 0) return(enc2utf8(s))
   vapply(s, function(x) {
     if (is.na(x) || !nzchar(x)) return(x)
     tryCatch({
       bytes <- iconv(x, from = "UTF-8", to = "latin1", toRaw = TRUE)[[1]]
+      if (is.null(bytes)) return(enc2utf8(x))
       enc2utf8(rawToChar(bytes))
     }, error = function(e) enc2utf8(x))
   }, character(1), USE.NAMES = FALSE)
@@ -836,7 +837,7 @@ translate_to_pt_br <- function(records, log_path = NULL) {
       }
     )
     
-    if (!is.na(translated) && nzchar(translated)) {
+    if (is.character(translated) && length(translated) == 1 && !is.na(translated) && nzchar(translated)) {
       records$titulo[[i]] <- fix_polyglotr_encoding(translated)
       records$idioma[[i]] <- "pt"
       translated_count <- translated_count + 1L
@@ -848,7 +849,7 @@ translate_to_pt_br <- function(records, log_path = NULL) {
           polyglotr::google_translate(substr(descricao, 1, 500), target_language = "pt", source_language = source_lang),
           error = function(e) NA_character_
         )
-        if (!is.na(desc_translated) && nzchar(desc_translated)) {
+        if (is.character(desc_translated) && length(desc_translated) == 1 && !is.na(desc_translated) && nzchar(desc_translated)) {
           records$descricao_resumida[[i]] <- fix_polyglotr_encoding(desc_translated)
         }
       }

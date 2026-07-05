@@ -136,40 +136,47 @@ def run_playwright_stealth(url):
 }
 
 eu_api_request <- function(url, body_data, timeout_sec = 60, log_path = NULL) {
-  # Tenta httr2 primeiro (funciona no Linux/Connect)
-  # Se falhar, usa curl CLI como fallback (funciona no Windows)
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[EU-API][%s] %s", level, msg))
+  }
+  .modal <- function(msg) {
+    try(log_progress(msg, "Scraping"), silent = TRUE)
+  }
 
-  # Tentativa 1: httr2 com retry
+  form_body <- list(query = body_data)
+  headers <- httr::add_headers(
+    "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+    "Referer" = "https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
+    "Origin" = "https://ec.europa.eu",
+    "Accept" = "application/json, text/plain, */*"
+  )
+
   for (attempt in 1:2) {
     resp <- tryCatch({
-      req <- httr2::request(url) |>
-        httr2::req_method("POST") |>
-        httr2::req_user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36") |>
-        httr2::req_headers(
-          Referer = "https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
-          Origin = "https://ec.europa.eu",
-          Accept = "application/json, text/plain, */*"
-        ) |>
-        httr2::req_body_form(query = body_data) |>
-        httr2::req_timeout(timeout_sec)
-      httr2::req_perform(req)
-      httr2::resp_body_json(httr2::last_response(), simplifyVector = FALSE)
+      r <- httr::POST(url, headers, body = form_body, encode = "form",
+                      httr::timeout(timeout_sec))
+      if (httr::status_code(r) >= 400L) {
+        .log("WARN", sprintf("httr tentativa %d: HTTP %d", attempt, httr::status_code(r)))
+        NULL
+      } else {
+        httr::content(r, as = "parsed", type = "application/json", simplifyVector = FALSE)
+      }
     }, error = function(e) {
-      if (!is.null(log_path)) log_write(log_path, "WARN",
-        sprintf("httr2 tentativa %d falhou: %s [%s]", attempt, e$message, class(e)[1]))
+      .log("WARN", sprintf("httr tentativa %d falhou: %s", attempt, e$message))
       NULL
     })
 
     if (!is.null(resp)) return(resp)
-    if (attempt < 2) Sys.sleep(2 * attempt)
+    if (attempt < 2) Sys.sleep(2)
   }
 
-  # Tentativa 2: curl CLI fallback (cross-platform)
+  .log("WARN", "httr falhou, tentando curl CLI...")
   curl_bin <- if (.Platform$OS.type == "windows") "curl.exe" else "curl"
   curl_path <- tryCatch(Sys.which(curl_bin), error = function(e) "")
   if (!nzchar(curl_path)) {
-    if (!is.null(log_path)) log_write(log_path, "WARN",
-      sprintf("curl CLI não encontrado (%s), fallback indisponível", curl_bin))
+    .modal("AVISO: EU API indisponivel (httr + curl CLI falharam)")
+    .log("WARN", "curl CLI não encontrado, fallback indisponível")
     return(NULL)
   }
 
@@ -195,19 +202,16 @@ eu_api_request <- function(url, body_data, timeout_sec = 60, log_path = NULL) {
       system2(curl_bin, args, stdout = FALSE, stderr = FALSE)
     }
   }, error = function(e) {
-    if (!is.null(log_path)) log_write(log_path, "WARN",
-      sprintf("curl fallback falhou: %s", e$message))
+    .log("WARN", sprintf("curl CLI falhou: %s", e$message))
     1
   })
 
   if (exit_code != 0 || !file.exists(tmp_file) || file.size(tmp_file) == 0) {
-    if (!is.null(log_path)) log_write(log_path, "WARN",
-      sprintf("curl fallback: arquivo não criado ou vazio (exit=%s)", exit_code))
+    .log("WARN", sprintf("curl CLI: arquivo inválido (exit=%s)", exit_code))
     return(NULL)
   }
   tryCatch(jsonlite::fromJSON(tmp_file, simplifyVector = FALSE), error = function(e) {
-    if (!is.null(log_path)) log_write(log_path, "WARN",
-      sprintf("curl fallback: erro ao parsear JSON: %s", e$message))
+    .log("WARN", sprintf("curl CLI: erro ao parsear JSON: %s", e$message))
     NULL
   })
 }

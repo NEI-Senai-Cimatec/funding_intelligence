@@ -4788,7 +4788,7 @@
       "checksum": "e1cf5c706006f6a50efa152b73bc1715"
     },
     "app.R": {
-      "checksum": "11429d11ff72f0965edf05bd56b82c10"
+      "checksum": "305a76866f11885e0814b0e5d4a30a2a"
     },
     "data_exports/funding_intelligence_base_20260605_143205.csv": {
       "checksum": "d5bdb43de8c9cca66868f0f21f00208a"
@@ -5061,7 +5061,7 @@
       "checksum": "8a8be9a1d41aae34ed39d773af8e3ece"
     },
     "R/helpers_collect.R": {
-      "checksum": "bf0384dc2fdbf835120896fd57cc3853"
+      "checksum": "5fbf2e3f8fde7c7cb9eb8e6ad6d816b0"
     },
     "R/helpers_db.R": {
       "checksum": "2c8c554d913ed762f5534d1b5b59f3bc"

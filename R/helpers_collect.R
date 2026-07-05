@@ -144,6 +144,11 @@ eu_api_request <- function(url, body_data, timeout_sec = 60, log_path = NULL) {
     try(log_progress(msg, "Scraping"), silent = TRUE)
   }
 
+  first_error <- NULL
+  set_error <- function(msg) {
+    if (is.null(first_error)) first_error <<- msg
+  }
+
   encoded_body <- paste0("query=", URLencode(body_data, reserved = TRUE))
   user_agent <- "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 
@@ -171,9 +176,13 @@ eu_api_request <- function(url, body_data, timeout_sec = 60, log_path = NULL) {
   do_curl_cli <- function() {
     curl_bin <- if (.Platform$OS.type == "windows") "curl.exe" else "curl"
     curl_path <- tryCatch(Sys.which(curl_bin), error = function(e) "")
-    if (!nzchar(curl_path)) return(NULL)
+    if (!nzchar(curl_path)) {
+      set_error("curl CLI nao encontrado no PATH")
+      return(NULL)
+    }
     tmp <- tempfile(fileext = ".json")
-    on.exit(unlink(tmp), add = TRUE)
+    tmp_err <- tempfile(fileext = ".stderr")
+    on.exit({ unlink(tmp); unlink(tmp_err) }, add = TRUE)
     args <- c("-s", "--max-time", as.character(timeout_sec),
               "-X", "POST", url,
               "-H", paste0("User-Agent: ", user_agent),
@@ -182,22 +191,31 @@ eu_api_request <- function(url, body_data, timeout_sec = 60, log_path = NULL) {
               "-H", "Accept: application/json, text/plain, */*",
               "-H", "Content-Type: application/x-www-form-urlencoded",
               "--data-urlencode", paste0("query=", body_data),
-              "-o", tmp)
+              "-o", tmp, "-w", "%{http_code}")
     exit <- tryCatch({
       if (.Platform$OS.type == "windows") {
         quoted <- vapply(args, function(a) if (grepl("[&|<>^%\\s]", a)) shQuote(a) else a, character(1))
-        shell(paste(c(curl_bin, quoted), collapse = " "), intern = FALSE)
+        cmd <- paste(c(curl_bin, quoted), collapse = " ")
+        output <- shell(paste(cmd, "2>", shQuote(tmp_err)), intern = TRUE)
+        http_code <- suppressWarnings(as.integer(output[length(output)]))
+        if (is.na(http_code)) 1L else http_code
       } else {
-        system2(curl_bin, args, stdout = FALSE, stderr = FALSE)
+        system2(curl_bin, args, stdout = tmp_err, stderr = tmp_err)
       }
-    }, error = function(e) 1)
-    if (exit != 0 || !file.exists(tmp) || file.size(tmp) == 0) return(NULL)
+    }, error = function(e) { set_error(sprintf("curl CLI erro: %s", e$message)); 1 })
+    cli_out <- tryCatch(readLines(tmp_err, warn = FALSE), error = function(e) character())
+    cli_err <- paste(cli_out, collapse = " | ")
+    if (nzchar(cli_err)) set_error(paste0("curl CLI: ", substr(cli_err, 1, 200)))
+    if (exit != 0 || !file.exists(tmp) || file.size(tmp) == 0) {
+      set_error(paste0("curl CLI exit=", exit, " size=", if (file.exists(tmp)) file.size(tmp) else 0))
+      return(NULL)
+    }
     jsonlite::fromJSON(tmp, simplifyVector = FALSE)
   }
 
   for (attempt in 1:2) {
     resp <- tryCatch(do_curl_r(ssl_verify = 1L), error = function(e) {
-      .log("WARN", sprintf("curl SSL tentativa %d: %s", attempt, e$message)); NULL
+      set_error(e$message); .log("WARN", sprintf("curl SSL tentativa %d: %s", attempt, e$message)); NULL
     })
     if (!is.null(resp)) return(resp)
     if (attempt < 2) Sys.sleep(1)
@@ -205,19 +223,20 @@ eu_api_request <- function(url, body_data, timeout_sec = 60, log_path = NULL) {
 
   for (attempt in 1:2) {
     resp <- tryCatch(do_curl_r(ssl_verify = 0L), error = function(e) {
-      .log("WARN", sprintf("curl noSSL tentativa %d: %s", attempt, e$message)); NULL
+      set_error(e$message); .log("WARN", sprintf("curl noSSL tentativa %d: %s", attempt, e$message)); NULL
     })
     if (!is.null(resp)) return(resp)
     if (attempt < 2) Sys.sleep(1)
   }
 
   resp <- tryCatch(do_curl_cli(), error = function(e) {
-    .log("WARN", sprintf("curl CLI: %s", e$message)); NULL
+    set_error(e$message); .log("WARN", sprintf("curl CLI: %s", e$message)); NULL
   })
   if (!is.null(resp)) return(resp)
 
-  .modal("AVISO: EU API indisponivel (todas as tentativas falharam)")
-  .log("WARN", "Todas as tentativas de conexao com EU API falharam")
+  err_detail <- if (!is.null(first_error)) substr(first_error, 1, 120) else "motivo desconhecido"
+  .modal(sprintf("AVISO: EU API falhou - %s", err_detail))
+  .log("WARN", sprintf("Todas as tentativas falharam. Ultimo erro: %s", err_detail))
   NULL
 }
 
@@ -1152,8 +1171,8 @@ finalize_records <- function(df, fonte_oficial = NULL) {
   if (is.null(df) || nrow(df) == 0) return(ensure_record_schema(tibble::tibble()))
   df <- ensure_record_schema(df)
 
-  # Verificar se e fonte EU (HEU/ERC)
-  is_eu <- !is.null(fonte_oficial) && fonte_oficial %in% c("horizon_europe", "erc")
+  # Verificar se e fonte EU (HEU/ERC ou CORDIS fallback)
+  is_eu <- !is.null(fonte_oficial) && (fonte_oficial %in% c("horizon_europe", "erc") || fonte_oficial == "cordis_eu")
 
   # Filtrar registros usando a heurística estática
   valid_idx <- vapply(seq_len(nrow(df)), function(i) {
@@ -1640,6 +1659,13 @@ collect_horizon_europe <- function(source_row, max_pages, max_records, use_ai, l
   all_items <- list()
   seen_ids <- character(0)
 
+  # Pre-flight: verificar conectividade com a API EU antes do loop
+  if (!is_host_alive(api_url)) {
+    .log("WARN", "API EU inacessivel (DNS/rede). Pulando coleta HEU.")
+    try(log_progress("AVISO: API EU inacessivel - pulando HEU", "Scraping"), silent = TRUE)
+    return(list(records = tibble::tibble(), pages_visited = 0L, last_url = api_url))
+  }
+
   # Query filter para HEU (frameworkProgramme=43108390) via form-data
   heu_query <- '{"bool":{"must":[{"terms":{"frameworkProgramme":["43108390"]}}]}}'
 
@@ -1946,6 +1972,13 @@ collect_erc <- function(source_row, max_pages, max_records, use_ai, log_path) {
   api_url <- "https://api.tech.ec.europa.eu/search-api/prod/rest/search"
   all_items <- list()
   seen_ids <- character(0)
+
+  # Pre-flight: verificar conectividade com a API EU antes do loop
+  if (!is_host_alive(api_url)) {
+    .log("WARN", "API EU inacessivel (DNS/rede). Pulando coleta ERC.")
+    try(log_progress("AVISO: API EU inacessivel - pulando ERC", "Scraping"), silent = TRUE)
+    return(list(records = tibble::tibble(), pages_visited = 0L, last_url = api_url))
+  }
 
   # Query filter para HEU (frameworkProgramme=43108390) via form-data
   heu_query <- '{"bool":{"must":[{"terms":{"frameworkProgramme":["43108390"]}}]}}'
@@ -2360,6 +2393,176 @@ collect_fapesb <- function(source_row, max_pages, max_records, use_ai, log_path)
   return(list(records = records, pages_visited = as.integer(page - 1L), last_url = base_api))
 }
 
+collect_cordis <- function(log_path = NULL, max_records = 100L) {
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[CORDIS][%s] %s", level, msg))
+  }
+  .modal <- function(msg) {
+    try(log_progress(msg, "Scraping"), silent = TRUE)
+  }
+
+  .log("INFO", "Iniciando coleta CORDIS (fallback para EU)")
+
+  base_url <- "https://cordis.europa.eu/search/en"
+  all_items <- list()
+  seen_ids <- character(0)
+
+  search_terms <- c(
+    "HORIZON EIC",
+    "HORIZON ERC",
+    "HORIZON EIT",
+    "HORIZON Clusters",
+    "HORIZON Missions",
+    "HORIZON Digital",
+    "HORIZON Health",
+    "HORIZON Climate",
+    "HORIZON Energy",
+    "HORIZON Transport"
+  )
+
+  for (term in search_terms) {
+    if (length(all_items) >= max_records) break
+
+    query_url <- paste0(
+      base_url, "?format=json&num=", min(50L, max_records - length(all_items)),
+      "&q=", utils::URLencode(term, reserved = TRUE)
+    )
+
+    resp <- tryCatch({
+      httr2::request(query_url) |>
+        httr2::req_timeout(seconds = 30) |>
+        httr2::req_perform()
+    }, error = function(e) {
+      .log("WARN", sprintf("CORDIS falhou para '%s': %s", term, e$message))
+      NULL
+    })
+
+    if (is.null(resp)) next
+
+    body <- tryCatch(jsonlite::fromJSON(httr2::resp_body_string(resp), simplifyVector = FALSE), error = function(e) {
+      .log("WARN", sprintf("CORDIS JSON parse error: %s", e$message))
+      NULL
+    })
+
+    if (is.null(body)) next
+
+    hits <- body$hits$hit
+    if (is.null(hits) || length(hits) == 0) next
+
+    # Garantir que hits é uma lista (quando há 1 resultado, pode ser objeto único)
+    if (!is.list(hits) || !is.null(names(hits))) hits <- list(hits)
+
+    for (hit in hits) {
+      if (length(all_items) >= max_records) break
+
+      article <- hit$article
+      if (is.null(article)) next
+
+      rcn <- as.character(article$rcn %||% article$id %||% "")
+      if (nchar(rcn) == 0 || rcn %in% seen_ids) next
+      seen_ids <- c(seen_ids, rcn)
+
+      # Verificar se é Horizon Europe (frameworkProgramme = HORIZON)
+      # A estrutura CORDIS: article -> relations -> associations -> project -> relations -> associations -> programme
+      is_horizon <- FALSE
+      programme_code <- NA_character_
+      tryCatch({
+        project <- article$relations$associations$project
+        if (!is.null(project)) {
+          proj_progs <- project$relations$associations$programme
+          if (!is.null(proj_progs) && length(proj_progs) > 0) {
+            for (pg in proj_progs) {
+              fp <- pg$frameworkProgramme %||% ""
+              if (fp == "HORIZON") {
+                is_horizon <- TRUE
+                programme_code <- pg$code
+                break
+              }
+            }
+          }
+        }
+      }, error = function(e) NULL)
+      if (!is_horizon) next
+
+      titulo <- article$title %||% ""
+      body_text <- article$body$section$sectionBody %||% ""
+
+      # Extrair data de criação
+      data_pub <- article$contentCreationDate %||% ""
+      if (nchar(data_pub) > 10) data_pub <- substr(data_pub, 1, 10)
+
+      # Extrair link (CORDIS usa rcn como ID)
+      link_detalhe <- sprintf("https://cordis.europa.eu/article/%s/pt", rcn)
+
+      all_items <- c(all_items, list(list(
+        rcn = rcn,
+        titulo = titulo,
+        descricao = body_text,
+        data_criacao = data_pub,
+        programme_code = programme_code,
+        link = link_detalhe
+      )))
+    }
+
+    Sys.sleep(0.5)
+  }
+
+  if (length(all_items) == 0) {
+    .log("WARN", "CORDIS: nenhum registro Horizon Europe encontrado")
+    .modal("CORDIS: nenhum registro encontrado")
+    return(list(records = tibble::tibble(), pages_visited = 0L, last_url = base_url))
+  }
+
+  .log("INFO", sprintf("CORDIS: %d registros brutos coletados", length(all_items)))
+
+  # Mapear para schema padrão
+  records_list <- lapply(all_items, function(item) {
+    titulo <- item$titulo
+    hash_input <- paste0(item$rcn, "|", titulo)
+    hash_dedup <- digest::digest(hash_input, algo = "xxhash64")
+
+    tibble::tibble(
+      id_registro = sprintf("cordis_%s", substr(hash_dedup, 1, 16)),
+      entidade = "CORDIS/EU",
+      pais_origem = "Uniao Europeia",
+      titulo = titulo,
+      subtitulo = NA_character_,
+      descricao_resumida = if (nchar(item$descricao) > 0) substr(item$descricao, 1, 500) else titulo,
+      descricao_completa = if (nchar(item$descricao) > 0) item$descricao else titulo,
+      tipo_oportunidade = "Projeto Financiado",
+      modalidade = item$programme_code,
+      area_tematica = NA_character_,
+      palavras_chave = "horizon europe, cordis",
+      elegibilidade = NA_character_,
+      publico_alvo = NA_character_,
+      nivel_academico = NA_character_,
+      instituicao_financiadora = "Uniao Europeia",
+      valor_financiado = NA_real_,
+      moeda = NA_character_,
+      data_publicacao = item$data_criacao,
+      data_abertura = NA_character_,
+      data_limite = NA_character_,
+      data_encerramento = NA_character_,
+      status_oportunidade = "referencia",
+      link_origem = "https://cordis.europa.eu/",
+      link_detalhe = item$link,
+      link_documento_pdf = NA_character_,
+      idioma = "en",
+      fonte_tipo = "api",
+      colecao = "EU",
+      pais_origem_iso = "EU"
+    )
+  })
+
+  records <- dplyr::bind_rows(records_list)
+
+  .log("INFO", sprintf("CORDIS: %d registros finais coletados", nrow(records)))
+  .modal(sprintf("CORDIS: %d projetos Horizon Europe coletados", nrow(records)))
+
+  return(list(records = records, pages_visited = as.integer(length(search_terms)), last_url = base_url))
+}
+
 truncate_excel_strings <- function(df, max_chars = 32000L) {
   # Convert to plain data.frame to prevent tibble Rcpp compatibility issues
   out <- as.data.frame(df, stringsAsFactors = FALSE)
@@ -2517,16 +2720,35 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
       NULL
     })
 
+    # Fallback: se fonte EU falhar, tentar CORDIS como alternativa
+    if (is.null(result) && sid %in% c("horizon_europe", "erc")) {
+      log_write(log_path, "INFO", sprintf("Fonte %s falhou. Tentando CORDIS como fallback...", sid))
+      log_progress(sprintf("CORDIS: tentando fallback para %s...", sid), "Scraping")
+      result <- tryCatch({
+        cordis_res <- collect_cordis(log_path = log_path, max_records = 50L)
+        if (nrow(cordis_res$records) > 0) {
+          cordis_res$source_id <- "cordis_eu"
+          cordis_res
+        } else {
+          NULL
+        }
+      }, error = function(e) {
+        log_write(log_path, "WARN", sprintf("CORDIS fallback tambem falhou: %s", e$message))
+        NULL
+      })
+    }
+
     if (is.null(result)) next
 
-    recs <- tryCatch(finalize_records(result$records, fonte_oficial = sid), error = function(e) {
+    recs <- tryCatch(finalize_records(result$records, fonte_oficial = result$source_id %||% sid), error = function(e) {
       log_write(log_path, "ERROR", sprintf("Falha ao finalizar registros da fonte %s: %s", sid, e$message))
       ensure_record_schema(tibble::tibble())
     })
     
     # Traduzir registros EU para pt-br (habilitado por padrao, desabilitar com AI_TRANSLATE_EU=false)
     translate_eu <- identical(tolower(Sys.getenv("AI_TRANSLATE_EU", "true")), "true")
-    if (translate_eu && sid %in% c("horizon_europe", "erc") && nrow(recs) > 0) {
+    is_eu_source <- sid %in% c("horizon_europe", "erc") || (result$source_id %||% "") == "cordis_eu"
+    if (translate_eu && is_eu_source && nrow(recs) > 0) {
       recs <- tryCatch(translate_to_pt_br(recs, log_path = log_path), error = function(e) {
         log_write(log_path, "WARN", sprintf("Falha na traducao para fonte %s: %s", sid, e$message))
         recs

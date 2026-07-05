@@ -5025,28 +5025,28 @@
       "checksum": "4d7c13a904651b171026c574b7c974ff"
     },
     "funding_intelligence.sqlite-shm": {
-      "checksum": "317af342f6076a65815ea5c38db7ecea"
+      "checksum": "a9e68da0cc6b3c2375c77922bb5ac1c0"
     },
     "funding_intelligence.sqlite-wal": {
-      "checksum": "7eb7427508f7eaa33bfa5a2fe0c739a9"
+      "checksum": "d54ddd580ec32088e8ae83cdd1b19bbd"
     },
     "logos/logos.png": {
       "checksum": "a1476fcbe354cf7e7d0ba5ab8110ef96"
     },
     "logs/collection_modal_log.txt": {
-      "checksum": "ae8156254974561b4e9212b51046cff4"
+      "checksum": "84ca22e7de12bd8cd123069e4f0e1be6"
     },
     "logs/collection_status.json": {
-      "checksum": "d2d162369e0e267e0cf4511eb66f13d5"
+      "checksum": "721cf8b060bd042973b28b160d554f2c"
     },
     "logs/collection_stderr.log": {
-      "checksum": "fac6349f8e059c437682f8a062069a2e"
+      "checksum": "9a99a38aeb136ebbf50bad347fceb697"
     },
     "logs/collection_stdout.log": {
       "checksum": "d41d8cd98f00b204e9800998ecf8427e"
     },
     "logs/funding_collection.log": {
-      "checksum": "dbba9efc3b376c9ca30033c79ca40368"
+      "checksum": "2eca8ca35d1942f3eba13533645d6572"
     },
     "logs/search_stderr.log": {
       "checksum": "22ebcec1724e4be3a16442a6cb44f10b"
@@ -5061,7 +5061,7 @@
       "checksum": "8a8be9a1d41aae34ed39d773af8e3ece"
     },
     "R/helpers_collect.R": {
-      "checksum": "5fbf2e3f8fde7c7cb9eb8e6ad6d816b0"
+      "checksum": "87ba0ea09060f6acde4ab794df368687"
     },
     "R/helpers_db.R": {
       "checksum": "2c8c554d913ed762f5534d1b5b59f3bc"

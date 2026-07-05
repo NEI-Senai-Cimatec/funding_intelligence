@@ -1669,7 +1669,11 @@ collect_horizon_europe <- function(source_row, max_pages, max_records, use_ai, l
   if (is_on_connect()) {
     .log("INFO", "Executando no Posit Connect. Usando CORDIS como fonte EU primaria.")
     try(log_progress("CORDIS: usando como fonte EU primaria (Connect)", "Scraping"), silent = TRUE)
-    return(collect_cordis(log_path = log_path, max_records = 50L))
+    cordis_res <- tryCatch(collect_cordis(log_path = log_path, max_records = 50L), error = function(e) {
+      .log("WARN", sprintf("CORDIS falhou no Connect: %s", e$message))
+      list(records = tibble::tibble(), pages_visited = 0L, last_url = api_url)
+    })
+    return(cordis_res)
   }
 
   # Pre-flight: verificar conectividade com a API EU antes do loop
@@ -1990,7 +1994,11 @@ collect_erc <- function(source_row, max_pages, max_records, use_ai, log_path) {
   if (is_on_connect()) {
     .log("INFO", "Executando no Posit Connect. Usando CORDIS como fonte EU primaria.")
     try(log_progress("CORDIS: usando como fonte EU primaria (Connect)", "Scraping"), silent = TRUE)
-    return(collect_cordis(log_path = log_path, max_records = 50L))
+    cordis_res <- tryCatch(collect_cordis(log_path = log_path, max_records = 50L), error = function(e) {
+      .log("WARN", sprintf("CORDIS falhou no Connect: %s", e$message))
+      list(records = tibble::tibble(), pages_visited = 0L, last_url = api_url)
+    })
+    return(cordis_res)
   }
 
   # Pre-flight: verificar conectividade com a API EU antes do loop
@@ -2571,7 +2579,8 @@ collect_cordis <- function(log_path = NULL, max_records = 100L) {
       idioma = "en",
       fonte_tipo = "api",
       colecao = "EU",
-      pais_origem_iso = "EU"
+      pais_origem_iso = "EU",
+      hash_deduplicacao = hash_dedup
     )
   })
 
@@ -2693,6 +2702,14 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
     if (file.exists(log_file)) file.remove(log_file)
   }, silent = TRUE)
 
+  # Limpar erros antigos de logs_coleta para evitar falsos positivos no modal de alerta
+  tryCatch({
+    DBI::dbExecute(conn, "DELETE FROM logs_coleta WHERE status_execucao = 'erro'")
+    log_write(log_path, "INFO", "Logs de erro antigos removidos de logs_coleta.")
+  }, error = function(e) {
+    log_write(log_path, "WARN", sprintf("Falha ao limpar logs de erro: %s", e$message))
+  })
+
   sources <- tibble::as_tibble(DBI::dbReadTable(conn, "fontes_financiamento"))
 
   if (!is.null(source_ids) && length(source_ids) > 0) {
@@ -2778,7 +2795,10 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
       })
     }
     
-    n_inserted <- upsert_opportunities(conn, recs)
+    n_inserted <- tryCatch(upsert_opportunities(conn, recs), error = function(e) {
+      log_write(log_path, "ERROR", sprintf("Falha ao inserir registros da fonte %s: %s", sid, e$message))
+      0L
+    })
     inserted_total <- inserted_total + n_inserted
     log_metric(conn, sid, "source_records", n_inserted, list(source_id = sid, pages = result$pages_visited %||% 0L))
     log_collection(

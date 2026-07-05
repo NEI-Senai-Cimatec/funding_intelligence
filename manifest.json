@@ -5006,6 +5006,15 @@
     "data_exports/funding_intelligence_base_20260705_135510.xlsx": {
       "checksum": "29e1e3cbef552970ae5484c9196045b4"
     },
+    "data_exports/funding_intelligence_base_20260705_144317.csv": {
+      "checksum": "57b7fe7a01f4526f6b6018e3e082b221"
+    },
+    "data_exports/funding_intelligence_base_20260705_144317.rds": {
+      "checksum": "ca6b16e1e54843bdd0f7264c79b5f5b6"
+    },
+    "data_exports/funding_intelligence_base_20260705_144317.xlsx": {
+      "checksum": "157bb4b2787246ad0a6b711652987bf6"
+    },
     "docker-compose.yml": {
       "checksum": "8faea6cf3c95cc94ba115a0517ff5dc8"
     },
@@ -5016,28 +5025,28 @@
       "checksum": "4d7c13a904651b171026c574b7c974ff"
     },
     "funding_intelligence.sqlite-shm": {
-      "checksum": "f45e066ace0651382e8960e3c989b039"
+      "checksum": "317af342f6076a65815ea5c38db7ecea"
     },
     "funding_intelligence.sqlite-wal": {
-      "checksum": "0b0b54dded7e09da8746b5a8ab60b501"
+      "checksum": "7eb7427508f7eaa33bfa5a2fe0c739a9"
     },
     "logos/logos.png": {
       "checksum": "a1476fcbe354cf7e7d0ba5ab8110ef96"
     },
     "logs/collection_modal_log.txt": {
-      "checksum": "c8c57d2102816f6ee2b2f204b7311bac"
+      "checksum": "ae8156254974561b4e9212b51046cff4"
     },
     "logs/collection_status.json": {
-      "checksum": "5e600b039b758d09493ed1e693d06b50"
+      "checksum": "d2d162369e0e267e0cf4511eb66f13d5"
     },
     "logs/collection_stderr.log": {
-      "checksum": "5c1de4b4ed643fbe221a97464079ce12"
+      "checksum": "fac6349f8e059c437682f8a062069a2e"
     },
     "logs/collection_stdout.log": {
       "checksum": "d41d8cd98f00b204e9800998ecf8427e"
     },
     "logs/funding_collection.log": {
-      "checksum": "d650aa7e2ecead87ed8a42b62497859f"
+      "checksum": "dbba9efc3b376c9ca30033c79ca40368"
     },
     "logs/search_stderr.log": {
       "checksum": "22ebcec1724e4be3a16442a6cb44f10b"
@@ -5046,10 +5055,10 @@
       "checksum": "d41d8cd98f00b204e9800998ecf8427e"
     },
     "R/helpers_ai.R": {
-      "checksum": "b88afa2830f551fabeca069b64e034c3"
+      "checksum": "8a8be9a1d41aae34ed39d773af8e3ece"
     },
     "R/helpers_collect.R": {
-      "checksum": "492bf6b0ece8d6a425c2e7e4bc1af52b"
+      "checksum": "383197c9447a71a08ffcf9d07e035755"
     },
     "R/helpers_db.R": {
       "checksum": "2c8c554d913ed762f5534d1b5b59f3bc"

@@ -777,9 +777,9 @@ validate_ai_output <- function(ai_list) {
 
 fix_polyglotr_encoding <- function(s) {
   # Corrige double-encoding causado pelo polyglotr no Windows
-  # polyglotr retorna strings com bytes UTF-8 interpretados como Latin-1
-  # Esta funcao reverte: UTF-8 chars -> Latin-1 bytes -> UTF-8 chars
+  # No Linux (UTF-8 nativo), polyglotr retorna strings corretas — apenas garante encoding
   if (is.null(s) || !is.character(s) || length(s) == 0) return(enc2utf8(s))
+  if (.Platform$OS.type != "windows") return(enc2utf8(s))
   vapply(s, function(x) {
     if (is.na(x) || !nzchar(x)) return(x)
     tryCatch({

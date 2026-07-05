@@ -135,6 +135,19 @@ def run_playwright_stealth(url):
   res
 }
 
+run_curl <- function(args) {
+  curl_bin <- if (.Platform$OS.type == "windows") "curl.exe" else "curl"
+  if (.Platform$OS.type == "windows") {
+    quoted <- vapply(args, function(a) {
+      if (grepl("[&|<>^%]", a) || grepl("\\s", a)) sprintf('"%s"', a) else a
+    }, character(1), USE.NAMES = FALSE)
+    cmd <- paste(c(curl_bin, quoted), collapse = " ")
+    shell(cmd, intern = FALSE)
+  } else {
+    system2(curl_bin, args, stdout = FALSE, stderr = FALSE)
+  }
+}
+
 is_host_alive <- function(url) {
   tryCatch({
     req <- httr2::request(url) |>
@@ -1609,7 +1622,7 @@ collect_horizon_europe <- function(source_row, max_pages, max_records, use_ai, l
     )
 
     exit_code <- tryCatch(
-      system2("curl.exe", args = curl_args, stdout = FALSE, stderr = FALSE),
+      run_curl(curl_args),
       error = function(e) {
         .log("ERROR", sprintf("Erro ao executar curl para '%s': %s", term, e$message))
         1
@@ -1925,7 +1938,7 @@ collect_erc <- function(source_row, max_pages, max_records, use_ai, log_path) {
     )
 
     exit_code <- tryCatch(
-      system2("curl.exe", args = curl_args, stdout = FALSE, stderr = FALSE),
+      run_curl(curl_args),
       error = function(e) {
         .log("ERROR", sprintf("Erro ao executar curl para '%s': %s", term, e$message))
         1
@@ -2187,12 +2200,13 @@ collect_fapesb <- function(source_row, max_pages, max_records, use_ai, log_path)
     tmp_file <- tempfile(fileext = ".json")
     on.exit(unlink(tmp_file), add = TRUE)
 
-    # Usar shell() com curl.exe devido a problema de TLS no Windows
-    # system2 não funciona corretamente no Windows para este caso
-    cmd <- sprintf('curl.exe -s --max-time 30 -H "User-Agent: FundingIntelligence/1.0" -o "%s" "%s"', tmp_file, url)
+    # Usar curl cross-platform (shell no Windows, system2 no Linux)
+    curl_args <- c("-s", "--max-time", "30",
+                   "-H", "User-Agent: FundingIntelligence/1.0",
+                   "-o", tmp_file, url)
     
     exit_code <- tryCatch(
-      shell(cmd, intern = FALSE),
+      run_curl(curl_args),
       error = function(e) {
         .log("ERROR", sprintf("Erro ao executar curl: %s", e$message))
         1

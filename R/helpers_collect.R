@@ -2192,13 +2192,12 @@ collect_fapesb <- function(source_row, max_pages, max_records, use_ai, log_path)
     cmd <- sprintf('curl.exe -s --max-time 30 -H "User-Agent: FundingIntelligence/1.0" -o "%s" "%s"', tmp_file, url)
     
     exit_code <- tryCatch(
-      system2("curl.exe", args = curl_args, stdout = FALSE, stderr = FALSE),
+      shell(cmd, intern = FALSE),
       error = function(e) {
-        .log("ERROR", sprintf("Erro ao executar curl para '%s': %s", term, e$message))
+        .log("ERROR", sprintf("Erro ao executar curl: %s", e$message))
         1
       }
     )
-    message(sprintf("DEBUG_HEU: curl exit_code=%s, tmp_file exists=%s", exit_code, file.exists(tmp_file)))
 
     # Verificar se o arquivo foi criado
     if (!file.exists(tmp_file) || file.size(tmp_file) == 0) {

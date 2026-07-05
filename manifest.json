@@ -176,6 +176,32 @@
         "Built": "R 4.6.0; ; 2026-04-21 00:40:53 UTC; windows"
       }
     },
+    "RCurl": {
+      "Source": "CRAN",
+      "Repository": "https://cloud.r-project.org",
+      "description": {
+        "Package": "RCurl",
+        "Version": "1.98-1.19",
+        "Title": "General Network (HTTP/FTP/...) Client Interface for R",
+        "Authors@R": "c(person(\"CRAN Team\", role = 'ctb',\n                    email = \"CRAN@r-project.org\",\n                    comment = \"de facto maintainer in 2013-2026\"),\n             person(\"Duncan\", \"Temple Lang\", role = \"aut\",\n                    email = \"duncan@r-project.org\",\n                    comment = c(ORCID = \"0000-0003-0159-1546\")),\n             person(\"Ivan\", \"Krylov\", role = \"cre\",\n                    email = \"ikrylov@disroot.org\"))",
+        "SystemRequirements": "GNU make, libcurl",
+        "Description": "A wrapper for 'libcurl' <https://curl.se/libcurl/>\n        Provides functions to allow one to compose general HTTP requests\n        and provides convenient functions to fetch URIs, get & post\n        forms, etc. and process the results returned by the Web server.\n        This provides a great deal of control over the HTTP/FTP/...\n        connection and the form of the request while providing a\n        higher-level interface than is available just using R socket\n        connections.  Additionally, the underlying implementation is\n        robust and extensive, supporting FTP/FTPS/TFTP (uploads and\n        downloads), SSL/HTTPS, telnet, dict, ldap, and also supports\n        cookies, redirects, authentication, etc.",
+        "License": "BSD_3_clause + file LICENSE",
+        "Depends": "R (>= 3.4.0), methods",
+        "Imports": "bitops",
+        "Suggests": "XML",
+        "Collate": "aclassesEnums.R bitClasses.R xbits.R base64.R binary.S\nclasses.S curl.S curlAuthConstants.R curlEnums.R curlError.R\ncurlInfo.S dynamic.R form.S getFormParams.R getURLContent.R\nheader.R http.R httpError.R httpErrors.R iconv.R info.S mime.R\nmulti.S options.S scp.R support.S upload.R urlExists.R zclone.R\nzzz.R",
+        "BugReports": "https://codeberg.org/aitap/RCurl",
+        "NeedsCompilation": "yes",
+        "Packaged": "2026-06-02 21:11:34 UTC; ivan",
+        "Author": "CRAN Team [ctb] (de facto maintainer in 2013-2026),\n  Duncan Temple Lang [aut] (ORCID:\n    <https://orcid.org/0000-0003-0159-1546>),\n  Ivan Krylov [cre]",
+        "Maintainer": "Ivan Krylov <ikrylov@disroot.org>",
+        "Repository": "CRAN",
+        "Date/Publication": "2026-06-03 08:50:24 UTC",
+        "Built": "R 4.6.0; x86_64-w64-mingw32; 2026-06-03 23:51:12 UTC; windows",
+        "Archs": "x64"
+      }
+    },
     "RSQLite": {
       "Source": "CRAN",
       "Repository": "https://cloud.r-project.org",
@@ -462,6 +488,29 @@
         "Repository": "CRAN",
         "Date/Publication": "2026-05-19 09:40:02 UTC",
         "Built": "R 4.6.0; x86_64-w64-mingw32; 2026-05-30 02:00:55 UTC; windows",
+        "Archs": "x64"
+      }
+    },
+    "bitops": {
+      "Source": "CRAN",
+      "Repository": "https://cloud.r-project.org",
+      "description": {
+        "Package": "bitops",
+        "Version": "1.0-9",
+        "Date": "2024-10-03",
+        "Authors@R": "c(\n   person(\"Steve\", \"Dutky\", role = \"aut\", email = \"sdutky@terpalum.umd.edu\",\n    \t     comment = \"S original; then (after MM's port) revised and modified\"),\n   person(\"Martin\", \"Maechler\", role = c(\"cre\", \"aut\"), email = \"maechler@stat.math.ethz.ch\",\n\t     comment = c(\"Initial R port; tweaks\", ORCID = \"0000-0002-8685-9910\")))",
+        "Title": "Bitwise Operations",
+        "Description": "Functions for bitwise operations on integer vectors.",
+        "License": "GPL (>= 2)",
+        "URL": "https://github.com/mmaechler/R-bitops",
+        "BugReports": "https://github.com/mmaechler/R-bitops/issues",
+        "NeedsCompilation": "yes",
+        "Packaged": "2024-10-03 09:17:35 UTC; maechler",
+        "Author": "Steve Dutky [aut] (S original; then (after MM's port) revised and\n    modified),\n  Martin Maechler [cre, aut] (Initial R port; tweaks,\n    <https://orcid.org/0000-0002-8685-9910>)",
+        "Maintainer": "Martin Maechler <maechler@stat.math.ethz.ch>",
+        "Repository": "CRAN",
+        "Date/Publication": "2024-10-03 23:00:54 UTC",
+        "Built": "R 4.6.0; x86_64-w64-mingw32; 2026-04-21 00:41:53 UTC; windows",
         "Archs": "x64"
       }
     },
@@ -2883,6 +2932,35 @@
         "Built": "R 4.6.0; ; 2026-05-30 03:02:03 UTC; windows"
       }
     },
+    "polyglotr": {
+      "Source": "CRAN",
+      "Repository": "https://cloud.r-project.org",
+      "description": {
+        "Package": "polyglotr",
+        "Title": "Translate Text",
+        "Version": "1.7.4",
+        "Authors@R": "\n    person(\"Tomer\", \"Iwan\", , \"iwantomer@hotmail.com\", role = c(\"aut\", \"cre\", \"cph\"))",
+        "Description": "Provide easy methods to translate pieces of text.\n  Functions send requests to translation services online.",
+        "License": "MIT + file LICENSE",
+        "URL": "https://github.com/Tomeriko96/polyglotr/,\nhttps://tomeriko96.github.io/polyglotr/",
+        "BugReports": "https://github.com/Tomeriko96/polyglotr/issues",
+        "Encoding": "UTF-8",
+        "RoxygenNote": "7.3.3",
+        "Imports": "dplyr, httr, jsonlite, magrittr, purrr, RCurl, rlang, rvest,\nstringr, tibble, urltools",
+        "Suggests": "knitr, rmarkdown, testthat (>= 3.0.0), text2vec, shiny,\nshinydashboard, shinyjs, DT",
+        "Config/testthat/edition": "3",
+        "VignetteBuilder": "knitr",
+        "Depends": "R (>= 3.5.0)",
+        "LazyData": "true",
+        "NeedsCompilation": "no",
+        "Packaged": "2026-06-08 07:27:44 UTC; dev",
+        "Author": "Tomer Iwan [aut, cre, cph]",
+        "Maintainer": "Tomer Iwan <iwantomer@hotmail.com>",
+        "Repository": "CRAN",
+        "Date/Publication": "2026-06-08 08:20:02 UTC",
+        "Built": "R 4.6.1; ; 2026-07-04 03:23:59 UTC; windows"
+      }
+    },
     "prettyunits": {
       "Source": "CRAN",
       "Repository": "https://cloud.r-project.org",
@@ -4172,6 +4250,35 @@
         "Built": "R 4.6.0; ; 2026-05-30 02:00:55 UTC; windows"
       }
     },
+    "triebeard": {
+      "Source": "CRAN",
+      "Repository": "https://cloud.r-project.org",
+      "description": {
+        "Package": "triebeard",
+        "Type": "Package",
+        "Title": "'Radix' Trees in 'Rcpp'",
+        "Version": "0.4.1",
+        "Author": "Os Keyes [aut, cre], Drew Schmidt [aut], Yuuki Takano [cph]",
+        "Maintainer": "Os Keyes <ironholds@gmail.com>",
+        "Description": "'Radix trees', or 'tries', are key-value data structures optimised for efficient lookups, similar in purpose\n             to hash tables. 'triebeard' provides an implementation of 'radix trees' for use in R programming and in\n             developing packages with 'Rcpp'.",
+        "License": "MIT + file LICENSE",
+        "LinkingTo": "Rcpp",
+        "Encoding": "UTF-8",
+        "Imports": "Rcpp",
+        "RoxygenNote": "7.1.2",
+        "Suggests": "knitr, rmarkdown, testthat",
+        "VignetteBuilder": "knitr",
+        "URL": "https://github.com/Ironholds/triebeard/",
+        "BugReports": "https://github.com/Ironholds/triebeard/issues",
+        "Date": "2023-03-04",
+        "NeedsCompilation": "yes",
+        "Packaged": "2023-03-04 21:40:31 UTC; ironholds",
+        "Repository": "CRAN",
+        "Date/Publication": "2023-03-04 23:30:07 UTC",
+        "Built": "R 4.6.1; x86_64-w64-mingw32; 2026-07-04 00:58:57 UTC; windows",
+        "Archs": "x64"
+      }
+    },
     "tzdb": {
       "Source": "CRAN",
       "Repository": "https://cloud.r-project.org",
@@ -4199,6 +4306,38 @@
         "Repository": "CRAN",
         "Date/Publication": "2025-03-15 22:50:02 UTC",
         "Built": "R 4.6.0; x86_64-w64-mingw32; 2026-05-30 02:00:56 UTC; windows",
+        "Archs": "x64"
+      }
+    },
+    "urltools": {
+      "Source": "CRAN",
+      "Repository": "https://cloud.r-project.org",
+      "description": {
+        "Package": "urltools",
+        "Type": "Package",
+        "Title": "Vectorised Tools for URL Handling and Parsing",
+        "Version": "1.7.3.1",
+        "Date": "2019-04-14",
+        "Authors@R": "c(person(given = \"Os\",\n                    family = \"Keyes\",\n                    role = c(\"aut\", \"cre\"),\n                    email = \"ironholds@gmail.com\"),\n             person(given = \"Jay\",\n                    family = \"Jacobs\",\n                    role = \"aut\"),\n             person(given = \"Drew\",\n                    family = \"Schmidt\",\n                    role = \"aut\"),\n             person(given = \"Mark\",\n                    family = \"Greenaway\",\n                    role = \"ctb\"),\n             person(given = \"Bob\",\n                    family = \"Rudis\",\n                    role = \"ctb\"),\n             person(given = \"Alex\",\n                    family = \"Pinto\",\n                    role = \"ctb\"),\n             person(given = \"Maryam\",\n                    family = \"Khezrzadeh\",\n                    role = \"ctb\"),\n             person(given = \"Peter\",\n                    family = \"Meilstrup\",\n                    role = \"ctb\"),\n             person(given = c(\"Adam\", \"M.\"),\n                    family = \"Costello\",\n                    role = \"cph\"),\n             person(given = \"Jeff\",\n                    family = \"Bezanson\",\n                    role = \"cph\"),\n             person(given = \"Peter\",\n                    family = \"Meilstrup\",\n                    role = \"ctb\"),\n             person(given = \"Xueyuan\",\n                    family = \"Jiang\",\n                    role = \"ctb\"))",
+        "Description": "A toolkit for all URL-handling needs, including encoding and decoding,\n    parsing, parameter extraction and modification. All functions are\n    designed to be both fast and entirely vectorised. It is intended to be\n    useful for people dealing with web-related datasets, such as server-side\n    logs, although may be useful for other situations involving large sets of\n    URLs.",
+        "License": "MIT + file LICENSE",
+        "LazyData": "TRUE",
+        "LinkingTo": "Rcpp",
+        "Imports": "Rcpp, methods, triebeard",
+        "Suggests": "testthat, knitr",
+        "URL": "https://github.com/Ironholds/urltools/",
+        "BugReports": "https://github.com/Ironholds/urltools/issues",
+        "VignetteBuilder": "knitr",
+        "RoxygenNote": "6.1.1",
+        "Encoding": "UTF-8",
+        "Depends": "R (>= 2.10)",
+        "NeedsCompilation": "yes",
+        "Packaged": "2025-06-12 07:48:37 UTC; hornik",
+        "Repository": "CRAN",
+        "Date/Publication": "2025-06-12 08:37:42 UTC",
+        "Author": "Os Keyes [aut, cre],\n  Jay Jacobs [aut],\n  Drew Schmidt [aut],\n  Mark Greenaway [ctb],\n  Bob Rudis [ctb],\n  Alex Pinto [ctb],\n  Maryam Khezrzadeh [ctb],\n  Peter Meilstrup [ctb],\n  Adam M. Costello [cph],\n  Jeff Bezanson [cph],\n  Peter Meilstrup [ctb],\n  Xueyuan Jiang [ctb]",
+        "Maintainer": "Os Keyes <ironholds@gmail.com>",
+        "Built": "R 4.6.1; x86_64-w64-mingw32; 2026-07-04 01:50:55 UTC; windows",
         "Archs": "x64"
       }
     },
@@ -4649,7 +4788,7 @@
       "checksum": "e1cf5c706006f6a50efa152b73bc1715"
     },
     "app.R": {
-      "checksum": "f03d65d42e30bc72ec50f0594a447883"
+      "checksum": "11429d11ff72f0965edf05bd56b82c10"
     },
     "data_exports/funding_intelligence_base_20260605_143205.csv": {
       "checksum": "d5bdb43de8c9cca66868f0f21f00208a"
@@ -4786,6 +4925,87 @@
     "data_exports/funding_intelligence_base_20260630_100733.xlsx": {
       "checksum": "6a306d88cc1d64ac4bacde79eda48524"
     },
+    "data_exports/funding_intelligence_base_20260701_144644.csv": {
+      "checksum": "3a17d45768d08687c1a466660705814f"
+    },
+    "data_exports/funding_intelligence_base_20260701_144644.rds": {
+      "checksum": "35704db7ae3f8727307f7a2e400f6a4d"
+    },
+    "data_exports/funding_intelligence_base_20260701_144644.xlsx": {
+      "checksum": "d0e76c5dee890ddc31eaf74bc01f2197"
+    },
+    "data_exports/funding_intelligence_base_20260701_160401.csv": {
+      "checksum": "8159bf29ad550ba3aa7416a328ba0237"
+    },
+    "data_exports/funding_intelligence_base_20260701_160401.rds": {
+      "checksum": "a505e3d91f9c5bcf05901982a52d906c"
+    },
+    "data_exports/funding_intelligence_base_20260701_160401.xlsx": {
+      "checksum": "1bcb9845ffc79d67cc742d60d6392187"
+    },
+    "data_exports/funding_intelligence_base_20260703_112800.csv": {
+      "checksum": "7d4d2d67f0f4cc7219d215e406f01008"
+    },
+    "data_exports/funding_intelligence_base_20260703_112800.rds": {
+      "checksum": "f194c4ae19310b83496570fa7c9d8000"
+    },
+    "data_exports/funding_intelligence_base_20260703_112800.xlsx": {
+      "checksum": "58fbd82a3aeb388b9fe490edb7d97622"
+    },
+    "data_exports/funding_intelligence_base_20260703_123201.csv": {
+      "checksum": "f96617b6b0f32c49512113054c3aca7e"
+    },
+    "data_exports/funding_intelligence_base_20260703_123201.rds": {
+      "checksum": "e5874573709f460233ec2f28be988004"
+    },
+    "data_exports/funding_intelligence_base_20260703_123201.xlsx": {
+      "checksum": "d0a6a6c74f2d36b7177b39b5e751f2b2"
+    },
+    "data_exports/funding_intelligence_base_20260703_134533.csv": {
+      "checksum": "ab651fef56be888571daba1ee5b86bc1"
+    },
+    "data_exports/funding_intelligence_base_20260703_134533.rds": {
+      "checksum": "f63e4dd9439148124c6ffe3f124e1a44"
+    },
+    "data_exports/funding_intelligence_base_20260703_134533.xlsx": {
+      "checksum": "016780b20b1fc947d0cda8a400e8c3c9"
+    },
+    "data_exports/funding_intelligence_base_20260703_142942.csv": {
+      "checksum": "6822e0f03a42e0f45d6bcbeec61716e4"
+    },
+    "data_exports/funding_intelligence_base_20260703_142942.rds": {
+      "checksum": "16207eb0567c09688867d823fd4206c7"
+    },
+    "data_exports/funding_intelligence_base_20260703_142942.xlsx": {
+      "checksum": "5cfb02399bffb6194f6299872a121704"
+    },
+    "data_exports/funding_intelligence_base_20260703_150154.csv": {
+      "checksum": "c47eed2c6399430faa0e1d6172119677"
+    },
+    "data_exports/funding_intelligence_base_20260703_150154.rds": {
+      "checksum": "134bbaf52fffbed98d886b894813f580"
+    },
+    "data_exports/funding_intelligence_base_20260703_150154.xlsx": {
+      "checksum": "c19b29b7d8d1eb630717ea4539cd2780"
+    },
+    "data_exports/funding_intelligence_base_20260704_181104.csv": {
+      "checksum": "6ca650fac4ad99814cc8c7d47b0be704"
+    },
+    "data_exports/funding_intelligence_base_20260704_181104.rds": {
+      "checksum": "f865744c657cc183a7da764a7780b7e9"
+    },
+    "data_exports/funding_intelligence_base_20260704_181104.xlsx": {
+      "checksum": "026777ac1d938c4a1ae6410175812a67"
+    },
+    "data_exports/funding_intelligence_base_20260705_135510.csv": {
+      "checksum": "1f02efe5ccb33c97b3cbb45ae37e82e4"
+    },
+    "data_exports/funding_intelligence_base_20260705_135510.rds": {
+      "checksum": "1d10f16077969b08cbdcf5090dcf945c"
+    },
+    "data_exports/funding_intelligence_base_20260705_135510.xlsx": {
+      "checksum": "29e1e3cbef552970ae5484c9196045b4"
+    },
     "docker-compose.yml": {
       "checksum": "8faea6cf3c95cc94ba115a0517ff5dc8"
     },
@@ -4793,28 +5013,31 @@
       "checksum": "69ca0c04b6363a7a9ae59aab33377d11"
     },
     "funding_intelligence.sqlite": {
-      "checksum": "c7768d44ff226ae907614b2dd7ee336d"
+      "checksum": "4f31467a47e865fd87675404cb168fcb"
     },
     "funding_intelligence.sqlite-shm": {
-      "checksum": "b7c14ec6110fa820ca6b65f5aec85911"
+      "checksum": "401c707288fe59e26b9fcd697fd4ddf3"
     },
     "funding_intelligence.sqlite-wal": {
-      "checksum": "d41d8cd98f00b204e9800998ecf8427e"
+      "checksum": "666554089a113950aece88c0f5567d32"
+    },
+    "logos/logos.png": {
+      "checksum": "a1476fcbe354cf7e7d0ba5ab8110ef96"
     },
     "logs/collection_modal_log.txt": {
-      "checksum": "80e24cf4cbf92e402dc2fc4bb77433c9"
+      "checksum": "17e6dd51343dcbc6f78579cc9192b0cd"
     },
     "logs/collection_status.json": {
-      "checksum": "a39143d7b1677fac673489dd7323e8bb"
+      "checksum": "f11196e02ef5f1bd3c874186059ca330"
     },
     "logs/collection_stderr.log": {
-      "checksum": "be4c16be73c7cba523c7b5d8ec956a90"
+      "checksum": "66bd3c6799747d2443b852bd35037206"
     },
     "logs/collection_stdout.log": {
       "checksum": "d41d8cd98f00b204e9800998ecf8427e"
     },
     "logs/funding_collection.log": {
-      "checksum": "82a6d2a5812b60046da25b394d74f9f8"
+      "checksum": "98c28e50e463b3b2a3fa58b1b4edb316"
     },
     "logs/search_stderr.log": {
       "checksum": "22ebcec1724e4be3a16442a6cb44f10b"
@@ -4823,13 +5046,13 @@
       "checksum": "d41d8cd98f00b204e9800998ecf8427e"
     },
     "R/helpers_ai.R": {
-      "checksum": "06cdf902547e6650cad424e25608ecfd"
+      "checksum": "b62f63ec70e617ec2e030ecf6783382f"
     },
     "R/helpers_collect.R": {
-      "checksum": "29a192d8e8bf63baa96ee36d2eb58c5c"
+      "checksum": "e4b48e1e9f628eec9a2ca8e8684020d7"
     },
     "R/helpers_db.R": {
-      "checksum": "1a681c7dcaf016d99c0b6ae06d5aab01"
+      "checksum": "2c8c554d913ed762f5534d1b5b59f3bc"
     },
     "R/helpers_drive.R": {
       "checksum": "5723937c6caf0f076b3bbeabaa283f5d"
@@ -4841,7 +5064,7 @@
       "checksum": "07206994bcd24583e419b971567545f3"
     },
     "R/helpers_utils.R": {
-      "checksum": "b266bc41eb0b783a7793e17eea851e80"
+      "checksum": "4b2fc8e78adad7a2e311dac2d4e897ae"
     },
     "R_libs/backports/DESCRIPTION": {
       "checksum": "3a06d70675de422672893f1bfa8d3708"
@@ -6869,7 +7092,7 @@
       "checksum": "0857e8fe59d5508c1c0799bec801fc06"
     },
     "README.md": {
-      "checksum": "2a45b7e19c72f415a9606ee8567f8ab0"
+      "checksum": "38174befed3747b3b4c03a495c77f1d0"
     },
     "scratch/db_audit.R": {
       "checksum": "c695a9790d50ccdfdf837fe7338ac189"
@@ -6967,6 +7190,18 @@
     "scratch/test_stealth_request.R": {
       "checksum": "94150f0d0ae245de14ab9c8fab17fb3f"
     },
+    "scratch/validate_fixes.R": {
+      "checksum": "b6e89118c9e977d67863a7ae1a2e96b2"
+    },
+    "tests/testthat.R": {
+      "checksum": "9aa1cfd341c49d6eb8a5f1114733cec9"
+    },
+    "tests/testthat/fixtures/json/ai_response_valid.json": {
+      "checksum": "db46be0c41ea0c77a3935f940742c07a"
+    },
+    "tests/testthat/test-utils.R": {
+      "checksum": "ff8f53e1ba737fb1270384ccb889f769"
+    },
     "www/logotipo-SENAI-CIMATEC-Vjul2025 1.png": {
       "checksum": "270b2a2cc909d974cd7e9c8a3fb39fd7"
     },
@@ -6980,7 +7215,7 @@
       "checksum": "5134d2e95151c3e1ca2d55024154fe5f"
     },
     "www/styles.css": {
-      "checksum": "ac4ec085545e88062e4a0d95f12ad21b"
+      "checksum": "9b6ac437b978632f9e37e7f6c27145b7"
     }
   },
   "users": null

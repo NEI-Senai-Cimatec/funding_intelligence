@@ -135,17 +135,54 @@ def run_playwright_stealth(url):
   res
 }
 
-run_curl <- function(args) {
+eu_api_request <- function(url, body_data, timeout_sec = 60) {
+  # Tenta httr2 primeiro (funciona no Linux/Connect)
+  # Se falhar, usa curl CLI como fallback (funciona no Windows)
+  resp <- tryCatch({
+    req <- httr2::request(url) |>
+      httr2::req_method("POST") |>
+      httr2::req_user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36") |>
+      httr2::req_headers(
+        Referer = "https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
+        Origin = "https://ec.europa.eu",
+        Accept = "application/json, text/plain, */*"
+      ) |>
+      httr2::req_body_form(query = body_data) |>
+      httr2::req_timeout(timeout_sec)
+    httr2::req_perform(req)
+    httr2::resp_body_json(httr2::last_response(), simplifyVector = FALSE)
+  }, error = function(e) NULL)
+
+  if (!is.null(resp)) return(resp)
+
+  # Fallback: curl CLI (cross-platform)
   curl_bin <- if (.Platform$OS.type == "windows") "curl.exe" else "curl"
+  curl_path <- tryCatch(Sys.which(curl_bin), error = function(e) "")
+  if (!nzchar(curl_path)) return(NULL)
+
+  tmp_file <- tempfile(fileext = ".json")
+  on.exit(unlink(tmp_file), add = TRUE)
+  args <- c("-s", "--max-time", as.character(timeout_sec),
+            "-X", "POST", url,
+            "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "-H", "Referer: https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
+            "-H", "Origin: https://ec.europa.eu",
+            "-H", "Accept: application/json, text/plain, */*",
+            "-H", "Content-Type: application/x-www-form-urlencoded",
+            "--data-urlencode", paste0("query=", body_data),
+            "-o", tmp_file)
+
   if (.Platform$OS.type == "windows") {
     quoted <- vapply(args, function(a) {
-      if (grepl("[&|<>^%]", a) || grepl("\\s", a)) sprintf('"%s"', a) else a
+      if (grepl("[&|<>^%]", a) || grepl("\\s", a)) shQuote(a) else a
     }, character(1), USE.NAMES = FALSE)
-    cmd <- paste(c(curl_bin, quoted), collapse = " ")
-    shell(cmd, intern = FALSE)
+    shell(paste(c(curl_bin, quoted), collapse = " "), intern = FALSE)
   } else {
     system2(curl_bin, args, stdout = FALSE, stderr = FALSE)
   }
+
+  if (!file.exists(tmp_file) || file.size(tmp_file) == 0) return(NULL)
+  tryCatch(jsonlite::fromJSON(tmp_file, simplifyVector = FALSE), error = function(e) NULL)
 }
 
 is_host_alive <- function(url) {
@@ -1605,40 +1642,10 @@ collect_horizon_europe <- function(source_row, max_pages, max_records, use_ai, l
     search_text <- utils::URLencode(term, reserved = TRUE)
     url <- sprintf("%s?apiKey=SEDIA&text=%s&pageNumber=1&pageSize=100&sortBy=es_SortDate&orderBy=DESC",
                    api_url, search_text)
-    tmp_file <- tempfile(fileext = ".json")
 
-    # Usar form-data (--data-urlencode) em vez de JSON body (-d)
-    # O JSON body é ignorado pela API; form-data funciona com termos específicos
-    curl_args <- c(
-      "-s", "--max-time", "60",
-      "-X", "POST", url,
-      "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-      "-H", "Referer: https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
-      "-H", "Origin: https://ec.europa.eu",
-      "-H", "Accept: application/json, text/plain, */*",
-      "-H", "Content-Type: application/x-www-form-urlencoded",
-      "--data-urlencode", paste0("query=", heu_query),
-      "-o", tmp_file
-    )
-
-    exit_code <- tryCatch(
-      run_curl(curl_args),
-      error = function(e) {
-        .log("ERROR", sprintf("Erro ao executar curl para '%s': %s", term, e$message))
-        1
-      }
-    )
-
-    # Verificar se o arquivo foi criado
-    if (!file.exists(tmp_file) || file.size(tmp_file) == 0) {
-      .log("WARN", sprintf("Falha na requisição para '%s' (arquivo não criado)", term))
-      next
-    }
-
-    data <- tryCatch({
-      jsonlite::fromJSON(tmp_file, simplifyVector = FALSE)
-    }, error = function(e) {
-      .log("ERROR", sprintf("Erro ao parsear JSON para '%s': %s", term, e$message))
+    # Usar eu_api_request() (httr2 primário, curl CLI fallback)
+    data <- tryCatch(eu_api_request(url, heu_query, 60), error = function(e) {
+      .log("ERROR", sprintf("Erro ao executar request para '%s': %s", term, e$message))
       NULL
     })
 
@@ -1920,41 +1927,10 @@ collect_erc <- function(source_row, max_pages, max_records, use_ai, log_path) {
     search_text <- utils::URLencode(term, reserved = TRUE)
     url <- sprintf("%s?apiKey=SEDIA&text=%s&pageNumber=1&pageSize=100&sortBy=es_SortDate&orderBy=DESC",
                    api_url, search_text)
-    tmp_file <- tempfile(fileext = ".json")
-    on.exit(unlink(tmp_file), add = TRUE)
 
-    # Usar form-data (--data-urlencode) em vez de JSON body (-d)
-    # O JSON body é ignorado pela API; form-data funciona com termos específicos
-    curl_args <- c(
-      "-s", "--max-time", "60",
-      "-X", "POST", url,
-      "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-      "-H", "Referer: https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
-      "-H", "Origin: https://ec.europa.eu",
-      "-H", "Accept: application/json, text/plain, */*",
-      "-H", "Content-Type: application/x-www-form-urlencoded",
-      "--data-urlencode", paste0("query=", heu_query),
-      "-o", tmp_file
-    )
-
-    exit_code <- tryCatch(
-      run_curl(curl_args),
-      error = function(e) {
-        .log("ERROR", sprintf("Erro ao executar curl para '%s': %s", term, e$message))
-        1
-      }
-    )
-
-    # Verificar se o arquivo foi criado
-    if (!file.exists(tmp_file) || file.size(tmp_file) == 0) {
-      .log("WARN", sprintf("Falha na requisição para '%s' (arquivo não criado)", term))
-      next
-    }
-
-    data <- tryCatch({
-      jsonlite::fromJSON(tmp_file, simplifyVector = FALSE)
-    }, error = function(e) {
-      .log("ERROR", sprintf("Erro ao parsear JSON para '%s': %s", term, e$message))
+    # Usar eu_api_request() (httr2 primário, curl CLI fallback)
+    data <- tryCatch(eu_api_request(url, heu_query, 60), error = function(e) {
+      .log("ERROR", sprintf("Erro ao executar request para '%s': %s", term, e$message))
       NULL
     })
 
@@ -2197,31 +2173,26 @@ collect_fapesb <- function(source_row, max_pages, max_records, use_ai, log_path)
     url <- sprintf("%s?categories=%d&per_page=%d&page=%d&_fields=id,title,link,date,excerpt,content",
                    base_api, category_id, page_size, page)
 
-    tmp_file <- tempfile(fileext = ".json")
-    on.exit(unlink(tmp_file), add = TRUE)
+    # Usar httr2 para GET (cross-platform, sem dependência de curl CLI)
+    resp <- tryCatch({
+      req <- httr2::request(url) |>
+        httr2::req_user_agent("FundingIntelligence/1.0") |>
+        httr2::req_timeout(30)
+      httr2::req_perform(req)
+    }, error = function(e) {
+      .log("ERROR", sprintf("Erro ao executar request: %s", e$message))
+      NULL
+    })
 
-    # Usar curl cross-platform (shell no Windows, system2 no Linux)
-    curl_args <- c("-s", "--max-time", "30",
-                   "-H", "User-Agent: FundingIntelligence/1.0",
-                   "-o", tmp_file, url)
-    
-    exit_code <- tryCatch(
-      run_curl(curl_args),
-      error = function(e) {
-        .log("ERROR", sprintf("Erro ao executar curl: %s", e$message))
-        1
-      }
-    )
+    if (is.null(resp)) break
 
-    # Verificar se o arquivo foi criado
-    if (!file.exists(tmp_file) || file.size(tmp_file) == 0) {
-      .log("WARN", "Falha na requisição (arquivo não criado), interrompendo paginação")
+    status <- tryCatch(httr2::resp_status(resp), error = function(e) 0L)
+    if (status != 200L) {
+      .log("WARN", sprintf("Falha na requisição (HTTP %d), interrompendo paginação", status))
       break
     }
 
-    data <- tryCatch({
-      jsonlite::fromJSON(tmp_file, simplifyVector = FALSE)
-    }, error = function(e) {
+    data <- tryCatch(httr2::resp_body_json(resp, simplifyVector = FALSE), error = function(e) {
       .log("ERROR", sprintf("Erro ao parsear JSON: %s", e$message))
       NULL
     })

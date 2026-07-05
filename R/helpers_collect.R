@@ -240,16 +240,22 @@ eu_api_request <- function(url, body_data, timeout_sec = 60, log_path = NULL) {
   NULL
 }
 
+is_on_connect <- function() {
+  nchar(Sys.getenv("CONNECT_SERVER")) > 0
+}
+
 is_host_alive <- function(url) {
   tryCatch({
     req <- httr2::request(url) |>
-      httr2::req_method("HEAD") |>
-      httr2::req_timeout(3)
+      httr2::req_method("POST") |>
+      httr2::req_headers("Content-Type" = "application/x-www-form-urlencoded") |>
+      httr2::req_body_form("apiKey" = "SEDIA", "text" = "test", "pageNumber" = "1", "pageSize" = "1") |>
+      httr2::req_timeout(8)
     httr2::req_perform(req)
     TRUE
   }, error = function(e) {
     msg <- conditionMessage(e)
-    if (grepl("Could not resolve host|Could not resolve hostname|Timeout was reached|Connection refused|Failed to connect", msg, ignore.case = TRUE)) {
+    if (grepl("Could not resolve host|Could not resolve hostname|Timeout was reached|Connection refused|Failed to connect|schannel|server closed abruptly|missing close_notify", msg, ignore.case = TRUE)) {
       return(FALSE)
     }
     TRUE
@@ -1659,9 +1665,16 @@ collect_horizon_europe <- function(source_row, max_pages, max_records, use_ai, l
   all_items <- list()
   seen_ids <- character(0)
 
+  # Connect: API EU bloqueia IPs AWS — usar CORDIS diretamente
+  if (is_on_connect()) {
+    .log("INFO", "Executando no Posit Connect. Usando CORDIS como fonte EU primaria.")
+    try(log_progress("CORDIS: usando como fonte EU primaria (Connect)", "Scraping"), silent = TRUE)
+    return(collect_cordis(log_path = log_path, max_records = 50L))
+  }
+
   # Pre-flight: verificar conectividade com a API EU antes do loop
   if (!is_host_alive(api_url)) {
-    .log("WARN", "API EU inacessivel (DNS/rede). Pulando coleta HEU.")
+    .log("WARN", "API EU inacessivel (DNS/rede/schannel). Pulando coleta HEU.")
     try(log_progress("AVISO: API EU inacessivel - pulando HEU", "Scraping"), silent = TRUE)
     return(list(records = tibble::tibble(), pages_visited = 0L, last_url = api_url))
   }
@@ -1973,9 +1986,16 @@ collect_erc <- function(source_row, max_pages, max_records, use_ai, log_path) {
   all_items <- list()
   seen_ids <- character(0)
 
+  # Connect: API EU bloqueia IPs AWS — usar CORDIS diretamente
+  if (is_on_connect()) {
+    .log("INFO", "Executando no Posit Connect. Usando CORDIS como fonte EU primaria.")
+    try(log_progress("CORDIS: usando como fonte EU primaria (Connect)", "Scraping"), silent = TRUE)
+    return(collect_cordis(log_path = log_path, max_records = 50L))
+  }
+
   # Pre-flight: verificar conectividade com a API EU antes do loop
   if (!is_host_alive(api_url)) {
-    .log("WARN", "API EU inacessivel (DNS/rede). Pulando coleta ERC.")
+    .log("WARN", "API EU inacessivel (DNS/rede/schannel). Pulando coleta ERC.")
     try(log_progress("AVISO: API EU inacessivel - pulando ERC", "Scraping"), silent = TRUE)
     return(list(records = tibble::tibble(), pages_visited = 0L, last_url = api_url))
   }
@@ -2720,9 +2740,12 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
       NULL
     })
 
-    # Fallback: se fonte EU falhar, tentar CORDIS como alternativa
-    if (is.null(result) && sid %in% c("horizon_europe", "erc")) {
-      log_write(log_path, "INFO", sprintf("Fonte %s falhou. Tentando CORDIS como fallback...", sid))
+    # Fallback: se fonte EU falhar ou retornar vazia (apenas off-Connect), tentar CORDIS
+    # No Connect, os coletores EU já retornam CORDIS diretamente
+    eu_falhou <- !is.null(result) && nrow(result$records) == 0 && result$pages_visited == 0
+    eu_erro <- is.null(result)
+    if ((eu_falhou || eu_erro) && sid %in% c("horizon_europe", "erc") && !is_on_connect()) {
+      log_write(log_path, "INFO", sprintf("Fonte %s falhou/vazia (off-Connect). Tentando CORDIS como fallback...", sid))
       log_progress(sprintf("CORDIS: tentando fallback para %s...", sid), "Scraping")
       result <- tryCatch({
         cordis_res <- collect_cordis(log_path = log_path, max_records = 50L)

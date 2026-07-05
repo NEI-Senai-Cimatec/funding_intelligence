@@ -4790,6 +4790,9 @@
     "app.R": {
       "checksum": "305a76866f11885e0814b0e5d4a30a2a"
     },
+    "data/funding_intelligence.sqlite": {
+      "checksum": "504cdc8dd8cbdb209121d9032a78eabe"
+    },
     "data_exports/funding_intelligence_base_20260605_143205.csv": {
       "checksum": "d5bdb43de8c9cca66868f0f21f00208a"
     },
@@ -5022,31 +5025,28 @@
       "checksum": "1845520677f7d4508e47848977324725"
     },
     "funding_intelligence.sqlite": {
-      "checksum": "4d7c13a904651b171026c574b7c974ff"
+      "checksum": "7b188c192644184e9c2d9316756fb76d"
     },
     "funding_intelligence.sqlite-shm": {
-      "checksum": "a9e68da0cc6b3c2375c77922bb5ac1c0"
+      "checksum": "b5e90663f8ffff0c93841e71f16fd765"
     },
     "funding_intelligence.sqlite-wal": {
-      "checksum": "d54ddd580ec32088e8ae83cdd1b19bbd"
+      "checksum": "0524a304c5db00351eee966402178ce0"
     },
     "logos/logos.png": {
       "checksum": "a1476fcbe354cf7e7d0ba5ab8110ef96"
     },
     "logs/collection_modal_log.txt": {
-      "checksum": "84ca22e7de12bd8cd123069e4f0e1be6"
-    },
-    "logs/collection_status.json": {
-      "checksum": "721cf8b060bd042973b28b160d554f2c"
+      "checksum": "4a019ecda6ce781307f753df9608fe18"
     },
     "logs/collection_stderr.log": {
-      "checksum": "9a99a38aeb136ebbf50bad347fceb697"
+      "checksum": "1d2621e0b9aed9350720471808a74f2a"
     },
     "logs/collection_stdout.log": {
       "checksum": "d41d8cd98f00b204e9800998ecf8427e"
     },
     "logs/funding_collection.log": {
-      "checksum": "2eca8ca35d1942f3eba13533645d6572"
+      "checksum": "d124dc40eff9ee5a8eafda7dc4500e15"
     },
     "logs/search_stderr.log": {
       "checksum": "22ebcec1724e4be3a16442a6cb44f10b"
@@ -5061,7 +5061,7 @@
       "checksum": "8a8be9a1d41aae34ed39d773af8e3ece"
     },
     "R/helpers_collect.R": {
-      "checksum": "87ba0ea09060f6acde4ab794df368687"
+      "checksum": "a7ad0401763e2949808f6d32cfd174ad"
     },
     "R/helpers_db.R": {
       "checksum": "2c8c554d913ed762f5534d1b5b59f3bc"

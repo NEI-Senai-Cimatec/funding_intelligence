@@ -487,7 +487,7 @@ clean_edital_title <- function(title) {
   title
 }
 
-is_current_year_record <- function(pub_date_str, limit_date_str, title, text) {
+is_current_year_record <- function(pub_date_str, limit_date_str, title, text, is_eu_source = FALSE) {
   current_year <- as.integer(format(Sys.Date(), "%Y"))
   
   pub_date <- parse_date_safe(pub_date_str)
@@ -495,6 +495,19 @@ is_current_year_record <- function(pub_date_str, limit_date_str, title, text) {
   
   pub_year <- if (!is.na(pub_date)) as.integer(format(pub_date, "%Y")) else NA_integer_
   limit_year <- if (!is.na(limit_date)) as.integer(format(limit_date, "%Y")) else NA_integer_
+  
+  # Para fontes EU (HEU/ERC): work programmes sao plurianuais
+  # Aceitar registros com deadline >= ano corrente
+  if (is_eu_source) {
+    if (!is.na(limit_year) && limit_year >= current_year) return(TRUE)
+    if (!is.na(pub_year) && pub_year >= current_year) return(TRUE)
+    # Se nao tem datas mas menciona ano corrente ou futuro, aceitar
+    year_pattern <- sprintf("\\b(%d|%d)\\b", current_year, current_year + 1)
+    if (grepl(year_pattern, title %||% "")) return(TRUE)
+    if (grepl(year_pattern, text %||% "")) return(TRUE)
+    # Para EU, so rejeitar se explicitamente menciona anos muito antigos
+    return(TRUE)
+  }
   
   # Se tiver data de publicação, valida pelo ano corrente
   if (!is.na(pub_year)) {

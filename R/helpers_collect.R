@@ -144,76 +144,81 @@ eu_api_request <- function(url, body_data, timeout_sec = 60, log_path = NULL) {
     try(log_progress(msg, "Scraping"), silent = TRUE)
   }
 
-  form_body <- list(query = body_data)
-  headers <- httr::add_headers(
-    "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-    "Referer" = "https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
-    "Origin" = "https://ec.europa.eu",
-    "Accept" = "application/json, text/plain, */*"
-  )
+  encoded_body <- paste0("query=", URLencode(body_data, reserved = TRUE))
+  user_agent <- "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+
+  do_curl_r <- function(ssl_verify) {
+    h <- curl::new_handle()
+    curl::handle_setheaders(h,
+      "User-Agent" = user_agent,
+      "Referer" = "https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
+      "Origin" = "https://ec.europa.eu",
+      "Accept" = "application/json, text/plain, */*",
+      "Content-Type" = "application/x-www-form-urlencoded"
+    )
+    curl::handle_setopt(h,
+      customrequest = "POST",
+      postfields = encoded_body,
+      timeout = as.integer(timeout_sec),
+      ssl_verifypeer = as.integer(ssl_verify),
+      followlocation = TRUE
+    )
+    r <- curl::curl_fetch_memory(url, handle = h)
+    if (r$status_code >= 400L || length(r$content) == 0) return(NULL)
+    jsonlite::fromJSON(rawToChar(r$content), simplifyVector = FALSE)
+  }
+
+  do_curl_cli <- function() {
+    curl_bin <- if (.Platform$OS.type == "windows") "curl.exe" else "curl"
+    curl_path <- tryCatch(Sys.which(curl_bin), error = function(e) "")
+    if (!nzchar(curl_path)) return(NULL)
+    tmp <- tempfile(fileext = ".json")
+    on.exit(unlink(tmp), add = TRUE)
+    args <- c("-s", "--max-time", as.character(timeout_sec),
+              "-X", "POST", url,
+              "-H", paste0("User-Agent: ", user_agent),
+              "-H", "Referer: https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
+              "-H", "Origin: https://ec.europa.eu",
+              "-H", "Accept: application/json, text/plain, */*",
+              "-H", "Content-Type: application/x-www-form-urlencoded",
+              "--data-urlencode", paste0("query=", body_data),
+              "-o", tmp)
+    exit <- tryCatch({
+      if (.Platform$OS.type == "windows") {
+        quoted <- vapply(args, function(a) if (grepl("[&|<>^%\\s]", a)) shQuote(a) else a, character(1))
+        shell(paste(c(curl_bin, quoted), collapse = " "), intern = FALSE)
+      } else {
+        system2(curl_bin, args, stdout = FALSE, stderr = FALSE)
+      }
+    }, error = function(e) 1)
+    if (exit != 0 || !file.exists(tmp) || file.size(tmp) == 0) return(NULL)
+    jsonlite::fromJSON(tmp, simplifyVector = FALSE)
+  }
 
   for (attempt in 1:2) {
-    resp <- tryCatch({
-      r <- httr::POST(url, headers, body = form_body, encode = "form",
-                      httr::timeout(timeout_sec))
-      if (httr::status_code(r) >= 400L) {
-        .log("WARN", sprintf("httr tentativa %d: HTTP %d", attempt, httr::status_code(r)))
-        NULL
-      } else {
-        httr::content(r, as = "parsed", type = "application/json", simplifyVector = FALSE)
-      }
-    }, error = function(e) {
-      .log("WARN", sprintf("httr tentativa %d falhou: %s", attempt, e$message))
-      NULL
+    resp <- tryCatch(do_curl_r(ssl_verify = 1L), error = function(e) {
+      .log("WARN", sprintf("curl SSL tentativa %d: %s", attempt, e$message)); NULL
     })
-
     if (!is.null(resp)) return(resp)
-    if (attempt < 2) Sys.sleep(2)
+    if (attempt < 2) Sys.sleep(1)
   }
 
-  .log("WARN", "httr falhou, tentando curl CLI...")
-  curl_bin <- if (.Platform$OS.type == "windows") "curl.exe" else "curl"
-  curl_path <- tryCatch(Sys.which(curl_bin), error = function(e) "")
-  if (!nzchar(curl_path)) {
-    .modal("AVISO: EU API indisponivel (httr + curl CLI falharam)")
-    .log("WARN", "curl CLI não encontrado, fallback indisponível")
-    return(NULL)
+  for (attempt in 1:2) {
+    resp <- tryCatch(do_curl_r(ssl_verify = 0L), error = function(e) {
+      .log("WARN", sprintf("curl noSSL tentativa %d: %s", attempt, e$message)); NULL
+    })
+    if (!is.null(resp)) return(resp)
+    if (attempt < 2) Sys.sleep(1)
   }
 
-  tmp_file <- tempfile(fileext = ".json")
-  on.exit(unlink(tmp_file), add = TRUE)
-  args <- c("-s", "--max-time", as.character(timeout_sec),
-            "-X", "POST", url,
-            "-H", "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "-H", "Referer: https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
-            "-H", "Origin: https://ec.europa.eu",
-            "-H", "Accept: application/json, text/plain, */*",
-            "-H", "Content-Type: application/x-www-form-urlencoded",
-            "--data-urlencode", paste0("query=", body_data),
-            "-o", tmp_file)
-
-  exit_code <- tryCatch({
-    if (.Platform$OS.type == "windows") {
-      quoted <- vapply(args, function(a) {
-        if (grepl("[&|<>^%]", a) || grepl("\\s", a)) shQuote(a) else a
-      }, character(1), USE.NAMES = FALSE)
-      shell(paste(c(curl_bin, quoted), collapse = " "), intern = FALSE)
-    } else {
-      system2(curl_bin, args, stdout = FALSE, stderr = FALSE)
-    }
-  }, error = function(e) {
-    .log("WARN", sprintf("curl CLI falhou: %s", e$message))
-    1
+  resp <- tryCatch(do_curl_cli(), error = function(e) {
+    .log("WARN", sprintf("curl CLI: %s", e$message)); NULL
   })
+  if (!is.null(resp)) return(resp)
 
-  if (exit_code != 0 || !file.exists(tmp_file) || file.size(tmp_file) == 0) {
-    .log("WARN", sprintf("curl CLI: arquivo inválido (exit=%s)", exit_code))
-    return(NULL)
-  }
-  tryCatch(jsonlite::fromJSON(tmp_file, simplifyVector = FALSE), error = function(e) {
-    .log("WARN", sprintf("curl CLI: erro ao parsear JSON: %s", e$message))
-    NULL
-  })
+  .modal("AVISO: EU API indisponivel (todas as tentativas falharam)")
+  .log("WARN", "Todas as tentativas de conexao com EU API falharam")
+  NULL
 }
 
 is_host_alive <- function(url) {
@@ -1674,7 +1679,6 @@ collect_horizon_europe <- function(source_row, max_pages, max_records, use_ai, l
     url <- sprintf("%s?apiKey=SEDIA&text=%s&pageNumber=1&pageSize=100&sortBy=es_SortDate&orderBy=DESC",
                    api_url, search_text)
 
-    # Usar eu_api_request() (httr2 primário, curl CLI fallback)
     data <- tryCatch(eu_api_request(url, heu_query, 60, log_path), error = function(e) {
       .log("ERROR", sprintf("Erro ao executar request para '%s': %s", term, e$message))
       NULL
@@ -1959,7 +1963,6 @@ collect_erc <- function(source_row, max_pages, max_records, use_ai, log_path) {
     url <- sprintf("%s?apiKey=SEDIA&text=%s&pageNumber=1&pageSize=100&sortBy=es_SortDate&orderBy=DESC",
                    api_url, search_text)
 
-    # Usar eu_api_request() (httr2 primário, curl CLI fallback)
     data <- tryCatch(eu_api_request(url, heu_query, 60, log_path), error = function(e) {
       .log("ERROR", sprintf("Erro ao executar request para '%s': %s", term, e$message))
       NULL

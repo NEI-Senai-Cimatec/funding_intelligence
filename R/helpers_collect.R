@@ -1810,7 +1810,185 @@ collect_erc <- function(source_row, max_pages, max_records, use_ai, log_path) {
 
   return(list(records = records, pages_visited = length(search_terms), last_url = api_url))
 }
-collect_fapesb <- collect_generic_official
+collect_fapesb <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  #' Coleta editais abertos da FAPESB via WordPress REST API
+  #' Endpoint: /wp-json/wp/v2/posts?categories=11 (Aberto)
+  #' NOTA: WordPress REST API fornece dados estruturados, mais confiável que HTML scraping
+
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[FAPESB][%s] %s", level, msg))
+  }
+
+  base_api <- "https://www.fapesb.ba.gov.br/wp-json/wp/v2/posts"
+  category_id <- 11L  # Categoria "Aberto"
+  page_size <- 10L
+
+  all_items <- list()
+  page <- 1L
+
+  repeat {
+    .log("INFO", sprintf("Buscando página %d...", page))
+
+    url <- sprintf("%s?categories=%d&per_page=%d&page=%d&_fields=id,title,link,date,excerpt,content",
+                   base_api, category_id, page_size, page)
+
+    tmp_file <- tempfile(fileext = ".json")
+    on.exit(unlink(tmp_file), add = TRUE)
+
+    # Usar shell() com curl.exe devido a problema de TLS no Windows
+    # system2 não funciona corretamente no Windows para este caso
+    cmd <- sprintf('curl.exe -s --max-time 30 -H "User-Agent: FundingIntelligence/1.0" -o "%s" "%s"', tmp_file, url)
+    
+    exit_code <- tryCatch(
+      shell(cmd, intern = FALSE),
+      error = function(e) {
+        .log("ERROR", sprintf("Erro ao executar curl: %s", e$message))
+        1
+      }
+    )
+
+    # Verificar se o arquivo foi criado
+    if (!file.exists(tmp_file) || file.size(tmp_file) == 0) {
+      .log("WARN", "Falha na requisição (arquivo não criado), interrompendo paginação")
+      break
+    }
+
+    data <- tryCatch({
+      jsonlite::fromJSON(tmp_file, simplifyVector = FALSE)
+    }, error = function(e) {
+      .log("ERROR", sprintf("Erro ao parsear JSON: %s", e$message))
+      NULL
+    })
+
+    if (is.null(data) || length(data) == 0) {
+      .log("WARN", "Resposta vazia ou inválida")
+      break
+    }
+
+    # Verificar se é erro da API (400 = página não existe)
+    if (is.list(data) && !is.null(data$code)) {
+      .log("INFO", "Fim da paginação (página não encontrada)")
+      break
+    }
+
+    all_items <- c(all_items, data)
+    .log("INFO", sprintf("Página %d: %d itens coletados, %d acumulados", page, length(data), length(all_items)))
+
+    if (length(data) < page_size) break
+    if (length(all_items) >= max_records) break
+    if (page >= max_pages) {
+      .log("WARN", sprintf("Limite de %d páginas atingido", max_pages))
+      break
+    }
+
+    page <- page + 1L
+    Sys.sleep(0.5)
+  }
+
+  # Truncar para max_records
+  if (length(all_items) > max_records) {
+    all_items <- all_items[seq_len(max_records)]
+    .log("WARN", sprintf("Limitado a %d registros", max_records))
+  }
+
+  if (length(all_items) == 0) {
+    .log("WARN", "Nenhum item encontrado")
+    return(list(records = tibble::tibble(), pages_visited = as.integer(page - 1L), last_url = base_api))
+  }
+
+  # Converter para tibble
+  records <- purrr::map_dfr(all_items, function(item) {
+    titulo <- gsub("<[^>]+>", "", item$title$rendered)
+    # Decodificar entidades HTML
+    titulo <- gsub("&#8211;", "–", titulo)
+    titulo <- gsub("&#8212;", "—", titulo)
+    titulo <- gsub("&#8216;", "'", titulo)
+    titulo <- gsub("&#8217;", "'", titulo)
+    titulo <- gsub("&#8220;", '"', titulo)
+    titulo <- gsub("&#8221;", '"', titulo)
+    titulo <- gsub("&amp;", "&", titulo)
+    titulo <- gsub("&nbsp;", " ", titulo)
+    titulo <- gsub("&#8230;", "...", titulo)
+    titulo <- gsub("&hellip;", "...", titulo)
+    titulo <- gsub("&#038;", "&", titulo)
+    
+    link <- item$link
+    data_pub <- substr(item$date, 1, 10)
+
+    # Limpar conteúdo HTML
+    conteudo_html <- item$content$rendered %||% ""
+    conteudo_text <- gsub("<[^>]+>", " ", conteudo_html)
+    conteudo_text <- gsub("&amp;", "&", conteudo_text)
+    conteudo_text <- gsub("&nbsp;", " ", conteudo_text)
+    conteudo_text <- gsub("&#8211;", "–", conteudo_text)
+    conteudo_text <- gsub("&#8212;", "—", conteudo_text)
+    conteudo_text <- gsub("&hellip;", "...", conteudo_text)
+    conteudo_text <- gsub("\\s+", " ", trimws(conteudo_text))
+
+    # Extrair datas do conteúdo (se houver tabela de cronograma)
+    data_limite <- NA_character_
+    if (nchar(conteudo_text) > 10) {
+      # Tentar extrair data no formato DD/MM/AA ou DD/MM/AAAA
+      datas <- regmatches(conteudo_text, gregexpr("\\d{2}/\\d{2}/\\d{2,4}", conteudo_text))[[1]]
+      if (length(datas) > 0) {
+        # Usar a última data encontrada (geralmente é o prazo final)
+        data_limite <- utils::tail(datas, 1)
+        # Converter para formato ISO
+        partes <- strsplit(data_limite, "/")[[1]]
+        if (length(partes) == 3) {
+          ano <- if (nchar(partes[3]) == 2) paste0("20", partes[3]) else partes[3]
+          data_limite <- sprintf("%s-%s-%s", ano, partes[2], partes[1])
+        }
+      }
+    }
+
+    # Hash de deduplicação
+    hash_input <- paste0(item$id, "|", titulo)
+    hash_dedup <- digest::digest(hash_input, algo = "xxhash64")
+
+    tibble::tibble(
+      id_registro = sprintf("fapesb_%s", substr(hash_dedup, 1, 16)),
+      entidade = "FAPESB",
+      pais_origem = "Brasil",
+      titulo = titulo,
+      subtitulo = NA_character_,
+      descricao_resumida = if (nchar(conteudo_text) > 0) substr(conteudo_text, 1, 500) else titulo,
+      descricao_completa = if (nchar(conteudo_text) > 0) conteudo_text else titulo,
+      tipo_oportunidade = "Edital",
+      modalidade = NA_character_,
+      area_tematica = NA_character_,
+      palavras_chave = "edital",
+      elegibilidade = NA_character_,
+      publico_alvo = NA_character_,
+      nivel_academico = NA_character_,
+      instituicao_financiadora = "Fundação de Amparo à Pesquisa do Estado da Bahia",
+      valor_financiado = NA_real_,
+      moeda = NA_character_,
+      data_publicacao = data_pub,
+      data_abertura = data_pub,
+      data_limite = data_limite,
+      data_encerramento = NA_character_,
+      status_oportunidade = "aberto",
+      link_origem = "https://www.fapesb.ba.gov.br/",
+      link_detalhe = link,
+      link_documento_pdf = NA_character_,
+      idioma = "pt",
+      localidade = "Bahia",
+      observacoes = NA_character_,
+      texto_bruto = paste(titulo, conteudo_text, sep = "\n\n"),
+      pagina_coletada = 1L,
+      fonte_oficial = "fapesb",
+      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      hash_deduplicacao = hash_dedup,
+      campos_inferidos_ia = NA_character_
+    )
+  })
+
+  .log("INFO", sprintf("FAPESB: %d registros finais coletados", nrow(records)))
+
+  return(list(records = records, pages_visited = as.integer(page - 1L), last_url = base_api))
+}
 
 truncate_excel_strings <- function(df, max_chars = 32000L) {
   # Convert to plain data.frame to prevent tibble Rcpp compatibility issues
@@ -2026,3 +2204,4 @@ run_full_collection_cycle <- function(conn, sources_ids = NULL, max_pages = 5, m
 register_collector("capes", collect_capes, "CAPES Plone API + HTML fallback")
 register_collector("finep", collect_finep, "FINEP custom pagination")
 register_collector("erc", collect_erc, "EU F&T Portal REST API (Horizon Europe/ERC)")
+register_collector("fapesb", collect_fapesb, "WordPress REST API (FAPESB)")

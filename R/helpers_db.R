@@ -5,6 +5,7 @@ get_db_connection <- function(db_path) {
   try({
     DBI::dbExecute(conn, "PRAGMA journal_mode = WAL;")
     DBI::dbExecute(conn, "PRAGMA busy_timeout = 10000;")
+    DBI::dbExecute(conn, "PRAGMA encoding = 'UTF-8';")
   }, silent = TRUE)
   return(conn)
 }
@@ -519,6 +520,9 @@ upsert_opportunities <- function(conn, opportunities_df) {
       x[[1]]
     })
     for (nm in names(row)) {
+      if (is.character(row[[nm]])) {
+        row[[nm]] <- enc2utf8(row[[nm]])
+      }
       if (inherits(row[[nm]], "Date") || inherits(row[[nm]], "POSIXct") || inherits(row[[nm]], "POSIXt")) {
         row[[nm]] <- as.character(row[[nm]])
       }

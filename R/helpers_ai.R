@@ -775,8 +775,22 @@ validate_ai_output <- function(ai_list) {
   list(valid = length(errors) == 0, errors = errors, warnings = warnings, output = ai_list)
 }
 
+fix_polyglotr_encoding <- function(s) {
+  # Corrige double-encoding causado pelo polyglotr no Windows
+  # polyglotr retorna strings com bytes UTF-8 interpretados como Latin-1
+  # Esta funcao reverte: UTF-8 chars -> Latin-1 bytes -> UTF-8 chars
+  if (is.null(s) || !is.character(s) || length(s) == 0) return(s)
+  vapply(s, function(x) {
+    if (is.na(x) || !nzchar(x)) return(x)
+    tryCatch({
+      bytes <- iconv(x, from = "UTF-8", to = "latin1", toRaw = TRUE)[[1]]
+      enc2utf8(rawToChar(bytes))
+    }, error = function(e) enc2utf8(x))
+  }, character(1), USE.NAMES = FALSE)
+}
+
 translate_to_pt_br <- function(records, log_path = NULL) {
-  # Traduz titulos e descricoes de fontes EU para pt-br usando IA
+  # Traduz titulos e descricoes de fontes EU para pt-br usando polyglotr (Google Translate)
   # Args:
   #   records: tibble com colunas titulo, descricao_resumida, idioma
   #   log_path: caminho para log opcional
@@ -785,10 +799,9 @@ translate_to_pt_br <- function(records, log_path = NULL) {
   
   if (is.null(records) || nrow(records) == 0) return(records)
   
-  # Verificar se IA esta disponivel
-  cfg <- get_ai_config()
-  if (!nzchar(cfg$provider) || !nzchar(cfg$api_key)) {
-    if (!is.null(log_path)) log_write(log_path, "WARN", "IA indisponivel para traducao. Mantendo titulos originais.")
+  # Verificar se polyglotr esta disponivel
+  if (!requireNamespace("polyglotr", quietly = TRUE)) {
+    if (!is.null(log_path)) log_write(log_path, "WARN", "Pacote polyglotr nao instalado. Traducao ignorada. Instale com: install.packages('polyglotr')")
     return(records)
   }
   
@@ -800,85 +813,54 @@ translate_to_pt_br <- function(records, log_path = NULL) {
     return(records)
   }
   
-  if (!is.null(log_path)) log_write(log_path, "INFO", sprintf("Traduzindo %d registros para pt-br...", length(needs_translation)))
+  if (!is.null(log_path)) log_write(log_path, "INFO", sprintf("Traduzindo %d registros para pt-br via Google Translate...", length(needs_translation)))
   
-  # Traduzir em lotes para evitar rate limiting
-  batch_size <- 5
-  n_batches <- ceiling(length(needs_translation) / batch_size)
-  
-  # Circuit breaker: abortar apos N falhas consecutivas
-  consecutive_failures <- 0L
-  max_consecutive_failures <- 3L
   translated_count <- 0L
+  failed_count <- 0L
   
-  for (batch_idx in seq_len(n_batches)) {
-    # Verificar circuit breaker antes de cada lote
-    if (consecutive_failures >= max_consecutive_failures) {
-      if (!is.null(log_path)) log_write(log_path, "WARN", 
-        sprintf("Circuit breaker ativo: %d falhas consecutivas. Abortando traducao. %d/%d registros traduzidos.", 
-                consecutive_failures, translated_count, length(needs_translation)))
-      break
-    }
+  for (i in needs_translation) {
+    titulo <- records$titulo[[i]]
     
-    start_idx <- (batch_idx - 1) * batch_size + 1
-    end_idx <- min(batch_idx * batch_size, length(needs_translation))
-    batch_indices <- needs_translation[start_idx:end_idx]
+    # Pular se titulo ja esta vazio ou e NA
+    if (is.null(titulo) || !nzchar(titulo) || is.na(titulo)) next
     
-    for (i in batch_indices) {
-      # Verificar circuit breaker antes de cada registro
-      if (consecutive_failures >= max_consecutive_failures) break
-      
-      titulo <- records$titulo[[i]]
-      descricao <- records$descricao_resumida[[i]]
-      
-      # Pular se titulo ja esta vazio
-      if (is.null(titulo) || !nzchar(titulo)) next
-      
-      # Criar prompt de traducao
-      prompt <- sprintf(
-        "Traduza para portugues brasileiro (pt-br) mantendo o tom formal e tecnico. Retorne APENAS o texto traduzido, sem aspas ou formatacao adicional.\n\nTexto: %s%s",
-        titulo,
-        if (!is.null(descricao) && nzchar(descricao)) {
-          sprintf("\n\nContexto adicional: %s", substr(descricao, 1, 500))
-        } else ""
-      )
-      
-      # Chamar IA com fallback e timeout reduzido
-      translated <- ai_request_with_fallback(prompt, timeout_sec = 15, retries = 1, log_path = log_path)
-      
-      if (!is.null(translated) && nzchar(translated)) {
-        # Limpar possiveis aspas ou formatacao indesejada
-        translated <- gsub('^["\']|["\']$', '', trimws(translated))
-        records$titulo[[i]] <- translated
-        records$idioma[[i]] <- "pt"
-        consecutive_failures <- 0L  # Resetar contador de falhas
-        translated_count <- translated_count + 1L
-        
-        # Traduzir descricao se existir e for substancial
-        if (!is.null(descricao) && nzchar(descricao) && nchar(descricao) > 50) {
-          desc_prompt <- sprintf(
-            "Traduza para portugues brasileiro (pt-br) mantendo o tom formal e tecnico. Retorne APENAS o texto traduzido.\n\n%s",
-            substr(descricao, 1, 1000)
-          )
-          desc_translated <- ai_request_with_fallback(desc_prompt, timeout_sec = 15, retries = 1, log_path = log_path)
-          if (!is.null(desc_translated) && nzchar(desc_translated)) {
-            records$descricao_resumida[[i]] <- gsub('^["\']|["\']$', '', trimws(desc_translated))
-          }
-        }
-      } else {
-        consecutive_failures <- consecutive_failures + 1L
-        if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Falha ao traduzir registro %d (falha consecutiva %d/%d): %s", i, consecutive_failures, max_consecutive_failures, substr(titulo, 1, 50)))
+    # Detectar idioma de origem: polaco se tem caracteres especiais, senao ingles
+    source_lang <- if (grepl("[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]", titulo)) "pl" else "en"
+    
+    # Traduzir titulo com polyglotr (Google Translate, sem API key)
+    translated <- tryCatch(
+      polyglotr::google_translate(titulo, target_language = "pt", source_language = source_lang),
+      error = function(e) {
+        if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Falha ao traduzir titulo: %s", e$message))
+        NA_character_
       }
+    )
+    
+    if (!is.na(translated) && nzchar(translated)) {
+      records$titulo[[i]] <- fix_polyglotr_encoding(translated)
+      records$idioma[[i]] <- "pt"
+      translated_count <- translated_count + 1L
       
-      # Rate limiting: pausa entre chamadas
-      Sys.sleep(0.3)
+      # Traduzir descricao se existir e for substancial
+      descricao <- records$descricao_resumida[[i]]
+      if (!is.null(descricao) && !is.na(descricao) && nzchar(descricao) && nchar(descricao) > 50) {
+        desc_translated <- tryCatch(
+          polyglotr::google_translate(substr(descricao, 1, 500), target_language = "pt", source_language = source_lang),
+          error = function(e) NA_character_
+        )
+        if (!is.na(desc_translated) && nzchar(desc_translated)) {
+          records$descricao_resumida[[i]] <- fix_polyglotr_encoding(desc_translated)
+        }
+      }
+    } else {
+      failed_count <- failed_count + 1L
     }
     
-    # Pausa entre lotes
-    if (batch_idx < n_batches && consecutive_failures < max_consecutive_failures) Sys.sleep(0.5)
+    # Rate limiting: pausa entre chamadas para nao sobrecarregar a API
+    Sys.sleep(0.3)
   }
   
-  if (!is.null(log_path)) log_write(log_path, "INFO", sprintf("Traducao concluida. %d/%d registros traduzidos.", translated_count, length(needs_translation)))
+  if (!is.null(log_path)) log_write(log_path, "INFO", sprintf("Traducao concluida. %d/%d registros traduzidos com sucesso (%d falhas).", translated_count, length(needs_translation), failed_count))
   
   records
 }

@@ -1259,7 +1259,14 @@ server <- function(input, output, session) {
               tags$h5(style = "color: #004691; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; font-weight: 700; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 0.5px;", "Objeto de Financiamento"),
               tags$div(
                 style = "font-size: 0.95rem; line-height: 1.7; color: #1e293b; white-space: pre-wrap; text-align: justify;",
-                opp$descricao_resumida[[1]] %||% "Resumo não disponível."
+                {
+                  resumo <- opp$descricao_resumida[[1]]
+                  if (is.null(resumo) || is.na(resumo) || !nzchar(trimws(resumo)) || identical(resumo, "Resumo não disponível.")) {
+                    "Resumo não disponível. Acesse o portal de origem para mais detalhes."
+                  } else {
+                    resumo
+                  }
+                }
               )
             ),
             # Links de Referência

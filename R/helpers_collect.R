@@ -1701,8 +1701,9 @@ collect_horizon_europe <- function(source_row, max_pages, max_records, use_ai, l
       } else ""
     }, error = function(e) "")
     if (length(titulo) == 0) titulo <- ""
+    # Detectar se titulo contem caracteres nao-ASCII (indica idioma local, nao ingles)
     is_english <- tryCatch(
-      !is.na(titulo) && is.character(titulo) && Encoding(titulo) == "unknown",
+      !is.na(titulo) && is.character(titulo) && !grepl("[^\x01-\x7F]", titulo),
       error = function(e) FALSE
     )
 
@@ -1812,13 +1813,20 @@ collect_horizon_europe <- function(source_row, max_pages, max_records, use_ai, l
     hash_input <- paste0(call_id, "|", titulo)
     hash_dedup <- digest::digest(hash_input, algo = "xxhash64")
 
+    # Garantir que descricao_resumida nunca seja NA ou vazia
+    resumo_final <- if (!is.na(descricao_text) && nzchar(descricao_text) && nchar(descricao_text) > 10) {
+      substr(descricao_text, 1, 500)
+    } else {
+      titulo  # Fallback: usar o titulo como resumo
+    }
+
     tibble::tibble(
       id_registro = sprintf("heu_%s", substr(hash_dedup, 1, 16)),
       entidade = "Horizon Europe",
       pais_origem = "União Europeia",
       titulo = titulo,
       subtitulo = call_id,
-      descricao_resumida = substr(descricao_text, 1, 500),
+      descricao_resumida = resumo_final,
       descricao_completa = descricao_text,
       tipo_oportunidade = tipo_acao,
       modalidade = NA_character_,
@@ -2002,7 +2010,8 @@ collect_erc <- function(source_row, max_pages, max_records, use_ai, log_path) {
     titulo <- if (!is.null(md$title)) {
       v <- md$title; if (is.list(v)) v[[1]] else v[1]
     } else ""
-    is_english <- !is.na(titulo) && Encoding(titulo) == "unknown"
+    # Detectar se titulo contem caracteres nao-ASCII (indica idioma local, nao ingles)
+    is_english <- !is.na(titulo) && is.character(titulo) && !grepl("[^\x01-\x7F]", titulo)
 
     if (is.null(dedup_map[[call_id]])) {
       dedup_map[[call_id]] <- list(item = item, is_english = is_english)
@@ -2103,13 +2112,20 @@ collect_erc <- function(source_row, max_pages, max_records, use_ai, log_path) {
     hash_input <- paste0(call_id, "|", titulo)
     hash_dedup <- digest::digest(hash_input, algo = "xxhash64")
 
+    # Garantir que descricao_resumida nunca seja NA ou vazia
+    resumo_final <- if (!is.na(descricao_text) && nzchar(descricao_text) && nchar(descricao_text) > 10) {
+      substr(descricao_text, 1, 500)
+    } else {
+      titulo  # Fallback: usar o titulo como resumo
+    }
+
     tibble::tibble(
       id_registro = sprintf("erc_%s", substr(hash_dedup, 1, 16)),
       entidade = "ERC",
       pais_origem = "União Europeia",
       titulo = titulo,
       subtitulo = call_id,
-      descricao_resumida = substr(descricao_text, 1, 500),
+      descricao_resumida = resumo_final,
       descricao_completa = descricao_text,
       tipo_oportunidade = tipo_acao,
       modalidade = NA_character_,

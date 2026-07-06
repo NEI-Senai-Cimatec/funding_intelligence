@@ -4,7 +4,7 @@
 [![Shiny](https://img.shields.io/badge/Shiny-1.8+-orange.svg)](https://shiny.posit.co/)
 [![License](https://img.shields.io/badge/License-Proprietary-red.svg)](#licença)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://www.docker.com/)
-[![SENAI CIMATEC](https://img.shields.io/badge/SENAI--CIMATEC-004691.svg)](https://www.senaicatec.com.br/)
+[![SENAI CIMATEC](https://img.shields.io/badge/SENAI--CIMATEC-004691.svg)](https://www.senaicimatec.com.br/)
 
 Plataforma de inteligência estratégica para monitoramento, busca booleana avançada e recomendação personalizada de editais de financiamento científico e tecnológico — nacionais e internacionais.
 
@@ -16,7 +16,7 @@ Centraliza **6 fontes de fomento** (CNPq, CAPES, FINEP, FAPESB, Horizon Europe, 
 
 | Componente | Status |
 |---|---|
-| Coleta multi-agência (6 fontes ativas) | ✅ Produção |
+| Coleta multi-agência (6 fontes ativas + FTOP proxy) | ✅ Produção |
 | Processamento assíncrono (background) | ✅ Produção |
 | Enriquecimento com IA (8 provedores) | ✅ Produção |
 | Tradução automática pt-br (fontes EU) | ✅ Produção |
@@ -139,6 +139,10 @@ flowchart TD
 - `collect_erc` — EU F&T Portal Search API com termos ERC específicos
 - `collect_generic_official` — Fallback HTML para CNPq e fontes não especializadas
 
+> **Nota sobre fontes EU:** Horizon Europe e ERC utilizam a EU F&T Portal API via
+> Cloudflare Worker proxy para contornar bloqueio de IPs da AWS no Posit Connect Cloud.
+> Veja a seção [Configuração do Proxy FTOP](#configuração-do-proxy-ftop-cloudflare-worker).
+
 ### Fontes Descontinuadas
 
 As seguintes fontes foram removidas na versão atual do sistema (commit `fbaa74c`):
@@ -167,7 +171,7 @@ Interface Shiny com `bslib` e Bootstrap 5. Responsável por:
 - Streaming de logs em tempo real via `collection_status.json`
 - Sincronização automática com Google Drive
 
-### `R/helpers_collect.R` — Motor de Coleta (2.278 linhas)
+### `R/helpers_collect.R` — Motor de Coleta (~2.910 linhas)
 
 Módulo mais extenso do sistema. Pipeline de coleta:
 
@@ -355,6 +359,127 @@ DBI::dbDisconnect(conn)
 
 ---
 
+## Configuração do Proxy FTOP (Cloudflare Worker)
+
+### Por que é necessário?
+
+A EU F&T Portal API (`api.tech.ec.europa.eu`) **bloqueia requisições vindas de IPs da AWS**. O Posit Connect Cloud roda na AWS, logo as coletas de Horizon Europe e ERC falham sem proxy.
+
+A solução é um **Cloudflare Worker** que atua como intermediário: Connect → Worker (IP não-AWS) → FTOP API.
+
+### Fluxo
+
+```
+Posit Connect Cloud (AWS)
+        │
+        ▼ HTTP POST
+Cloudflare Worker (IP neutro)
+        │
+        ▼ HTTP POST (forward)
+api.tech.ec.europa.eu/search?apiKey=SEDIA
+        │
+        ▼ JSON
+Cloudflare Worker → Connect → Grava no SQLite
+```
+
+### Passo 1 — Criar conta Cloudflare
+
+1. Acesse [dash.cloudflare.com](https://dash.cloudflare.com)
+2. Crie uma conta gratuita (plano gratuito: 100.000 requisições/dia)
+
+### Passo 2 — Criar o Worker
+
+1. No painel, vá em **Workers & Pages** → **Create** → **Create Worker**
+2. Escolha um nome (ex: `ftop-proxy`)
+3. Clique em **Deploy** (código inicial irrelevante)
+
+### Passo 3 — Configurar o código do Worker
+
+1. Clique em **Edit code** (aba "Code")
+2. Substitua todo o conteúdo pelo código abaixo:
+
+```javascript
+export default {
+  async fetch(request) {
+    const url = new URL(request.url);
+
+    // Allow CORS from anywhere
+    const corsHeaders = {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    };
+
+    if (request.method === "OPTIONS") {
+      return new Response(null, { headers: corsHeaders });
+    }
+
+    // Forward to FTOP API
+    const targetUrl =
+      "https://api.tech.ec.europa.eu" + url.pathname + url.search;
+
+    const newRequest = new Request(targetUrl, {
+      method: request.method,
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        Referer: "https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
+        Origin: "https://ec.europa.eu",
+        Accept: "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Content-Type": request.headers.get("Content-Type") || "application/x-www-form-urlencoded",
+      },
+      body: request.method !== "GET" && request.method !== "HEAD" ? await request.arrayBuffer() : undefined,
+    });
+
+    const response = await fetch(newRequest);
+    const responseBody = await response.arrayBuffer();
+
+    return new Response(responseBody, {
+      status: response.status,
+      headers: {
+        ...corsHeaders,
+        "Content-Type": response.headers.get("Content-Type") || "application/json",
+      },
+    });
+  },
+};
+```
+
+4. Clique em **Deploy**
+
+### Passo 4 — Verificar o Worker
+
+Teste no terminal:
+
+```bash
+curl -X POST "https://SEU-WORKER.seu-usuario.workers.dev/search?apiKey=SEDIA&text=HORIZON&pageSize=1"
+```
+
+Deve retornar JSON com `"totalResults"` > 0.
+
+### Passo 5 — Configurar no Posit Connect
+
+1. No painel do Connect, vá em **Environment** (ou **Variables**)
+2. Adicione a variável:
+
+| Variable | Value |
+|---|---|
+| `EU_API_PROXY_URL` | `https://SEU-WORKER.seu-usuario.workers.dev` |
+
+3. Faça **restart** do aplicativo
+
+### Troubleshooting
+
+| Sintoma | Causa | Solução |
+|---|---|---|
+| `curl: (7) Failed to connect` | Worker URL incorreta ou não deployado | Verificar URL no Dashboard do Cloudflare |
+| HTTP 404 do Worker | Rota incorreta | Verificar se Worker forwarda corretamente |
+| `totalResults: 0` | Filtros de query muito específicos | Testar com `text=HORIZON` primeiro |
+| Connect依旧 falha | Variável não propagada | Reiniciar app no Connect após adicionar env var |
+
+---
+
 ## Variáveis de Ambiente
 
 ### IA (pelo menos uma obrigatória)
@@ -389,6 +514,12 @@ DBI::dbDisconnect(conn)
 | `GDRIVE_SERVICE_ACCOUNT_JSON` | Caminho para arquivo JSON de Service Account |
 | `GDRIVE_SERVICE_ACCOUNT_CONTENT` | Conteúdo JSON inline da Service Account |
 | `GDRIVE_FILE_ID` | ID do arquivo SQLite no Google Drive |
+
+### API Europeia (necessário para Posit Connect)
+
+| Variável | Descrição | Padrão |
+|---|---|---|
+| `EU_API_PROXY_URL` | URL do Cloudflare Worker proxy para FTOP API | (vazio = FTOP direto) |
 
 ---
 
@@ -432,30 +563,6 @@ Rscript scratch/test_stealth_request.R
 # Testar retries da IA
 Rscript scratch/test_ai_backoff.R
 ```
-
----
-
-## Roadmap
-
-### Curto Prazo
-
-- [ ] Corrigir filtro `is_current_year_record` para aceitar HEU com deadline 2026-2027
-- [ ] Implementar cache de tradução pt-br (evitar re-traduzir)
-- [ ] Testes automatizados para coletores API (HEU, ERC, FAPESB)
-
-### Médio Prazo
-
-- [ ] Reintegração de FAPESP (API pública disponível)
-- [ ] Reintegração de FAPERJ/FAPES (fontes regionais estáveis)
-- [ ] Dashboard de métricas de coleta (taxa de sucesso, latência)
-- [ ] Alertas de novas oportunidades via email/Telegram
-
-### Longo Prazo
-
-- [ ] Expansão para fontes internacionais (NIH, NSF, Wellcome)
-- [ ] Classificação automática por área temática com LLM
-- [ ] Integração com sistemas de propostas institucionais
-- [ ] API pública para consulta de editais
 
 ---
 

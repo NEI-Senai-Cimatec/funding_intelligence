@@ -215,7 +215,7 @@ ui <- bslib::page_sidebar(
       tags$div(
         class = "app-title-main",
         h2("QuIIN - QFunding Intelligence Hub"),
-        p("Busca booleana, monitoramento de editais e recomendação a partir do banco local.")
+        p("Plataforma de inteligência de financiamento à pesquisa em tecnologias quânticas, com cobertura global de oportunidades")
       )
     ),
     uiOutput("header_status")

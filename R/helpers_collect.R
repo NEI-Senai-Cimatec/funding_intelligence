@@ -284,6 +284,39 @@ is_on_connect <- function() {
   nchar(Sys.getenv("CONNECT_SERVER")) > 0
 }
 
+test_eu_api_connect <- function() {
+  tryCatch(
+    {
+      url <- "https://api.tech.ec.europa.eu/search-api/prod/rest/search?apiKey=SEDIA&text=HORIZON&pageSize=1&pageNumber=1"
+      req <- httr2::request(url) |>
+        httr2::req_method("POST") |>
+        httr2::req_headers(
+          "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+          "Referer" = "https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
+          "Origin" = "https://ec.europa.eu",
+          "Accept" = "application/json, text/plain, */*",
+          "Content-Type" = "application/x-www-form-urlencoded"
+        ) |>
+        httr2::req_body_form(
+          "query" = '{"bool":{"must":[{"terms":{"frameworkProgramme":["43108390"]}}]}}',
+          "languages" = '["en"]',
+          "displayLanguage" = "en"
+        ) |>
+        httr2::req_timeout(15)
+      resp <- httr2::req_perform(req)
+      status <- httr2::resp_status(resp)
+      if (status >= 200L && status < 400L) {
+        body <- httr2::resp_body_json(resp)
+        return(!is.null(body$results))
+      }
+      FALSE
+    },
+    error = function(e) {
+      FALSE
+    }
+  )
+}
+
 is_host_alive <- function(url) {
   tryCatch(
     {
@@ -1808,15 +1841,20 @@ collect_horizon_europe <- function(source_row, max_pages, max_records, use_ai, l
   all_items <- list()
   seen_ids <- character(0)
 
-  # Connect: API EU bloqueia IPs AWS — usar CORDIS diretamente
+  # Connect: API EU bloqueia IPs AWS — testar FTOP direto, senao usar CORDIS
   if (is_on_connect()) {
-    .log("INFO", "Executando no Posit Connect. Usando CORDIS como fonte EU primaria.")
-    try(log_progress("CORDIS: usando como fonte EU primaria (Connect)", "Scraping"), silent = TRUE)
-    cordis_res <- tryCatch(collect_cordis(log_path = log_path, max_records = 50L), error = function(e) {
-      .log("WARN", sprintf("CORDIS falhou no Connect: %s", e$message))
-      list(records = tibble::tibble(), pages_visited = 0L, last_url = api_url)
-    })
-    return(cordis_res)
+    if (test_eu_api_connect()) {
+      .log("INFO", "FTOP API acessivel no Connect. Usando FTOP diretamente.")
+      try(log_progress("FTOP: acessivel no Connect", "Scraping"), silent = TRUE)
+    } else {
+      .log("INFO", "FTOP API bloqueada no Connect. Usando CORDIS como fallback.")
+      try(log_progress("CORDIS: usando como fallback (Connect)", "Scraping"), silent = TRUE)
+      cordis_res <- tryCatch(collect_cordis(log_path = log_path, max_records = 50L), error = function(e) {
+        .log("WARN", sprintf("CORDIS falhou no Connect: %s", e$message))
+        list(records = tibble::tibble(), pages_visited = 0L, last_url = api_url)
+      })
+      return(cordis_res)
+    }
   }
 
   # Pre-flight: verificar conectividade com a API EU antes do loop
@@ -2190,11 +2228,16 @@ collect_erc <- function(source_row, max_pages, max_records, use_ai, log_path) {
   all_items <- list()
   seen_ids <- character(0)
 
-  # Connect: API EU bloqueia IPs AWS - HEU ja usa CORDIS, ERC nao coleta no Connect
+  # Connect: API EU bloqueia IPs AWS — testar FTOP direto, senao ERC nao coleta
   if (is_on_connect()) {
-    .log("INFO", "Executando no Posit Connect. ERC nao coleta (HEU ja usa CORDIS).")
-    try(log_progress("ERC: pulado no Connect (HEU usa CORDIS)", "Scraping"), silent = TRUE)
-    return(list(records = tibble::tibble(), pages_visited = 0L, last_url = api_url))
+    if (test_eu_api_connect()) {
+      .log("INFO", "FTOP API acessivel no Connect. Usando FTOP diretamente para ERC.")
+      try(log_progress("FTOP: acessivel no Connect (ERC)", "Scraping"), silent = TRUE)
+    } else {
+      .log("INFO", "FTOP API bloqueada no Connect. ERC nao coleta (CORDIS so cobre HEU).")
+      try(log_progress("ERC: pulado no Connect (FTOP bloqueada)", "Scraping"), silent = TRUE)
+      return(list(records = tibble::tibble(), pages_visited = 0L, last_url = api_url))
+    }
   }
 
   # Pre-flight: verificar conectividade com a API EU antes do loop

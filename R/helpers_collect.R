@@ -2190,15 +2190,11 @@ collect_erc <- function(source_row, max_pages, max_records, use_ai, log_path) {
   all_items <- list()
   seen_ids <- character(0)
 
-  # Connect: API EU bloqueia IPs AWS — usar CORDIS diretamente
+  # Connect: API EU bloqueia IPs AWS - HEU ja usa CORDIS, ERC nao coleta no Connect
   if (is_on_connect()) {
-    .log("INFO", "Executando no Posit Connect. Usando CORDIS como fonte EU primaria.")
-    try(log_progress("CORDIS: usando como fonte EU primaria (Connect)", "Scraping"), silent = TRUE)
-    cordis_res <- tryCatch(collect_cordis(log_path = log_path, max_records = 50L), error = function(e) {
-      .log("WARN", sprintf("CORDIS falhou no Connect: %s", e$message))
-      list(records = tibble::tibble(), pages_visited = 0L, last_url = api_url)
-    })
-    return(cordis_res)
+    .log("INFO", "Executando no Posit Connect. ERC nao coleta (HEU ja usa CORDIS).")
+    try(log_progress("ERC: pulado no Connect (HEU usa CORDIS)", "Scraping"), silent = TRUE)
+    return(list(records = tibble::tibble(), pages_visited = 0L, last_url = api_url))
   }
 
   # Pre-flight: verificar conectividade com a API EU antes do loop

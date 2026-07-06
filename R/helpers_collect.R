@@ -161,7 +161,11 @@ eu_api_request <- function(url, body_data, timeout_sec = 60, log_path = NULL) {
     if (is.null(first_error)) first_error <<- msg
   }
 
-  encoded_body <- paste0("query=", URLencode(body_data, reserved = TRUE))
+  encoded_body <- paste0(
+    "query=", URLencode(body_data, reserved = TRUE),
+    "&languages=", URLencode('["en"]', reserved = TRUE),
+    "&displayLanguage=", URLencode("en", reserved = TRUE)
+  )
   user_agent <- "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 
   do_curl_r <- function(ssl_verify) {
@@ -212,6 +216,8 @@ eu_api_request <- function(url, body_data, timeout_sec = 60, log_path = NULL) {
       "-H", "Accept: application/json, text/plain, */*",
       "-H", "Content-Type: application/x-www-form-urlencoded",
       "--data-urlencode", paste0("query=", body_data),
+      "--data-urlencode", "languages=[\"en\"]",
+      "--data-urlencode", "displayLanguage=en",
       "-o", tmp, "-w", "%{http_code}"
     )
     exit <- tryCatch(

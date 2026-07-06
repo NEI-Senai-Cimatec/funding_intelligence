@@ -2781,8 +2781,12 @@ collect_cordis <- function(log_path = NULL, max_records = 100L) {
       # Extrair idioma do artigo
       article_language <- article$language %||% "en"
 
-      # Extrair link (CORDIS usa rcn como ID)
-      link_detalhe <- sprintf("https://cordis.europa.eu/article/%s/pt", rcn)
+      # Extrair link (CORDIS: /project/id/{project_id} para projetos)
+      link_detalhe <- if (!is.na(project_ec_id) && nzchar(project_ec_id)) {
+        sprintf("https://cordis.europa.eu/project/id/%s", project_ec_id)
+      } else {
+        sprintf("https://cordis.europa.eu/article/%s/en", rcn)
+      }
 
       all_items <- c(all_items, list(list(
         rcn = rcn,
@@ -2864,7 +2868,7 @@ collect_cordis <- function(log_path = NULL, max_records = 100L) {
       data_limite = NA_character_,
       data_encerramento = item$last_update,
       status_oportunidade = "referencia",
-      link_origem = "https://cordis.europa.eu/",
+      link_origem = item$link,
       link_detalhe = item$link,
       link_documento_pdf = NA_character_,
       idioma = item$article_language,

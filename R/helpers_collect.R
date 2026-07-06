@@ -1,39 +1,46 @@
 log_progress <- function(detail, phase = "Scraping") {
-  try({
-    log_file <- Sys.getenv("COLLECTION_MODAL_LOG_FILE")
-    if (!nzchar(log_file)) {
-      log_file <- file.path(getwd(), "logs", "collection_modal_log.txt")
-    }
-    log_line <- sprintf("[%s] [%s] %s", format(Sys.time(), "%H:%M:%S"), phase, detail)
-    cat(log_line, "\n", file = log_file, append = TRUE)
-  }, silent = TRUE)
+  try(
+    {
+      log_file <- Sys.getenv("COLLECTION_MODAL_LOG_FILE")
+      if (!nzchar(log_file)) {
+        log_file <- file.path(getwd(), "logs", "collection_modal_log.txt")
+      }
+      log_line <- sprintf("[%s] [%s] %s", format(Sys.time(), "%H:%M:%S"), phase, detail)
+      cat(log_line, "\n", file = log_file, append = TRUE)
+    },
+    silent = TRUE
+  )
 }
 
 detect_next_page <- function(html, current_url) {
   nodes <- rvest::html_nodes(html, "a")
-  if (length(nodes) == 0) return(NA_character_)
-  
+  if (length(nodes) == 0) {
+    return(NA_character_)
+  }
+
   hrefs <- rvest::html_attr(nodes, "href")
   texts <- tolower(rvest::html_text(nodes, trim = TRUE))
   rels <- tolower(rvest::html_attr(nodes, "rel"))
-  
+
   valid <- !is.na(hrefs) & nzchar(hrefs)
-  if (!any(valid)) return(NA_character_)
-  
+  if (!any(valid)) {
+    return(NA_character_)
+  }
+
   hrefs <- hrefs[valid]
   texts <- texts[valid]
   rels <- rels[valid]
-  
+
   next_idx <- which(rels == "next")
   if (length(next_idx) > 0) {
     return(resolve_url(current_url, hrefs[[next_idx[1]]]))
   }
-  
+
   match_idx <- which(grepl("pr[oó]xim[oa]|next|\\bsecund\\b|\\bseg\\b|\\bdaqui\\b|>", texts))
   if (length(match_idx) > 0) {
     return(resolve_url(current_url, hrefs[[match_idx[1]]]))
   }
-  
+
   NA_character_
 }
 
@@ -57,12 +64,14 @@ get_collector <- function(source_id) {
 source_dispatch <- function(source_row, max_pages = 5, max_records = 15, use_ai = FALSE, log_path = NULL, conn = NULL) {
   sid <- source_row$id_fonte[[1]]
   collector <- get_collector(sid)
-  
+
   result <- tryCatch(
     collector$fn(source_row, max_pages, max_records, FALSE, log_path),
     error = function(e) {
-      log_write(log_path, "ERROR", sprintf("Falha no collector '%s' para %s: %s", 
-                collector$description, sid, e$message))
+      log_write(log_path, "ERROR", sprintf(
+        "Falha no collector '%s' para %s: %s",
+        collector$description, sid, e$message
+      ))
       NULL
     }
   )
@@ -83,8 +92,9 @@ safe_request_page_playwright <- function(url, log_path = NULL) {
     return(list(ok = FALSE))
   }
   current_ua <- get_random_ua()
-  res <- tryCatch({
-    reticulate::py_run_string(sprintf("
+  res <- tryCatch(
+    {
+      reticulate::py_run_string(sprintf("
 def run_playwright_stealth(url):
     from playwright.sync_api import sync_playwright
     try:
@@ -114,24 +124,26 @@ def run_playwright_stealth(url):
     except Exception as e:
         return {'content': str(e), 'ok': False}
 "))
-    playwright_run <- reticulate::py$run_playwright_stealth(url)
-    if (isTRUE(playwright_run$ok)) {
-      has_block <- grepl("attention required! \\| cloudflare|cf-challenge|ray id:|checking your browser before accessing|security challenge|access denied", tolower(playwright_run$content))
-      if (has_block) {
-        if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Bloqueio de CDN/CAPTCHA detectado via Playwright para %s.", url))
-        list(ok = FALSE)
+      playwright_run <- reticulate::py$run_playwright_stealth(url)
+      if (isTRUE(playwright_run$ok)) {
+        has_block <- grepl("attention required! \\| cloudflare|cf-challenge|ray id:|checking your browser before accessing|security challenge|access denied", tolower(playwright_run$content))
+        if (has_block) {
+          if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Bloqueio de CDN/CAPTCHA detectado via Playwright para %s.", url))
+          list(ok = FALSE)
+        } else {
+          html <- xml2::read_html(playwright_run$content)
+          list(url = url, html = html, text = playwright_run$content, ok = TRUE, method = "playwright")
+        }
       } else {
-        html <- xml2::read_html(playwright_run$content)
-        list(url = url, html = html, text = playwright_run$content, ok = TRUE, method = "playwright")
+        if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Playwright falhou para %s: %s", url, playwright_run$content))
+        list(ok = FALSE)
       }
-    } else {
-      if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Playwright falhou para %s: %s", url, playwright_run$content))
+    },
+    error = function(e) {
+      if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Erro de execucao Playwright: %s", e$message))
       list(ok = FALSE)
     }
-  }, error = function(e) {
-    if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Erro de execucao Playwright: %s", e$message))
-    list(ok = FALSE)
-  })
+  )
   res
 }
 
@@ -169,7 +181,9 @@ eu_api_request <- function(url, body_data, timeout_sec = 60, log_path = NULL) {
       followlocation = TRUE
     )
     r <- curl::curl_fetch_memory(url, handle = h)
-    if (r$status_code >= 400L || length(r$content) == 0) return(NULL)
+    if (r$status_code >= 400L || length(r$content) == 0) {
+      return(NULL)
+    }
     jsonlite::fromJSON(rawToChar(r$content), simplifyVector = FALSE)
   }
 
@@ -182,27 +196,41 @@ eu_api_request <- function(url, body_data, timeout_sec = 60, log_path = NULL) {
     }
     tmp <- tempfile(fileext = ".json")
     tmp_err <- tempfile(fileext = ".stderr")
-    on.exit({ unlink(tmp); unlink(tmp_err) }, add = TRUE)
-    args <- c("-s", "--max-time", as.character(timeout_sec),
-              "-X", "POST", url,
-              "-H", paste0("User-Agent: ", user_agent),
-              "-H", "Referer: https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
-              "-H", "Origin: https://ec.europa.eu",
-              "-H", "Accept: application/json, text/plain, */*",
-              "-H", "Content-Type: application/x-www-form-urlencoded",
-              "--data-urlencode", paste0("query=", body_data),
-              "-o", tmp, "-w", "%{http_code}")
-    exit <- tryCatch({
-      if (.Platform$OS.type == "windows") {
-        quoted <- vapply(args, function(a) if (grepl("[&|<>^%\\s]", a)) shQuote(a) else a, character(1))
-        cmd <- paste(c(curl_bin, quoted), collapse = " ")
-        output <- shell(paste(cmd, "2>", shQuote(tmp_err)), intern = TRUE)
-        http_code <- suppressWarnings(as.integer(output[length(output)]))
-        if (is.na(http_code)) 1L else http_code
-      } else {
-        system2(curl_bin, args, stdout = tmp_err, stderr = tmp_err)
+    on.exit(
+      {
+        unlink(tmp)
+        unlink(tmp_err)
+      },
+      add = TRUE
+    )
+    args <- c(
+      "-s", "--max-time", as.character(timeout_sec),
+      "-X", "POST", url,
+      "-H", paste0("User-Agent: ", user_agent),
+      "-H", "Referer: https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
+      "-H", "Origin: https://ec.europa.eu",
+      "-H", "Accept: application/json, text/plain, */*",
+      "-H", "Content-Type: application/x-www-form-urlencoded",
+      "--data-urlencode", paste0("query=", body_data),
+      "-o", tmp, "-w", "%{http_code}"
+    )
+    exit <- tryCatch(
+      {
+        if (.Platform$OS.type == "windows") {
+          quoted <- vapply(args, function(a) if (grepl("[&|<>^%\\s]", a)) shQuote(a) else a, character(1))
+          cmd <- paste(c(curl_bin, quoted), collapse = " ")
+          output <- shell(paste(cmd, "2>", shQuote(tmp_err)), intern = TRUE)
+          http_code <- suppressWarnings(as.integer(output[length(output)]))
+          if (is.na(http_code)) 1L else http_code
+        } else {
+          system2(curl_bin, args, stdout = tmp_err, stderr = tmp_err)
+        }
+      },
+      error = function(e) {
+        set_error(sprintf("curl CLI erro: %s", e$message))
+        1
       }
-    }, error = function(e) { set_error(sprintf("curl CLI erro: %s", e$message)); 1 })
+    )
     cli_out <- tryCatch(readLines(tmp_err, warn = FALSE), error = function(e) character())
     cli_err <- paste(cli_out, collapse = " | ")
     if (nzchar(cli_err)) set_error(paste0("curl CLI: ", substr(cli_err, 1, 200)))
@@ -215,24 +243,36 @@ eu_api_request <- function(url, body_data, timeout_sec = 60, log_path = NULL) {
 
   for (attempt in 1:2) {
     resp <- tryCatch(do_curl_r(ssl_verify = 1L), error = function(e) {
-      set_error(e$message); .log("WARN", sprintf("curl SSL tentativa %d: %s", attempt, e$message)); NULL
+      set_error(e$message)
+      .log("WARN", sprintf("curl SSL tentativa %d: %s", attempt, e$message))
+      NULL
     })
-    if (!is.null(resp)) return(resp)
+    if (!is.null(resp)) {
+      return(resp)
+    }
     if (attempt < 2) Sys.sleep(1)
   }
 
   for (attempt in 1:2) {
     resp <- tryCatch(do_curl_r(ssl_verify = 0L), error = function(e) {
-      set_error(e$message); .log("WARN", sprintf("curl noSSL tentativa %d: %s", attempt, e$message)); NULL
+      set_error(e$message)
+      .log("WARN", sprintf("curl noSSL tentativa %d: %s", attempt, e$message))
+      NULL
     })
-    if (!is.null(resp)) return(resp)
+    if (!is.null(resp)) {
+      return(resp)
+    }
     if (attempt < 2) Sys.sleep(1)
   }
 
   resp <- tryCatch(do_curl_cli(), error = function(e) {
-    set_error(e$message); .log("WARN", sprintf("curl CLI: %s", e$message)); NULL
+    set_error(e$message)
+    .log("WARN", sprintf("curl CLI: %s", e$message))
+    NULL
   })
-  if (!is.null(resp)) return(resp)
+  if (!is.null(resp)) {
+    return(resp)
+  }
 
   err_detail <- if (!is.null(first_error)) substr(first_error, 1, 120) else "motivo desconhecido"
   .modal(sprintf("AVISO: EU API falhou - %s", err_detail))
@@ -245,36 +285,45 @@ is_on_connect <- function() {
 }
 
 is_host_alive <- function(url) {
-  tryCatch({
-    req <- httr2::request(url) |>
-      httr2::req_method("POST") |>
-      httr2::req_headers("Content-Type" = "application/x-www-form-urlencoded") |>
-      httr2::req_body_form("apiKey" = "SEDIA", "text" = "test", "pageNumber" = "1", "pageSize" = "1") |>
-      httr2::req_timeout(8)
-    httr2::req_perform(req)
-    TRUE
-  }, error = function(e) {
-    msg <- conditionMessage(e)
-    if (grepl("Could not resolve host|Could not resolve hostname|Timeout was reached|Connection refused|Failed to connect|schannel|server closed abruptly|missing close_notify", msg, ignore.case = TRUE)) {
-      return(FALSE)
+  tryCatch(
+    {
+      req <- httr2::request(url) |>
+        httr2::req_method("POST") |>
+        httr2::req_headers(
+          "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+          "Referer" = "https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
+          "Origin" = "https://ec.europa.eu",
+          "Accept" = "application/json, text/plain, */*",
+          "Content-Type" = "application/x-www-form-urlencoded"
+        ) |>
+        httr2::req_body_form("apiKey" = "SEDIA", "text" = "test", "pageNumber" = "1", "pageSize" = "1") |>
+        httr2::req_timeout(8)
+      httr2::req_perform(req)
+      TRUE
+    },
+    error = function(e) {
+      msg <- conditionMessage(e)
+      if (grepl("Could not resolve host|Could not resolve hostname|Timeout was reached|Connection refused|Failed to connect|schannel|server closed abruptly|missing close_notify", msg, ignore.case = TRUE)) {
+        return(FALSE)
+      }
+      TRUE
     }
-    TRUE
-  })
+  )
 }
 
 chromote_wait_for_content <- function(session, max_wait = 15, min_wait = 2, check_interval = 0.5) {
   start_time <- Sys.time()
   last_length <- 0L
   stable_count <- 0L
-  
+
   while (as.numeric(Sys.time() - start_time, units = "secs") < max_wait) {
     Sys.sleep(check_interval)
-    
+
     html_length <- tryCatch(
       nchar(session$Runtime$evaluate("document.documentElement.outerHTML")$result$value),
       error = function(e) 0L
     )
-    
+
     if (html_length == last_length && html_length > 0L) {
       stable_count <- stable_count + 1L
       if (stable_count >= 3L) break
@@ -283,10 +332,10 @@ chromote_wait_for_content <- function(session, max_wait = 15, min_wait = 2, chec
     }
     last_length <- html_length
   }
-  
+
   elapsed <- as.numeric(Sys.time() - start_time, units = "secs")
   if (elapsed < min_wait) Sys.sleep(min_wait - elapsed)
-  
+
   invisible(TRUE)
 }
 
@@ -317,12 +366,17 @@ safe_request_page <- function(url, log_path = NULL, use_browser_fallback = TRUE,
     httr2::req_timeout(15) |>
     httr2::req_retry(max_tries = 2)
 
-  resp <- tryCatch({
-    httr2::req_perform(req)
-  }, error = function(e) {
-    if (!is.null(e$response)) return(e$response)
-    e
-  })
+  resp <- tryCatch(
+    {
+      httr2::req_perform(req)
+    },
+    error = function(e) {
+      if (!is.null(e$response)) {
+        return(e$response)
+      }
+      e
+    }
+  )
 
   if (!inherits(resp, "error")) {
     status <- httr2::resp_status(resp)
@@ -365,7 +419,7 @@ safe_request_page <- function(url, log_path = NULL, use_browser_fallback = TRUE,
     b <- try(chromote::ChromoteSession$new(), silent = TRUE)
     if (!inherits(b, "try-error")) {
       on.exit(try(b$close(), silent = TRUE), add = TRUE)
-      
+
       js_stealth_code <- paste(
         "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });",
         "Object.defineProperty(navigator, 'languages', { get: () => ['pt-BR', 'pt', 'en-US', 'en'] });",
@@ -378,14 +432,14 @@ safe_request_page <- function(url, log_path = NULL, use_browser_fallback = TRUE,
         "    originalQuery(parameters);",
         sep = "\n"
       )
-      
+
       try(b$Page$addScriptToEvaluateOnNewDocument(source = js_stealth_code), silent = TRUE)
       try(b$Network$setUserAgentOverride(
         userAgent = get_random_ua()
       ), silent = TRUE)
-      
+
       try(b$Page$navigate(url), silent = TRUE)
-      chromote_wait_for_content(b, 
+      chromote_wait_for_content(b,
         max_wait = as.numeric(Sys.getenv("CHROMOTE_MAX_WAIT", "15")),
         min_wait = as.numeric(Sys.getenv("CHROMOTE_MIN_WAIT", "2")),
         check_interval = as.numeric(Sys.getenv("CHROMOTE_CHECK_INTERVAL", "0.5"))
@@ -416,9 +470,13 @@ safe_request_page <- function(url, log_path = NULL, use_browser_fallback = TRUE,
 text_has_funding_signal <- function(text) {
   vals <- as.character(text %||% NA_character_)
   vapply(vals, function(one) {
-    if (length(one) == 0 || is.na(one)) return(FALSE)
+    if (length(one) == 0 || is.na(one)) {
+      return(FALSE)
+    }
     txt <- normalize_text(substr(one, 1, 5000))
-    if (!nzchar(txt)) return(FALSE)
+    if (!nzchar(txt)) {
+      return(FALSE)
+    }
     grepl(
       paste(
         c(
@@ -445,8 +503,8 @@ is_funding_opportunity_heuristics <- function(title, description = "", url = "",
 
   # 1. Regras de descarte pelo URL (notícias, institucionais, privacidade, etc.)
   invalid_url_patterns <- c(
-    "/noticias", "/noticia", "/tv-", "/tv/", "/video", "/membros", 
-    "/regulamentos", "/como-usar", "/archive", "/privacidade", 
+    "/noticias", "/noticia", "/tv-", "/tv/", "/video", "/membros",
+    "/regulamentos", "/como-usar", "/archive", "/privacidade",
     "/lgpd", "/politica-de-privacidade", "/contatos", "/fale-conosco",
     "/equipe", "/quem-somos", "/sobre-nos", "/servicos-ao-cidadao",
     "/perguntas-frequentes", "/faq", "/documentos",
@@ -456,7 +514,7 @@ is_funding_opportunity_heuristics <- function(title, description = "", url = "",
     "perguntas-frequentes", "perguntas_frequentes",
     "nota-de-esclarecimento", "anexo"
   )
-  
+
   if (any(vapply(invalid_url_patterns, function(pat) grepl(pat, u_norm, fixed = TRUE), logical(1)))) {
     return(FALSE)
   }
@@ -513,21 +571,21 @@ is_funding_opportunity_heuristics <- function(title, description = "", url = "",
   }
 
   # 3. Regras específicas sobre e-books, manuais e materiais institucionais
-  if (grepl("daad 2025 confap", t_norm) || 
-      grepl("fapes 20 anos", t_norm) || 
-      grepl("ebook", t_norm) ||
-      grepl("relatorio anual", t_norm)) {
+  if (grepl("daad 2025 confap", t_norm) ||
+    grepl("fapes 20 anos", t_norm) ||
+    grepl("ebook", t_norm) ||
+    grepl("relatorio anual", t_norm)) {
     return(FALSE)
   }
 
   # 4. Caso o título seja apenas um arquivo de retificação/anexo/resultado
-  if (grepl("\\.pdf$", t_norm) && 
-      (grepl("alteracao", t_norm) || 
-       grepl("retificacao", t_norm) || 
-       grepl("aditivo", t_norm) || 
-       grepl("anexo", t_norm) || 
-       grepl("resultado", t_norm) || 
-       grepl("prorrogacao", t_norm))) {
+  if (grepl("\\.pdf$", t_norm) &&
+    (grepl("alteracao", t_norm) ||
+      grepl("retificacao", t_norm) ||
+      grepl("aditivo", t_norm) ||
+      grepl("anexo", t_norm) ||
+      grepl("resultado", t_norm) ||
+      grepl("prorrogacao", t_norm))) {
     return(FALSE)
   }
 
@@ -540,57 +598,75 @@ is_funding_opportunity_heuristics <- function(title, description = "", url = "",
 }
 
 extract_meta_title <- function(html) {
-  if (is.null(html)) return(NA_character_)
+  if (is.null(html)) {
+    return(NA_character_)
+  }
   h1 <- try(rvest::html_element(html, "h1"), silent = TRUE)
   title_1 <- if (!inherits(h1, "try-error")) safe_html_text(h1) else NA_character_
-  if (!is.na(title_1) && nzchar(title_1)) return(title_1)
+  if (!is.na(title_1) && nzchar(title_1)) {
+    return(title_1)
+  }
 
   og <- try(rvest::html_element(html, "meta[property='og:title']"), silent = TRUE)
   title_og <- if (!inherits(og, "try-error")) safe_attr(og, "content") else NA_character_
-  if (!is.na(title_og) && nzchar(title_og)) return(normalize_ws(title_og))
+  if (!is.na(title_og) && nzchar(title_og)) {
+    return(normalize_ws(title_og))
+  }
 
   ttl <- try(rvest::html_element(html, "title"), silent = TRUE)
   title_tag <- if (!inherits(ttl, "try-error")) safe_html_text(ttl) else NA_character_
-  if (!is.na(title_tag) && nzchar(title_tag)) return(title_tag)
+  if (!is.na(title_tag) && nzchar(title_tag)) {
+    return(title_tag)
+  }
   NA_character_
 }
 
 extract_page_summary <- function(html, max_chars = 1200) {
-  if (is.null(html)) return(NA_character_)
+  if (is.null(html)) {
+    return(NA_character_)
+  }
   nodes <- try(rvest::html_elements(html, "main p, article p, .content p, .entry-content p, .post-content p, body p"), silent = TRUE)
   if (inherits(nodes, "try-error") || length(nodes) == 0) {
     body <- try(rvest::html_element(html, "body"), silent = TRUE)
     txt <- if (!inherits(body, "try-error")) safe_html_text(body) else NA_character_
-    if (is.na(txt) || !nzchar(txt)) return(NA_character_)
+    if (is.na(txt) || !nzchar(txt)) {
+      return(NA_character_)
+    }
     return(stringr::str_squish(stringr::str_sub(txt, 1, max_chars)))
   }
   txt <- vapply(nodes, safe_html_text, character(1))
   txt <- txt[!is.na(txt) & nzchar(txt)]
-  if (length(txt) == 0) return(NA_character_)
+  if (length(txt) == 0) {
+    return(NA_character_)
+  }
   stringr::str_squish(stringr::str_sub(paste(txt, collapse = " "), 1, max_chars))
 }
 
 extract_candidate_links <- function(html, base_url, source_id) {
   anchors <- try(rvest::html_elements(html, "a[href]"), silent = TRUE)
-  if (inherits(anchors, "try-error") || length(anchors) == 0) return(tibble::tibble())
-  
+  if (inherits(anchors, "try-error") || length(anchors) == 0) {
+    return(tibble::tibble())
+  }
+
   hrefs <- rvest::html_attr(anchors, "href")
   abs_urls <- vapply(hrefs, function(h) resolve_url(base_url, h), character(1))
-  
+
   valid <- !is.na(abs_urls) & nzchar(abs_urls)
-  if (!any(valid)) return(tibble::tibble())
-  
+  if (!any(valid)) {
+    return(tibble::tibble())
+  }
+
   anchors <- anchors[valid]
   abs_urls <- abs_urls[valid]
-  
+
   anchor_texts <- vapply(anchors, safe_html_text, character(1))
   container_texts <- vapply(anchors, function(a) {
     parent <- try(rvest::html_parent(a), silent = TRUE)
     nearest_block_text(a) %||% (if (!inherits(parent, "try-error")) safe_html_text(parent) else "") %||% ""
   }, character(1))
-  
+
   is_pdf <- grepl("\\.pdf($|\\?)", abs_urls, ignore.case = TRUE)
-  
+
   tibble::tibble(
     anchor_text = anchor_texts,
     container_text = container_texts,
@@ -600,7 +676,9 @@ extract_candidate_links <- function(html, base_url, source_id) {
 }
 
 extract_listing_candidates <- function(html, base_url, source_row) {
-  if (is.null(html)) return(tibble::tibble())
+  if (is.null(html)) {
+    return(tibble::tibble())
+  }
 
   # 1) Candidatos por blocos de conteúdo
   block_sel <- paste(
@@ -618,10 +696,14 @@ extract_listing_candidates <- function(html, base_url, source_row) {
     block_df <- purrr::map_dfr(seq_along(blocks), function(i) {
       node <- blocks[[i]]
       raw_txt <- safe_html_text(node)
-      if (is.na(raw_txt) || nchar(raw_txt) < 40) return(tibble::tibble())
+      if (is.na(raw_txt) || nchar(raw_txt) < 40) {
+        return(tibble::tibble())
+      }
 
       anchors <- try(rvest::html_elements(node, "a[href]"), silent = TRUE)
-      if (inherits(anchors, "try-error") || length(anchors) == 0) return(tibble::tibble())
+      if (inherits(anchors, "try-error") || length(anchors) == 0) {
+        return(tibble::tibble())
+      }
 
       hrefs <- rvest::html_attr(anchors, "href")
       hrefs[is.na(hrefs)] <- ""
@@ -649,7 +731,9 @@ extract_listing_candidates <- function(html, base_url, source_row) {
       keep <- text_has_funding_signal(c(title, raw_txt))[[1]] ||
         length(pdf_urls) > 0 ||
         any(grepl("edital|grant|funding|call|bolsa|auxilio|subvenc|fomento|apply|proposal", normalize_text(detail_urls), perl = TRUE))
-      if (!isTRUE(keep)) return(tibble::tibble())
+      if (!isTRUE(keep)) {
+        return(tibble::tibble())
+      }
 
       tibble::tibble(
         candidate_title = null_if_empty(title),
@@ -784,35 +868,40 @@ extract_text_from_pdf <- function(pdf_url, log_path = NULL) {
   .scrape_rate_limiter$wait_if_needed(pdf_url)
   tf <- tempfile(fileext = ".pdf")
   hdrs <- build_scrape_headers()
-  ok <- try({
-    req <- httr2::request(pdf_url) |>
-      httr2::req_user_agent(hdrs$`User-Agent`) |>
-      httr2::req_headers(
-        `Accept` = "application/pdf,*/*",
-        `Accept-Language` = hdrs$`Accept-Language`,
-        `Accept-Encoding` = hdrs$`Accept-Encoding`
-      ) |>
-      httr2::req_timeout(20)
-    resp <- httr2::req_perform(req, path = tf)
-    ct <- httr2::resp_header(resp, "Content-Type") %||% ""
-    if (!grepl("pdf|octet-stream", ct, ignore.case = TRUE) && file.exists(tf)) {
-      if (file.info(tf)$size < 500) {
-        txt_content <- try(readLines(tf, warn = FALSE), silent = TRUE)
-        if (!inherits(txt_content, "try-error") && any(grepl("html|login|captcha|cloudflare", txt_content, ignore.case = TRUE))) {
-          if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("PDF download retornou HTML/CAPTCHA para %s", pdf_url))
-          unlink(tf)
-          return(NA_character_)
+  ok <- try(
+    {
+      req <- httr2::request(pdf_url) |>
+        httr2::req_user_agent(hdrs$`User-Agent`) |>
+        httr2::req_headers(
+          `Accept` = "application/pdf,*/*",
+          `Accept-Language` = hdrs$`Accept-Language`,
+          `Accept-Encoding` = hdrs$`Accept-Encoding`
+        ) |>
+        httr2::req_timeout(20)
+      resp <- httr2::req_perform(req, path = tf)
+      ct <- httr2::resp_header(resp, "Content-Type") %||% ""
+      if (!grepl("pdf|octet-stream", ct, ignore.case = TRUE) && file.exists(tf)) {
+        if (file.info(tf)$size < 500) {
+          txt_content <- try(readLines(tf, warn = FALSE), silent = TRUE)
+          if (!inherits(txt_content, "try-error") && any(grepl("html|login|captcha|cloudflare", txt_content, ignore.case = TRUE))) {
+            if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("PDF download retornou HTML/CAPTCHA para %s", pdf_url))
+            unlink(tf)
+            return(NA_character_)
+          }
         }
       }
-    }
-  }, silent = TRUE)
+    },
+    silent = TRUE
+  )
   if (inherits(ok, "try-error") || !file.exists(tf)) {
     if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Falha ao baixar PDF %s", pdf_url))
     return(NA_character_)
   }
   txt <- try(pdftools::pdf_text(tf), silent = TRUE)
   unlink(tf)
-  if (inherits(txt, "try-error")) return(NA_character_)
+  if (inherits(txt, "try-error")) {
+    return(NA_character_)
+  }
   normalize_ws(paste(txt, collapse = "\n"))
 }
 
@@ -888,12 +977,15 @@ enrich_record_with_ai <- function(record, log_path = NULL) {
     status_file <- file.path(getwd(), "logs", "collection_status.json")
   }
   if (file.exists(status_file)) {
-    try({
-      status_data <- jsonlite::fromJSON(status_file, simplifyVector = FALSE)
-      status_data$phase <- "IA"
-      status_data$detail <- sprintf("Enriquecendo dados via IA para edital: %s", record$titulo[[1]])
-      jsonlite::write_json(status_data, status_file, auto_unbox = TRUE)
-    }, silent = TRUE)
+    try(
+      {
+        status_data <- jsonlite::fromJSON(status_file, simplifyVector = FALSE)
+        status_data$phase <- "IA"
+        status_data$detail <- sprintf("Enriquecendo dados via IA para edital: %s", record$titulo[[1]])
+        jsonlite::write_json(status_data, status_file, auto_unbox = TRUE)
+      },
+      silent = TRUE
+    )
   }
   text <- collapse_non_empty(record$titulo, record$descricao_resumida, record$descricao_completa, record$texto_bruto, sep = "\n")
   ai <- ai_extract_fields(
@@ -901,7 +993,9 @@ enrich_record_with_ai <- function(record, log_path = NULL) {
     current = as.list(record[1, c("titulo", "tipo_oportunidade", "status_oportunidade", "idioma")]),
     log_path = log_path
   )
-  if (length(ai) == 0) return(record)
+  if (length(ai) == 0) {
+    return(record)
+  }
 
   # Verifica se a IA classificou como nao-edital
   is_edital <- TRUE
@@ -926,7 +1020,9 @@ enrich_record_with_ai <- function(record, log_path = NULL) {
 }
 
 enrich_records_parallel <- function(df, log_path = NULL, conn = NULL) {
-  if (is.null(df) || nrow(df) == 0) return(df)
+  if (is.null(df) || nrow(df) == 0) {
+    return(df)
+  }
 
   df$keep_record <- TRUE
 
@@ -954,7 +1050,9 @@ enrich_records_parallel <- function(df, log_path = NULL, conn = NULL) {
     db_path <- file.path(getwd(), "funding_intelligence.sqlite")
     if (file.exists(db_path)) {
       conn <- tryCatch(DBI::dbConnect(RSQLite::SQLite(), db_path), error = function(e) NULL)
-      on.exit({ if (!is.null(conn) && DBI::dbIsValid(conn)) DBI::dbDisconnect(conn) })
+      on.exit({
+        if (!is.null(conn) && DBI::dbIsValid(conn)) DBI::dbDisconnect(conn)
+      })
     }
   }
 
@@ -966,13 +1064,16 @@ enrich_records_parallel <- function(df, log_path = NULL, conn = NULL) {
       id <- df$id_registro[[i]]
       hash_val <- df$hash_deduplicacao[[i]]
 
-      existing <- tryCatch({
-        DBI::dbGetQuery(
-          conn,
-          "SELECT id_registro, descricao_resumida, campos_inferidos_ia FROM oportunidades WHERE id_registro = ? OR hash_deduplicacao = ?",
-          params = list(id, hash_val)
-        )
-      }, error = function(e) NULL)
+      existing <- tryCatch(
+        {
+          DBI::dbGetQuery(
+            conn,
+            "SELECT id_registro, descricao_resumida, campos_inferidos_ia FROM oportunidades WHERE id_registro = ? OR hash_deduplicacao = ?",
+            params = list(id, hash_val)
+          )
+        },
+        error = function(e) NULL
+      )
 
       if (!is.null(existing) && nrow(existing) > 0) {
         resumo <- existing$descricao_resumida[[1]]
@@ -981,9 +1082,12 @@ enrich_records_parallel <- function(df, log_path = NULL, conn = NULL) {
           log_progress(sprintf("Edital '%s' já enriquecido no banco. Recuperando cache...", df$titulo[[i]]), "IA")
 
           # Carrega o registro completo do banco
-          existing_full <- tryCatch({
-            DBI::dbGetQuery(conn, "SELECT * FROM oportunidades WHERE id_registro = ?", params = list(existing$id_registro[[1]]))
-          }, error = function(e) NULL)
+          existing_full <- tryCatch(
+            {
+              DBI::dbGetQuery(conn, "SELECT * FROM oportunidades WHERE id_registro = ?", params = list(existing$id_registro[[1]]))
+            },
+            error = function(e) NULL
+          )
 
           if (!is.null(existing_full) && nrow(existing_full) > 0) {
             # Atualiza o df com o registro existente no banco
@@ -1049,12 +1153,15 @@ enrich_records_parallel <- function(df, log_path = NULL, conn = NULL) {
     # Atualiza arquivo de status para mostrar lote
     status_file <- Sys.getenv("COLLECTION_STATUS_FILE")
     if (nzchar(status_file) && file.exists(status_file)) {
-      try({
-        status_data <- jsonlite::fromJSON(status_file, simplifyVector = FALSE)
-        status_data$phase <- "IA"
-        status_data$detail <- sprintf("Processando lote de IA %d/%d", b, length(batches))
-        jsonlite::write_json(status_data, status_file, auto_unbox = TRUE)
-      }, silent = TRUE)
+      try(
+        {
+          status_data <- jsonlite::fromJSON(status_file, simplifyVector = FALSE)
+          status_data$phase <- "IA"
+          status_data$detail <- sprintf("Processando lote de IA %d/%d", b, length(batches))
+          jsonlite::write_json(status_data, status_file, auto_unbox = TRUE)
+        },
+        silent = TRUE
+      )
     }
 
     batch_res <- lapply(prompts[batch_idx], function(p) {
@@ -1113,8 +1220,10 @@ enrich_records_parallel <- function(df, log_path = NULL, conn = NULL) {
 }
 
 dedupe_records <- function(df) {
-  if (is.null(df) || nrow(df) == 0) return(tibble::tibble())
-  
+  if (is.null(df) || nrow(df) == 0) {
+    return(tibble::tibble())
+  }
+
   df |>
     dplyr::mutate(
       title_norm = normalize_text(titulo),
@@ -1174,7 +1283,9 @@ ensure_record_schema <- function(df) {
 }
 
 finalize_records <- function(df, fonte_oficial = NULL) {
-  if (is.null(df) || nrow(df) == 0) return(ensure_record_schema(tibble::tibble()))
+  if (is.null(df) || nrow(df) == 0) {
+    return(ensure_record_schema(tibble::tibble()))
+  }
   df <- ensure_record_schema(df)
 
   # Verificar se e fonte EU (HEU/ERC ou CORDIS fallback)
@@ -1190,8 +1301,10 @@ finalize_records <- function(df, fonte_oficial = NULL) {
     )
   }, logical(1))
   df <- df[valid_idx, ]
-  
-  if (nrow(df) == 0) return(ensure_record_schema(tibble::tibble()))
+
+  if (nrow(df) == 0) {
+    return(ensure_record_schema(tibble::tibble()))
+  }
 
   # Filtrar para manter apenas editais do ano corrente (Requisito 3)
   current_year_idx <- vapply(seq_len(nrow(df)), function(i) {
@@ -1204,8 +1317,10 @@ finalize_records <- function(df, fonte_oficial = NULL) {
     )
   }, logical(1))
   df <- df[current_year_idx, ]
-  
-  if (nrow(df) == 0) return(ensure_record_schema(tibble::tibble()))
+
+  if (nrow(df) == 0) {
+    return(ensure_record_schema(tibble::tibble()))
+  }
 
   lang_guess <- infer_language_simple(df$texto_bruto)
   status_guess <- classify_status(df$data_limite, df$data_abertura, df$data_encerramento, df$texto_bruto)
@@ -1374,10 +1489,16 @@ collect_capes <- function(source_row, max_pages, max_records, use_ai, log_path) 
     log_progress(sprintf("CAPES: API Plone retornou %d itens. Filtrando...", length(all_items)), "Scraping")
 
     filtered <- Filter(function(item) {
-      if (item$mime_type != "application/pdf") return(FALSE)
+      if (item$mime_type != "application/pdf") {
+        return(FALSE)
+      }
       title <- tolower(item$title %||% "")
-      if (nchar(title) < 10) return(FALSE)
-      if (grepl("altera|retifica|prorroga|resultado|errata|anexo|ata\\s|lista|planilha|formulario|termo", title)) return(FALSE)
+      if (nchar(title) < 10) {
+        return(FALSE)
+      }
+      if (grepl("altera|retifica|prorroga|resultado|errata|anexo|ata\\s|lista|planilha|formulario|termo", title)) {
+        return(FALSE)
+      }
       TRUE
     }, all_items)
 
@@ -1393,7 +1514,7 @@ collect_capes <- function(source_row, max_pages, max_records, use_ai, log_path) 
         } else {
           pub_date <- NA_character_
         }
-        
+
         # Download PDF and extract text to get real content
         pdf_txt <- extract_text_from_pdf(pdf_url, log_path = log_path)
         clean_title <- clean_edital_title(item$title %||% basename(item$`@id`))
@@ -1479,130 +1600,152 @@ collect_finep <- function(source_row, max_pages, max_records, use_ai, log_path) 
   total_count <- NULL
 
   .log("INFO", "Iniciando coleta FINEP via API REST...")
-  
+
   repeat {
     # Construir URL da página
     url <- sprintf("%s?sort=dataDePublicacao:desc&page=%d&pageSize=%d", base_url, page, page_size)
-    
+
     .log("INFO", sprintf("Buscando página %d: %s", page, url))
-    
+
     # Fazer requisição GET
-    response <- tryCatch({
-      httr::GET(url, httr::timeout(60))
-    }, error = function(e) {
-      .log("ERROR", sprintf("Erro na requisição: %s", e$message))
-      NULL
-    })
-    
+    response <- tryCatch(
+      {
+        httr::GET(url, httr::timeout(60))
+      },
+      error = function(e) {
+        .log("ERROR", sprintf("Erro na requisição: %s", e$message))
+        NULL
+      }
+    )
+
     if (is.null(response) || httr::status_code(response) != 200) {
       .log("WARN", "Falha na requisição, interrompendo paginação")
       break
     }
-    
+
     # Parsear JSON
-    data <- tryCatch({
-      httr::content(response, as = "parsed", type = "application/json")
-    }, error = function(e) {
-      .log("ERROR", sprintf("Erro ao parsear JSON: %s", e$message))
-      NULL
-    })
-    
+    data <- tryCatch(
+      {
+        httr::content(response, as = "parsed", type = "application/json")
+      },
+      error = function(e) {
+        .log("ERROR", sprintf("Erro ao parsear JSON: %s", e$message))
+        NULL
+      }
+    )
+
     if (is.null(data) || is.null(data$items)) {
       .log("WARN", "Resposta vazia ou inválida")
       break
     }
-    
+
     # Atualizar total na primeira página
     if (is.null(total_count)) {
       total_count <- data$totalCount
       .log("INFO", sprintf("Total de registros: %d", total_count))
     }
-    
+
     # Filtrar itens: situação Aberta (inclui ICT e outros públicos)
     filtered_items <- Filter(function(item) {
       # Verificar se situação é aberta
       is_aberta <- !is.null(item$situacao) && item$situacao$key == "aberta"
       is_aberta
     }, data$items)
-    
+
     all_items <- c(all_items, filtered_items)
-    
-    .log("INFO", sprintf("Página %d: %d itens total, %d filtrados (Aberta)", 
-                                         page, length(data$items), length(filtered_items)))
-    
+
+    .log("INFO", sprintf(
+      "Página %d: %d itens total, %d filtrados (Aberta)",
+      page, length(data$items), length(filtered_items)
+    ))
+
     # Verificar se chegou ao fim
     if (length(data$items) < page_size || page >= ceiling(total_count / page_size)) {
       break
     }
-    
+
     # Limite de páginas
     if (page >= max_pages) {
       .log("WARN", sprintf("Limite de %d páginas atingido", max_pages))
       break
     }
-    
+
     page <- page + 1
-    
+
     # Rate limiting
     Sys.sleep(0.5)
   }
-  
+
   .log("INFO", sprintf("Total de itens coletados (Aberta): %d", length(all_items)))
-  
+
   # Limitar ao max_records
   if (length(all_items) > max_records) {
     all_items <- all_items[1:max_records]
     .log("WARN", sprintf("Limitado a %d registros", max_records))
   }
-  
+
   # Converter para tibble no formato esperado
   if (length(all_items) == 0) {
     .log("WARN", "Nenhum item encontrado após filtros")
     return(list(records = tibble::tibble(), pages_visited = as.integer(page - 1L), last_url = NA_character_))
   }
-  
+
   records <- lapply(all_items, function(item) {
     # Montar link de detalhe
     link_detalhe <- sprintf("https://www.finep.gov.br/e/chamada-publica/222684/%d", item$id)
-    
+
     # Extrair datas
     data_publicacao <- if (!is.null(item$dataDePublicacao)) {
       as.character(as.Date(sub("T.*", "", item$dataDePublicacao)))
-    } else NA_character_
-    
+    } else {
+      NA_character_
+    }
+
     data_limite <- if (!is.null(item$prazoProposto)) {
       as.character(as.Date(sub("T.*", "", item$prazoProposto)))
-    } else NA_character_
-    
+    } else {
+      NA_character_
+    }
+
     # Extrair público alvo
     publico_alvo <- if (length(item$publicoAlvo) > 0) {
       paste(sapply(item$publicoAlvo, function(pa) pa$name), collapse = "; ")
-    } else NA_character_
-    
+    } else {
+      NA_character_
+    }
+
     # Extrair tema
     tema <- if (!is.null(item$temaPrincipal) && !is.null(item$temaPrincipal$name)) {
       item$temaPrincipal$name
-    } else NA_character_
-    
+    } else {
+      NA_character_
+    }
+
     # Extrair região
     regiao <- if (!is.null(item$regiao) && !is.null(item$regiao$name)) {
       item$regiao$name
-    } else NA_character_
-    
+    } else {
+      NA_character_
+    }
+
     # Tipo de oportunidade
     tipo_oportunidade <- if (!is.null(item$tipoDeOportunidade) && !is.null(item$tipoDeOportunidade$name)) {
       item$tipoDeOportunidade$name
-    } else NA_character_
-    
+    } else {
+      NA_character_
+    }
+
     # Contrapartida
     contrapartida <- if (!is.null(item$contrapartida) && !is.null(item$contrapartida$name)) {
       item$contrapartida$name
-    } else NA_character_
-    
+    } else {
+      NA_character_
+    }
+
     # Criar hash de deduplicação
     hash_input <- paste0(item$titulo, "|", link_detalhe)
     hash_dedup <- digest::digest(hash_input, algo = "xxhash64")
-    
+
     # Montar registro no schema padrão
     tibble::tibble(
       id_registro = sprintf("finep_%s", substr(hash_dedup, 1, 16)),
@@ -1641,11 +1784,11 @@ collect_finep <- function(source_row, max_pages, max_records, use_ai, log_path) 
       campos_inferidos_ia = NA_character_
     )
   })
-  
+
   df <- dplyr::bind_rows(records)
-  
+
   .log("INFO", sprintf("FINEP: %d registros finais coletados", nrow(df)))
-  
+
   return(list(records = df, pages_visited = as.integer(page - 1L), last_url = url))
 }
 
@@ -1719,8 +1862,10 @@ collect_horizon_europe <- function(source_row, max_pages, max_records, use_ai, l
     .log("INFO", sprintf("Buscando termo: %s", term))
 
     search_text <- utils::URLencode(term, reserved = TRUE)
-    url <- sprintf("%s?apiKey=SEDIA&text=%s&pageNumber=1&pageSize=100&sortBy=es_SortDate&orderBy=DESC",
-                   api_url, search_text)
+    url <- sprintf(
+      "%s?apiKey=SEDIA&text=%s&pageNumber=1&pageSize=100&sortBy=es_SortDate&orderBy=DESC",
+      api_url, search_text
+    )
 
     data <- tryCatch(eu_api_request(url, heu_query, 60, log_path), error = function(e) {
       .log("ERROR", sprintf("Erro ao executar request para '%s': %s", term, e$message))
@@ -1743,24 +1888,45 @@ collect_horizon_europe <- function(source_row, max_pages, max_records, use_ai, l
       if (is.data.frame(md)) md <- as.list(md)
 
       # Verificar DATASOURCE = "SEDIA" (topics, não projetos)
-      ds <- tryCatch({
-        d <- md$DATASOURCE
-        if (!is.null(d)) { if (is.list(d)) d[[1]] else d[1] } else NA
-      }, error = function(e) NA)
+      ds <- tryCatch(
+        {
+          d <- md$DATASOURCE
+          if (!is.null(d)) {
+            if (is.list(d)) d[[1]] else d[1]
+          } else {
+            NA
+          }
+        },
+        error = function(e) NA
+      )
       if (is.na(ds) || ds != "SEDIA") next
 
       # Verificar frameworkProgramme = 43108390 (Horizon Europe)
-      fp <- tryCatch({
-        f <- md$frameworkProgramme
-        if (!is.null(f)) { if (is.list(f)) f[[1]] else f[1] } else NA
-      }, error = function(e) NA)
+      fp <- tryCatch(
+        {
+          f <- md$frameworkProgramme
+          if (!is.null(f)) {
+            if (is.list(f)) f[[1]] else f[1]
+          } else {
+            NA
+          }
+        },
+        error = function(e) NA
+      )
       if (is.na(fp) || !grepl("43108390", fp)) next
 
       # Excluir status Closed (31094503)
-      st <- tryCatch({
-        s <- md$status
-        if (!is.null(s)) { if (is.list(s)) s[[1]] else s[1] } else NA
-      }, error = function(e) NA)
+      st <- tryCatch(
+        {
+          s <- md$status
+          if (!is.null(s)) {
+            if (is.list(s)) s[[1]] else s[1]
+          } else {
+            NA
+          }
+        },
+        error = function(e) NA
+      )
       if (!is.na(st) && length(st) > 0 && grepl("31094503", st)) next
 
       all_items <- c(all_items, list(item))
@@ -1776,28 +1942,41 @@ collect_horizon_europe <- function(source_row, max_pages, max_records, use_ai, l
   .log("INFO", sprintf("Deduplicando %d itens brutos...", length(all_items)))
   dedup_map <- list()
   for (item in all_items) {
-    md <- tryCatch({
-      m <- item$metadata
-      if (is.null(m)) next
-      if (is.data.frame(m)) m <- as.list(m)
-      m
-    }, error = function(e) NULL)
+    md <- tryCatch(
+      {
+        m <- item$metadata
+        if (is.null(m)) next
+        if (is.data.frame(m)) m <- as.list(m)
+        m
+      },
+      error = function(e) NULL
+    )
     if (is.null(md)) next
 
-    call_id <- tryCatch({
-      if (!is.null(md$callIdentifier)) {
-        v <- md$callIdentifier
-        if (is.list(v)) v[[1]] else v[1]
-      } else NA_character_
-    }, error = function(e) NA_character_)
+    call_id <- tryCatch(
+      {
+        if (!is.null(md$callIdentifier)) {
+          v <- md$callIdentifier
+          if (is.list(v)) v[[1]] else v[1]
+        } else {
+          NA_character_
+        }
+      },
+      error = function(e) NA_character_
+    )
     if (is.na(call_id) || length(call_id) == 0) next
 
-    titulo <- tryCatch({
-      if (!is.null(md$title)) {
-        v <- md$title
-        if (is.list(v)) v[[1]] else v[1]
-      } else ""
-    }, error = function(e) "")
+    titulo <- tryCatch(
+      {
+        if (!is.null(md$title)) {
+          v <- md$title
+          if (is.list(v)) v[[1]] else v[1]
+        } else {
+          ""
+        }
+      },
+      error = function(e) ""
+    )
     if (length(titulo) == 0) titulo <- ""
     # Detectar se titulo contem caracteres nao-ASCII (indica idioma local, nao ingles)
     is_english <- tryCatch(
@@ -1829,135 +2008,156 @@ collect_horizon_europe <- function(source_row, max_pages, max_records, use_ai, l
 
   # Helper seguro para extrair campo de metadata
   safe_extract <- function(x, default = NA_character_) {
-    tryCatch({
-      if (is.null(x)) return(default)
-      val <- if (is.list(x)) x[[1]] else x[1]
-      if (length(val) == 0) return(default)
-      if (is.null(val)) return(default)
-      if (is.na(val)) return(default)
-      as.character(val)
-    }, error = function(e) default)
+    tryCatch(
+      {
+        if (is.null(x)) {
+          return(default)
+        }
+        val <- if (is.list(x)) x[[1]] else x[1]
+        if (length(val) == 0) {
+          return(default)
+        }
+        if (is.null(val)) {
+          return(default)
+        }
+        if (is.na(val)) {
+          return(default)
+        }
+        as.character(val)
+      },
+      error = function(e) default
+    )
   }
 
   record_list <- list()
   for (i in seq_along(all_items)) {
     item <- all_items[[i]]
-    rec <- tryCatch({
-    md <- item$metadata
-    # Converter data.frame para lista se necessário
-    if (is.data.frame(md)) md <- as.list(md)
+    rec <- tryCatch(
+      {
+        md <- item$metadata
+        # Converter data.frame para lista se necessário
+        if (is.data.frame(md)) md <- as.list(md)
 
-    # Extrair campos do metadata
-    titulo <- safe_extract(md$title)
-    call_id <- safe_extract(md$callIdentifier)
-    descricao_html <- safe_extract(md$descriptionByte)
+        # Extrair campos do metadata
+        titulo <- safe_extract(md$title)
+        call_id <- safe_extract(md$callIdentifier)
+        descricao_html <- safe_extract(md$descriptionByte)
 
-    # Limpar HTML da descrição
-    descricao_text <- gsub("<[^>]+>", " ", descricao_html)
-    descricao_text <- gsub("&amp;", "&", descricao_text)
-    descricao_text <- gsub("&nbsp;", " ", descricao_text)
-    descricao_text <- gsub("\\s+", " ", trimws(descricao_text))
+        # Limpar HTML da descrição
+        descricao_text <- gsub("<[^>]+>", " ", descricao_html)
+        descricao_text <- gsub("&amp;", "&", descricao_text)
+        descricao_text <- gsub("&nbsp;", " ", descricao_text)
+        descricao_text <- gsub("\\s+", " ", trimws(descricao_text))
 
-    # Datas
-    data_abertura <- safe_extract(md$startDate)
-    if (!is.na(data_abertura)) {
-      data_abertura <- as.character(as.Date(sub("T.*", "", data_abertura)))
-    }
+        # Datas
+        data_abertura <- safe_extract(md$startDate)
+        if (!is.na(data_abertura)) {
+          data_abertura <- as.character(as.Date(sub("T.*", "", data_abertura)))
+        }
 
-    data_limite <- safe_extract(md$deadlineDate)
-    if (!is.na(data_limite)) {
-      data_limite <- as.character(as.Date(sub("T.*", "", data_limite)))
-    }
+        data_limite <- safe_extract(md$deadlineDate)
+        if (!is.na(data_limite)) {
+          data_limite <- as.character(as.Date(sub("T.*", "", data_limite)))
+        }
 
-    # Status
-    status_code <- safe_extract(md$status)
-    status <- if (!is.na(status_code)) {
-      if (grepl("31094501", status_code)) "aberto"
-      else if (grepl("31094502", status_code)) "aberto"
-      else if (grepl("31094503", status_code)) "encerrado"
-      else "desconhecido"
-    } else "desconhecido"
+        # Status
+        status_code <- safe_extract(md$status)
+        status <- if (!is.na(status_code)) {
+          if (grepl("31094501", status_code)) {
+            "aberto"
+          } else if (grepl("31094502", status_code)) {
+            "aberto"
+          } else if (grepl("31094503", status_code)) {
+            "encerrado"
+          } else {
+            "desconhecido"
+          }
+        } else {
+          "desconhecido"
+        }
 
-    # Programa
-    programa <- safe_extract(md$esST_programAbbreviation)
+        # Programa
+        programa <- safe_extract(md$esST_programAbbreviation)
 
-    # Tipo de ação
-    tipo_acao <- safe_extract(md$typesOfAction)
+        # Tipo de ação
+        tipo_acao <- safe_extract(md$typesOfAction)
 
-    # Budget (extrair do budgetOverview JSON)
-    budget <- NA_real_
-    budget_raw <- safe_extract(md$budgetOverview)
-    if (!is.na(budget_raw)) {
-      budget_json <- tryCatch(jsonlite::fromJSON(budget_raw, simplifyVector = FALSE), error = function(e) NULL)
-      if (!is.null(budget_json$budgetTopicActionMap)) {
-        for (key in names(budget_json$budgetTopicActionMap)) {
-          actions <- budget_json$budgetTopicActionMap[[key]]
-          for (act in actions) {
-            if (!is.null(act$budgetYearMap)) {
-              for (yr in names(act$budgetYearMap)) {
-                val <- suppressWarnings(as.numeric(act$budgetYearMap[[yr]]))
-                if (!is.na(val)) budget <- val
+        # Budget (extrair do budgetOverview JSON)
+        budget <- NA_real_
+        budget_raw <- safe_extract(md$budgetOverview)
+        if (!is.na(budget_raw)) {
+          budget_json <- tryCatch(jsonlite::fromJSON(budget_raw, simplifyVector = FALSE), error = function(e) NULL)
+          if (!is.null(budget_json$budgetTopicActionMap)) {
+            for (key in names(budget_json$budgetTopicActionMap)) {
+              actions <- budget_json$budgetTopicActionMap[[key]]
+              for (act in actions) {
+                if (!is.null(act$budgetYearMap)) {
+                  for (yr in names(act$budgetYearMap)) {
+                    val <- suppressWarnings(as.numeric(act$budgetYearMap[[yr]]))
+                    if (!is.na(val)) budget <- val
+                  }
+                }
               }
             }
           }
         }
+
+        # URL de detalhe
+        link_detalhe <- safe_extract(md$esST_URL, default = item$url)
+
+        # Hash de deduplicação
+        hash_input <- paste0(call_id, "|", titulo)
+        hash_dedup <- digest::digest(hash_input, algo = "xxhash64")
+
+        # Garantir que descricao_resumida nunca seja NA ou vazia
+        resumo_final <- if (!is.na(descricao_text) && nzchar(descricao_text) && nchar(descricao_text) > 10) {
+          substr(descricao_text, 1, 500)
+        } else {
+          titulo # Fallback: usar o titulo como resumo
+        }
+
+        tibble::tibble(
+          id_registro = sprintf("heu_%s", substr(hash_dedup, 1, 16)),
+          entidade = "Horizon Europe",
+          pais_origem = "União Europeia",
+          titulo = titulo,
+          subtitulo = call_id,
+          descricao_resumida = resumo_final,
+          descricao_completa = descricao_text,
+          tipo_oportunidade = tipo_acao,
+          modalidade = NA_character_,
+          area_tematica = programa,
+          palavras_chave = call_id,
+          elegibilidade = NA_character_,
+          publico_alvo = NA_character_,
+          nivel_academico = NA_character_,
+          instituicao_financiadora = "European Commission",
+          valor_financiado = budget,
+          moeda = if (!is.na(budget) && budget > 0) "EUR" else NA_character_,
+          data_publicacao = data_abertura,
+          data_abertura = data_abertura,
+          data_limite = data_limite,
+          data_encerramento = NA_character_,
+          status_oportunidade = status,
+          link_origem = "https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
+          link_detalhe = link_detalhe,
+          link_documento_pdf = NA_character_,
+          idioma = "en",
+          localidade = NA_character_,
+          observacoes = NA_character_,
+          texto_bruto = paste(titulo, descricao_text, sep = "\n\n"),
+          pagina_coletada = 1L,
+          fonte_oficial = "horizon_europe",
+          data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+          hash_deduplicacao = hash_dedup,
+          campos_inferidos_ia = NA_character_
+        )
+      },
+      error = function(e) {
+        .log("WARN", sprintf("Erro ao processar item %d: %s", i, e$message))
+        NULL
       }
-    }
-
-    # URL de detalhe
-    link_detalhe <- safe_extract(md$esST_URL, default = item$url)
-
-    # Hash de deduplicação
-    hash_input <- paste0(call_id, "|", titulo)
-    hash_dedup <- digest::digest(hash_input, algo = "xxhash64")
-
-    # Garantir que descricao_resumida nunca seja NA ou vazia
-    resumo_final <- if (!is.na(descricao_text) && nzchar(descricao_text) && nchar(descricao_text) > 10) {
-      substr(descricao_text, 1, 500)
-    } else {
-      titulo  # Fallback: usar o titulo como resumo
-    }
-
-    tibble::tibble(
-      id_registro = sprintf("heu_%s", substr(hash_dedup, 1, 16)),
-      entidade = "Horizon Europe",
-      pais_origem = "União Europeia",
-      titulo = titulo,
-      subtitulo = call_id,
-      descricao_resumida = resumo_final,
-      descricao_completa = descricao_text,
-      tipo_oportunidade = tipo_acao,
-      modalidade = NA_character_,
-      area_tematica = programa,
-      palavras_chave = call_id,
-      elegibilidade = NA_character_,
-      publico_alvo = NA_character_,
-      nivel_academico = NA_character_,
-      instituicao_financiadora = "European Commission",
-      valor_financiado = budget,
-      moeda = if (!is.na(budget) && budget > 0) "EUR" else NA_character_,
-      data_publicacao = data_abertura,
-      data_abertura = data_abertura,
-      data_limite = data_limite,
-      data_encerramento = NA_character_,
-      status_oportunidade = status,
-      link_origem = "https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
-      link_detalhe = link_detalhe,
-      link_documento_pdf = NA_character_,
-      idioma = "en",
-      localidade = NA_character_,
-      observacoes = NA_character_,
-      texto_bruto = paste(titulo, descricao_text, sep = "\n\n"),
-      pagina_coletada = 1L,
-      fonte_oficial = "horizon_europe",
-      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
-      hash_deduplicacao = hash_dedup,
-      campos_inferidos_ia = NA_character_
     )
-    }, error = function(e) {
-      .log("WARN", sprintf("Erro ao processar item %d: %s", i, e$message))
-      NULL
-    })
     if (!is.null(rec)) record_list[[length(record_list) + 1]] <- rec
   }
 
@@ -2021,8 +2221,10 @@ collect_erc <- function(source_row, max_pages, max_records, use_ai, log_path) {
     .log("INFO", sprintf("Buscando termo: %s", term))
 
     search_text <- utils::URLencode(term, reserved = TRUE)
-    url <- sprintf("%s?apiKey=SEDIA&text=%s&pageNumber=1&pageSize=100&sortBy=es_SortDate&orderBy=DESC",
-                   api_url, search_text)
+    url <- sprintf(
+      "%s?apiKey=SEDIA&text=%s&pageNumber=1&pageSize=100&sortBy=es_SortDate&orderBy=DESC",
+      api_url, search_text
+    )
 
     data <- tryCatch(eu_api_request(url, heu_query, 60, log_path), error = function(e) {
       .log("ERROR", sprintf("Erro ao executar request para '%s': %s", term, e$message))
@@ -2047,21 +2249,27 @@ collect_erc <- function(source_row, max_pages, max_records, use_ai, log_path) {
       if (!is.null(ds)) {
         ds_val <- if (is.list(ds)) ds[[1]] else ds[1]
         if (is.na(ds_val) || ds_val != "SEDIA") next
-      } else next
+      } else {
+        next
+      }
 
       # Verificar frameworkProgramme = 43108390 (Horizon Europe)
       fp <- md$frameworkProgramme
       if (!is.null(fp)) {
         fp_val <- if (is.list(fp)) fp[[1]] else fp[1]
         if (is.na(fp_val) || !grepl("43108390", fp_val)) next
-      } else next
+      } else {
+        next
+      }
 
       # Verificar programmeDivision contém 43108406 (ERC)
       pd <- md$programmeDivision
       if (!is.null(pd)) {
         pd_vals <- if (is.list(pd)) unlist(pd) else pd
         if (!any(grepl("43108406", pd_vals))) next
-      } else next
+      } else {
+        next
+      }
 
       # Excluir status Closed (31094503)
       status <- md$status
@@ -2087,13 +2295,19 @@ collect_erc <- function(source_row, max_pages, max_records, use_ai, log_path) {
     if (is.null(md)) next
     if (is.data.frame(md)) md <- as.list(md)
     call_id <- if (!is.null(md$callIdentifier)) {
-      v <- md$callIdentifier; if (is.list(v)) v[[1]] else v[1]
-    } else NA_character_
+      v <- md$callIdentifier
+      if (is.list(v)) v[[1]] else v[1]
+    } else {
+      NA_character_
+    }
     if (is.na(call_id)) next
 
     titulo <- if (!is.null(md$title)) {
-      v <- md$title; if (is.list(v)) v[[1]] else v[1]
-    } else ""
+      v <- md$title
+      if (is.list(v)) v[[1]] else v[1]
+    } else {
+      ""
+    }
     # Detectar se titulo contem caracteres nao-ASCII (indica idioma local, nao ingles)
     is_english <- !is.na(titulo) && is.character(titulo) && !grepl("[^\x01-\x7F]", titulo)
 
@@ -2126,9 +2340,13 @@ collect_erc <- function(source_row, max_pages, max_records, use_ai, log_path) {
 
     # Extrair campos do metadata (helper para extrair valor de lista/data.frame)
     extract_field <- function(x, default = NA_character_) {
-      if (is.null(x)) return(default)
+      if (is.null(x)) {
+        return(default)
+      }
       val <- if (is.list(x)) x[[1]] else x[1]
-      if (is.na(val)) return(default)
+      if (is.na(val)) {
+        return(default)
+      }
       as.character(val)
     }
 
@@ -2157,11 +2375,18 @@ collect_erc <- function(source_row, max_pages, max_records, use_ai, log_path) {
     # Status
     status_code <- extract_field(md$status)
     status <- if (!is.na(status_code)) {
-      if (grepl("31094501", status_code)) "aberto"
-      else if (grepl("31094502", status_code)) "aberto"
-      else if (grepl("31094503", status_code)) "encerrado"
-      else "desconhecido"
-    } else "desconhecido"
+      if (grepl("31094501", status_code)) {
+        "aberto"
+      } else if (grepl("31094502", status_code)) {
+        "aberto"
+      } else if (grepl("31094503", status_code)) {
+        "encerrado"
+      } else {
+        "desconhecido"
+      }
+    } else {
+      "desconhecido"
+    }
 
     # Programa
     programa <- extract_field(md$esST_programAbbreviation)
@@ -2200,7 +2425,7 @@ collect_erc <- function(source_row, max_pages, max_records, use_ai, log_path) {
     resumo_final <- if (!is.na(descricao_text) && nzchar(descricao_text) && nchar(descricao_text) > 10) {
       substr(descricao_text, 1, 500)
     } else {
-      titulo  # Fallback: usar o titulo como resumo
+      titulo # Fallback: usar o titulo como resumo
     }
 
     tibble::tibble(
@@ -2256,7 +2481,7 @@ collect_fapesb <- function(source_row, max_pages, max_records, use_ai, log_path)
   }
 
   base_api <- "https://www.fapesb.ba.gov.br/wp-json/wp/v2/posts"
-  category_id <- 11L  # Categoria "Aberto"
+  category_id <- 11L # Categoria "Aberto"
   page_size <- 10L
 
   all_items <- list()
@@ -2265,19 +2490,24 @@ collect_fapesb <- function(source_row, max_pages, max_records, use_ai, log_path)
   repeat {
     .log("INFO", sprintf("Buscando página %d...", page))
 
-    url <- sprintf("%s?categories=%d&per_page=%d&page=%d&_fields=id,title,link,date,excerpt,content",
-                   base_api, category_id, page_size, page)
+    url <- sprintf(
+      "%s?categories=%d&per_page=%d&page=%d&_fields=id,title,link,date,excerpt,content",
+      base_api, category_id, page_size, page
+    )
 
     # Usar httr2 para GET (cross-platform, sem dependência de curl CLI)
-    resp <- tryCatch({
-      req <- httr2::request(url) |>
-        httr2::req_user_agent("FundingIntelligence/1.0") |>
-        httr2::req_timeout(30)
-      httr2::req_perform(req)
-    }, error = function(e) {
-      .log("ERROR", sprintf("Erro ao executar request: %s", e$message))
-      NULL
-    })
+    resp <- tryCatch(
+      {
+        req <- httr2::request(url) |>
+          httr2::req_user_agent("FundingIntelligence/1.0") |>
+          httr2::req_timeout(30)
+        httr2::req_perform(req)
+      },
+      error = function(e) {
+        .log("ERROR", sprintf("Erro ao executar request: %s", e$message))
+        NULL
+      }
+    )
 
     if (is.null(resp)) break
 
@@ -2343,7 +2573,7 @@ collect_fapesb <- function(source_row, max_pages, max_records, use_ai, log_path)
     titulo <- gsub("&#8230;", "...", titulo)
     titulo <- gsub("&hellip;", "...", titulo)
     titulo <- gsub("&#038;", "&", titulo)
-    
+
     link <- item$link
     data_pub <- substr(item$date, 1, 10)
 
@@ -2446,7 +2676,15 @@ collect_cordis <- function(log_path = NULL, max_records = 100L) {
     "HORIZON Health",
     "HORIZON Climate",
     "HORIZON Energy",
-    "HORIZON Transport"
+    "HORIZON Transport",
+    "Erasmus+",
+    "Digital Europe Programme",
+    "LIFE Programme",
+    "EU4Health",
+    "European Defence Fund",
+    "Innovation Fund",
+    "Horizon Europe Widening",
+    "Horizon Europe MSCA"
   )
 
   for (term in search_terms) {
@@ -2457,14 +2695,17 @@ collect_cordis <- function(log_path = NULL, max_records = 100L) {
       "&q=", utils::URLencode(term, reserved = TRUE)
     )
 
-    resp <- tryCatch({
-      httr2::request(query_url) |>
-        httr2::req_timeout(seconds = 30) |>
-        httr2::req_perform()
-    }, error = function(e) {
-      .log("WARN", sprintf("CORDIS falhou para '%s': %s", term, e$message))
-      NULL
-    })
+    resp <- tryCatch(
+      {
+        httr2::request(query_url) |>
+          httr2::req_timeout(seconds = 30) |>
+          httr2::req_perform()
+      },
+      error = function(e) {
+        .log("WARN", sprintf("CORDIS falhou para '%s': %s", term, e$message))
+        NULL
+      }
+    )
 
     if (is.null(resp)) next
 
@@ -2495,22 +2736,25 @@ collect_cordis <- function(log_path = NULL, max_records = 100L) {
       # A estrutura CORDIS: article -> relations -> associations -> project -> relations -> associations -> programme
       is_horizon <- FALSE
       programme_code <- NA_character_
-      tryCatch({
-        project <- article$relations$associations$project
-        if (!is.null(project)) {
-          proj_progs <- project$relations$associations$programme
-          if (!is.null(proj_progs) && length(proj_progs) > 0) {
-            for (pg in proj_progs) {
-              fp <- pg$frameworkProgramme %||% ""
-              if (fp == "HORIZON") {
-                is_horizon <- TRUE
-                programme_code <- pg$code
-                break
+      tryCatch(
+        {
+          project <- article$relations$associations$project
+          if (!is.null(project)) {
+            proj_progs <- project$relations$associations$programme
+            if (!is.null(proj_progs) && length(proj_progs) > 0) {
+              for (pg in proj_progs) {
+                fp <- pg$frameworkProgramme %||% ""
+                if (fp == "HORIZON") {
+                  is_horizon <- TRUE
+                  programme_code <- pg$code
+                  break
+                }
               }
             }
           }
-        }
-      }, error = function(e) NULL)
+        },
+        error = function(e) NULL
+      )
       if (!is_horizon) next
 
       titulo <- article$title %||% ""
@@ -2520,6 +2764,27 @@ collect_cordis <- function(log_path = NULL, max_records = 100L) {
       data_pub <- article$contentCreationDate %||% ""
       if (nchar(data_pub) > 10) data_pub <- substr(data_pub, 1, 10)
 
+      # Extrair última atualização
+      last_update <- article$lastUpdateDate %||% ""
+      if (nchar(last_update) > 10) last_update <- substr(last_update, 1, 10)
+
+      # Extrair metadados do projeto
+      project_acronym <- NA_character_
+      project_ec_id <- NA_character_
+      tryCatch(
+        {
+          project <- article$relations$associations$project
+          if (!is.null(project)) {
+            project_acronym <- project$acronym %||% NA_character_
+            project_ec_id <- project$id %||% NA_character_
+          }
+        },
+        error = function(e) NULL
+      )
+
+      # Extrair idioma do artigo
+      article_language <- article$language %||% "en"
+
       # Extrair link (CORDIS usa rcn como ID)
       link_detalhe <- sprintf("https://cordis.europa.eu/article/%s/pt", rcn)
 
@@ -2528,7 +2793,11 @@ collect_cordis <- function(log_path = NULL, max_records = 100L) {
         titulo = titulo,
         descricao = body_text,
         data_criacao = data_pub,
+        last_update = last_update,
         programme_code = programme_code,
+        project_acronym = project_acronym,
+        project_ec_id = project_ec_id,
+        article_language = article_language,
         link = link_detalhe
       )))
     }
@@ -2550,33 +2819,59 @@ collect_cordis <- function(log_path = NULL, max_records = 100L) {
     hash_input <- paste0(item$rcn, "|", titulo)
     hash_dedup <- digest::digest(hash_input, algo = "xxhash64")
 
+    # Subtítulo: acrônimo do projeto (se disponível)
+    subtitulo <- if (!is.na(item$project_acronym) && nzchar(item$project_acronym)) {
+      item$project_acronym
+    } else {
+      NA_character_
+    }
+
+    # Palavras-chave enriquecidas
+    kw_parts <- c("horizon europe", "cordis")
+    if (!is.na(item$project_acronym) && nzchar(item$project_acronym)) {
+      kw_parts <- c(kw_parts, tolower(item$project_acronym))
+    }
+    palavras_chave <- paste(kw_parts, collapse = ", ")
+
+    # Descrição resumida: incluir acrônimo e ID do projeto se disponível
+    desc_prefix <- ""
+    if (!is.na(item$project_acronym) && nzchar(item$project_acronym)) {
+      desc_prefix <- paste0("Projeto ", item$project_acronym)
+      if (!is.na(item$project_ec_id) && nzchar(item$project_ec_id)) {
+        desc_prefix <- paste0(desc_prefix, " (ID: ", item$project_ec_id, ")")
+      }
+      desc_prefix <- paste0(desc_prefix, ". ")
+    }
+    desc_full <- if (nchar(item$descricao) > 0) paste0(desc_prefix, item$descricao) else paste0(desc_prefix, titulo)
+    desc_short <- if (nchar(desc_full) > 500) substr(desc_full, 1, 500) else desc_full
+
     tibble::tibble(
       id_registro = sprintf("cordis_%s", substr(hash_dedup, 1, 16)),
       entidade = "CORDIS/EU",
-      pais_origem = "Uniao Europeia",
+      pais_origem = "União Europeia",
       titulo = titulo,
-      subtitulo = NA_character_,
-      descricao_resumida = if (nchar(item$descricao) > 0) substr(item$descricao, 1, 500) else titulo,
-      descricao_completa = if (nchar(item$descricao) > 0) item$descricao else titulo,
+      subtitulo = subtitulo,
+      descricao_resumida = desc_short,
+      descricao_completa = desc_full,
       tipo_oportunidade = "Projeto Financiado",
       modalidade = item$programme_code,
       area_tematica = NA_character_,
-      palavras_chave = "horizon europe, cordis",
+      palavras_chave = palavras_chave,
       elegibilidade = NA_character_,
       publico_alvo = NA_character_,
       nivel_academico = NA_character_,
-      instituicao_financiadora = "Uniao Europeia",
+      instituicao_financiadora = "União Europeia",
       valor_financiado = NA_real_,
       moeda = NA_character_,
       data_publicacao = item$data_criacao,
       data_abertura = NA_character_,
       data_limite = NA_character_,
-      data_encerramento = NA_character_,
+      data_encerramento = item$last_update,
       status_oportunidade = "referencia",
       link_origem = "https://cordis.europa.eu/",
       link_detalhe = item$link,
       link_documento_pdf = NA_character_,
-      idioma = "en",
+      idioma = item$article_language,
       fonte_tipo = "api",
       colecao = "EU",
       pais_origem_iso = "EU",
@@ -2631,53 +2926,64 @@ save_collection_exports <- function(df, export_dir, prefix = "funding_base", log
     }
   }
 
-  tryCatch({
-    readr::write_csv(clean_df, csv_path, na = "")
-    export_paths <- c(export_paths, csv_path)
-  }, error = function(e) {
-    export_warnings <<- c(export_warnings, paste0("Falha ao exportar CSV: ", e$message))
-    if (!is.null(log_path)) log_write(log_path, "WARN", export_warnings[[length(export_warnings)]])
-  })
-
-  tryCatch({
-    saveRDS(clean_df, rds_path)
-    export_paths <- c(export_paths, rds_path)
-  }, error = function(e) {
-    export_warnings <<- c(export_warnings, paste0("Falha ao exportar RDS: ", e$message))
-    if (!is.null(log_path)) log_write(log_path, "WARN", export_warnings[[length(export_warnings)]])
-  })
-
-  tryCatch({
-    xlsx_df <- truncate_excel_strings(clean_df)
-    if (is.null(xlsx_df) || !is.data.frame(xlsx_df) || ncol(xlsx_df) == 0 || nrow(xlsx_df) == 0) {
-      export_warnings <<- c(export_warnings, "Exportação XLSX ignorada: dataframe vazio ou inválido.")
+  tryCatch(
+    {
+      readr::write_csv(clean_df, csv_path, na = "")
+      export_paths <- c(export_paths, csv_path)
+    },
+    error = function(e) {
+      export_warnings <<- c(export_warnings, paste0("Falha ao exportar CSV: ", e$message))
       if (!is.null(log_path)) log_write(log_path, "WARN", export_warnings[[length(export_warnings)]])
-    } else {
-      # Remover colunas list que writexl não consegue processar
-      list_cols <- vapply(xlsx_df, is.list, logical(1))
-      if (any(list_cols)) {
-        xlsx_df <- xlsx_df[, !list_cols, drop = FALSE]
-      }
-      if (ncol(xlsx_df) > 0) {
-        writexl::write_xlsx(list(oportunidades = xlsx_df), xlsx_path)
-        export_paths <- c(export_paths, xlsx_path)
-        if (any(vapply(names(clean_df), function(nm) {
-          if (!is.character(clean_df[[nm]])) return(FALSE)
-          nch <- nchar(clean_df[[nm]], type = "chars")
-          any(!is.na(nch) & nch > 32000L, na.rm = TRUE)
-        }, logical(1)))) {
-          export_warnings <<- c(export_warnings, "Exportação XLSX gerada com truncamento de textos acima de 32.000 caracteres.")
+    }
+  )
+
+  tryCatch(
+    {
+      saveRDS(clean_df, rds_path)
+      export_paths <- c(export_paths, rds_path)
+    },
+    error = function(e) {
+      export_warnings <<- c(export_warnings, paste0("Falha ao exportar RDS: ", e$message))
+      if (!is.null(log_path)) log_write(log_path, "WARN", export_warnings[[length(export_warnings)]])
+    }
+  )
+
+  tryCatch(
+    {
+      xlsx_df <- truncate_excel_strings(clean_df)
+      if (is.null(xlsx_df) || !is.data.frame(xlsx_df) || ncol(xlsx_df) == 0 || nrow(xlsx_df) == 0) {
+        export_warnings <<- c(export_warnings, "Exportação XLSX ignorada: dataframe vazio ou inválido.")
+        if (!is.null(log_path)) log_write(log_path, "WARN", export_warnings[[length(export_warnings)]])
+      } else {
+        # Remover colunas list que writexl não consegue processar
+        list_cols <- vapply(xlsx_df, is.list, logical(1))
+        if (any(list_cols)) {
+          xlsx_df <- xlsx_df[, !list_cols, drop = FALSE]
+        }
+        if (ncol(xlsx_df) > 0) {
+          writexl::write_xlsx(list(oportunidades = xlsx_df), xlsx_path)
+          export_paths <- c(export_paths, xlsx_path)
+          if (any(vapply(names(clean_df), function(nm) {
+            if (!is.character(clean_df[[nm]])) {
+              return(FALSE)
+            }
+            nch <- nchar(clean_df[[nm]], type = "chars")
+            any(!is.na(nch) & nch > 32000L, na.rm = TRUE)
+          }, logical(1)))) {
+            export_warnings <<- c(export_warnings, "Exportação XLSX gerada com truncamento de textos acima de 32.000 caracteres.")
+            if (!is.null(log_path)) log_write(log_path, "WARN", export_warnings[[length(export_warnings)]])
+          }
+        } else {
+          export_warnings <<- c(export_warnings, "Exportação XLSX ignorada: nenhuma coluna válida após remoção de list columns.")
           if (!is.null(log_path)) log_write(log_path, "WARN", export_warnings[[length(export_warnings)]])
         }
-      } else {
-        export_warnings <<- c(export_warnings, "Exportação XLSX ignorada: nenhuma coluna válida após remoção de list columns.")
-        if (!is.null(log_path)) log_write(log_path, "WARN", export_warnings[[length(export_warnings)]])
       }
+    },
+    error = function(e) {
+      export_warnings <<- c(export_warnings, paste0("Falha ao exportar XLSX: ", e$message))
+      if (!is.null(log_path)) log_write(log_path, "WARN", export_warnings[[length(export_warnings)]])
     }
-  }, error = function(e) {
-    export_warnings <<- c(export_warnings, paste0("Falha ao exportar XLSX: ", e$message))
-    if (!is.null(log_path)) log_write(log_path, "WARN", export_warnings[[length(export_warnings)]])
-  })
+  )
 
   list(paths = export_paths, warnings = unique(export_warnings))
 }
@@ -2691,24 +2997,30 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
   if (!grepl("^(/|[A-Za-z]:)", modal_log_file)) modal_log_file <- file.path(getwd(), modal_log_file)
   status_file <- normalizePath(status_file, winslash = "/", mustWork = FALSE)
   modal_log_file <- normalizePath(modal_log_file, winslash = "/", mustWork = FALSE)
-  
+
   Sys.setenv(COLLECTION_STATUS_FILE = status_file)
   Sys.setenv(COLLECTION_MODAL_LOG_FILE = modal_log_file)
 
   log_file <- modal_log_file
   dir.create(dirname(status_file), recursive = TRUE, showWarnings = FALSE)
-  try({
-    if (file.exists(status_file)) file.remove(status_file)
-    if (file.exists(log_file)) file.remove(log_file)
-  }, silent = TRUE)
+  try(
+    {
+      if (file.exists(status_file)) file.remove(status_file)
+      if (file.exists(log_file)) file.remove(log_file)
+    },
+    silent = TRUE
+  )
 
   # Limpar erros antigos de logs_coleta para evitar falsos positivos no modal de alerta
-  tryCatch({
-    DBI::dbExecute(conn, "DELETE FROM logs_coleta WHERE status_execucao = 'erro'")
-    log_write(log_path, "INFO", "Logs de erro antigos removidos de logs_coleta.")
-  }, error = function(e) {
-    log_write(log_path, "WARN", sprintf("Falha ao limpar logs de erro: %s", e$message))
-  })
+  tryCatch(
+    {
+      DBI::dbExecute(conn, "DELETE FROM logs_coleta WHERE status_execucao = 'erro'")
+      log_write(log_path, "INFO", "Logs de erro antigos removidos de logs_coleta.")
+    },
+    error = function(e) {
+      log_write(log_path, "WARN", sprintf("Falha ao limpar logs de erro: %s", e$message))
+    }
+  )
 
   sources <- tibble::as_tibble(DBI::dbReadTable(conn, "fontes_financiamento"))
 
@@ -2723,7 +3035,7 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
   for (i in seq_len(total)) {
     src <- sources[i, , drop = FALSE]
     sid <- src$id_fonte[[1]]
-    
+
     status_data <- list(
       step = i - 1L,
       total = total,
@@ -2735,27 +3047,30 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
     )
     try(jsonlite::write_json(status_data, status_file, auto_unbox = TRUE), silent = TRUE)
     log_progress(sprintf("Iniciando coleta da agência %s...", src$sigla[[1]]), "Scraping")
-    
+
     if (!is.null(progress_cb)) progress_cb(i - 1L, total, sprintf("Coletando %s", sid))
     log_write(log_path, "INFO", sprintf("Fonte em processamento: %s | %s", sid, src$url_oportunidades[[1]]))
 
     # Override: fontes EU (HEU/ERC) usam mais registros por serem programas plurianuais
     effective_max <- if (sid %in% c("horizon_europe", "erc")) 100L else max_records_per_source
 
-    result <- tryCatch({
-      source_dispatch(
-        source_row = src,
-        max_pages = max_pages,
-        max_records = effective_max,
-        use_ai = use_ai,
-        log_path = log_path,
-        conn = conn
-      )
-    }, error = function(e) {
-      log_write(log_path, "ERROR", sprintf("Falha na fonte %s: %s", sid, e$message))
-      log_collection(conn, sid, src$metodo_coleta[[1]], "erro", e$message, n_paginas = 0L, n_registros = 0L, url = src$url_oportunidades[[1]])
-      NULL
-    })
+    result <- tryCatch(
+      {
+        source_dispatch(
+          source_row = src,
+          max_pages = max_pages,
+          max_records = effective_max,
+          use_ai = use_ai,
+          log_path = log_path,
+          conn = conn
+        )
+      },
+      error = function(e) {
+        log_write(log_path, "ERROR", sprintf("Falha na fonte %s: %s", sid, e$message))
+        log_collection(conn, sid, src$metodo_coleta[[1]], "erro", e$message, n_paginas = 0L, n_registros = 0L, url = src$url_oportunidades[[1]])
+        NULL
+      }
+    )
 
     # Fallback: se fonte EU falhar ou retornar vazia (apenas off-Connect), tentar CORDIS
     # No Connect, os coletores EU já retornam CORDIS diretamente
@@ -2764,18 +3079,21 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
     if ((eu_falhou || eu_erro) && sid %in% c("horizon_europe", "erc") && !is_on_connect()) {
       log_write(log_path, "INFO", sprintf("Fonte %s falhou/vazia (off-Connect). Tentando CORDIS como fallback...", sid))
       log_progress(sprintf("CORDIS: tentando fallback para %s...", sid), "Scraping")
-      result <- tryCatch({
-        cordis_res <- collect_cordis(log_path = log_path, max_records = 50L)
-        if (nrow(cordis_res$records) > 0) {
-          cordis_res$source_id <- "cordis_eu"
-          cordis_res
-        } else {
+      result <- tryCatch(
+        {
+          cordis_res <- collect_cordis(log_path = log_path, max_records = 50L)
+          if (nrow(cordis_res$records) > 0) {
+            cordis_res$source_id <- "cordis_eu"
+            cordis_res
+          } else {
+            NULL
+          }
+        },
+        error = function(e) {
+          log_write(log_path, "WARN", sprintf("CORDIS fallback tambem falhou: %s", e$message))
           NULL
         }
-      }, error = function(e) {
-        log_write(log_path, "WARN", sprintf("CORDIS fallback tambem falhou: %s", e$message))
-        NULL
-      })
+      )
     }
 
     if (is.null(result)) next
@@ -2784,7 +3102,7 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
       log_write(log_path, "ERROR", sprintf("Falha ao finalizar registros da fonte %s: %s", sid, e$message))
       ensure_record_schema(tibble::tibble())
     })
-    
+
     # Traduzir registros EU para pt-br (habilitado por padrao, desabilitar com AI_TRANSLATE_EU=false)
     translate_eu <- identical(tolower(Sys.getenv("AI_TRANSLATE_EU", "true")), "true")
     is_eu_source <- sid %in% c("horizon_europe", "erc") || (result$source_id %||% "") == "cordis_eu"
@@ -2794,7 +3112,7 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
         recs
       })
     }
-    
+
     n_inserted <- tryCatch(upsert_opportunities(conn, recs), error = function(e) {
       log_write(log_path, "ERROR", sprintf("Falha ao inserir registros da fonte %s: %s", sid, e$message))
       0L

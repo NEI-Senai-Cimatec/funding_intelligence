@@ -5025,31 +5025,25 @@
       "checksum": "1845520677f7d4508e47848977324725"
     },
     "funding_intelligence.sqlite": {
-      "checksum": "00e06e660b1a4404c5d7383cff1043e1"
-    },
-    "funding_intelligence.sqlite-shm": {
-      "checksum": "0979f92e6bb0ccb5c45ea1767963e0ac"
-    },
-    "funding_intelligence.sqlite-wal": {
-      "checksum": "3e77290ebfe68e903ecda8ae7858128c"
+      "checksum": "e3f827f09601a15fd55db60c3062dc79"
     },
     "logos/logos.png": {
       "checksum": "a1476fcbe354cf7e7d0ba5ab8110ef96"
     },
     "logs/collection_modal_log.txt": {
-      "checksum": "b2a393bc5a8e895101d5c1238dd5ca62"
+      "checksum": "cacf5677eff0fc06f5819586cc90e45a"
     },
     "logs/collection_status.json": {
-      "checksum": "4cd1dd9c2981c087ec52a9400c2dc7f7"
+      "checksum": "1b6e9d451b17641257e596d9644e4e25"
     },
     "logs/collection_stderr.log": {
-      "checksum": "a2d028a7a51aed7233426258b69f0e37"
+      "checksum": "34fba771e12241ea4c1eef29f5a1679f"
     },
     "logs/collection_stdout.log": {
       "checksum": "d41d8cd98f00b204e9800998ecf8427e"
     },
     "logs/funding_collection.log": {
-      "checksum": "5e13770a37976bf6969345313d524688"
+      "checksum": "b5787f6972fd04381591fedbd5a8caf3"
     },
     "logs/search_stderr.log": {
       "checksum": "22ebcec1724e4be3a16442a6cb44f10b"
@@ -5064,10 +5058,10 @@
       "checksum": "8a8be9a1d41aae34ed39d773af8e3ece"
     },
     "R/helpers_collect.R": {
-      "checksum": "a48dcaa1c98da8a9efbf845fe34fa4f8"
+      "checksum": "dd89d988d900ce3128f4dcf430347b8d"
     },
     "R/helpers_db.R": {
-      "checksum": "2c8c554d913ed762f5534d1b5b59f3bc"
+      "checksum": "53249a799c5b8f95bf38d1bd9628d798"
     },
     "R/helpers_drive.R": {
       "checksum": "5723937c6caf0f076b3bbeabaa283f5d"
@@ -5079,7 +5073,7 @@
       "checksum": "07206994bcd24583e419b971567545f3"
     },
     "R/helpers_utils.R": {
-      "checksum": "4b2fc8e78adad7a2e311dac2d4e897ae"
+      "checksum": "d297ac6695b51a94b2e8c29cc65caae7"
     },
     "R_libs/backports/DESCRIPTION": {
       "checksum": "3a06d70675de422672893f1bfa8d3708"

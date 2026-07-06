@@ -1,26 +1,39 @@
-
 `%||%` <- function(x, y) {
-  if (is.null(x)) return(y)
-  if (length(x) == 0) return(y)
-  if (is.function(x)) return(y)
-  if (all(is.na(x))) return(y)
+  if (is.null(x)) {
+    return(y)
+  }
+  if (length(x) == 0) {
+    return(y)
+  }
+  if (is.function(x)) {
+    return(y)
+  }
+  if (all(is.na(x))) {
+    return(y)
+  }
   if (is.character(x)) {
     xx <- trimws(x)
     xx[is.na(xx)] <- ""
-    if (!any(nzchar(xx))) return(y)
+    if (!any(nzchar(xx))) {
+      return(y)
+    }
   }
   x
 }
 
 
 ensure_dir <- function(path) {
-  if (is.null(path) || !nzchar(path)) return(invisible(path))
+  if (is.null(path) || !nzchar(path)) {
+    return(invisible(path))
+  }
   if (!dir.exists(path)) dir.create(path, recursive = TRUE, showWarnings = FALSE)
   invisible(path)
 }
 
 safe_split <- function(x, pattern = "[;,|]+") {
-  if (length(x) == 0 || is.null(x) || all(is.na(x))) return(character())
+  if (length(x) == 0 || is.null(x) || all(is.na(x))) {
+    return(character())
+  }
   out <- unlist(strsplit(paste(stats::na.omit(as.character(x)), collapse = ";"), pattern, perl = TRUE), use.names = FALSE)
   out <- trimws(out)
   out[nzchar(out)]
@@ -41,7 +54,9 @@ sanitize_id <- function(x) {
 }
 
 normalize_text <- function(x) {
-  if (is.function(x)) return("")
+  if (is.function(x)) {
+    return("")
+  }
   x <- x %||% ""
   x <- stringi::stri_trans_general(as.character(x), "Latin-ASCII")
   x <- tolower(x)
@@ -50,7 +65,9 @@ normalize_text <- function(x) {
 }
 
 normalize_ws <- function(x) {
-  if (is.function(x)) return("")
+  if (is.function(x)) {
+    return("")
+  }
   x <- x %||% ""
   x <- as.character(x)
   # Normaliza espaços Unicode comuns em páginas web, incluindo NBSP.
@@ -62,12 +79,20 @@ normalize_ws <- function(x) {
 
 
 null_if_empty <- function(v) {
-  if (is.function(v)) return(NA_character_)
-  if (is.null(v)) return(NA_character_)
-  if (length(v) == 0) return(v)
+  if (is.function(v)) {
+    return(NA_character_)
+  }
+  if (is.null(v)) {
+    return(NA_character_)
+  }
+  if (length(v) == 0) {
+    return(v)
+  }
 
   out <- tryCatch(as.character(v), error = function(e) rep(NA_character_, length(v)))
-  if (length(out) == 0) return(out)
+  if (length(out) == 0) {
+    return(out)
+  }
   out <- normalize_ws(out)
   out[is.na(out) | !nzchar(out)] <- NA_character_
   out
@@ -75,7 +100,9 @@ null_if_empty <- function(v) {
 
 
 safe_numeric <- function(x) {
-  if (is.null(x) || length(x) == 0) return(NA_real_)
+  if (is.null(x) || length(x) == 0) {
+    return(NA_real_)
+  }
   x <- normalize_ws(as.character(x))
   x <- stringi::stri_replace_all_fixed(x, c(" ", " ", " "), " ", vectorize_all = FALSE)
   x <- gsub("(?<=\\d)\\.(?=\\d{3}(\\D|$))", "", x, perl = TRUE)
@@ -85,9 +112,15 @@ safe_numeric <- function(x) {
 }
 
 parse_date_safe <- function(x) {
-  if (inherits(x, "Date")) return(x)
-  if (inherits(x, "POSIXct")) return(as.Date(x))
-  if (length(x) == 0 || all(is.na(x))) return(as.Date(rep(NA, length(x))))
+  if (inherits(x, "Date")) {
+    return(x)
+  }
+  if (inherits(x, "POSIXct")) {
+    return(as.Date(x))
+  }
+  if (length(x) == 0 || all(is.na(x))) {
+    return(as.Date(rep(NA, length(x))))
+  }
   x <- as.character(x)
   x[!nzchar(trimws(x))] <- NA_character_
   out <- suppressWarnings(lubridate::ymd(x, quiet = TRUE))
@@ -103,8 +136,12 @@ parse_date_safe <- function(x) {
 }
 
 parse_datetime_safe <- function(x) {
-  if (inherits(x, "POSIXct")) return(x)
-  if (length(x) == 0 || all(is.na(x))) return(as.POSIXct(rep(NA, length(x)), origin = "1970-01-01", tz = "UTC"))
+  if (inherits(x, "POSIXct")) {
+    return(x)
+  }
+  if (length(x) == 0 || all(is.na(x))) {
+    return(as.POSIXct(rep(NA, length(x)), origin = "1970-01-01", tz = "UTC"))
+  }
   x <- as.character(x)
   x[!nzchar(trimws(x))] <- NA_character_
   out <- suppressWarnings(lubridate::ymd_hms(x, quiet = TRUE, tz = "UTC"))
@@ -154,22 +191,31 @@ classify_status <- function(deadline = NA, start = NA, end = NA, text = NULL) {
         TRUE ~ "aberto"
       ))
     }
-    if (grepl("encerrad|closed|finalizad|expired", txt_i, ignore.case = TRUE)) return("encerrado")
-    if (grepl("open|abert|ongoing|em andamento", txt_i, ignore.case = TRUE)) return("aberto")
-    if (grepl("coming soon|em breve|upcoming", txt_i, ignore.case = TRUE)) return("em breve")
+    if (grepl("encerrad|closed|finalizad|expired", txt_i, ignore.case = TRUE)) {
+      return("encerrado")
+    }
+    if (grepl("open|abert|ongoing|em andamento", txt_i, ignore.case = TRUE)) {
+      return("aberto")
+    }
+    if (grepl("coming soon|em breve|upcoming", txt_i, ignore.case = TRUE)) {
+      return("em breve")
+    }
     "indefinido"
   }, character(1))
   out
 }
 
 normalize_country <- function(x) {
-  if (is.na(x) || !nzchar(trimws(x))) return(NA_character_)
+  if (is.na(x) || !nzchar(trimws(x))) {
+    return(NA_character_)
+  }
   key <- normalize_text(x)
   dict <- c(
     "brazil" = "Brasil", "brasil" = "Brasil", "brazilian" = "Brasil",
     "united states" = "Estados Unidos", "usa" = "Estados Unidos", "u.s." = "Estados Unidos",
     "canada" = "Canadá", "germany" = "Alemanha", "deutschland" = "Alemanha",
     "france" = "França", "european union" = "União Europeia", "eu" = "União Europeia",
+    "uniao europeia" = "União Europeia",
     "international" = "Internacional", "global" = "Internacional", "multicountry" = "Internacional",
     "united kingdom" = "Reino Unido"
   )
@@ -179,12 +225,22 @@ normalize_country <- function(x) {
 infer_language_simple <- function(text) {
   vals <- as.character(text %||% NA_character_)
   vapply(vals, function(one) {
-    if (length(one) == 0 || is.na(one)) return(NA_character_)
+    if (length(one) == 0 || is.na(one)) {
+      return(NA_character_)
+    }
     txt <- normalize_text(substr(one, 1, 3000))
-    if (!length(txt) || is.na(txt) || !nzchar(txt)) return(NA_character_)
-    if (grepl("\\b(edital|chamada|fomento|bolsa|auxilio|inscricoes|prazo)\\b", txt, perl = TRUE, ignore.case = TRUE)) return("pt")
-    if (grepl("\\b(call|grant|funding|scholarship|deadline|eligibility)\\b", txt, perl = TRUE, ignore.case = TRUE)) return("en")
-    if (grepl("\\b(convocatoria|subvencion|beca|financiacion)\\b", txt, perl = TRUE, ignore.case = TRUE)) return("es")
+    if (!length(txt) || is.na(txt) || !nzchar(txt)) {
+      return(NA_character_)
+    }
+    if (grepl("\\b(edital|chamada|fomento|bolsa|auxilio|inscricoes|prazo)\\b", txt, perl = TRUE, ignore.case = TRUE)) {
+      return("pt")
+    }
+    if (grepl("\\b(call|grant|funding|scholarship|deadline|eligibility)\\b", txt, perl = TRUE, ignore.case = TRUE)) {
+      return("en")
+    }
+    if (grepl("\\b(convocatoria|subvencion|beca|financiacion)\\b", txt, perl = TRUE, ignore.case = TRUE)) {
+      return("es")
+    }
     NA_character_
   }, character(1))
 }
@@ -213,7 +269,9 @@ infer_type_from_text <- function(text) {
 
 extract_keywords_simple <- function(text, top_n = 8) {
   txt <- normalize_text(text %||% "")
-  if (!nzchar(txt)) return(NA_character_)
+  if (!nzchar(txt)) {
+    return(NA_character_)
+  }
   tokens <- unlist(strsplit(txt, "[^a-z0-9]+", perl = TRUE), use.names = FALSE)
   tokens <- tokens[nchar(tokens) >= 4]
   stopwords <- unique(c(
@@ -226,14 +284,18 @@ extract_keywords_simple <- function(text, top_n = 8) {
     "proposal", "proposals", "application", "applications", "research", "researches", "programa", "program", "programs", "state", "fapes", "cnpq", "capes", "finep", "funding", "fundings", "grant", "grants", "scholarship", "scholarships", "fellowship", "fellowships", "award", "awards", "call", "calls", "deadline", "deadlines", "eligible", "eligibility", "institution", "institutions", "candidate", "candidates", "submission", "submissions", "form", "forms", "annex", "annexes", "guideline", "guidelines", "notice", "notices", "budget", "budgets", "cost", "costs", "partner", "partners", "project", "projects", "support", "supports", "development", "developments"
   ))
   tokens <- tokens[!(tokens %in% normalize_text(stopwords))]
-  if (length(tokens) == 0) return(NA_character_)
+  if (length(tokens) == 0) {
+    return(NA_character_)
+  }
   freq <- sort(table(tokens), decreasing = TRUE)
   paste(names(freq)[seq_len(min(top_n, length(freq)))], collapse = "; ")
 }
 
 parse_money_text <- function(text) {
   txt <- normalize_ws(text %||% "")
-  if (!nzchar(txt)) return(list(value = NA_real_, currency = NA_character_))
+  if (!nzchar(txt)) {
+    return(list(value = NA_real_, currency = NA_character_))
+  }
   currency <- dplyr::case_when(
     grepl("R\\$|reais|brl", txt, ignore.case = TRUE) ~ "BRL",
     grepl("US\\$|usd|dollars?", txt, ignore.case = TRUE) ~ "USD",
@@ -258,14 +320,18 @@ extract_dates_from_text <- function(text) {
   )
   hits <- unique(unlist(lapply(pats, function(p) stringr::str_extract_all(txt, stringr::regex(p, ignore_case = TRUE))[[1]]), use.names = FALSE))
   hits <- hits[nzchar(hits)]
-  if (length(hits) == 0) return(as.Date(character()))
+  if (length(hits) == 0) {
+    return(as.Date(character()))
+  }
   month_map <- c(
     janeiro = "01", fevereiro = "02", marco = "03", março = "03", abril = "04", maio = "05", junho = "06",
     julho = "07", agosto = "08", setembro = "09", outubro = "10", novembro = "11", dezembro = "12"
   )
   normalize_pt_date <- function(x) {
     key <- normalize_text(x)
-    if (!grepl(" de ", key, fixed = TRUE)) return(x)
+    if (!grepl(" de ", key, fixed = TRUE)) {
+      return(x)
+    }
     m <- regmatches(key, regexec("(\\d{1,2}) de ([a-zçãéíóúâêô]+) de (\\d{4})", key))[[1]]
     if (length(m) == 4) sprintf("%s-%s-%02d", m[4], month_map[[m[3]]] %||% "01", as.integer(m[2])) else x
   }
@@ -275,35 +341,56 @@ extract_dates_from_text <- function(text) {
 make_hash <- function(...) digest::digest(paste(..., collapse = "||"), algo = "xxhash64")
 
 safe_html_text <- function(node) {
-  if (is.null(node) || length(node) == 0 || inherits(node, "xml_missing")) return(NA_character_)
+  if (is.null(node) || length(node) == 0 || inherits(node, "xml_missing")) {
+    return(NA_character_)
+  }
   if (inherits(node, "xml_nodeset")) {
-    if (length(node) == 0) return(NA_character_)
+    if (length(node) == 0) {
+      return(NA_character_)
+    }
     node <- node[[1]]
   }
   # Clone para evitar mutação indesejada do DOM original
   node_copy <- tryCatch(xml2::xml_clone(node), error = function(e) node)
-  try({
-    xml2::xml_remove(xml2::xml_find_all(node_copy, ".//script|.//style|.//iframe|.//noscript|.//svg"))
-  }, silent = TRUE)
+  try(
+    {
+      xml2::xml_remove(xml2::xml_find_all(node_copy, ".//script|.//style|.//iframe|.//noscript|.//svg"))
+    },
+    silent = TRUE
+  )
   out <- tryCatch(rvest::html_text2(node_copy, preserve_nbsp = FALSE), error = function(e) NA_character_)
   normalize_ws(out)
 }
 
 safe_attr <- function(node, attr) {
-  if (inherits(node, "xml_missing") || length(node) == 0 || is.null(node)) return(NA_character_)
+  if (inherits(node, "xml_missing") || length(node) == 0 || is.null(node)) {
+    return(NA_character_)
+  }
   val <- rvest::html_attr(node, attr)
-  if (length(val) == 0) return(NA_character_)
+  if (length(val) == 0) {
+    return(NA_character_)
+  }
   val
 }
 
 resolve_url <- function(base_url, href) {
-  if (is.null(href) || length(href) == 0) return(NA_character_)
+  if (is.null(href) || length(href) == 0) {
+    return(NA_character_)
+  }
   href <- as.character(href[[1]])
-  if (is.na(href)) return(NA_character_)
+  if (is.na(href)) {
+    return(NA_character_)
+  }
   href <- trimws(href)
-  if (!nzchar(href)) return(NA_character_)
-  if (grepl("^(javascript:|mailto:|tel:)", href, ignore.case = TRUE)) return(NA_character_)
-  if (grepl("^https?://", href, ignore.case = TRUE)) return(href)
+  if (!nzchar(href)) {
+    return(NA_character_)
+  }
+  if (grepl("^(javascript:|mailto:|tel:)", href, ignore.case = TRUE)) {
+    return(NA_character_)
+  }
+  if (grepl("^https?://", href, ignore.case = TRUE)) {
+    return(href)
+  }
   if (grepl("^//", href)) {
     scheme <- tryCatch(xml2::url_parse(base_url)$scheme, error = function(e) "https")
     scheme <- if (is.null(scheme) || !nzchar(scheme)) "https" else scheme
@@ -311,7 +398,9 @@ resolve_url <- function(base_url, href) {
   }
   href_enc <- tryCatch(utils::URLencode(href, repeated = FALSE), error = function(e) href)
   out <- tryCatch(xml2::url_absolute(href_enc, base_url), error = function(e) NA_character_)
-  if (length(out) == 0 || is.na(out) || !nzchar(out)) return(NA_character_)
+  if (length(out) == 0 || is.na(out) || !nzchar(out)) {
+    return(NA_character_)
+  }
   out
 }
 
@@ -324,7 +413,9 @@ pick_first_nonempty <- function(...) {
     if (length(vv) == 0) next
     vv <- normalize_ws(vv)
     vv <- vv[!is.na(vv) & nzchar(vv)]
-    if (length(vv) > 0) return(vv[[1]])
+    if (length(vv) > 0) {
+      return(vv[[1]])
+    }
   }
   NA_character_
 }
@@ -337,9 +428,13 @@ extract_pdf_links <- function(html, base_url) {
 }
 
 nearest_block_text <- function(node, max_levels = 4) {
-  if (is.null(node) || length(node) == 0 || inherits(node, "xml_missing")) return(NA_character_)
+  if (is.null(node) || length(node) == 0 || inherits(node, "xml_missing")) {
+    return(NA_character_)
+  }
   if (inherits(node, "xml_nodeset")) {
-    if (length(node) == 0) return(NA_character_)
+    if (length(node) == 0) {
+      return(NA_character_)
+    }
     node <- node[[1]]
   }
   cur <- node
@@ -366,8 +461,7 @@ log_write <- function(log_path, level = "INFO", message = "") {
 
 badge_status_html <- function(status) {
   status <- tolower(status %||% "indefinido")
-  class_name <- switch(
-    status,
+  class_name <- switch(status,
     "aberto" = "badge-soft-open",
     "encerrando" = "badge-soft-warning",
     "em breve" = "badge-soft-info",
@@ -412,22 +506,22 @@ calculate_dynamic_adherence <- function(query, keywords, summary, title = "", su
   if (is.null(query) || !nzchar(trimws(query))) {
     return(as.integer(default_score %||% 0))
   }
-  
+
   # Normalize and clean the query string
   query_clean <- tolower(query)
   # Remove boolean logic symbols and punctuation
   query_clean <- gsub("[()\"':;,!?|]", " ", query_clean)
   query_clean <- gsub("\\b(and|or|not|&&|\\|\\||!)\\b", " ", query_clean, perl = TRUE)
-  
+
   # Split into unique terms
   words <- unlist(strsplit(query_clean, "\\s+"))
   words <- unique(trimws(words))
   words <- words[nzchar(words) & nchar(words) >= 3]
-  
+
   if (length(words) == 0) {
     return(as.integer(default_score %||% 0))
   }
-  
+
   # Text to search in: title, subtitle, keywords, and summary/object
   text_to_search <- tolower(paste(
     title %||% "",
@@ -436,27 +530,31 @@ calculate_dynamic_adherence <- function(query, keywords, summary, title = "", su
     summary %||% "",
     collapse = " "
   ))
-  
+
   # Count matches
   matches <- vapply(words, function(w) {
     w_esc <- gsub("([^a-zA-Z0-9])", "\\\\\\1", w)
     grepl(paste0("\\b", w_esc, "\\b"), text_to_search, perl = TRUE) || grepl(w, text_to_search, fixed = TRUE)
   }, logical(1))
-  
+
   # Calculate match percentage
   match_ratio <- sum(matches) / length(words)
   as.integer(round(match_ratio * 100))
 }
 
 link_html <- function(url, label = NULL) {
-  if (is.na(url) || !nzchar(url)) return("-")
+  if (is.na(url) || !nzchar(url)) {
+    return("-")
+  }
   label <- label %||% "Abrir"
   sprintf("<a href='%s' target='_blank' rel='noopener noreferrer'>%s</a>", url, label)
 }
 
 clean_edital_title <- function(title) {
-  if (is.null(title) || is.na(title) || !nzchar(title)) return(NA_character_)
-  
+  if (is.null(title) || is.na(title) || !nzchar(title)) {
+    return(NA_character_)
+  }
+
   # Se parecer um nome de arquivo (termina com extensões comuns ou não tem espaços e tem extensão)
   if (grepl("\\.(pdf|docx|xlsx|zip)$", title, ignore.case = TRUE) || !grepl(" ", title)) {
     # Remove extensão
@@ -479,59 +577,81 @@ clean_edital_title <- function(title) {
     title <- gsub("(\\b[A-Za-z]+[a-z])da(\\b|\\s|[A-Z])", "\\1 da \\2", title)
     title <- gsub("(\\b[A-Za-z]+[a-z])para(\\b|\\s|[A-Z])", "\\1 para \\2", title)
     title <- gsub("(\\b[A-Za-z]+[a-z])em(\\b|\\s|[A-Z])", "\\1 em \\2", title)
-    
+
     # Normaliza espaços
     title <- trimws(gsub("\\s+", " ", title))
   }
-  
+
   title
 }
 
 is_current_year_record <- function(pub_date_str, limit_date_str, title, text, is_eu_source = FALSE) {
   current_year <- as.integer(format(Sys.Date(), "%Y"))
-  
+
   pub_date <- parse_date_safe(pub_date_str)
   limit_date <- parse_date_safe(limit_date_str)
-  
+
   pub_year <- if (!is.na(pub_date)) as.integer(format(pub_date, "%Y")) else NA_integer_
   limit_year <- if (!is.na(limit_date)) as.integer(format(limit_date, "%Y")) else NA_integer_
-  
+
   # Para fontes EU (HEU/ERC): work programmes sao plurianuais
   # Aceitar registros com deadline >= ano corrente
   if (is_eu_source) {
-    if (!is.na(limit_year) && limit_year >= current_year) return(TRUE)
-    if (!is.na(pub_year) && pub_year >= current_year) return(TRUE)
+    if (!is.na(limit_year) && limit_year >= current_year) {
+      return(TRUE)
+    }
+    if (!is.na(pub_year) && pub_year >= current_year) {
+      return(TRUE)
+    }
     # Se nao tem datas mas menciona ano corrente ou futuro, aceitar
     year_pattern <- sprintf("\\b(%d|%d)\\b", current_year, current_year + 1)
-    if (grepl(year_pattern, title %||% "")) return(TRUE)
-    if (grepl(year_pattern, text %||% "")) return(TRUE)
+    if (grepl(year_pattern, title %||% "")) {
+      return(TRUE)
+    }
+    if (grepl(year_pattern, text %||% "")) {
+      return(TRUE)
+    }
     # Para EU, so rejeitar se explicitamente menciona anos muito antigos
     return(TRUE)
   }
-  
+
   # Se tiver data de publicação, valida pelo ano corrente
   if (!is.na(pub_year)) {
-    if (pub_year == current_year) return(TRUE)
-    if (pub_year < current_year) return(FALSE)
+    if (pub_year == current_year) {
+      return(TRUE)
+    }
+    if (pub_year < current_year) {
+      return(FALSE)
+    }
   }
-  
+
   # Se tiver data limite, valida pelo ano corrente
   if (!is.na(limit_year)) {
-    if (limit_year == current_year) return(TRUE)
-    if (limit_year < current_year) return(FALSE)
+    if (limit_year == current_year) {
+      return(TRUE)
+    }
+    if (limit_year < current_year) {
+      return(FALSE)
+    }
   }
-  
+
   # Heurística: se mencionar o ano corrente em formato de ano no título ou texto
   year_pattern <- sprintf("\\b%d\\b", current_year)
-  if (grepl(year_pattern, title %||% "")) return(TRUE)
-  if (grepl(year_pattern, text %||% "")) return(TRUE)
-  
+  if (grepl(year_pattern, title %||% "")) {
+    return(TRUE)
+  }
+  if (grepl(year_pattern, text %||% "")) {
+    return(TRUE)
+  }
+
   # Se mencionar anos passados recentes e nenhum 2026, consideramos edital antigo
   past_years <- (current_year - 5):(current_year - 1)
   past_patterns <- paste0("\\b", past_years, "\\b")
   has_past_year <- any(vapply(past_patterns, function(p) grepl(p, title %||% "") || grepl(p, text %||% ""), logical(1)))
-  if (has_past_year) return(FALSE)
-  
+  if (has_past_year) {
+    return(FALSE)
+  }
+
   TRUE
 }
 
@@ -582,13 +702,17 @@ build_scrape_headers <- function(ua = NULL) {
 #' @param inferred_fields Vetor de campos já inferidos (será modificado via <<-).
 fill_ai_field <- function(field, value, overwrite = FALSE,
                           target_df, row_idx = 1L, inferred_fields) {
-  if (is.null(value) || length(value) == 0) return(invisible(NULL))
+  if (is.null(value) || length(value) == 0) {
+    return(invisible(NULL))
+  }
   if (length(value) > 1) {
     value <- paste(vapply(value, as.character, character(1)), collapse = "; ")
   } else {
     value <- as.character(value[[1]])
   }
-  if (is.na(value) || !nzchar(trimws(value))) return(invisible(NULL))
+  if (is.na(value) || !nzchar(trimws(value))) {
+    return(invisible(NULL))
+  }
 
   if (field == "palavras_chave") {
     value <- gsub(",\\s*", "; ", value)
@@ -601,7 +725,7 @@ fill_ai_field <- function(field, value, overwrite = FALSE,
 
   current <- target_df[[field]][[row_idx]]
   if (overwrite || is.null(current) || length(current) == 0 ||
-      is.na(current) || !nzchar(trimws(as.character(current)))) {
+    is.na(current) || !nzchar(trimws(as.character(current)))) {
     target_df[[field]][[row_idx]] <<- value
     inferred_fields <<- unique(c(inferred_fields, field))
   }
@@ -654,7 +778,9 @@ apply_ai_fields_to_df <- function(ai, target_df, row_idx, inferred_fields) {
 
 extract_domain <- function(url) {
   parsed <- tryCatch(xml2::url_parse(url), error = function(e) NULL)
-  if (is.null(parsed) || is.na(parsed$server)) return("")
+  if (is.null(parsed) || is.na(parsed$server)) {
+    return("")
+  }
   paste0(parsed$server, if (!is.na(parsed$port)) paste0(":", parsed$port))
 }
 
@@ -664,17 +790,17 @@ DomainRateLimiter <- R6::R6Class("DomainRateLimiter",
     min_delay_same = NULL,
     min_delay_diff = NULL,
     last_domain = NULL,
-
     initialize = function(min_delay_same = 2.0, min_delay_diff = 0.5) {
       self$last_request <- new.env(parent = emptyenv())
       self$min_delay_same <- min_delay_same
       self$min_delay_diff <- min_delay_diff
       self$last_domain <- ""
     },
-
     wait_if_needed = function(url) {
       domain <- extract_domain(url)
-      if (!nzchar(domain)) return(invisible(NULL))
+      if (!nzchar(domain)) {
+        return(invisible(NULL))
+      }
 
       now <- as.numeric(Sys.time())
       last <- now

@@ -2,11 +2,14 @@ get_db_connection <- function(db_path) {
   ensure_dir(dirname(db_path))
   conn <- DBI::dbConnect(RSQLite::SQLite(), db_path)
   # Ativar WAL mode e timeout de concorrência (10s) para evitar "database locked"
-  try({
-    DBI::dbExecute(conn, "PRAGMA journal_mode = WAL;")
-    DBI::dbExecute(conn, "PRAGMA busy_timeout = 10000;")
-    DBI::dbExecute(conn, "PRAGMA encoding = 'UTF-8';")
-  }, silent = TRUE)
+  try(
+    {
+      DBI::dbExecute(conn, "PRAGMA journal_mode = WAL;")
+      DBI::dbExecute(conn, "PRAGMA busy_timeout = 10000;")
+      DBI::dbExecute(conn, "PRAGMA encoding = 'UTF-8';")
+    },
+    silent = TRUE
+  )
   return(conn)
 }
 
@@ -208,7 +211,9 @@ seed_profile <- function(conn) {
 
 seed_saved_searches <- function(conn) {
   existing <- DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM buscas_salvas")$n[[1]]
-  if (existing > 0) return(invisible(FALSE))
+  if (existing > 0) {
+    return(invisible(FALSE))
+  }
   now <- as.character(Sys.time())
   searches <- tibble::tribble(
     ~nome_busca, ~query_text, ~payload_avancado, ~alerta_ativo, ~created_at, ~last_run_at,
@@ -220,7 +225,9 @@ seed_saved_searches <- function(conn) {
 
 seed_search_history <- function(conn) {
   existing <- DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM historico_buscas")$n[[1]]
-  if (existing > 0) return(invisible(FALSE))
+  if (existing > 0) {
+    return(invisible(FALSE))
+  }
   hist <- tibble::tribble(
     ~query_text, ~filtros_json, ~executed_at,
     "quântica OR tecnologia quântica", "{}", as.character(Sys.time() - 86400 * 5),
@@ -231,7 +238,9 @@ seed_search_history <- function(conn) {
 
 seed_collaborators <- function(conn) {
   existing <- DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM colaboradores")$n[[1]]
-  if (existing > 0) return(invisible(FALSE))
+  if (existing > 0) {
+    return(invisible(FALSE))
+  }
   collaborators <- tibble::tribble(
     ~nome, ~instituicao, ~pais, ~area, ~palavras_chave, ~email,
     "Ana Martins", "UFES", "Brasil", "Saúde", "health innovation; medical devices; digital health", "ana.martins@example.org",
@@ -243,8 +252,10 @@ seed_collaborators <- function(conn) {
 
 seed_pesquisadores_vencedores <- function(conn) {
   existing <- DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM pesquisadores_vencedores")$n[[1]]
-  if (existing > 0) return(invisible(FALSE))
-  
+  if (existing > 0) {
+    return(invisible(FALSE))
+  }
+
   pesquisadores <- tibble::tribble(
     ~nome, ~email, ~instituicao, ~expertise,
     "Dr. Marcos Santos", "marcos.santos@cimatec.org.br", "SENAI CIMATEC", "computação quântica; qubits; supercondutores; hardware; tecnologia quântica",
@@ -259,16 +270,20 @@ seed_pesquisadores_vencedores <- function(conn) {
 
 seed_projetos_aprovados <- function(conn) {
   existing <- DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM projetos_aprovados")$n[[1]]
-  if (existing > 0) return(invisible(FALSE))
-  
+  if (existing > 0) {
+    return(invisible(FALSE))
+  }
+
   pesq <- DBI::dbGetQuery(conn, "SELECT id, nome FROM pesquisadores_vencedores")
-  
+
   get_id <- function(nome_pesq) {
     id <- pesq$id[pesq$nome == nome_pesq]
-    if (length(id) == 0) return(1L)
+    if (length(id) == 0) {
+      return(1L)
+    }
     as.integer(id[[1]])
   }
-  
+
   projetos <- tibble::tribble(
     ~titulo_projeto, ~pesquisador_id, ~edital_titulo, ~ano, ~palavras_chave,
     "Desenvolvimento de Computadores Quânticos Supercondutores", get_id("Dr. Marcos Santos"), "Edital Tecnologias Quânticas Avançadas", 2024L, "qubits; supercondutores; hardware; criogenia; computação quântica",
@@ -285,7 +300,9 @@ seed_projetos_aprovados <- function(conn) {
 
 seed_demo_opportunities <- function(conn) {
   existing <- DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM oportunidades")$n[[1]]
-  if (existing > 0) return(invisible(FALSE))
+  if (existing > 0) {
+    return(invisible(FALSE))
+  }
   today <- Sys.Date()
   demo <- tibble::tribble(
     ~entidade, ~pais_origem, ~titulo, ~subtitulo, ~descricao_resumida, ~descricao_completa, ~tipo_oportunidade, ~modalidade, ~area_tematica, ~palavras_chave, ~elegibilidade, ~publico_alvo, ~nivel_academico, ~instituicao_financiadora, ~valor_financiado, ~moeda, ~data_publicacao, ~data_abertura, ~data_limite, ~data_encerramento, ~status_oportunidade, ~link_origem, ~link_detalhe, ~link_documento_pdf, ~idioma, ~localidade, ~observacoes, ~texto_bruto, ~pagina_coletada, ~fonte_oficial, ~data_hora_coleta,
@@ -305,18 +322,23 @@ seed_demo_opportunities <- function(conn) {
 }
 
 migrate_existing_keywords <- function(conn) {
-  res <- tryCatch({
-    DBI::dbGetQuery(conn, "SELECT id_registro, titulo, subtitulo, descricao_resumida, descricao_completa, palavras_chave, campos_inferidos_ia FROM oportunidades")
-  }, error = function(e) NULL)
-  
-  if (is.null(res) || nrow(res) == 0) return(invisible(FALSE))
-  
+  res <- tryCatch(
+    {
+      DBI::dbGetQuery(conn, "SELECT id_registro, titulo, subtitulo, descricao_resumida, descricao_completa, palavras_chave, campos_inferidos_ia FROM oportunidades")
+    },
+    error = function(e) NULL
+  )
+
+  if (is.null(res) || nrow(res) == 0) {
+    return(invisible(FALSE))
+  }
+
   updated_count <- 0
   for (i in seq_len(nrow(res))) {
     id <- res$id_registro[[i]]
     kw <- res$palavras_chave[[i]]
     inferred <- res$campos_inferidos_ia[[i]] %||% ""
-    
+
     # Se não foi enriquecido via IA, vamos recalcular com o filtro de stopwords expandido
     is_ia_kw <- grepl("palavras_chave", inferred, fixed = TRUE)
     if (!is_ia_kw) {
@@ -328,20 +350,23 @@ migrate_existing_keywords <- function(conn) {
         collapse = "\n"
       )
       new_kw <- extract_keywords_simple(text)
-      
+
       if (!identical(kw, new_kw)) {
-        tryCatch({
-          DBI::dbExecute(
-            conn,
-            "UPDATE oportunidades SET palavras_chave = ? WHERE id_registro = ?",
-            params = list(new_kw, id)
-          )
-          updated_count <- updated_count + 1
-        }, error = function(e) NULL)
+        tryCatch(
+          {
+            DBI::dbExecute(
+              conn,
+              "UPDATE oportunidades SET palavras_chave = ? WHERE id_registro = ?",
+              params = list(new_kw, id)
+            )
+            updated_count <- updated_count + 1
+          },
+          error = function(e) NULL
+        )
       }
     }
   }
-  
+
   if (updated_count > 0) {
     message(sprintf("[Migration] Atualizadas as palavras-chave de %d edital(is) legado(s) no banco de dados.", updated_count))
   }
@@ -350,12 +375,17 @@ migrate_existing_keywords <- function(conn) {
 
 cleanup_database_opportunities <- function(conn) {
   # 1. Limpeza por Heurísticas Estáticas (incluindo novos filtros de retificações e Finep)
-  res <- tryCatch({
-    DBI::dbGetQuery(conn, "SELECT id_registro, titulo, descricao_resumida, link_origem, link_detalhe, texto_bruto FROM oportunidades")
-  }, error = function(e) NULL)
-  
-  if (is.null(res) || nrow(res) == 0) return(invisible(FALSE))
-  
+  res <- tryCatch(
+    {
+      DBI::dbGetQuery(conn, "SELECT id_registro, titulo, descricao_resumida, link_origem, link_detalhe, texto_bruto FROM oportunidades")
+    },
+    error = function(e) NULL
+  )
+
+  if (is.null(res) || nrow(res) == 0) {
+    return(invisible(FALSE))
+  }
+
   to_delete <- character()
   for (i in seq_len(nrow(res))) {
     id <- res$id_registro[[i]]
@@ -363,7 +393,7 @@ cleanup_database_opportunities <- function(conn) {
     desc <- res$descricao_resumida[[i]] %||% ""
     url <- res$link_detalhe[[i]] %||% res$link_origem[[i]] %||% ""
     body_text <- res$texto_bruto[[i]] %||% ""
-    
+
     is_funding <- TRUE
     if (exists("is_funding_opportunity_heuristics", mode = "function")) {
       is_funding <- is_funding_opportunity_heuristics(title = title, description = desc, url = url, body_text = body_text)
@@ -374,25 +404,31 @@ cleanup_database_opportunities <- function(conn) {
         is_funding <- FALSE
       }
     }
-    
+
     if (!is_funding) {
       to_delete <- c(to_delete, id)
     }
   }
-  
+
   if (length(to_delete) > 0) {
     message(sprintf("[DB Cleanup] Removendo %d registro(s) inválido(s)/não-editais do banco...", length(to_delete)))
     for (id in to_delete) {
-      tryCatch({
-        DBI::dbExecute(conn, "DELETE FROM oportunidades WHERE id_registro = ?", params = list(id))
-      }, error = function(e) NULL)
+      tryCatch(
+        {
+          DBI::dbExecute(conn, "DELETE FROM oportunidades WHERE id_registro = ?", params = list(id))
+        },
+        error = function(e) NULL
+      )
     }
   }
 
   # 2. Deduplicação Retroativa de Editais com o Mesmo Nome por Entidade
-  res_dedupe <- tryCatch({
-    DBI::dbGetQuery(conn, "SELECT id_registro, entidade, titulo, status_oportunidade, data_limite, texto_bruto, descricao_resumida FROM oportunidades")
-  }, error = function(e) NULL)
+  res_dedupe <- tryCatch(
+    {
+      DBI::dbGetQuery(conn, "SELECT id_registro, entidade, titulo, status_oportunidade, data_limite, texto_bruto, descricao_resumida FROM oportunidades")
+    },
+    error = function(e) NULL
+  )
 
   if (!is.null(res_dedupe) && nrow(res_dedupe) > 0 && exists("normalize_text", mode = "function") && exists("parse_date_safe", mode = "function")) {
     res_dedupe$title_norm <- vapply(res_dedupe$titulo, normalize_text, character(1))
@@ -420,9 +456,12 @@ cleanup_database_opportunities <- function(conn) {
     if (length(to_delete_dedupe) > 0) {
       message(sprintf("[DB Cleanup] Removendo %d registro(s) duplicado(s)/obsoletos do banco...", length(to_delete_dedupe)))
       for (id in to_delete_dedupe) {
-        tryCatch({
-          DBI::dbExecute(conn, "DELETE FROM oportunidades WHERE id_registro = ?", params = list(id))
-        }, error = function(e) NULL)
+        tryCatch(
+          {
+            DBI::dbExecute(conn, "DELETE FROM oportunidades WHERE id_registro = ?", params = list(id))
+          },
+          error = function(e) NULL
+        )
       }
     }
   }
@@ -436,6 +475,7 @@ init_database <- function(db_path) {
   create_tables(conn)
   seed_sources(conn)
   try(DBI::dbExecute(conn, "DELETE FROM fontes_financiamento WHERE id_fonte NOT IN (?, ?, ?, ?, ?, ?)", params = list("cnpq", "capes", "finep", "fapesb", "horizon_europe", "erc")), silent = TRUE)
+  try(DBI::dbExecute(conn, "UPDATE oportunidades SET pais_origem = 'União Europeia' WHERE pais_origem = 'Uniao Europeia'"), silent = TRUE)
   seed_profile(conn)
   seed_saved_searches(conn)
   seed_search_history(conn)
@@ -485,7 +525,9 @@ fallback_app_data <- function() {
 }
 
 upsert_opportunities <- function(conn, opportunities_df) {
-  if (is.null(opportunities_df) || nrow(opportunities_df) == 0) return(invisible(0L))
+  if (is.null(opportunities_df) || nrow(opportunities_df) == 0) {
+    return(invisible(0L))
+  }
 
   cols <- DBI::dbListFields(conn, "oportunidades")
   df <- tibble::as_tibble(opportunities_df)
@@ -498,8 +540,8 @@ upsert_opportunities <- function(conn, opportunities_df) {
   cols_no_pk <- setdiff(cols, "id_registro")
   update_clause <- paste(paste0(cols_no_pk, " = excluded.", cols_no_pk), collapse = ", ")
   sql_upsert <- paste0(
-    "INSERT INTO oportunidades (", paste(cols, collapse = ", "), ") VALUES (", 
-    paste(paste0(":", cols), collapse = ", "), ") ON CONFLICT(id_registro) DO UPDATE SET ", 
+    "INSERT INTO oportunidades (", paste(cols, collapse = ", "), ") VALUES (",
+    paste(paste0(":", cols), collapse = ", "), ") ON CONFLICT(id_registro) DO UPDATE SET ",
     update_clause
   )
 
@@ -507,16 +549,21 @@ upsert_opportunities <- function(conn, opportunities_df) {
   in_transaction <- FALSE
   DBI::dbBegin(conn)
   in_transaction <- TRUE
-  on.exit({
-    if (in_transaction && DBI::dbIsValid(conn)) {
-      try(DBI::dbRollback(conn), silent = TRUE)
-    }
-  }, add = TRUE)
+  on.exit(
+    {
+      if (in_transaction && DBI::dbIsValid(conn)) {
+        try(DBI::dbRollback(conn), silent = TRUE)
+      }
+    },
+    add = TRUE
+  )
 
   for (i in seq_len(nrow(df))) {
     row <- as.list(df[i, , drop = FALSE])
     row <- lapply(row, function(x) {
-      if (length(x) == 0) return(NA)
+      if (length(x) == 0) {
+        return(NA)
+      }
       x[[1]]
     })
     for (nm in names(row)) {
@@ -527,22 +574,25 @@ upsert_opportunities <- function(conn, opportunities_df) {
         row[[nm]] <- as.character(row[[nm]])
       }
     }
-    
+
     # Gera o hash de deduplicação via MD5 de Título + Agência (entidade)
     if (is.null(row$hash_deduplicacao) || is.na(row$hash_deduplicacao) || !nzchar(row$hash_deduplicacao)) {
       hash_input <- paste(row$entidade, row$titulo, sep = "||")
       row$hash_deduplicacao <- digest::digest(hash_input, algo = "md5")
     }
-    
+
     if (is.null(row$id_registro) || is.na(row$id_registro) || !nzchar(row$id_registro)) {
       row$id_registro <- paste0("auto_", substr(row$hash_deduplicacao, 1, 16))
     }
 
-    affected <- tryCatch({
-      DBI::dbExecute(conn, sql_upsert, params = row)
-    }, error = function(e) {
-      0L
-    })
+    affected <- tryCatch(
+      {
+        DBI::dbExecute(conn, sql_upsert, params = row)
+      },
+      error = function(e) {
+        0L
+      }
+    )
 
     if (affected > 0) inserted <- inserted + 1L
   }
@@ -592,29 +642,36 @@ delete_tracked_opportunity <- function(conn, id_oportunidade) {
 # --- Métricas de Performance ---
 
 log_metric <- function(conn, fonte, metric_type, value, context = NULL) {
-  tryCatch({
-    ctx_json <- if (!is.null(context)) jsonlite::toJSON(context, auto_unbox = TRUE) else NULL
-    DBI::dbExecute(conn,
-      "INSERT INTO metrics_coleta (fonte, timestamp, metric_type, metric_value, context) VALUES (?, ?, ?, ?, ?)",
-      params = list(fonte, as.character(Sys.time()), metric_type, value, ctx_json)
-    )
-  }, silent = TRUE)
+  tryCatch(
+    {
+      ctx_json <- if (!is.null(context)) jsonlite::toJSON(context, auto_unbox = TRUE) else NULL
+      DBI::dbExecute(conn,
+        "INSERT INTO metrics_coleta (fonte, timestamp, metric_type, metric_value, context) VALUES (?, ?, ?, ?, ?)",
+        params = list(fonte, as.character(Sys.time()), metric_type, value, ctx_json)
+      )
+    },
+    silent = TRUE
+  )
 }
 
 get_latency_by_source <- function(conn, hours = 24) {
-  tryCatch({
-    DBI::dbGetQuery(conn, "
+  tryCatch(
+    {
+      DBI::dbGetQuery(conn, "
       SELECT fonte, AVG(metric_value) as avg_latency, COUNT(*) as n_requests
       FROM metrics_coleta
       WHERE metric_type = 'http_latency' AND timestamp > datetime('now', ?)
       GROUP BY fonte ORDER BY avg_latency DESC
     ", params = list(paste0("-", hours, " hours")))
-  }, error = function(e) data.frame())
+    },
+    error = function(e) data.frame()
+  )
 }
 
 get_block_rate <- function(conn, hours = 24) {
-  tryCatch({
-    DBI::dbGetQuery(conn, "
+  tryCatch(
+    {
+      DBI::dbGetQuery(conn, "
       SELECT fonte,
              SUM(CASE WHEN json_extract(context, '$.blocked') = 1 THEN 1 ELSE 0 END) as blocks,
              COUNT(*) as total,
@@ -623,12 +680,15 @@ get_block_rate <- function(conn, hours = 24) {
       WHERE metric_type = 'http_request' AND timestamp > datetime('now', ?)
       GROUP BY fonte
     ", params = list(paste0("-", hours, " hours")))
-  }, error = function(e) data.frame())
+    },
+    error = function(e) data.frame()
+  )
 }
 
 get_ai_provider_usage <- function(conn, hours = 24) {
-  tryCatch({
-    DBI::dbGetQuery(conn, "
+  tryCatch(
+    {
+      DBI::dbGetQuery(conn, "
       SELECT json_extract(context, '$.provider') as provider,
              AVG(metric_value) as avg_latency,
              COUNT(*) as n_requests
@@ -636,17 +696,22 @@ get_ai_provider_usage <- function(conn, hours = 24) {
       WHERE metric_type = 'ai_request' AND timestamp > datetime('now', ?)
       GROUP BY provider
     ", params = list(paste0("-", hours, " hours")))
-  }, error = function(e) data.frame())
+    },
+    error = function(e) data.frame()
+  )
 }
 
 get_collection_throughput <- function(conn, hours = 24) {
-  tryCatch({
-    DBI::dbGetQuery(conn, "
+  tryCatch(
+    {
+      DBI::dbGetQuery(conn, "
       SELECT fonte, SUM(metric_value) as total_records,
              COUNT(*) as n_sources
       FROM metrics_coleta
       WHERE metric_type = 'source_records' AND timestamp > datetime('now', ?)
       GROUP BY fonte ORDER BY total_records DESC
     ", params = list(paste0("-", hours, " hours")))
-  }, error = function(e) data.frame())
+    },
+    error = function(e) data.frame()
+  )
 }

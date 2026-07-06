@@ -1,4 +1,4 @@
-# Funding Intelligence Hub
+# QuIIN - QFunding Intelligence Hub
 
 [![R 4.6+](https://img.shields.io/badge/R-4.6+-blue.svg)](https://www.r-project.org/)
 [![Shiny](https://img.shields.io/badge/Shiny-1.8+-orange.svg)](https://shiny.posit.co/)

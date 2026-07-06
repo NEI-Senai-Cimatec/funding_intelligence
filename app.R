@@ -214,7 +214,7 @@ ui <- bslib::page_sidebar(
       ),
       tags$div(
         class = "app-title-main",
-        h2("Funding Intelligence Hub"),
+        h2("QuIIN - QFunding Intelligence Hub"),
         p("Busca booleana, monitoramento de editais e recomendação a partir do banco local.")
       )
     ),
@@ -352,16 +352,20 @@ ui <- bslib::page_sidebar(
     tags$div(
       class = "footer-bottom-centered",
       tags$p(
-        style = "color: #475569; font-size: 0.85rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
-        sprintf("© %s Núcleo de Economia Industrial – SENAI CIMATEC. Transformando conhecimento econômico em vantagem competitiva.", format(Sys.Date(), "%Y"))
-      ),
-      tags$p(
         style = "color: #64748b; font-size: 0.8rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
         tags$i(class = "fa-solid fa-atom", style = "color: #004691;"), " QuIIN • Associação tecnológica"
       ),
       tags$p(
         style = "color: #64748b; font-size: 0.8rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
         "Curador responsável: David Franco Regalado, Ítalo Ferreira da Silva e João Carlos Pereira Passos."
+      ),
+      tags$p(
+        style = "color: #64748b; font-size: 0.8rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
+        "Responsável técnico: Mabel Diz Marques Mota"
+      ),
+      tags$p(
+        style = "color: #475569; font-size: 0.85rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
+        sprintf("© %s Núcleo de Economia Industrial – SENAI CIMATEC. Transformando conhecimento econômico em vantagem competitiva.", format(Sys.Date(), "%Y"))
       )
     )
   )

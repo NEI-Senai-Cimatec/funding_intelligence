@@ -3253,6 +3253,314 @@ collect_sigitec_fallback <- function(source_row, max_records, log_path) {
   list(records = recs, pages_visited = 1L, last_url = page_url)
 }
 
+collect_undp <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  #' Coleta oportunidades da UNDP Brasil via componente externo (JSON)
+  #' Dados vêm de public-components.undp.org como JavaScript com JSON embutido
+  #' Detalhes via procurement-notices.undp.org (HTML estático)
+
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[UNDP][%s] %s", level, msg))
+  }
+
+  component_url <- "https://public-components.undp.org/?comp=proc_notices&cty_id_c=BRA&style_type=table"
+  detail_base <- "https://procurement-notices.undp.org/view_negotiation.cfm?nego_id="
+
+  .log("INFO", "Iniciando coleta UNDP Brasil via componente externo...")
+
+  # Pre-flight: verificar conectividade
+  if (!is_host_alive(component_url)) {
+    .log("WARN", "Componente UNDP inacessivel. Pulando coleta.")
+    try(log_progress("AVISO: Componente UNDP inacessivel - pulando", "Scraping"), silent = TRUE)
+    return(list(records = tibble::tibble(), pages_visited = 0L, last_url = component_url))
+  }
+
+  # ETAPA 1: Buscar componente externo (retorna JavaScript com JSON)
+  .log("INFO", "Buscando componente de dados...")
+  user_agent <- "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+
+  req <- httr2::request(component_url) |>
+    httr2::req_user_agent(user_agent) |>
+    httr2::req_headers(
+      `Accept` = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      `Accept-Language` = "pt-BR,pt;q=0.9,en;q=0.8",
+      `Referer` = "https://www.undp.org/pt/brazil/licitacoes"
+    ) |>
+    httr2::req_timeout(20) |>
+    httr2::req_retry(max_tries = 3, backoff = function(x) 2^x)
+
+  resp <- tryCatch(httr2::req_perform(req), error = function(e) {
+    .log("ERROR", sprintf("Falha ao buscar componente: %s", e$message))
+    NULL
+  })
+
+  if (is.null(resp) || httr2::resp_status(resp) != 200) {
+    .log("WARN", "Componente retornou erro.")
+    return(list(records = tibble::tibble(), pages_visited = 0L, last_url = component_url))
+  }
+
+  js_text <- tryCatch(httr2::resp_body_string(resp, encoding = "UTF-8"), error = function(e) {
+    .log("ERROR", sprintf("Falha ao ler resposta: %s", e$message))
+    NULL
+  })
+
+  if (is.null(js_text) || !nzchar(js_text)) {
+    .log("WARN", "Resposta vazia do componente.")
+    return(list(records = tibble::tibble(), pages_visited = 0L, last_url = component_url))
+  }
+
+  # ETAPA 2: Extrair JSON do JavaScript
+  .log("INFO", "Parseando JSON do componente JavaScript...")
+
+  # Encontrar o início do JSON: padrão = callback_name({"recordcount":
+  json_start_pattern <- '\\(\\{"recordcount":'
+  json_match <- regmatches(js_text, regexpr(json_start_pattern, js_text))
+
+  if (length(json_match) == 0 || !nzchar(json_match)) {
+    .log("WARN", "Padrão JSON não encontrado na resposta do componente.")
+    return(list(records = tibble::tibble(), pages_visited = 0L, last_url = component_url))
+  }
+
+  # Encontrar posição do início do JSON (após o parêntese)
+  json_start_idx <- regexpr('\\(\\{', js_text)
+  json_start <- attr(json_start_idx, "match.length") - 1 + as.integer(json_start_idx)
+
+  # Encontrar o fechamento correspondente do JSON (contar chaves)
+  depth <- 0L
+  json_end <- json_start
+  chars <- strsplit(js_text, "")[[1]]
+  for (i in json_start:length(chars)) {
+    if (chars[i] == "{") depth <- depth + 1L
+    if (chars[i] == "}") {
+      depth <- depth - 1L
+      if (depth == 0L) {
+        json_end <- i
+        break
+      }
+    }
+  }
+
+  json_str <- paste(chars[json_start:json_end], collapse = "")
+
+  # Parsear JSON
+  parsed <- tryCatch(jsonlite::fromJSON(json_str, simplifyVector = FALSE), error = function(e) {
+    .log("ERROR", sprintf("Falha ao parsear JSON: %s", e$message))
+    NULL
+  })
+
+  if (is.null(parsed) || is.null(parsed$recordcount) || parsed$recordcount == 0) {
+    .log("WARN", "JSON vazio ou sem registros.")
+    return(list(records = tibble::tibble(), pages_visited = 1L, last_url = component_url))
+  }
+
+  n_records <- parsed$recordcount
+  data <- parsed$data
+  .log("INFO", sprintf("Componente retornou %d registros.", n_records))
+
+  # Limitar a max_records
+  if (n_records > max_records) {
+    n_records <- max_records
+    .log("WARN", sprintf("Limitado a %d registros.", max_records))
+  }
+
+  # ETAPA 3: Processar cada registro
+  records <- list()
+  detail_failures <- 0L
+
+  for (i in seq_len(n_records)) {
+    title_raw <- data$title[[i]] %||% ""
+    notice_id <- data$notice_id[[i]] %||% ""
+    link <- data$link[[i]] %||% ""
+    posted <- data$posted_d[[i]] %||% ""
+    deadline <- data$deadline[[i]] %||% ""
+    area <- data$area_desc[[i]] %||% ""
+    duty_station <- data$duty_station[[i]] %||% ""
+
+    # Limpar título: remover " - UNDP - BRAZIL" do final
+    titulo <- gsub("\\s*-\\s*UNDP\\s*-\\s*BRAZIL\\s*$", "", title_raw, ignore.case = TRUE)
+    titulo <- trimws(titulo)
+
+    # Converter datas
+    data_publicacao <- tryCatch({
+      d <- as.Date(substr(posted, 1, 10))
+      as.character(d)
+    }, error = function(e) NA_character_)
+
+    data_limite <- tryCatch({
+      d <- as.Date(substr(deadline, 1, 10))
+      as.character(d)
+    }, error = function(e) NA_character_)
+
+    # Extrair nego_id do link
+    nego_id <- sub(".*nego_id=(\\d+).*", "\\1", link)
+
+    # Buscar detalhe (HTML estático)
+    detail_text <- ""
+    detail_url <- paste0(detail_base, nego_id)
+
+    if (nzchar(nego_id)) {
+      if (i > 1) Sys.sleep(0.3)
+
+      detail_req <- httr2::request(detail_url) |>
+        httr2::req_user_agent(user_agent) |>
+        httr2::req_timeout(15) |>
+        httr2::req_retry(max_tries = 2)
+
+      detail_resp <- tryCatch(httr2::req_perform(detail_req), error = function(e) NULL)
+
+      if (!is.null(detail_resp) && httr2::resp_status(detail_resp) == 200) {
+        detail_html <- tryCatch(httr2::resp_body_string(detail_resp, encoding = "UTF-8"), error = function(e) NULL)
+        if (!is.null(detail_html) && nzchar(detail_html)) {
+          detail_text <- .parse_undp_detail(detail_html)
+          if (i == 1) .log("INFO", "Detalhe parseado com sucesso.")
+        }
+      } else {
+        detail_failures <- detail_failures + 1L
+      }
+    }
+
+    # Descrição: usar Introduction do detalhe ou título
+    descricao <- if (nzchar(detail_text$introduction)) {
+      detail_text$introduction
+    } else {
+      titulo
+    }
+
+    # Montar registro
+    hash_input <- paste0(titulo, "|", detail_url)
+    hash_dedup <- digest::digest(hash_input, algo = "xxhash64")
+
+    rec <- tibble::tibble(
+      id_registro = sprintf("undp_%s", substr(hash_dedup, 1, 16)),
+      entidade = "UNDP",
+      pais_origem = "Brasil",
+      titulo = titulo,
+      subtitulo = detail_text$procurement_process %||% NA_character_,
+      descricao_resumida = substr(descricao, 1, 500),
+      descricao_completa = descricao,
+      tipo_oportunidade = "licitacao",
+      modalidade = detail_text$procurement_process %||% NA_character_,
+      area_tematica = if (identical(area, "OTHER")) "Multitemático" else area,
+      palavras_chave = NA_character_,
+      elegibilidade = NA_character_,
+      publico_alvo = "Empresas, consultores",
+      nivel_academico = NA_character_,
+      instituicao_financiadora = "United Nations Development Programme",
+      valor_financiado = NA_real_,
+      moeda = NA_character_,
+      data_publicacao = data_publicacao,
+      data_abertura = NA_character_,
+      data_limite = data_limite,
+      data_encerramento = NA_character_,
+      status_oportunidade = classify_status(deadline = data_limite, text = titulo)[[1]],
+      link_origem = "https://www.undp.org/pt/brazil/licitacoes",
+      link_detalhe = detail_url,
+      link_documento_pdf = NA_character_,
+      idioma = "pt",
+      localidade = "Brasil",
+      observacoes = paste(collapse_non_empty(
+        detail_text$office %||% "",
+        detail_text$contact %||% ""
+      ), collapse = " | "),
+      texto_bruto = paste(collapse_non_empty(titulo, descricao, detail_text$office, detail_text$contact), collapse = "\n"),
+      pagina_coletada = 1L,
+      fonte_oficial = "undp",
+      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      hash_deduplicacao = hash_dedup,
+      campos_inferidos_ia = NA_character_
+    )
+
+    records[[i]] <- rec
+
+    if (i %% 5 == 0) {
+      .log("INFO", sprintf("Progresso: %d/%d registros processados.", i, n_records))
+    }
+  }
+
+  if (length(records) == 0) {
+    .log("WARN", "Nenhum registro coletado.")
+    return(list(records = tibble::tibble(), pages_visited = 1L, last_url = component_url))
+  }
+
+  df <- dplyr::bind_rows(records)
+
+  if (detail_failures > 0) {
+    .log("WARN", sprintf("Falhas no detalhe: %d/%d (usados dados do listing).", detail_failures, n_records))
+  }
+
+  .log("INFO", sprintf("UNDP: %d registros finais coletados.", nrow(df)))
+
+  list(records = df, pages_visited = 1L, last_url = component_url)
+}
+
+.parse_undp_detail <- function(html_text) {
+  #' Parseia a página de detalhe UNDP (HTML estático)
+  #' Extrai campos estruturados: procurement process, office, deadline, etc.
+
+  result <- list(
+    procurement_process = NA_character_,
+    office = NA_character_,
+    deadline_text = NA_character_,
+    published_on = NA_character_,
+    reference_number = NA_character_,
+    contact = NA_character_,
+    introduction = NA_character_
+  )
+
+  # Limpar HTML para texto
+  clean <- gsub("<[^>]+>", " ", html_text)
+  clean <- gsub("\\s+", " ", clean)
+  clean <- trimws(clean)
+
+  # Extrair campos por padrão de rótulo
+  extract_field <- function(label, text) {
+    pattern <- paste0(label, "\\s+(.+?)(?=\\s+(?:Office|Deadline|Published|Reference|Contact|Introduction|This specific|$))")
+    m <- regmatches(text, regexpr(pattern, text, perl = TRUE))
+    if (length(m) > 0 && nzchar(m)) {
+      val <- sub(paste0("^", label, "\\s+"), "", m)
+      trimws(val)
+    } else {
+      NA_character_
+    }
+  }
+
+  # Procurement Process
+  pp_match <- regmatches(clean, regexpr("Procurement Process\\s+(.+?)(?=\\s+Office)", clean, perl = TRUE))
+  if (length(pp_match) > 0) result$procurement_process <- trimws(sub("^Procurement Process\\s+", "", pp_match))
+
+  # Office
+  off_match <- regmatches(clean, regexpr("Office\\s+(.+?)(?=\\s+Deadline)", clean, perl = TRUE))
+  if (length(off_match) > 0) result$office <- trimws(sub("^Office\\s+", "", off_match))
+
+  # Deadline
+  dl_match <- regmatches(clean, regexpr("Deadline\\s+(.+?)(?=\\s+Published)", clean, perl = TRUE))
+  if (length(dl_match) > 0) result$deadline_text <- trimws(sub("^Deadline\\s+", "", dl_match))
+
+  # Published on
+  pub_match <- regmatches(clean, regexpr("Published on\\s+(.+?)(?=\\s+Reference)", clean, perl = TRUE))
+  if (length(pub_match) > 0) result$published_on <- trimws(sub("^Published on\\s+", "", pub_match))
+
+  # Reference Number
+  ref_match <- regmatches(clean, regexpr("Reference Number\\s+(.+?)(?=\\s+Contact)", clean, perl = TRUE))
+  if (length(ref_match) > 0) result$reference_number <- trimws(sub("^Reference Number\\s+", "", ref_match))
+
+  # Contact
+  cnt_match <- regmatches(clean, regexpr("Contact\\s+(.+?)(?=\\s+This specific|$)", clean, perl = TRUE))
+  if (length(cnt_match) > 0) result$contact <- trimws(sub("^Contact\\s+", "", cnt_match))
+
+  # Introduction (texto após "Introduction")
+  intro_idx <- regexpr("Introduction\\s", clean)
+  if (intro_idx > 0) {
+    intro_start <- as.integer(intro_idx) + attr(intro_idx, "match.length")
+    intro_text <- substr(clean, intro_start, nchar(clean))
+    # Cortar em截máx 2000 chars
+    if (nchar(intro_text) > 2000) intro_text <- substr(intro_text, 1, 2000)
+    result$introduction <- trimws(intro_text)
+  }
+
+  result
+}
+
 # Auto-registrar collectors (após definição de todas as funções)
 register_collector("capes", collect_capes, "CAPES Plone API + HTML fallback")
 register_collector("finep", collect_finep, "FINEP custom pagination")
@@ -3260,3 +3568,4 @@ register_collector("horizon_europe", collect_horizon_europe, "EU F&T Portal REST
 register_collector("erc", collect_erc, "EU F&T Portal REST API (Horizon Europe/ERC)")
 register_collector("fapesb", collect_fapesb, "WordPress REST API (FAPESB)")
 register_collector("sigitec", collect_sigitec, "Petrobras SIGITEC API REST + Playwright fallback")
+register_collector("undp", collect_undp, "UNDP Procurement Notices - componente externo JSON")

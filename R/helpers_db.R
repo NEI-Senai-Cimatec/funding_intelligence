@@ -22,7 +22,8 @@ source_catalog <- function() {
     "fapesb", "Fundação de Amparo à Pesquisa do Estado da Bahia", "FAPESB", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://www.fapesb.ba.gov.br/", "https://www.fapesb.ba.gov.br/category/edital/aberto/", "html", "pt", "diária", "Editais e chamadas da FAPESB.",
     "horizon_europe", "Horizon Europe", "HEU", "União Europeia", "programa multilateral", "união supranacional", "https://research-and-innovation.ec.europa.eu/", "https://api.tech.ec.europa.eu/search-api/prod/rest/search?apiKey=SEDIA", "api_json", "en", "diária", "API REST pública EU F&T Portal. Busca HORIZON (CL1-CL5, EIC, MSCA, WIDERA) + pós-filtro frameworkProgramme=43108390.",
     "erc", "European Research Council", "ERC", "União Europeia", "agência internacional", "união supranacional", "https://erc.europa.eu/", "https://api.tech.ec.europa.eu/search-api/prod/rest/search?apiKey=SEDIA&text=ERC", "api_json", "en", "diária", "API REST pública EU F&T Portal. Busca ERC + pós-filtro Horizon Europe (43108390) + ERC (43108406).",
-    "sigitec", "Petrobras SIGITEC - Sistema de Gestão de Inovação e Tecnologia Competitividade", "PETROBRAS", "Brasil", "empresa estatal", "empresa pública", "https://sigitec-competitividade.petrobras.com.br", "https://sigitec-competitividade.petrobras.com.br/v2/public/opportunities", "api_json", "pt", "diária", "API REST pública SIGITEC Petrobras. Listing + detalhe por ID. Oportunidades de P&D para empresas e ICTs."
+    "sigitec", "Petrobras SIGITEC - Sistema de Gestão de Inovação e Tecnologia Competitividade", "PETROBRAS", "Brasil", "empresa estatal", "empresa pública", "https://sigitec-competitividade.petrobras.com.br", "https://sigitec-competitividade.petrobras.com.br/v2/public/opportunities", "api_json", "pt", "diária", "API REST pública SIGITEC Petrobras. Listing + detalhe por ID. Oportunidades de P&D para empresas e ICTs.",
+    "undp", "United Nations Development Programme - Brasil", "UNDP", "Brasil", "agência internacional", "organização multilateral", "https://www.undp.org/pt/brazil", "https://www.undp.org/pt/brazil/licitacoes", "api_json", "pt", "diária", "Componente externo UNDP Procurement Notices. JSON via public-components.undp.org. Detalhes via procurement-notices.undp.org."
   )
 }
 
@@ -475,7 +476,7 @@ init_database <- function(db_path) {
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
   create_tables(conn)
   seed_sources(conn)
-  try(DBI::dbExecute(conn, "DELETE FROM fontes_financiamento WHERE id_fonte NOT IN (?, ?, ?, ?, ?, ?, ?)", params = list("cnpq", "capes", "finep", "fapesb", "horizon_europe", "erc", "sigitec")), silent = TRUE)
+  try(DBI::dbExecute(conn, "DELETE FROM fontes_financiamento WHERE id_fonte NOT IN (?, ?, ?, ?, ?, ?, ?, ?)", params = list("cnpq", "capes", "finep", "fapesb", "horizon_europe", "erc", "sigitec", "undp")), silent = TRUE)
   try(DBI::dbExecute(conn, "UPDATE oportunidades SET pais_origem = 'União Europeia' WHERE pais_origem = 'Uniao Europeia'"), silent = TRUE)
   seed_profile(conn)
   seed_saved_searches(conn)

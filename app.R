@@ -882,7 +882,8 @@ server <- function(input, output, session) {
         AI_PROVIDER       = Sys.getenv("AI_PROVIDER"),
         AI_MODEL          = Sys.getenv("AI_MODEL"),
         AI_API_KEY        = Sys.getenv("AI_API_KEY"),
-        AI_API_URL        = Sys.getenv("AI_API_URL")
+        AI_API_URL        = Sys.getenv("AI_API_URL"),
+        EU_API_PROXY_URL  = Sys.getenv("EU_API_PROXY_URL")
       )
     )
 

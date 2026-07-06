@@ -556,7 +556,7 @@ is_funding_opportunity_heuristics <- function(title, description = "", url = "",
     "instrucoes para envio", "privacidade e protecao de dados",
     "temas em destaque", "carta de servicos ao cidadao", "archive",
     "retificacao", "retificacoes", "prorrogacao",
-    "prorrogacoes", "termo aditivo", "aditivo", "errata", "gabarito",
+    "prorrogacoes", "termo aditivo", "errata", "gabarito",
     "esclarecimento", "esclarecimentos", "nota de esclarecimento", "homologacao",
     "oportunidades - finep", "oportunidades de financiamento",
     "financiamento via credito", "financiamento para inovacao", "a finep"
@@ -2896,7 +2896,7 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
 run_full_collection_cycle <- function(conn, sources_ids = NULL, max_pages = 5, max_records_per_source = 15, use_ai = FALSE, export_dir = "data_exports", log_path = "logs/funding_collection.log", do_export = TRUE) {
   res <- collect_all_sources(
     conn = conn,
-    source_ids = sources_ids,
+    source_ids = source_ids,
     max_pages = max_pages,
     max_records_per_source = max_records_per_source,
     use_ai = use_ai,
@@ -2908,9 +2908,355 @@ run_full_collection_cycle <- function(conn, sources_ids = NULL, max_pages = 5, m
   res
 }
 
+collect_sigitec <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  #' Coleta oportunidades da Petrobras SIGITEC via API REST pública
+  #' API retorna todos os registros de uma vez (sem paginação)
+  #' Detalhes via endpoint público por ID
+
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[SIGITEC][%s] %s", level, msg))
+  }
+
+  base_url <- "https://sigitec-competitividade.petrobras.com.br"
+  listing_url <- paste0(base_url, "/v2/ms-authorization/opportunity/getAllPublicOpportunities")
+  detail_base <- paste0(base_url, "/v2/ms-authorization/opportunity/public-opportunity/")
+
+  .log("INFO", "Iniciando coleta SIGITEC Petrobras via API REST...")
+
+  # Pre-flight: verificar conectividade
+  if (!is_host_alive(listing_url)) {
+    .log("WARN", "API SIGITEC inacessivel. Pulando coleta.")
+    try(log_progress("AVISO: API SIGITEC inacessivel - pulando", "Scraping"), silent = TRUE)
+    return(list(records = tibble::tibble(), pages_visited = 0L, last_url = listing_url))
+  }
+
+  # ETAPA 1: Buscar listing completo
+  .log("INFO", "Buscando listing de oportunidades...")
+  user_agent <- "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+
+  req <- httr2::request(listing_url) |>
+    httr2::req_user_agent(user_agent) |>
+    httr2::req_headers(
+      `Accept` = "application/json, text/plain, */*",
+      `Accept-Language` = "pt-BR,pt;q=0.9,en;q=0.8",
+      `Referer` = paste0(base_url, "/v2/public/opportunities"),
+      `Origin` = base_url
+    ) |>
+    httr2::req_timeout(30) |>
+    httr2::req_retry(max_tries = 3, backoff = function(x) 2^x)
+
+  resp <- tryCatch(httr2::req_perform(req), error = function(e) {
+    .log("ERROR", sprintf("Falha ao buscar listing: %s", e$message))
+    NULL
+  })
+
+  if (is.null(resp) || httr2::resp_status(resp) != 200) {
+    .log("WARN", "Listing retornou erro. Tentando fallback Playwright...")
+    return(collect_sigitec_fallback(source_row, max_records, log_path))
+  }
+
+  all_items <- tryCatch(httr2::resp_body_json(resp), error = function(e) {
+    .log("ERROR", sprintf("Falha ao parsear JSON: %s", e$message))
+    NULL
+  })
+
+  if (is.null(all_items) || length(all_items) == 0) {
+    .log("WARN", "Listing vazio.")
+    return(list(records = tibble::tibble(), pages_visited = 1L, last_url = listing_url))
+  }
+
+  .log("INFO", sprintf("Listing retornou %d registros total.", length(all_items)))
+
+  # Filtrar apenas status "A" (Aberta)
+  open_items <- Filter(function(x) identical(x$status, "A"), all_items)
+  .log("INFO", sprintf("Registros com status Aberto: %d", length(open_items)))
+
+  if (length(open_items) == 0) {
+    .log("WARN", "Nenhuma oportunidade aberta encontrada.")
+    return(list(records = tibble::tibble(), pages_visited = 1L, last_url = listing_url))
+  }
+
+  # Limitar a max_records
+  if (length(open_items) > max_records) {
+    open_items <- open_items[seq_len(max_records)]
+    .log("WARN", sprintf("Limitado a %d registros.", max_records))
+  }
+
+  # ETAPA 2: Buscar detalhes de cada oportunidade
+  .log("INFO", sprintf("Buscando detalhes de %d oportunidades...", length(open_items)))
+
+  records <- list()
+  detail_failures <- 0L
+
+  for (i in seq_along(open_items)) {
+    item <- open_items[[i]]
+    item_id <- item$id
+
+    # Rate limiting: 0.5s entre requests
+    if (i > 1) Sys.sleep(0.5)
+
+    # Buscar detalhe
+    detail_url <- paste0(detail_base, item_id)
+    detail_req <- httr2::request(detail_url) |>
+      httr2::req_user_agent(user_agent) |>
+      httr2::req_headers(
+        `Accept` = "application/json, text/plain, */*",
+        `Referer` = paste0(base_url, "/v2/public/opportunities"),
+        `Origin` = base_url
+      ) |>
+      httr2::req_timeout(15) |>
+      httr2::req_retry(max_tries = 2)
+
+    detail_resp <- tryCatch(httr2::req_perform(detail_req), error = function(e) NULL)
+
+    detail <- NULL
+    if (!is.null(detail_resp) && httr2::resp_status(detail_resp) == 200) {
+      detail <- tryCatch(httr2::resp_body_json(detail_resp), error = function(e) NULL)
+    }
+
+    if (is.null(detail)) {
+      detail_failures <- detail_failures + 1L
+      .log("WARN", sprintf("Detalhe falhou para ID %d, usando dados do listing.", item_id))
+      detail <- item  # Fallback para dados do listing
+    }
+
+    # Mapear campos para schema do banco
+    number_op <- detail$numberOP %||% item$numberOP %||% ""
+    title_op <- detail$titleOP %||% item$titleOP %||% ""
+    titulo <- if (nzchar(as.character(number_op))) {
+      sprintf("OP%d - %s", number_op, title_op)
+    } else {
+      as.character(title_op)
+    }
+
+    # Datas
+    deadline_raw <- detail$deadlineSubmissionOfProposal %||% item$deadlineSubmissionOfProposal %||% NA_character_
+    deadline <- if (!is.na(deadline_raw) && nzchar(deadline_raw)) {
+      as.character(as.Date(substr(deadline_raw, 1, 10)))
+    } else {
+      NA_character_
+    }
+
+    pub_raw <- detail$publicationDate %||% item$publicationDate %||% NA_character_
+    pub_date <- if (!is.na(pub_raw) && nzchar(pub_raw)) {
+      as.character(as.Date(substr(pub_raw, 1, 10)))
+    } else {
+      NA_character_
+    }
+
+    # Descrição
+    objective <- detail$objective %||% item$objective %||% ""
+    challenge <- detail$challenge %||% item$challenge %||% ""
+    description <- if (nzchar(as.character(challenge))) {
+      paste0("Desafio: ", challenge, "\n\nObjetivo: ", objective)
+    } else {
+      as.character(objective)
+    }
+
+    # Área temática
+    theme <- detail$theme %||% item$theme %||% ""
+    sub_theme <- detail$subTheme %||% item$subTheme %||% ""
+    area_tematica <- if (nzchar(as.character(sub_theme))) {
+      paste0(theme, " - ", sub_theme)
+    } else if (nzchar(as.character(theme))) {
+      as.character(theme)
+    } else {
+      detail$area %||% item$area %||% NA_character_
+    }
+
+    # TRL/CRL (valores já vem com prefixo "TRL"/"CRL" da API)
+    trl <- detail$intendedTrl %||% item$intendedTrl %||% ""
+    crl <- detail$intendedCrl %||% item$intendedCrl %||% ""
+    nivel_tech <- if (nzchar(as.character(trl)) && nzchar(as.character(crl))) {
+      paste0(trl, " / ", crl)
+    } else if (nzchar(as.character(trl))) {
+      as.character(trl)
+    } else if (nzchar(as.character(crl))) {
+      as.character(crl)
+    } else {
+      NA_character_
+    }
+
+    # Expectativas
+    expected_solution <- detail$expectedSolution %||% item$expectedSolution %||% ""
+    expected_detail <- detail$expectedSolutionDetail %||% item$expectedSolutionDetail %||% ""
+    observacoes <- if (nzchar(as.character(expected_solution)) && nzchar(as.character(expected_detail))) {
+      paste0("Solução esperada: ", expected_solution, ". ", expected_detail)
+    } else if (nzchar(as.character(expected_solution))) {
+      paste0("Solução esperada: ", expected_solution)
+    } else if (nzchar(as.character(expected_detail))) {
+      as.character(expected_detail)
+    } else {
+      NA_character_
+    }
+
+    # Status
+    status_map <- c("A" = "aberto", "J" = "julgamento", "F" = "finalizado", "C" = "cancelado")
+    status_db <- unname(status_map[detail$status %||% item$status %||% "A"])
+    if (is.na(status_db)) status_db <- "aberto"
+
+    # Link de detalhe (URL pública do React)
+    link_detalhe <- paste0(base_url, "/v2/public/opportunity/", item_id)
+
+    # Hash de deduplicação
+    hash_input <- paste0(titulo, "|", link_detalhe)
+    hash_dedup <- digest::digest(hash_input, algo = "xxhash64")
+
+    # Montar registro
+    rec <- tibble::tibble(
+      id_registro = sprintf("sigitec_%s", substr(hash_dedup, 1, 16)),
+      entidade = "PETROBRAS",
+      pais_origem = "Brasil",
+      titulo = titulo,
+      subtitulo = NA_character_,
+      descricao_resumida = substr(as.character(description), 1, 500),
+      descricao_completa = as.character(description),
+      tipo_oportunidade = "edital",
+      modalidade = "competitividade",
+      area_tematica = as.character(area_tematica),
+      palavras_chave = detail$area %||% item$area %||% NA_character_,
+      elegibilidade = detail$commitment %||% item$commitment %||% NA_character_,
+      publico_alvo = "ICT, empresas",
+      nivel_academico = nivel_tech,
+      instituicao_financiadora = "Petrobras",
+      valor_financiado = NA_real_,
+      moeda = NA_character_,
+      data_publicacao = pub_date,
+      data_abertura = NA_character_,
+      data_limite = deadline,
+      data_encerramento = NA_character_,
+      status_oportunidade = status_db,
+      link_origem = paste0(base_url, "/v2/public/opportunities"),
+      link_detalhe = link_detalhe,
+      link_documento_pdf = NA_character_,
+      idioma = "pt",
+      localidade = "Brasil",
+      observacoes = observacoes,
+      texto_bruto = paste(collapse_non_empty(titulo, description, area_tematica, observacoes), collapse = "\n"),
+      pagina_coletada = 1L,
+      fonte_oficial = "sigitec",
+      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      hash_deduplicacao = hash_dedup,
+      campos_inferidos_ia = NA_character_
+    )
+
+    records[[i]] <- rec
+
+    if (i %% 10 == 0) {
+      .log("INFO", sprintf("Progresso: %d/%d detalhes coletados.", i, length(open_items)))
+    }
+  }
+
+  # Combinar registros
+  if (length(records) == 0) {
+    .log("WARN", "Nenhum registro coletado.")
+    return(list(records = tibble::tibble(), pages_visited = 1L, last_url = listing_url))
+  }
+
+  df <- dplyr::bind_rows(records)
+
+  if (detail_failures > 0) {
+    .log("WARN", sprintf("Falhas no detalhe: %d/%d (usados dados do listing).", detail_failures, length(open_items)))
+  }
+
+  .log("INFO", sprintf("SIGITEC: %d registros finais coletados (%d abertos de %d total).", nrow(df), length(open_items), length(all_items)))
+
+  list(records = df, pages_visited = 1L, last_url = listing_url)
+}
+
+collect_sigitec_fallback <- function(source_row, max_records, log_path) {
+  #' Fallback: Playwright para renderizar SPA e extrair dados do DOM
+  #' Usado quando a API REST retorna erro
+
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[SIGITEC-FB][%s] %s", level, msg))
+  }
+
+  .log("INFO", "Tentando fallback via Playwright...")
+
+  page_url <- source_row$url_oportunidades[[1]]
+  pg <- safe_request_page_playwright(page_url, log_path = log_path)
+
+  if (!isTRUE(pg$ok) || is.null(pg$html)) {
+    .log("WARN", "Playwright falhou. Tentando Chromote...")
+    pg <- safe_request_page(page_url, log_path = log_path, use_browser_fallback = TRUE)
+  }
+
+  if (!isTRUE(pg$ok) || is.null(pg$html)) {
+    .log("ERROR", "Todos os métodos de rendering falharam.")
+    return(list(records = tibble::tibble(), pages_visited = 0L, last_url = page_url))
+  }
+
+  .log("INFO", "Página renderizada. Extraindo candidatos do DOM...")
+
+  # Usar extract_listing_candidates genérica
+  candidates <- extract_listing_candidates(pg$html, page_url, source_row)
+
+  if (nrow(candidates) == 0) {
+    .log("WARN", "Nenhum candidato extraído do DOM.")
+    return(list(records = tibble::tibble(), pages_visited = 1L, last_url = page_url))
+  }
+
+  # Limitar a max_records
+  if (nrow(candidates) > max_records) {
+    candidates <- candidates[seq_len(max_records), ]
+  }
+
+  .log("INFO", sprintf("Fallback: %d candidatos extraídos.", nrow(candidates)))
+
+  # Converter candidatos para schema padrao
+  recs <- purrr::map_dfr(seq_len(nrow(candidates)), function(i) {
+    cand <- candidates[i, ]
+    hash_input <- paste0(cand$candidate_title, "|", cand$detail_url %||% cand$detail_url)
+    hash_dedup <- digest::digest(hash_input, algo = "xxhash64")
+
+    tibble::tibble(
+      id_registro = sprintf("sigitec_%s", substr(hash_dedup, 1, 16)),
+      entidade = "PETROBRAS",
+      pais_origem = "Brasil",
+      titulo = cand$candidate_title,
+      subtitulo = NA_character_,
+      descricao_resumida = substr(cand$candidate_summary %||% cand$candidate_title, 1, 500),
+      descricao_completa = cand$candidate_summary %||% cand$candidate_title,
+      tipo_oportunidade = "edital",
+      modalidade = "competitividade",
+      area_tematica = NA_character_,
+      palavras_chave = NA_character_,
+      elegibilidade = NA_character_,
+      publico_alvo = "ICT, empresas",
+      nivel_academico = NA_character_,
+      instituicao_financiadora = "Petrobras",
+      valor_financiado = NA_real_,
+      moeda = NA_character_,
+      data_publicacao = NA_character_,
+      data_abertura = NA_character_,
+      data_limite = NA_character_,
+      data_encerramento = NA_character_,
+      status_oportunidade = "aberto",
+      link_origem = page_url,
+      link_detalhe = as.character(cand$detail_url %||% NA_character_),
+      link_documento_pdf = as.character(cand$pdf_url %||% NA_character_),
+      idioma = "pt",
+      localidade = "Brasil",
+      observacoes = NA_character_,
+      texto_bruto = cand$candidate_summary %||% cand$candidate_title,
+      pagina_coletada = 1L,
+      fonte_oficial = "sigitec",
+      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      hash_deduplicacao = hash_dedup,
+      campos_inferidos_ia = NA_character_
+    )
+  })
+
+  list(records = recs, pages_visited = 1L, last_url = page_url)
+}
+
 # Auto-registrar collectors (após definição de todas as funções)
 register_collector("capes", collect_capes, "CAPES Plone API + HTML fallback")
 register_collector("finep", collect_finep, "FINEP custom pagination")
 register_collector("horizon_europe", collect_horizon_europe, "EU F&T Portal REST API (Horizon Europe)")
 register_collector("erc", collect_erc, "EU F&T Portal REST API (Horizon Europe/ERC)")
 register_collector("fapesb", collect_fapesb, "WordPress REST API (FAPESB)")
+register_collector("sigitec", collect_sigitec, "Petrobras SIGITEC API REST + Playwright fallback")

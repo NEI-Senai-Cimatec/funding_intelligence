@@ -3561,6 +3561,404 @@ collect_undp <- function(source_row, max_pages, max_records, use_ai, log_path) {
   result
 }
 
+# --- EMBRAPII Collector ---
+collect_embrapii <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  #' Coleta chamadas públicas da EMBRAPII via parsing HTML estático.
+  #' Strategy: fetch transparency page → parse div listing → follow detail links → parse schedule + docs.
+
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[EMBRAPII][%s] %s", level, msg))
+  }
+
+  .log("INFO", "Iniciando coleta EMBRAPII (embrapii.org.br/transparencia/).")
+  try(log_progress("Iniciando coleta EMBRÁPII", "INICIO"), silent = TRUE)
+
+  user_agent <- "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+  base_url <- "https://embrapii.org.br"
+  transparency_url <- paste0(base_url, "/transparencia/")
+
+  # 1. Fetch transparency page
+  req <- httr2::request(transparency_url) |>
+    httr2::req_user_agent(user_agent) |>
+    httr2::req_timeout(20) |>
+    httr2::req_retry(max_tries = 3)
+
+  resp <- tryCatch(httr2::req_perform(req), error = function(e) NULL)
+  if (is.null(resp) || httr2::resp_status(resp) != 200) {
+    .log("ERROR", "Falha ao acessar pagina de transparencia EMBRAPII.")
+    return(list(records = tibble::tibble(), pages_visited = 0L, last_url = transparency_url))
+  }
+
+  html_text <- httr2::resp_body_string(resp, encoding = "UTF-8")
+  html <- rvest::read_html(html_text)
+
+  # 2. Parse chamadas listing from #chamadas section
+  chamadas_section <- rvest::html_node(html, "#chamadas")
+  if (is.null(chamadas_section) || inherits(chamadas_section, "xml_missing")) {
+    .log("WARN", "Secao #chamadas nao encontrada. Tentando listagem alternativa.")
+    chamadas_section <- rvest::html_node(html, ".listagem-chamadas-publicas")
+    if (is.null(chamadas_section) || inherits(chamadas_section, "xml_missing")) {
+      .log("ERROR", "Nenhuma listagem de chamadas encontrada.")
+      return(list(records = tibble::tibble(), pages_visited = 1L, last_url = transparency_url))
+    }
+  }
+
+  # Extract all chamada items with URLs
+  items <- rvest::html_nodes(chamadas_section, ".single-item-listagem, .single-chamada-publica")
+  if (length(items) == 0) {
+    .log("WARN", "Nenhum item de chamada encontrado na listagem.")
+    return(list(records = tibble::tibble(), pages_visited = 1L, last_url = transparency_url))
+  }
+
+  titles_raw <- character(length(items))
+  urls_raw <- character(length(items))
+  years_raw <- character(length(items))
+
+  for (i in seq_along(items)) {
+    item <- items[[i]]
+    # Title: try .title-single-item-listagem first, then .title-single-chamada-publica
+    title_node <- rvest::html_node(item, ".title-single-item-listagem, .title-single-chamada-publica")
+    titles_raw[i] <- if (!is.null(title_node) && !inherits(title_node, "xml_missing")) {
+      trimws(rvest::html_text(title_node, trim = TRUE))
+    } else {
+      ""
+    }
+    # URL: first <a> with href containing chamadas-publicas
+    links <- rvest::html_nodes(item, "a[href*='chamadas-publicas']")
+    urls_raw[i] <- if (length(links) > 0) {
+      rvest::html_attr(links[[1]], "href")
+    } else {
+      ""
+    }
+    # Year from data-year attribute
+    years_raw[i] <- rvest::html_attr(item, "data-year") %||% ""
+  }
+
+  # Filter: keep only items with valid URLs
+  valid <- nzchar(urls_raw) & nzchar(titles_raw)
+  titles_raw <- titles_raw[valid]
+  urls_raw <- urls_raw[valid]
+  years_raw <- years_raw[valid]
+
+  # Deduplicate by URL (chamadas appear twice in DOM)
+  dedup <- !duplicated(urls_raw)
+  titles_raw <- titles_raw[dedup]
+  urls_raw <- urls_raw[dedup]
+  years_raw <- years_raw[dedup]
+
+  n_chamadas <- length(urls_raw)
+  .log("INFO", sprintf("Encontradas %d chamadas unicas na pagina de transparencia.", n_chamadas))
+  try(log_progress(sprintf("Encontradas %d chamadas unicas", n_chamadas), "LISTING"), silent = TRUE)
+
+  if (n_chamadas == 0) {
+    return(list(records = tibble::tibble(), pages_visited = 1L, last_url = transparency_url))
+  }
+
+  # 3. Fetch detail pages and build records
+  records <- vector("list", n_chamadas)
+  detail_failures <- 0L
+
+  for (i in seq_len(n_chamadas)) {
+    titulo <- titles_raw[[i]]
+    detail_url <- urls_raw[[i]]
+    year_val <- years_raw[[i]]
+
+    if (i > 1) Sys.sleep(0.4)
+
+    detail_html_text <- NULL
+    detail_req <- httr2::request(detail_url) |>
+      httr2::req_user_agent(user_agent) |>
+      httr2::req_timeout(15) |>
+      httr2::req_retry(max_tries = 2)
+
+    detail_resp <- tryCatch(httr2::req_perform(detail_req), error = function(e) NULL)
+
+    if (!is.null(detail_resp) && httr2::resp_status(detail_resp) == 200) {
+      detail_html_text <- tryCatch(httr2::resp_body_string(detail_resp, encoding = "UTF-8"), error = function(e) NULL)
+    } else {
+      detail_failures <- detail_failures + 1L
+    }
+
+    # Parse detail page
+    detail <- list(
+      descricao = NA_character_,
+      modalidade = NA_character_,
+      publico_alvo = NA_character_,
+      data_abertura = NA_character_,
+      data_limite = NA_character_,
+      docs = character(0)
+    )
+
+    if (!is.null(detail_html_text) && nzchar(detail_html_text)) {
+      detail <- .parse_embrapii_detail(detail_html_text)
+      if (i == 1) .log("INFO", "Detalhe parseado com sucesso (primeira chamada).")
+    }
+
+    # Description: use parsed or fallback to title
+    descricao <- if (!is.na(detail$descricao) && nzchar(detail$descricao)) {
+      detail$descricao
+    } else {
+      titulo
+    }
+
+    # Build record
+    hash_input <- paste0(titulo, "|", detail_url)
+    hash_dedup <- digest::digest(hash_input, algo = "xxhash64")
+
+    # Determine publication year from data-year or current year
+    pub_year <- if (!is.na(year_val) && nzchar(year_val) && year_val != "0") {
+      year_val
+    } else {
+      format(Sys.time(), "%Y")
+    }
+
+    records[[i]] <- tibble::tibble(
+      id_registro = sprintf("embrapii_%s", substr(hash_dedup, 1, 16)),
+      entidade = "EMBRAPII",
+      pais_origem = "Brasil",
+      titulo = titulo,
+      subtitulo = detail$modalidade %||% NA_character_,
+      descricao_resumida = substr(descricao, 1, 500),
+      descricao_completa = descricao,
+      tipo_oportunidade = "chamada_publica",
+      modalidade = detail$modalidade %||% NA_character_,
+      area_tematica = NA_character_,
+      palavras_chave = NA_character_,
+      elegibilidade = NA_character_,
+      publico_alvo = detail$publico_alvo %||% NA_character_,
+      nivel_academico = NA_character_,
+      instituicao_financiadora = "EMBRAPII",
+      valor_financiado = NA_real_,
+      moeda = NA_character_,
+      data_publicacao = NA_character_,
+      data_abertura = detail$data_abertura %||% NA_character_,
+      data_limite = detail$data_limite %||% NA_character_,
+      data_encerramento = NA_character_,
+      status_oportunidade = classify_status(deadline = detail$data_limite, text = titulo)[[1]],
+      link_origem = transparency_url,
+      link_detalhe = detail_url,
+      link_documento_pdf = if (length(detail$docs) > 0) detail$docs[[1]] else NA_character_,
+      idioma = "pt",
+      localidade = "Brasil",
+      observacoes = paste(collapse_non_empty(detail$publico_alvo, detail$modalidade), collapse = " | "),
+      texto_bruto = paste(collapse_non_empty(titulo, descricao, detail$publico_alvo, detail$modalidade), collapse = "\n"),
+      pagina_coletada = 1L,
+      fonte_oficial = "embrapii",
+      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      hash_deduplicacao = hash_dedup,
+      campos_inferidos_ia = NA_character_
+    )
+
+    if (i %% 10 == 0) {
+      .log("INFO", sprintf("Progresso: %d/%d chamadas processadas.", i, n_chamadas))
+      try(log_progress(sprintf("Progresso: %d/%d", i, n_chamadas), "PROGRESSO"), silent = TRUE)
+    }
+  }
+
+  if (length(records) == 0) {
+    .log("WARN", "Nenhum registro coletado.")
+    return(list(records = tibble::tibble(), pages_visited = 1L, last_url = transparency_url))
+  }
+
+  df <- dplyr::bind_rows(records)
+
+  if (detail_failures > 0) {
+    .log("WARN", sprintf("Falhas no detalhe: %d/%d (usados dados do listing).", detail_failures, n_chamadas))
+  }
+
+  .log("INFO", sprintf("EMBRAPII: %d registros finais coletados.", nrow(df)))
+  try(log_progress(sprintf("EMBRAPII: %d registros coletados", nrow(df)), "FIM"), silent = TRUE)
+
+  list(records = df, pages_visited = 1L + as.integer(detail_failures > 0), last_url = transparency_url)
+}
+
+
+.parse_embrapii_detail <- function(html_text) {
+  #' Parseia pagina de detalhe EMBRAPII (HTML estatico).
+  #' Extrai: descricao, modalidade, publico_alvo, cronograma, documentos.
+
+  result <- list(
+    descricao = NA_character_,
+    modalidade = NA_character_,
+    publico_alvo = NA_character_,
+    data_abertura = NA_character_,
+    data_limite = NA_character_,
+    docs = character(0)
+  )
+
+  html <- tryCatch(rvest::read_html(html_text), error = function(e) NULL)
+  if (is.null(html)) return(result)
+
+  # Description: chamadas-publicas-content paragraphs
+  content_node <- rvest::html_node(html, ".chamadas-publicas-content")
+  if (!is.null(content_node) && !inherits(content_node, "xml_missing")) {
+    paragraphs <- rvest::html_nodes(content_node, "p")
+    if (length(paragraphs) > 0) {
+      desc_parts <- vapply(paragraphs, function(p) trimws(rvest::html_text(p, trim = TRUE)), character(1))
+      desc_parts <- desc_parts[nzchar(desc_parts) & desc_parts != "\u00a0"]
+      if (length(desc_parts) > 0) {
+        result$descricao <- paste(desc_parts, collapse = "\n\n")
+      }
+    }
+  }
+
+  # Fallback description from og:description
+  if (is.na(result$descricao) || !nzchar(result$descricao)) {
+    og_desc <- rvest::html_node(html, "meta[property='og:description']")
+    if (!is.null(og_desc) && !inherits(og_desc, "xml_missing")) {
+      result$descricao <- rvest::html_attr(og_desc, "content")
+    }
+  }
+
+  # Schedule table: extract dates from cronograma
+  schedule_table <- rvest::html_node(html, "table.table-striped")
+  if (!is.null(schedule_table) && !inherits(schedule_table, "xml_missing")) {
+    rows <- rvest::html_nodes(schedule_table, "tr")
+    for (row in rows) {
+      cells <- rvest::html_nodes(row, "td, th")
+      if (length(cells) >= 2) {
+        activity <- tolower(trimws(rvest::html_text(cells[[1]], trim = TRUE)))
+        deadline_text <- trimws(rvest::html_text(cells[[2]], trim = TRUE))
+
+        # Extract inscription period (data_abertura and data_limite)
+        if (grepl("inscri", activity, ignore.case = TRUE) ||
+            grepl("submiss", activity, ignore.case = TRUE) ||
+            grepl("proposta", activity, ignore.case = TRUE)) {
+          dates <- .extract_date_range(deadline_text)
+          if (!is.na(dates$start)) result$data_abertura <- dates$start
+          if (!is.na(dates$end)) result$data_limite <- dates$end
+        }
+
+        # Extract deadline (prazo limte, encerramento)
+        if (grepl("prazo|encerramento|final|resultado", activity, ignore.case = TRUE) && is.na(result$data_limite)) {
+          dates <- .extract_date_range(deadline_text)
+          if (!is.na(dates$end)) result$data_limite <- dates$end
+          if (!is.na(dates$start) && is.na(result$data_abertura)) result$data_abertura <- dates$start
+        }
+      }
+    }
+  }
+
+  # Fallback: look for dates in full text if no schedule found
+  if (is.na(result$data_limite)) {
+    full_text <- rvest::html_text(html, trim = TRUE)
+    # Look for "inscrições" or "submissão" followed by date range
+    inscricao_match <- regmatches(full_text, regexpr("(?:inscri[çc][õo]es?|submiss[ãa]o|propostas?)\\s+(?:de\\s+)?(?:\\d{2}/\\d{2}/\\d{4}|\\d{2}\\s+de\\s+\\w+\\s+de\\s+\\d{4})\\s+(?:a[à]\\s+)?(?:\\d{2}/\\d{2}/\\d{4}|\\d{2}\\s+de\\s+\\w+\\s+de\\s+\\d{4})", full_text, ignore.case = TRUE, perl = TRUE))
+    if (length(inscricao_match) > 0) {
+      dates <- .extract_date_range(inscricao_match)
+      if (!is.na(dates$start)) result$data_abertura <- dates$start
+      if (!is.na(dates$end)) result$data_limite <- dates$end
+    }
+  }
+
+  # Modalidade: look for "Chamada Pública", "Chamada Interna", "Edital"
+  full_text <- rvest::html_text(html, trim = TRUE)
+  mod_match <- regmatches(full_text, regexpr("Chamada\\s+(?:P[uú]blica|Interna)[^\\n]*", full_text, ignore.case = TRUE))
+  if (length(mod_match) > 0) {
+    result$modalidade <- trimws(mod_match)
+  } else {
+    # Fallback from page title
+    title_node <- rvest::html_node(html, "h1")
+    if (!is.null(title_node) && !inherits(title_node, "xml_missing")) {
+      result$modalidade <- trimws(rvest::html_text(title_node, trim = TRUE))
+    }
+  }
+
+  # Publico alvo: look for "Unidades", "Centros de Competência", "ICTs", "Empresas"
+  if (grepl("unidade|centro de compet|credenciado", result$descricao, ignore.case = TRUE)) {
+    result$publico_alvo <- "Unidades e Centros de Competência Embrapii"
+  } else if (grepl("icts|instituto de pesquisa|universidade", result$descricao, ignore.case = TRUE)) {
+    result$publico_alvo <- "ICTs (Instituições de Ciência e Tecnologia)"
+  } else if (grepl("empresa|ind[uú]stria", result$descricao, ignore.case = TRUE)) {
+    result$publico_alvo <- "Empresas"
+  }
+
+  # PDF documents
+  pdf_links <- rvest::html_nodes(html, "a[href$='.pdf']")
+  if (length(pdf_links) > 0) {
+    result$docs <- rvest::html_attr(pdf_links, "href")
+  }
+
+  result
+}
+
+
+.extract_date_range <- function(text) {
+  #' Extrai datas de um texto no formato "DD/MM a DD/MM/YYYY" ou "DD/MM/YYYY a DD/MM/YYYY"
+  #' Retorna lista com start e end (character ISO ou NA)
+
+  result <- list(start = NA_character_, end = NA_character_)
+
+  if (is.na(text) || !nzchar(text)) return(result)
+
+  # Format 1: DD/MM/YYYY a DD/MM/YYYY (full dates on both sides)
+  m <- regmatches(text, regexpr("([0-9]{2}/[0-9]{2}/[0-9]{4})\\s*a\\s*([0-9]{2}/[0-9]{2}/[0-9]{4})", text, perl = TRUE))
+  if (length(m) > 0) {
+    parts <- strsplit(m, "\\s*a\\s*")[[1]]
+    result$start <- .parse_br_date(parts[1])
+    result$end <- .parse_br_date(parts[2])
+    return(result)
+  }
+
+  # Format 2: DD/MM a DD/MM/YYYY (year only on second date)
+  m <- regmatches(text, regexpr("([0-9]{2}/[0-9]{2})\\s*a\\s*([0-9]{2}/[0-9]{2}/[0-9]{4})", text, perl = TRUE))
+  if (length(m) > 0) {
+    parts <- strsplit(m, "\\s*a\\s*")[[1]]
+    # First date: DD/MM, need to extract year from second date
+    year2 <- sub(".*/([0-9]{4})", "\\1", parts[2])
+    result$start <- .parse_br_date(paste0(parts[1], "/", year2))
+    result$end <- .parse_br_date(parts[2])
+    return(result)
+  }
+
+  # Format 3: Single DD/MM/YYYY
+  m <- regmatches(text, regexpr("[0-9]{2}/[0-9]{2}/[0-9]{4}", text, perl = TRUE))
+  if (length(m) > 0) {
+    result$end <- .parse_br_date(m)
+    return(result)
+  }
+
+  # Format 4: "DD de mês de YYYY"
+  months_pt <- c("janeiro", "fevereiro", "março", "abril", "maio", "junho",
+                 "julho", "agosto", "setembro", "outubro", "novembro", "dezembro")
+  month_pattern <- paste(months_pt, collapse = "|")
+  m <- regmatches(text, regexpr(paste0("[0-9]{1,2}\\s+de\\s+(", month_pattern, ")\\s+de\\s+[0-9]{4}"), text, ignore.case = TRUE, perl = TRUE))
+  if (length(m) > 0) {
+    result$end <- .parse_pt_date(m)
+    return(result)
+  }
+
+  result
+}
+
+
+.parse_br_date <- function(d) {
+  #' Converte DD/MM/YYYY para YYYY-MM-DD
+  if (is.na(d) || !nzchar(d)) return(NA_character_)
+  parts <- strsplit(d, "/")[[1]]
+  if (length(parts) != 3) return(NA_character_)
+  sprintf("%s-%s-%s", parts[3], parts[2], parts[1])
+}
+
+
+.parse_pt_date <- function(d) {
+  #' Converte "DD de mês de YYYY" para YYYY-MM-DD
+  if (is.na(d) || !nzchar(d)) return(NA_character_)
+  months_map <- c(janeiro="01", fevereiro="02", março="03", abril="04",
+                  maio="05", junho="06", julho="07", agosto="08",
+                  setembro="09", outubro="10", novembro="11", dezembro="12")
+  m <- regmatches(d, regexpr("([0-9]{1,2})\\s+de\\s+(\\w+)\\s+de\\s+([0-9]{4})", d, perl = TRUE))
+  if (length(m) == 0) return(NA_character_)
+  day <- sub("([0-9]{1,2})\\s+de\\s+.*", "\\1", m)
+  month_name <- sub(".*de\\s+(\\w+)\\s+de.*", "\\1", tolower(m))
+  year <- sub(".*de\\s+([0-9]{4})", "\\1", m)
+  month_num <- months_map[[month_name]]
+  if (is.null(month_num)) return(NA_character_)
+  sprintf("%s-%s-%02d", year, as.integer(month_num), as.integer(day))
+}
+
+
 # Auto-registrar collectors (após definição de todas as funções)
 register_collector("capes", collect_capes, "CAPES Plone API + HTML fallback")
 register_collector("finep", collect_finep, "FINEP custom pagination")
@@ -3569,3 +3967,4 @@ register_collector("erc", collect_erc, "EU F&T Portal REST API (Horizon Europe/E
 register_collector("fapesb", collect_fapesb, "WordPress REST API (FAPESB)")
 register_collector("sigitec", collect_sigitec, "Petrobras SIGITEC API REST + Playwright fallback")
 register_collector("undp", collect_undp, "UNDP Procurement Notices - componente externo JSON")
+register_collector("embrapii", collect_embrapii, "EMBRAPII Chamadas Publicas - HTML estatico + detalhe")

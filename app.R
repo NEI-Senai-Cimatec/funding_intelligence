@@ -348,12 +348,15 @@ ui <- bslib::page_sidebar(
         tags$i(class = "fa fa-map-marker-alt", style = "color: #004691;"), " SENAI CIMATEC – Salvador, Bahia"
       )
     ),
-    tags$hr(class = "footer-divider", style = "border-top: 1px solid #e2e8f0; margin: 1.25rem auto; max-width: 1200px; opacity: 0.8;"),
     tags$div(
       class = "footer-bottom-centered",
       tags$p(
         style = "color: #64748b; font-size: 0.8rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
         tags$i(class = "fa-solid fa-atom", style = "color: #004691;"), " QuIIN • Associação tecnológica"
+      ),
+      tags$p(
+        style = "color: #64748b; font-size: 0.8rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
+        tags$i(class = "fa-solid fa-magnifying-glass-chart", style = "color: #004691;"), " NEI • Núcleo de Economia Industrial"
       ),
       tags$p(
         style = "color: #64748b; font-size: 0.8rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",

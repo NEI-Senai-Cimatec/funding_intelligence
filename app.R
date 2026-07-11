@@ -253,7 +253,7 @@ ui <- bslib::page_sidebar(
         value = "", 
         placeholder = "Ex.: (health OR medical devices) AND innovation NOT veterinary"
       ),
-      radioButtons("region_filter", "Região das fontes", choices = c("Brasileiras", "Europeias", "Ambas"), selected = "Ambas", inline = TRUE),
+      radioButtons("region_filter", "Região das fontes", choices = c("Ambas", "Brasileiras", "Europeias", "Internacionais"), selected = "Ambas", inline = TRUE),
       actionButton("btn_search", "Buscar", class = "btn-primary action-top", icon = icon("search")),
       actionButton("btn_advanced", "Busca avançada", class = "btn-outline-primary action-top", icon = icon("sliders-h")),
       actionButton("btn_save_search", "Salvar busca", class = "btn-outline-secondary action-top", icon = icon("bookmark")),
@@ -806,6 +806,8 @@ server <- function(input, output, session) {
       available_sources <- available_sources |> dplyr::filter(pais == "Brasil")
     } else if (region == "Europeias") {
       available_sources <- available_sources |> dplyr::filter(pais %in% c("União Europeia"))
+    } else if (region == "Internacionais") {
+      available_sources <- available_sources |> dplyr::filter(pais != "Brasil")
     } else {
       available_sources <- available_sources
     }
@@ -979,9 +981,11 @@ server <- function(input, output, session) {
       df <- df |> dplyr::filter(pais_origem == "Brasil")
     } else if (region == "Europeias") {
       df <- df |> dplyr::filter(pais_origem %in% c("União Europeia"))
+    } else if (region == "Internacionais") {
+      df <- df |> dplyr::filter(!pais_origem %in% c("Brasil"))
     } else {
-      # Ambas (Mantém brasileiras e europeias)
-      df <- df |> dplyr::filter(pais_origem == "Brasil" | pais_origem %in% c("União Europeia"))
+      # Ambas (Mantém brasileiras, europeias e internacionais)
+      df <- df |> dplyr::filter(pais_origem == "Brasil" | pais_origem %in% c("União Europeia", "Alemanha"))
     }
 
     # Filtros Rápidos do Sidebar

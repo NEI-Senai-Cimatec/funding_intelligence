@@ -581,8 +581,7 @@ is_funding_opportunity_heuristics <- function(title, description = "", url = "",
   }
 
   # 3. Regras específicas sobre e-books, manuais e materiais institucionais
-  if (grepl("daad 2025 confap", t_norm) ||
-    grepl("fapes 20 anos", t_norm) ||
+  if (grepl("fapes 20 anos", t_norm) ||
     grepl("ebook", t_norm) ||
     grepl("relatorio anual", t_norm)) {
     return(FALSE)
@@ -1298,8 +1297,8 @@ finalize_records <- function(df, fonte_oficial = NULL) {
   }
   df <- ensure_record_schema(df)
 
-  # Verificar se e fonte EU (HEU/ERC)
-  is_eu <- !is.null(fonte_oficial) && (fonte_oficial %in% c("horizon_europe", "erc"))
+  # Verificar se e fonte internacional (HEU/ERC/DAAD)
+  is_eu <- !is.null(fonte_oficial) && (fonte_oficial %in% c("horizon_europe", "erc", "daad"))
 
   # Filtrar registros usando a heurística estática
   valid_idx <- vapply(seq_len(nrow(df)), function(i) {
@@ -3959,6 +3958,661 @@ collect_embrapii <- function(source_row, max_pages, max_records, use_ai, log_pat
 }
 
 
+# --- DAAD Brasil Collector (Híbrido: JSON catálogo + HTML scraping) ---
+
+.parse_daad_date <- function(d) {
+  #' Converte DD.MM.YYYY para YYYY-MM-DD
+  if (is.na(d) || !nzchar(trimws(d))) return(NA_character_)
+  d <- trimws(d)
+  parts <- strsplit(d, "\\.")[[1]]
+  if (length(parts) == 3 && nchar(parts[1]) <= 2 && nchar(parts[2]) <= 2 && nchar(parts[3]) == 4) {
+    return(sprintf("%s-%s-%02d", parts[3], parts[2], as.integer(parts[1])))
+  }
+  NA_character_
+}
+
+.parse_daad_json <- function(js_text) {
+  #' Faz parse do arquivo scholarships.js (formato TAFFY JS) e retorna data.frame.
+  #' Filtra apenas bolsas com Brazil (origin=48) no catálogo.
+  #'
+  #' O arquivo tem formato: var scholarships = TAFFY([{...}, {...}, ...]);
+  #' Extraímos o array JSON e parseamos com jsonlite.
+
+  if (is.null(js_text) || !nzchar(js_text)) {
+    return(list(scholarships = tibble::tibble(), reference = list()))
+  }
+
+  # Extrair o array JSON do wrapper TAFFY
+  json_match <- regmatches(js_text, regexpr("TAFFY\\(\\[.*\\]\\)", js_text, perl = TRUE))
+  if (length(json_match) == 0) {
+    return(list(scholarships = tibble::tibble(), reference = list()))
+  }
+
+  json_str <- sub("^TAFFY\\(", "", sub("\\)$", "", json_match))
+
+  scholarships <- tryCatch(
+    jsonlite::fromJSON(json_str, simplifyVector = FALSE),
+    error = function(e) {
+      message(sprintf("[DAAD JSON] Erro ao parsear scholarships: %s", e$message))
+      list()
+    }
+  )
+
+  if (length(scholarships) == 0) {
+    return(list(scholarships = tibble::tibble(), reference = list()))
+  }
+
+  # Tabelas de referência (IDs para nomes)
+  ref_urls <- list(
+    status = "https://www2.daad.de/bundles/daadstipendiendatenbanklsh/data/a/js/status.js",
+    intentions = "https://www2.daad.de/bundles/daadstipendiendatenbanklsh/data/a/js/intentions.js",
+    subjectgroups = "https://www2.daad.de/bundles/daadstipendiendatenbanklsh/data/a/js/subjectgroups.js"
+  )
+
+  ref <- list()
+  for (nm in names(ref_urls)) {
+    ref_text <- tryCatch({
+      req <- httr2::request(ref_urls[[nm]]) |>
+        httr2::req_user_agent(get_random_ua()) |>
+        httr2::req_timeout(10) |>
+        httr2::req_retry(max_tries = 2)
+      resp <- httr2::req_perform(req)
+      httr2::resp_body_string(resp, encoding = "UTF-8")
+    }, error = function(e) NULL)
+
+    if (!is.null(ref_text)) {
+      ref_match <- regmatches(ref_text, regexpr("TAFFY\\(\\[.*\\]\\)", ref_text, perl = TRUE))
+      if (length(ref_match) > 0) {
+        ref_json <- sub("^TAFFY\\(", "", sub("\\)$", "", ref_match))
+        ref[[nm]] <- tryCatch(jsonlite::fromJSON(ref_json, simplifyVector = FALSE), error = function(e) list())
+      }
+    }
+  }
+
+  # Converter para data.frame
+  Brazil_id <- 48L
+  records <- vector("list", length(scholarships))
+  n_brazil <- 0L
+
+  for (i in seq_along(scholarships)) {
+    s <- scholarships[[i]]
+
+    # Filtrar: origin deve conter Brazil (48)
+    origins <- as.integer(s$origin %||% integer(0))
+    if (!(Brazil_id %in% origins)) next
+
+    n_brazil <- n_brazil + 1L
+
+    # Mapear status para nomes
+    status_ids <- as.integer(s$status %||% integer(0))
+    status_names <- vapply(status_ids, function(sid) {
+      found <- Filter(function(x) x$id == sid, ref$status %||% list())
+      if (length(found) > 0) found[[1]]$nameEn else as.character(sid)
+    }, character(1))
+
+    # Mapear intentions para nomes
+    intent_ids <- as.integer(s$intentions %||% integer(0))
+    intent_names <- vapply(intent_ids, function(iid) {
+      found <- Filter(function(x) x$id == iid, ref$intentions %||% list())
+      if (length(found) > 0) found[[1]]$nameEn else as.character(iid)
+    }, character(1))
+
+    # Mapear subjectGrps para nomes
+    sg_codes <- s$subjectGrps %||% character(0)
+    sg_names <- vapply(sg_codes, function(sc) {
+      found <- Filter(function(x) x$code == sc, ref$subjectgroups %||% list())
+      if (length(found) > 0) found[[1]]$nameEn else sc
+    }, character(1))
+
+    # Tipo de programa
+    prog_type <- as.integer(s$programmtypId %||% 7L)
+    type_label <- switch(as.character(prog_type),
+      "3" = "mobility/short-term",
+      "5" = "country-cooperation",
+      "7" = "general",
+      "unknown"
+    )
+
+    records[[n_brazil]] <- tibble::tibble(
+      daad_id = as.integer(s$id %||% 0L),
+      sap_objid = as.integer(s$sapObjid %||% 0L),
+      sap_progid = as.integer(s$sapProgid %||% 0L),
+      name_en = as.character(s$nameEn %||% ""),
+      name_de = as.character(s$nameDe %||% ""),
+      langname_en = as.character(s$langnameEn %||% ""),
+      programmname_en = as.character(s$programmnameEn %||% ""),
+      is_daad = as.integer(s$isDaad %||% 0L),
+      is_move = as.integer(s$isMove %||% 0L),
+      programmtyp_id = prog_type,
+      programmtyp_label = type_label,
+      status_ids = paste(status_ids, collapse = ","),
+      status_names = paste(status_names, collapse = "; "),
+      origin_ids = paste(origins, collapse = ","),
+      origin_names = "Brazil",
+      intent_ids = paste(intent_ids, collapse = ","),
+      intent_names = paste(intent_names, collapse = "; "),
+      subject_groups = paste(sg_names, collapse = "; "),
+      introduction_en = as.character(s$introduction$en %||% ""),
+      introduction_de = as.character(s$introduction$de %||% "")
+    )
+  }
+
+  if (n_brazil == 0) {
+    return(list(scholarships = tibble::tibble(), reference = ref))
+  }
+
+  records <- records[seq_len(n_brazil)]
+  df <- dplyr::bind_rows(records)
+
+  list(scholarships = df, reference = ref)
+}
+
+.parse_daad_listing <- function(html) {
+  #' Parseia uma página de listing do DAAD Brasil.
+  #' Retorna tibble com: titulo, url_detalhe, daad_id, descricao, status, areas, prazo.
+
+  items <- rvest::html_nodes(html, "li.c-scholarship-list__item")
+  if (length(items) == 0) {
+    return(tibble::tibble(
+      titulo = character(0), url_detalhe = character(0), daad_id = integer(0),
+      descricao = character(0), status = character(0), areas = character(0),
+      prazo = character(0)
+    ))
+  }
+
+  n <- length(items)
+  titulo <- character(n)
+  url_detalhe <- character(n)
+  daad_id <- integer(n)
+  descricao <- character(n)
+  status <- character(n)
+  areas <- character(n)
+  prazo <- character(n)
+
+  for (i in seq_len(n)) {
+    item <- items[[i]]
+
+    # Título
+    title_node <- rvest::html_node(item, "h3 > a")
+    titulo[i] <- if (!is.null(title_node) && !inherits(title_node, "xml_missing")) {
+      trimws(rvest::html_text(title_node, trim = TRUE))
+    } else {
+      ""
+    }
+
+    # URL detalhe + extrair detail_to_show (DAAD ID)
+    link_node <- rvest::html_node(item, "a.o-more-link")
+    href <- if (!is.null(link_node) && !inherits(link_node, "xml_missing")) {
+      rvest::html_attr(link_node, "href")
+    } else {
+      ""
+    }
+    url_detalhe[i] <- resolve_url("https://www.daad-brasil.org/pt/bolsas/busca/", href)
+
+    # Extrair detail_to_show da URL do título (que tem o ID)
+    title_link <- rvest::html_node(item, "h3 > a")
+    title_href <- if (!is.null(title_link) && !inherits(title_link, "xml_missing")) {
+      rvest::html_attr(title_link, "href")
+    } else {
+      ""
+    }
+    id_match <- regmatches(title_href, regexpr("detail_to_show=([0-9]+)", title_href))
+    daad_id[i] <- if (length(id_match) > 0) {
+      as.integer(sub("detail_to_show=", "", id_match))
+    } else {
+      0L
+    }
+
+    # Descrição
+    desc_node <- rvest::html_node(item, "p.u-size-teaser")
+    descricao[i] <- if (!is.null(desc_node) && !inherits(desc_node, "xml_missing")) {
+      trimws(rvest::html_text(desc_node, trim = TRUE))
+    } else {
+      ""
+    }
+
+    # Status (applicant types) - do dl.c-scholarship-list__info
+    info_node <- rvest::html_node(item, "dl.c-scholarship-list__info")
+    if (!is.null(info_node) && !inherits(info_node, "xml_missing")) {
+      dts <- rvest::html_nodes(info_node, "dt")
+      dds <- rvest::html_nodes(info_node, "dd")
+      for (j in seq_along(dts)) {
+        dt_text <- trimws(rvest::html_text(dts[[j]], trim = TRUE))
+        if (grepl("Status", dt_text, ignore.case = TRUE) && j <= length(dds)) {
+          li_nodes <- rvest::html_nodes(dds[[j]], "li")
+          status[i] <- paste(vapply(li_nodes, function(li) trimws(rvest::html_text(li, trim = TRUE)), character(1)), collapse = "; ")
+        }
+        if (grepl("Prazo|deadline", dt_text, ignore.case = TRUE) && j <= length(dds)) {
+          prazo[i] <- trimws(rvest::html_text(dds[[j]], trim = TRUE))
+        }
+      }
+    }
+
+    # Áreas temáticas (data-scholarships-tooltip)
+    tooltip_node <- rvest::html_node(item, "button[data-scholarships-tooltip]")
+    if (!is.null(tooltip_node) && !inherits(tooltip_node, "xml_missing")) {
+      tooltip_html <- rvest::html_attr(tooltip_node, "data-scholarships-tooltip")
+      if (!is.na(tooltip_html) && nzchar(tooltip_html)) {
+        tooltip_doc <- tryCatch(rvest::read_html(paste0("<div>", tooltip_html, "</div>")), error = function(e) NULL)
+        if (!is.null(tooltip_doc)) {
+          li_nodes <- rvest::html_nodes(tooltip_doc, "li")
+          areas[i] <- paste(vapply(li_nodes, function(li) trimws(rvest::html_text(li, trim = TRUE)), character(1)), collapse = "; ")
+        }
+      }
+    }
+  }
+
+  tibble::tibble(
+    titulo = titulo,
+    url_detalhe = url_detalhe,
+    daad_id = daad_id,
+    descricao = descricao,
+    status = status,
+    areas = areas,
+    prazo = prazo
+  )
+}
+
+.parse_daad_detail <- function(html) {
+  #' Parseia a página de detalhe de uma bolsa DAAD Brasil.
+  #' Extrai: objetivo, elegibilidade, valor, duração, processo de inscrição.
+
+  result <- list(
+    objetivo = NA_character_,
+    elegibilidade = NA_character_,
+    valor = NA_character_,
+    valor_mensal = NA_real_,
+    duracao = NA_character_,
+    processo_inscricao = NA_character_,
+    contato = NA_character_
+  )
+
+  # O conteúdo do detalhe está em seções dentro de um container
+  # Cada seção tem um heading (h2/h3/h4) seguido de parágrafos
+  content_text <- rvest::html_text(html, trim = TRUE)
+
+  # Objetivo / Objective
+  obj_match <- regmatches(content_text, regexpr("(?:Objective|Objetivo)\\s+(.+?)(?=Who can apply|Quem pode|What can funded|O que|Duration|Duração|Value|Valor|Selection|Seleção|Application|Inscrição|$)", content_text, ignore.case = TRUE, perl = TRUE))
+  if (length(obj_match) > 0) {
+    result$objetivo <- trimws(sub("^(Objective|Objetivo)\\s+", "", obj_match))
+  }
+
+  # Elegibilidade / Who can apply
+  elig_match <- regmatches(content_text, regexpr("(?:Who can apply\\?|Quem pode se candidatar\\?)\\s+(.+?)(?=What can funded|O que|Duration|Duração|Value|Valor|Selection|Seleção|Application|Inscrição|$)", content_text, ignore.case = TRUE, perl = TRUE))
+  if (length(elig_match) > 0) {
+    result$elegibilidade <- trimws(sub("^(Who can apply\\?|Quem pode se candidatar\\?)\\s+", "", elig_match))
+  }
+
+  # Valor / Value
+  val_match <- regmatches(content_text, regexpr("(?:Value|Valor)\\s+(.+?)(?=Selection|Seleção|Application|Inscrição|$)", content_text, ignore.case = TRUE, perl = TRUE))
+  if (length(val_match) > 0) {
+    result$valor <- trimws(sub("^(Value|Valor)\\s+", "", val_match))
+    # Extrair valor mensal em euros
+    euro_match <- regmatches(result$valor, regexpr("([0-9.,]+)\\s*euros?|EUR\\s*([0-9.,]+)", result$valor, ignore.case = TRUE))
+    if (length(euro_match) > 0) {
+      num_str <- regmatches(euro_match, regexpr("[0-9.,]+", euro_match))
+      num_str <- gsub(",", "", num_str)
+      result$valor_mensal <- suppressWarnings(as.numeric(num_str))
+    }
+  }
+
+  # Duração / Duration
+  dur_match <- regmatches(content_text, regexpr("(?:Duration of the funding|Duração do financiamento)\\s+(.+?)(?=Value|Valor|Selection|Seleção|Application|Inscrição|$)", content_text, ignore.case = TRUE, perl = TRUE))
+  if (length(dur_match) > 0) {
+    result$duracao <- trimws(sub("^(Duration of the funding|Duração do financiamento)\\s+", "", dur_match))
+  }
+
+  # Processo de inscrição / Application
+  app_match <- regmatches(content_text, regexpr("(?:Application|Como se candidatar|Processo de inscri[çc][ãa]o)\\s+(.+?)(?=Contact|Contato|$)", content_text, ignore.case = TRUE, perl = TRUE))
+  if (length(app_match) > 0) {
+    result$processo_inscricao <- trimws(sub("^(Application|Como se candidatar|Processo de inscri[çc][ãa]o)\\s+", "", app_match))
+  }
+
+  # Contato
+  contact_match <- regmatches(content_text, regexpr("(?:Contact|Contato)\\s+(.+?)(?=$)", content_text, ignore.case = TRUE, perl = TRUE))
+  if (length(contact_match) > 0) {
+    result$contato <- trimws(sub("^(Contact|Contato)\\s+", "", contact_match))
+  }
+
+  result
+}
+
+collect_daad <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  #' Coletor híbrido DAAD Brasil: JSON catálogo global + HTML scraping detalhe.
+  #'
+  #' Fluxo:
+  #' 1. Baixa scholarships.js do DAAD Alemanha (JSON público, ~700KB)
+  #' 2. Filtra bolsas com origin=48 (Brasil)
+  #' 3. Faz scraping do listing do DAAD Brasil (17 páginas)
+  #' 4. Para cada bolsa, busca página de detalhe
+  #' 5. Merge JSON + scraping → registros finais
+
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[DAAD][%s] %s", level, msg))
+  }
+
+  .log("INFO", "Iniciando coleta DAAD Brasil (híbrido JSON + scraping).")
+  try(log_progress("Iniciando coleta DAAD Brasil", "INICIO"), silent = TRUE)
+
+  user_agent <- get_random_ua()
+  base_url <- "https://www.daad-brasil.org/pt/bolsas/busca/"
+
+  # =========================================================================
+  # FASE 1: Baixar catálogo global do DAAD Alemanha (JSON)
+  # =========================================================================
+  .log("INFO", "Fase 1: Baixando catálogo global DAAD (scholarships.js).")
+  try(log_progress("Baixando catálogo global DAAD", "FASE1"), silent = TRUE)
+
+  json_url <- "https://www2.daad.de/bundles/daadstipendiendatenbanklsh/data/a/js/scholarships.js"
+  json_req <- httr2::request(json_url) |>
+    httr2::req_user_agent(user_agent) |>
+    httr2::req_timeout(30) |>
+    httr2::req_retry(max_tries = 3)
+
+  json_resp <- tryCatch(httr2::req_perform(json_req), error = function(e) NULL)
+  if (is.null(json_resp) || httr2::resp_status(json_resp) != 200) {
+    .log("ERROR", "Falha ao baixar scholarships.js do DAAD Alemanha.")
+    return(list(records = tibble::tibble(), pages_visited = 0L, last_url = json_url))
+  }
+
+  js_text <- httr2::resp_body_string(json_resp, encoding = "UTF-8")
+  .log("INFO", sprintf("scholarships.js baixado: %d caracteres.", nchar(js_text)))
+
+  json_result <- .parse_daad_json(js_text)
+  catalog_df <- json_result$scholarships
+
+  if (nrow(catalog_df) == 0) {
+    .log("WARN", "Nenhuma bolsa Brasil encontrada no catálogo global.")
+    return(list(records = tibble::tibble(), pages_visited = 1L, last_url = json_url))
+  }
+
+  .log("INFO", sprintf("Catálogo global: %d bolsas Brasil extraídas de 162 totais.", nrow(catalog_df)))
+
+  # =========================================================================
+  # FASE 2: Scraping do listing do DAAD Brasil (17 páginas)
+  # =========================================================================
+  .log("INFO", "Fase 2: Fazendo scraping do listing DAAD Brasil.")
+  try(log_progress("Scraping listing DAAD Brasil", "FASE2"), silent = TRUE)
+
+  listing_all <- tibble::tibble(
+    titulo = character(0), url_detalhe = character(0), daad_id = integer(0),
+    descricao = character(0), status = character(0), areas = character(0),
+    prazo = character(0)
+  )
+
+  pages_visited <- 0L
+  max_listing_pages <- min(max_pages, 20L)
+
+  for (pg in seq_len(max_listing_pages)) {
+    page_url <- paste0(base_url, "?type=a&q=&status=0&subject=0&onlydaad=0&detail_to_show=0&target=48&origin=48&pg=1&tab=&intention=&pg=", pg)
+
+    page_req <- httr2::request(page_url) |>
+      httr2::req_user_agent(user_agent) |>
+      httr2::req_timeout(20) |>
+      httr2::req_retry(max_tries = 2)
+
+    page_resp <- tryCatch(httr2::req_perform(page_req), error = function(e) NULL)
+    if (is.null(page_resp) || httr2::resp_status(page_resp) != 200) {
+      .log("WARN", sprintf("Falha ao acessar página %d do listing.", pg))
+      break
+    }
+
+    page_html_text <- httr2::resp_body_string(page_resp, encoding = "UTF-8")
+    page_html <- rvest::read_html(page_html_text)
+    pages_visited <- pages_visited + 1L
+
+    # Verificar se há itens nesta página
+    items <- rvest::html_nodes(page_html, "li.c-scholarship-list__item")
+    if (length(items) == 0) {
+      .log("INFO", sprintf("Página %d: nenhum item encontrado. Fim da paginação.", pg))
+      break
+    }
+
+    listing_page <- .parse_daad_listing(page_html)
+    listing_all <- dplyr::bind_rows(listing_all, listing_page)
+
+    .log("INFO", sprintf("Página %d: %d itens extraídos (total: %d).", pg, nrow(listing_page), nrow(listing_all)))
+    try(log_progress(sprintf("Página %d: %d itens (total: %d)", pg, nrow(listing_page), nrow(listing_all)), "FASE2"), silent = TRUE)
+
+    if (pg < max_listing_pages) Sys.sleep(0.5)
+  }
+
+  .log("INFO", sprintf("Listing completo: %d itens de %d páginas.", nrow(listing_all), pages_visited))
+
+  # =========================================================================
+  # FASE 3: Merge JSON catálogo + listing Brasil
+  # =========================================================================
+  .log("INFO", "Fase 3: Mergeando catálogo JSON com listing Brasil.")
+  try(log_progress("Mergeando JSON + listing", "FASE3"), silent = TRUE)
+
+  # Criar mapa: daad_id do JSON ↔ daad_id do listing
+  merged_records <- vector("list", nrow(catalog_df))
+  n_skipped <- 0L
+
+  for (i in seq_len(nrow(catalog_df))) {
+    cat_row <- catalog_df[i, ]
+
+    # Match por daad_id (detail_to_show do listing = sap_objid ou sap_progid do JSON)
+    match_idx <- which(
+      listing_all$daad_id == cat_row$sap_objid |
+      listing_all$daad_id == cat_row$sap_progid |
+      listing_all$daad_id == cat_row$daad_id
+    )
+
+    # Fallback: match por título (case-insensitive, parcial)
+    if (length(match_idx) == 0) {
+      title_pattern <- tolower(substr(cat_row$name_en, 1, 30))
+      match_idx <- which(grepl(title_pattern, tolower(listing_all$titulo), fixed = TRUE))
+    }
+
+    # Pular bolsas sem correspondência no listing do Brasil
+    # (existem apenas no catálogo global da Alemanha, sem detalhe válido)
+    if (length(match_idx) == 0) {
+      n_skipped <- n_skipped + 1L
+      next
+    }
+
+    # Dados do listing (sempre encontrado após filtro acima)
+    listing_row <- listing_all[match_idx[[1]], ]
+
+    titulo_final <- if (nzchar(listing_row$titulo)) {
+      listing_row$titulo
+    } else {
+      cat_row$name_en
+    }
+
+    descricao_final <- if (nzchar(listing_row$descricao)) {
+      listing_row$descricao
+    } else {
+      cat_row$introduction_en
+    }
+
+    # Prazo: converter DD.MM.YYYY → YYYY-MM-DD
+    prazo_raw <- if (nzchar(listing_row$prazo)) listing_row$prazo else NA_character_
+    # O prazo pode conter múltiplas datas separadas por <br> ou newline
+    prazo_clean <- gsub("<[^>]+>", " ", prazo_raw)
+    prazo_clean <- gsub("\\s+", " ", prazo_clean)
+    # Extrair primeira data no formato DD.MM.YYYY
+    date_matches <- regmatches(prazo_clean, regexpr("[0-9]{2}\\.[0-9]{2}\\.[0-9]{4}", prazo_clean))
+    data_limite <- if (length(date_matches) > 0) .parse_daad_date(date_matches[[1]]) else NA_character_
+
+    hash_input <- paste0(titulo_final, "|", cat_row$daad_id)
+    hash_dedup <- digest::digest(hash_input, algo = "xxhash64")
+
+    # Link detalhe (sempre do listing Brasil)
+    link_detalhe <- listing_row$url_detalhe
+
+    # Inferir nível acadêmico do status
+    nivel_academico <- NA_character_
+    if (grepl("Doctoral|PhD|Doutorando", cat_row$status_names, ignore.case = TRUE)) {
+      nivel_academico <- "doutorado"
+    } else if (grepl("Graduate|Graduado|Masters", cat_row$status_names, ignore.case = TRUE)) {
+      nivel_academico <- "mestrado"
+    } else if (grepl("Postdoc|Pós-doutorado", cat_row$status_names, ignore.case = TRUE)) {
+      nivel_academico <- "pós-doutorado"
+    } else if (grepl("Undergrad|Estudante", cat_row$status_names, ignore.case = TRUE)) {
+      nivel_academico <- "graduação"
+    } else if (grepl("Faculty|Professor", cat_row$status_names, ignore.case = TRUE)) {
+      nivel_academico <- "professor"
+    }
+
+    # Inferir tipo de oportunidade
+    tipo_oportunidade <- "bolsa_estudo"
+    if (grepl("research|pesquisa", cat_row$intent_names, ignore.case = TRUE)) {
+      tipo_oportunidade <- "bolsa_pesquisa"
+    } else if (grepl("study|estudo", cat_row$intent_names, ignore.case = TRUE)) {
+      tipo_oportunidade <- "bolsa_estudo"
+    } else if (grepl("internship|estágio", cat_row$intent_names, ignore.case = TRUE)) {
+      tipo_oportunidade = "estágio"
+    }
+
+    # Instituição financiadora
+    instituicao <- if (cat_row$is_daad == 1L) "DAAD" else cat_row$programmname_en
+
+    merged_records[[i]] <- tibble::tibble(
+      id_registro = sprintf("daad_%s", substr(hash_dedup, 1, 16)),
+      entidade = "DAAD",
+      pais_origem = "Alemanha",
+      titulo = titulo_final,
+      subtitulo = cat_row$langname_en,
+      descricao_resumida = substr(descricao_final, 1, 500),
+      descricao_completa = cat_row$introduction_en,
+      tipo_oportunidade = tipo_oportunidade,
+      modalidade = cat_row$programmtyp_label,
+      area_tematica = cat_row$subject_groups,
+      palavras_chave = NA_character_,
+      elegibilidade = NA_character_,
+      publico_alvo = cat_row$status_names,
+      nivel_academico = nivel_academico,
+      instituicao_financiadora = instituicao,
+      valor_financiado = NA_real_,
+      moeda = "EUR",
+      data_publicacao = NA_character_,
+      data_abertura = NA_character_,
+      data_limite = data_limite,
+      data_encerramento = NA_character_,
+      status_oportunidade = classify_status(deadline = data_limite, text = titulo_final)[[1]],
+      link_origem = base_url,
+      link_detalhe = link_detalhe,
+      link_documento_pdf = NA_character_,
+      idioma = "en",
+      localidade = "Alemanha",
+      observacoes = paste(collapse_non_empty(
+        cat_row$status_names,
+        cat_row$intent_names,
+        cat_row$programmtyp_label,
+        if (cat_row$is_daad == 1L) "Programa DAAD" else "Programa externo",
+        if (cat_row$is_move == 1L) "Mobilidade" else NULL
+      ), collapse = " | "),
+      texto_bruto = paste(collapse_non_empty(titulo_final, descricao_final, cat_row$status_names, cat_row$subject_groups, cat_row$introduction_en), collapse = "\n"),
+      pagina_coletada = pages_visited,
+      fonte_oficial = "daad",
+      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      hash_deduplicacao = hash_dedup,
+      campos_inferidos_ia = NA_character_
+    )
+  }
+
+  # Remover registros NULL (bolsas sem match no Brasil)
+  merged_records <- merged_records[!vapply(merged_records, is.null, logical(1))]
+
+  if (n_skipped > 0) {
+    .log("INFO", sprintf("Fase 3: %d bolsas descartadas (sem correspondência no listing Brasil).", n_skipped))
+    try(log_progress(sprintf("%d bolsas descartadas (sem match Brasil)", n_skipped), "FASE3"), silent = TRUE)
+  }
+  .log("INFO", sprintf("Fase 3: %d registros mergeados (JSON + listing Brasil).", length(merged_records)))
+
+  # =========================================================================
+  # FASE 4: Scraping de detalhes (apenas para bolsas com listing encontrado)
+  # =========================================================================
+  .log("INFO", "Fase 4: Buscando páginas de detalhe.")
+  try(log_progress("Buscando detalhes das bolsas", "FASE4"), silent = TRUE)
+
+  detail_failures <- 0L
+  n_details <- min(max_records, length(merged_records))
+
+  for (i in seq_len(n_details)) {
+    rec <- merged_records[[i]]
+    detail_url <- rec$link_detalhe
+
+    # Só buscar detalhe se tiver link do Brasil
+    if (!grepl("daad-brasil\\.org", detail_url, ignore.case = TRUE)) next
+
+    if (i > 1) Sys.sleep(0.4)
+
+    detail_req <- httr2::request(detail_url) |>
+      httr2::req_user_agent(user_agent) |>
+      httr2::req_timeout(15) |>
+      httr2::req_retry(max_tries = 2)
+
+    detail_resp <- tryCatch(httr2::req_perform(detail_req), error = function(e) NULL)
+
+    if (!is.null(detail_resp) && httr2::resp_status(detail_resp) == 200) {
+      detail_html_text <- tryCatch(httr2::resp_body_string(detail_resp, encoding = "UTF-8"), error = function(e) NULL)
+      if (!is.null(detail_html_text) && nzchar(detail_html_text)) {
+        detail_html <- rvest::read_html(detail_html_text)
+        detail <- .parse_daad_detail(detail_html)
+
+        # Validar: se todos os campos principais são NA, a página era vazia/genérica
+        if (all(is.na(c(detail$objetivo, detail$elegibilidade, detail$valor, detail$duracao)))) {
+          detail_failures <- detail_failures + 1L
+          next
+        }
+
+        # Enriquecer registro com dados do detalhe
+        if (!is.na(detail$valor_mensal) && !is.null(detail$valor_mensal)) {
+          merged_records[[i]]$valor_financiado <- detail$valor_mensal
+        }
+        if (!is.na(detail$elegibilidade) && nzchar(detail$elegibilidade)) {
+          merged_records[[i]]$elegibilidade <- substr(detail$elegibilidade, 1, 2000)
+        }
+        if (!is.na(detail$objetivo) && nzchar(detail$objetivo)) {
+          merged_records[[i]]$descricao_completa <- paste(
+            collapse_non_empty(merged_records[[i]]$descricao_completa, detail$objetivo),
+            collapse = "\n\n"
+          )
+        }
+        # Atualizar texto_bruto com dados do detalhe
+        merged_records[[i]]$texto_bruto <- paste(collapse_non_empty(
+          merged_records[[i]]$titulo,
+          merged_records[[i]]$descricao_resumida,
+          detail$objetivo,
+          detail$elegibilidade,
+          detail$valor,
+          detail$processo_inscricao
+        ), collapse = "\n")
+      }
+    } else {
+      detail_failures <- detail_failures + 1L
+    }
+
+    if (i %% 10 == 0) {
+      .log("INFO", sprintf("Progresso detalhes: %d/%d.", i, n_details))
+      try(log_progress(sprintf("Detalhes: %d/%d", i, n_details), "FASE4"), silent = TRUE)
+    }
+  }
+
+  if (detail_failures > 0) {
+    .log("WARN", sprintf("Falhas no detalhe: %d/%d (usados dados do listing/catálogo).", detail_failures, n_details))
+  }
+
+  # =========================================================================
+  # FASE 5: Finalização
+  # =========================================================================
+  .log("INFO", "Fase 5: Preparando registros.")
+  try(log_progress("Preparando registros", "FASE5"), silent = TRUE)
+
+  df <- dplyr::bind_rows(merged_records)
+  df <- ensure_record_schema(df)
+
+  .log("INFO", sprintf("DAAD Brasil: %d registros finais coletados.", nrow(df)))
+  try(log_progress(sprintf("DAAD Brasil: %d registros finais", nrow(df)), "FIM"), silent = TRUE)
+
+  list(records = df, pages_visited = pages_visited + 1L, last_url = base_url)
+}
+
+
 # Auto-registrar collectors (após definição de todas as funções)
 register_collector("capes", collect_capes, "CAPES Plone API + HTML fallback")
 register_collector("finep", collect_finep, "FINEP custom pagination")
@@ -3968,3 +4622,4 @@ register_collector("fapesb", collect_fapesb, "WordPress REST API (FAPESB)")
 register_collector("sigitec", collect_sigitec, "Petrobras SIGITEC API REST + Playwright fallback")
 register_collector("undp", collect_undp, "UNDP Procurement Notices - componente externo JSON")
 register_collector("embrapii", collect_embrapii, "EMBRAPII Chamadas Publicas - HTML estatico + detalhe")
+register_collector("daad", collect_daad, "DAAD Brasil - Híbrido: JSON catálogo global + HTML scraping detalhe")

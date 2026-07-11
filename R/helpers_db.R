@@ -25,7 +25,8 @@ source_catalog <- function() {
     "sigitec", "Petrobras SIGITEC - Sistema de Gestão de Inovação e Tecnologia Competitividade", "PETROBRAS", "Brasil", "empresa estatal", "empresa pública", "https://sigitec-competitividade.petrobras.com.br", "https://sigitec-competitividade.petrobras.com.br/v2/public/opportunities", "api_json", "pt", "diária", "API REST pública SIGITEC Petrobras. Listing + detalhe por ID. Oportunidades de P&D para empresas e ICTs.",
     "undp", "United Nations Development Programme - Brasil", "UNDP", "Brasil", "agência internacional", "organização multilateral", "https://www.undp.org/pt/brazil", "https://www.undp.org/pt/brazil/licitacoes", "api_json", "pt", "diária", "Componente externo UNDP Procurement Notices. JSON via public-components.undp.org. Detalhes via procurement-notices.undp.org.",
     "embrapii", "Empresa Brasileira de Pesquisa e Inovação Industrial", "EMBRAPII", "Brasil", "empresa estatal", "empresa pública", "https://embrapii.org.br", "https://embrapii.org.br/transparencia/", "html", "pt", "diária", "Chamadas públicas EMBRAPII via parsing HTML estático da página de transparência. Detalhes com cronograma e documentos PDF.",
-    "daad", "Deutscher Akademischer Austauschdienst - Brasil", "DAAD", "Alemanha", "agência internacional", "organização internacional", "https://www.daad-brasil.org/pt/", "https://www.daad-brasil.org/pt/bolsas/busca/", "hybrid", "en", "mensal", "Bolsas de estudo DAAD Brasil. Híbrido: JSON catálogo global (scholarships.js) + HTML scraping detalhe. ~82 bolsas filtradas para Brasil (origin=48)."
+    "daad", "Deutscher Akademischer Austauschdienst - Brasil", "DAAD", "Alemanha", "agência internacional", "organização internacional", "https://www.daad-brasil.org/pt/", "https://www.daad-brasil.org/pt/bolsas/busca/", "hybrid", "en", "mensal", "Bolsas de estudo DAAD Brasil. Híbrido: JSON catálogo global (scholarships.js) + HTML scraping detalhe. ~82 bolsas filtradas para Brasil (origin=48).",
+    "quantum", "EU Quantum Technologies - Calls for Proposals", "QUANTUM", "União Europeia", "programa temático", "união supranacional", "https://ec.europa.eu/info/funding-tenders/opportunities/portal/", "https://api.tech.ec.europa.eu/search-api/prod/rest/search?apiKey=SEDIA&text=quantum", "api_json", "en", "diária", "API REST EU F&T Portal. Busca por palavra-chave quantum + filtro Horizon Europe (43108390) + status Open. Garante captura de editais de computação e comunicação quântica."
   )
 }
 
@@ -478,7 +479,7 @@ init_database <- function(db_path) {
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
   create_tables(conn)
   seed_sources(conn)
-  try(DBI::dbExecute(conn, "DELETE FROM fontes_financiamento WHERE id_fonte NOT IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", params = list("cnpq", "capes", "finep", "fapesb", "horizon_europe", "erc", "sigitec", "undp", "embrapii", "daad")), silent = TRUE)
+  try(DBI::dbExecute(conn, "DELETE FROM fontes_financiamento WHERE id_fonte NOT IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", params = list("cnpq", "capes", "finep", "fapesb", "horizon_europe", "erc", "sigitec", "undp", "embrapii", "daad", "quantum")), silent = TRUE)
   try(DBI::dbExecute(conn, "UPDATE oportunidades SET pais_origem = 'União Europeia' WHERE pais_origem = 'Uniao Europeia'"), silent = TRUE)
   seed_profile(conn)
   seed_saved_searches(conn)

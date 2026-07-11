@@ -147,7 +147,7 @@ def run_playwright_stealth(url):
   res
 }
 
-eu_api_request <- function(url, body_data, timeout_sec = 60, log_path = NULL) {
+eu_api_request <- function(url, body_data, timeout_sec = 60, log_path = NULL, languages = '["en"]') {
   .log <- function(level, msg) {
     if (!is.null(log_path)) log_write(log_path, level, msg)
     message(sprintf("[EU-API][%s] %s", level, msg))
@@ -163,7 +163,7 @@ eu_api_request <- function(url, body_data, timeout_sec = 60, log_path = NULL) {
 
   encoded_body <- paste0(
     "query=", URLencode(body_data, reserved = TRUE),
-    "&languages=", URLencode('["en"]', reserved = TRUE),
+    "&languages=", URLencode(languages, reserved = TRUE),
     "&displayLanguage=", URLencode("en", reserved = TRUE)
   )
   user_agent <- "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
@@ -216,7 +216,7 @@ eu_api_request <- function(url, body_data, timeout_sec = 60, log_path = NULL) {
       "-H", "Accept: application/json, text/plain, */*",
       "-H", "Content-Type: application/x-www-form-urlencoded",
       "--data-urlencode", paste0("query=", body_data),
-      "--data-urlencode", "languages=[\"en\"]",
+      "--data-urlencode", paste0("languages=", languages),
       "--data-urlencode", "displayLanguage=en",
       "-o", tmp, "-w", "%{http_code}"
     )
@@ -2802,7 +2802,7 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
     log_write(log_path, "INFO", sprintf("Fonte em processamento: %s | %s", sid, src$url_oportunidades[[1]]))
 
     # Override: fontes EU (HEU/ERC) usam mais registros por serem programas plurianuais
-    effective_max <- if (sid %in% c("horizon_europe", "erc")) 100L else max_records_per_source
+    effective_max <- if (sid %in% c("horizon_europe", "erc", "quantum")) 100L else max_records_per_source
 
     result <- tryCatch(
       {
@@ -4623,3 +4623,291 @@ register_collector("sigitec", collect_sigitec, "Petrobras SIGITEC API REST + Pla
 register_collector("undp", collect_undp, "UNDP Procurement Notices - componente externo JSON")
 register_collector("embrapii", collect_embrapii, "EMBRAPII Chamadas Publicas - HTML estatico + detalhe")
 register_collector("daad", collect_daad, "DAAD Brasil - Híbrido: JSON catálogo global + HTML scraping detalhe")
+
+# --- EU Quantum Technologies Collector ---
+collect_quantum <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  #' Coleta oportunidades de tecnologias quânticas via API REST pública (EU F&T Portal Search API)
+  #' Estratégia: múltiplos termos de busca (callIdentifiers + keywords)
+  #' Pós-filtros: DATASOURCE=SEDIA + frameworkProgramme=43108390 + status Open
+  #' NOTA: A API ignora filtros JSON no body — usa pós-processamento
+
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[QUANTUM][%s] %s", level, msg))
+  }
+
+  api_url <- paste0(get_eu_api_base_url(), "/search")
+  all_items <- list()
+
+  # Pre-flight: verificar conectividade com a API EU
+  if (!is_host_alive(api_url)) {
+    .log("WARN", "API EU inacessivel. Pulando coleta QUANTUM.")
+    try(log_progress("AVISO: API EU inacessivel - pulando QUANTUM", "Scraping"), silent = TRUE)
+    return(list(records = tibble::tibble(), pages_visited = 0L, last_url = api_url))
+  }
+
+  # Query filter (a API ignora, mas mantém por consistência com HEU/ERC)
+  heu_query <- '{"bool":{"must":[{"terms":{"frameworkProgramme":["43108390"]}}]}}'
+
+  # Múltiplos termos de busca: callIdentifiers específicos quantum + keywords genéricas
+  # callIdentifiers retornam resultados HEU diretamente; keywords capturam quantum em qualquer HEU
+  search_terms <- c(
+    "HORIZON-JU-EUROHPC-2026",     # Programme euroHPC (quantum computing, QEC, QML)
+    "HORIZON-JU-SNS-2022",         # Smart Networks and Services (quantum communication)
+    "HORIZON-CL4-2026-HUMAN",      # Cluster 4 Digital/Industrial (quantum technologies)
+    "quantum",                     # Fallback: busca genérica
+    "quantum computing",
+    "quantum communication",
+    "quantum sensors",
+    "quantum technology"
+  )
+
+  .log("INFO", "Iniciando coleta EU Quantum Technologies via API REST...")
+
+  for (term in search_terms) {
+    .log("INFO", sprintf("Buscando termo: '%s'", term))
+
+    search_text <- utils::URLencode(term, reserved = TRUE)
+    url <- sprintf(
+      "%s?apiKey=SEDIA&text=%s&pageNumber=1&pageSize=100&sortBy=es_SortDate&orderBy=DESC",
+      api_url, search_text
+    )
+
+    data <- tryCatch(eu_api_request(url, heu_query, 60, log_path), error = function(e) {
+      .log("ERROR", sprintf("Erro ao executar request para '%s': %s", term, e$message))
+      NULL
+    })
+
+    if (is.null(data) || is.null(data$results)) {
+      .log("WARN", sprintf("Resposta vazia ou invalida para '%s'", term))
+      next
+    }
+
+    .log("INFO", sprintf("Termo '%s': %d resultados brutos", term, length(data$results)))
+
+    # Pós-filtrar: DATASOURCE=SEDIA + frameworkProgramme=HEU + status Open
+    for (item in data$results) {
+      md <- item$metadata
+      if (is.null(md)) next
+      if (is.data.frame(md)) md <- as.list(md)
+
+      # FILTRO 1: DATASOURCE == "SEDIA" (topics, não FAQs/profiles/projects)
+      ds <- tryCatch({
+        d <- md$DATASOURCE
+        if (!is.null(d)) { if (is.list(d)) d[[1]] else d[1] } else { NA }
+      }, error = function(e) NA)
+      if (is.na(ds) || ds != "SEDIA") next
+
+      # FILTRO 2: frameworkProgramme == "43108390" (Horizon Europe)
+      fp <- tryCatch({
+        f <- md$frameworkProgramme
+        if (!is.null(f)) { if (is.list(f)) f[[1]] else f[1] } else { NA }
+      }, error = function(e) NA)
+      if (is.na(fp) || !grepl("43108390", fp)) next
+
+      # FILTRO 3: status != CLOSED (31094503)
+      st <- tryCatch({
+        s <- md$status
+        if (!is.null(s)) { if (is.list(s)) s[[1]] else s[1] } else { NA }
+      }, error = function(e) NA)
+      if (!is.na(st) && length(st) > 0 && grepl("31094503", st)) next
+
+      all_items <- c(all_items, list(item))
+    }
+
+    .log("INFO", sprintf("Termo '%s': %d itens HEU quantum acumulados", term, length(all_items)))
+
+    if (length(all_items) >= max_records * 3) break
+    Sys.sleep(0.5)
+  }
+
+  # Deduplicar por callIdentifier — preferir versão em inglês
+  # Itens sem callIdentifier usam fallback key (título truncado)
+  .log("INFO", sprintf("Deduplicando %d itens brutos...", length(all_items)))
+  dedup_map <- list()
+  for (item in all_items) {
+    md <- tryCatch({
+      m <- item$metadata
+      if (is.null(m)) next
+      if (is.data.frame(m)) m <- as.list(m)
+      m
+    }, error = function(e) NULL)
+    if (is.null(md)) next
+
+    call_id <- tryCatch({
+      if (!is.null(md$callIdentifier)) {
+        v <- md$callIdentifier
+        if (is.list(v)) v[[1]] else v[1]
+      } else { NA_character_ }
+    }, error = function(e) NA_character_)
+
+    # Fallback key para itens sem callIdentifier
+    if (is.na(call_id) || length(call_id) == 0) {
+      titulo_fallback <- tryCatch({
+        t <- md$title
+        if (!is.null(t)) { if (is.list(t)) t[[1]] else t[1] } else { "" }
+      }, error = function(e) "")
+      call_id <- paste0("ref_", substr(titulo_fallback, 1, 60))
+    }
+
+    titulo <- tryCatch({
+      if (!is.null(md$title)) {
+        v <- md$title
+        if (is.list(v)) v[[1]] else v[1]
+      } else { "" }
+    }, error = function(e) "")
+    if (length(titulo) == 0) titulo <- ""
+    is_english <- tryCatch(
+      !is.na(titulo) && is.character(titulo) && !grepl("[^\x01-\x7F]", titulo),
+      error = function(e) FALSE
+    )
+
+    if (is.null(dedup_map[[call_id]])) {
+      dedup_map[[call_id]] <- list(item = item, is_english = is_english)
+    } else if (is_english && !dedup_map[[call_id]]$is_english) {
+      dedup_map[[call_id]] <- list(item = item, is_english = TRUE)
+    }
+  }
+  all_items <- lapply(dedup_map, function(x) x$item)
+  .log("INFO", sprintf("Apos deduplicacao: %d itens unicos", length(all_items)))
+
+  if (length(all_items) > max_records) {
+    all_items <- all_items[1:max_records]
+    .log("WARN", sprintf("Limitado a %d registros", max_records))
+  }
+
+  if (length(all_items) == 0) {
+    .log("WARN", "Nenhum item quantum encontrado")
+    return(list(records = tibble::tibble(), pages_visited = 0L, last_url = api_url))
+  }
+
+  # Helper seguro para extrair campo de metadata
+  safe_extract <- function(x, default = NA_character_) {
+    tryCatch({
+      if (is.null(x)) return(default)
+      val <- if (is.list(x)) x[[1]] else x[1]
+      if (length(val) == 0) return(default)
+      if (is.null(val)) return(default)
+      if (is.na(val)) return(default)
+      as.character(val)
+    }, error = function(e) default)
+  }
+
+  record_list <- list()
+  for (i in seq_along(all_items)) {
+    item <- all_items[[i]]
+    rec <- tryCatch({
+      md <- item$metadata
+      if (is.data.frame(md)) md <- as.list(md)
+
+      titulo <- safe_extract(md$title)
+      call_id <- safe_extract(md$callIdentifier)
+      descricao_html <- safe_extract(md$descriptionByte)
+
+      descricao_text <- gsub("<[^>]+>", " ", descricao_html)
+      descricao_text <- gsub("&amp;", "&", descricao_text)
+      descricao_text <- gsub("&nbsp;", " ", descricao_text)
+      descricao_text <- gsub("\\s+", " ", trimws(descricao_text))
+
+      data_abertura <- safe_extract(md$startDate)
+      if (!is.na(data_abertura)) data_abertura <- as.character(as.Date(sub("T.*", "", data_abertura)))
+
+      data_limite <- safe_extract(md$deadlineDate)
+      if (!is.na(data_limite)) data_limite <- as.character(as.Date(sub("T.*", "", data_limite)))
+
+      status_code <- safe_extract(md$status)
+      status <- if (!is.na(status_code)) {
+        if (grepl("31094501|31094502", status_code)) "aberto"
+        else if (grepl("31094503", status_code)) "encerrado"
+        else "desconhecido"
+      } else { "desconhecido" }
+
+      programa <- safe_extract(md$esST_programAbbreviation)
+      tipo_acao <- safe_extract(md$typesOfAction)
+
+      budget <- NA_real_
+      budget_raw <- safe_extract(md$budgetOverview)
+      if (!is.na(budget_raw)) {
+        budget_json <- tryCatch(jsonlite::fromJSON(budget_raw, simplifyVector = FALSE), error = function(e) NULL)
+        if (!is.null(budget_json$budgetTopicActionMap)) {
+          for (key in names(budget_json$budgetTopicActionMap)) {
+            actions <- budget_json$budgetTopicActionMap[[key]]
+            for (act in actions) {
+              if (!is.null(act$budgetYearMap)) {
+                for (yr in names(act$budgetYearMap)) {
+                  val <- suppressWarnings(as.numeric(act$budgetYearMap[[yr]]))
+                  if (!is.na(val)) budget <- val
+                }
+              }
+            }
+          }
+        }
+      }
+
+      link_detalhe <- safe_extract(md$esST_URL, default = item$url)
+
+      hash_input <- paste0(call_id, "|", titulo)
+      hash_dedup <- digest::digest(hash_input, algo = "xxhash64")
+
+      resumo_final <- if (!is.na(descricao_text) && nzchar(descricao_text) && nchar(descricao_text) > 10) {
+        substr(descricao_text, 1, 500)
+      } else { titulo }
+
+      tibble::tibble(
+        id_registro = sprintf("quantum_%s", substr(hash_dedup, 1, 16)),
+        entidade = "EU Quantum Technologies",
+        pais_origem = "Uniao Europeia",
+        titulo = titulo,
+        subtitulo = call_id,
+        descricao_resumida = resumo_final,
+        descricao_completa = descricao_text,
+        tipo_oportunidade = tipo_acao,
+        modalidade = NA_character_,
+        area_tematica = "Quantum Technologies",
+        palavras_chave = paste("quantum", call_id),
+        elegibilidade = NA_character_,
+        publico_alvo = NA_character_,
+        nivel_academico = NA_character_,
+        instituicao_financiadora = "European Commission",
+        valor_financiado = budget,
+        moeda = if (!is.na(budget) && budget > 0) "EUR" else NA_character_,
+        data_publicacao = data_abertura,
+        data_abertura = data_abertura,
+        data_limite = data_limite,
+        data_encerramento = NA_character_,
+        status_oportunidade = status,
+        link_origem = "https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
+        link_detalhe = link_detalhe,
+        link_documento_pdf = NA_character_,
+        idioma = "en",
+        localidade = NA_character_,
+        observacoes = "Capturado via busca por keyword quantum no EU F&T Portal (HEU)",
+        texto_bruto = paste(titulo, descricao_text, sep = "\n\n"),
+        pagina_coletada = 1L,
+        fonte_oficial = "quantum",
+        data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+        hash_deduplicacao = hash_dedup,
+        campos_inferidos_ia = NA_character_
+      )
+    }, error = function(e) {
+      .log("WARN", sprintf("Erro ao processar item %d: %s", i, e$message))
+      NULL
+    })
+    if (!is.null(rec)) record_list[[length(record_list) + 1]] <- rec
+  }
+
+  if (length(record_list) == 0) {
+    .log("WARN", "Nenhum registro valido extraido")
+    return(list(records = tibble::tibble(), pages_visited = 0L, last_url = api_url))
+  }
+
+  records <- dplyr::bind_rows(record_list)
+
+  .log("INFO", sprintf("QUANTUM: %d registros finais coletados", nrow(records)))
+
+  result <- list(records = records, pages_visited = length(search_terms), last_url = api_url)
+  .log("INFO", sprintf("Retornando lista com %d registros", length(result$records)))
+  return(result)
+}
+
+register_collector("quantum", collect_quantum, "EU F&T Portal REST API - Multi-keyword quantum + filtros HEU")

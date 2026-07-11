@@ -8,7 +8,7 @@
 
 Plataforma de inteligência estratégica para monitoramento, busca booleana avançada e recomendação personalizada de editais de financiamento científico e tecnológico — nacionais e internacionais.
 
-Centraliza **6 fontes de fomento** (CNPq, CAPES, FINEP, FAPESB, Horizon Europe, ERC) em uma única interface, enriquece cada oportunidade com IA generativa multi-provedor, traduz automaticamente registros europeus para pt-br e recomenda parceiros internos com base em afinidade temática.
+Centraliza **11 fontes de fomento** (CNPq, CAPES, FINEP, FAPESB, Horizon Europe, ERC, SIGITEC, UNDP, EMBRAPII, DAAD, Quantum) em uma única interface, enriquece cada oportunidade com IA generativa multi-provedor, traduz automaticamente registros europeus para pt-br e recomenda parceiros internos com base em afinidade temática.
 
 ---
 
@@ -100,7 +100,7 @@ flowchart TD
     end
 
     subgraph External [Fontes Externas]
-        Fontes[6 Portais de Fomento]
+        Fontes[11 Portais de Fomento]
         LLMAPIs[APIs de IA]
     end
 
@@ -129,6 +129,11 @@ flowchart TD
 | `fapesb` | Fundação de Amparo à Pesquisa do Estado da Bahia | Brasil | WordPress REST API | pt |
 | `horizon_europe` | Horizon Europe | UE | EU F&T Portal REST API | en → pt (tradução automática) |
 | `erc` | European Research Council | UE | EU F&T Portal REST API | en → pt (tradução automática) |
+| `sigitec` | Petrobras SIGITEC | Brasil | REST API | pt |
+| `undp` | UNDP Brasil | Brasil | JS component + HTML | pt |
+| `embrapii` | EMBRAPII | Brasil | HTML scraping | pt |
+| `daad` | DAAD Brasil | Alemanha | Hybrid JSON+HTML | en |
+| `quantum` | EU Quantum Technologies | UE | EU FTOP REST API | en |
 
 **Coletores especializados:**
 
@@ -137,6 +142,11 @@ flowchart TD
 - `collect_fapesb` — WordPress REST API (`/wp-json/wp/v2/posts?categories=11`)
 - `collect_horizon_europe` — EU F&T Portal Search API com 21 termos de busca (EIC, MSCA, WIDERA, CL2-CL5, EURATOM)
 - `collect_erc` — EU F&T Portal Search API com termos ERC específicos
+- `collect_sigitec` — REST API SIGITEC com listing + detalhe por ID
+- `collect_undp` — Componente externo UNDP (JSON) + HTML de detalhe
+- `collect_embrapii` — Parsing HTML estático da página de transparência
+- `collect_daad` — Híbrido: JSON catálogo global (scholarships.js) + HTML scraping detalhe
+- `collect_quantum` — EU F&T Portal Search API com busca por keyword "quantum"
 - `collect_generic_official` — Fallback HTML para CNPq e fontes não especializadas
 
 > **Nota sobre fontes EU:** Horizon Europe e ERC utilizam a EU F&T Portal API via
@@ -150,18 +160,18 @@ As seguintes fontes foram removidas na versão atual do sistema (commit `fbaa74c
 | Fonte | Motivo da Remoção |
 |---|---|
 | FAPESP, FAPERJ, FAPEMIG, FAPES/ES, FAPESC/SC | FAPES regionais com estruturas de URL instáveis |
-| CONFAP, BNDES, MCTI, EMBRAPII | Fontes com atualização irregular ou baixa aderência |
+| CONFAP, BNDES, MCTI | Fontes com atualização irregular ou baixa aderência |
 | Petrobras SIGITEC | API descontinuada ou inacessível |
 | NIH, NSF, Wellcome Trust, Gates Foundation | Fontes internacionais com scraping complexo |
 | IDRC, UNESCO, World Bank, IDB | Baixo volume de editais relevantes |
-| EUREKA Network, DAAD | Fontes europeias consolidadas no Horizon Europe |
+| EUREKA Network | Fontes europeias consolidadas no Horizon Europe |
 | UNDP Brasil, Ministério da Saúde, iCS | Fontes temáticas com escopo limitado |
 
 ---
 
 ## Estrutura de Módulos
 
-### `app.R` — Ponto de Entrada (1.541 linhas)
+### `app.R` — Ponto de Entrada (~1.600 linhas)
 
 Interface Shiny com `bslib` e Bootstrap 5. Responsável por:
 
@@ -171,7 +181,7 @@ Interface Shiny com `bslib` e Bootstrap 5. Responsável por:
 - Streaming de logs em tempo real via `collection_status.json`
 - Sincronização automática com Google Drive
 
-### `R/helpers_collect.R` — Motor de Coleta (~2.910 linhas)
+### `R/helpers_collect.R` — Motor de Coleta (~4.100 linhas)
 
 Módulo mais extenso do sistema. Pipeline de coleta:
 
@@ -185,7 +195,7 @@ Módulo mais extenso do sistema. Pipeline de coleta:
 - `httr2` → Playwright (Python via `reticulate`) → `chromote` (R nativo)
 - Detecção de CDN/CAPTCHA (Cloudflare, Ray ID, Access Denied)
 
-### `R/helpers_ai.R` — IA Multi-Provedor (793 linhas)
+### `R/helpers_ai.R` — IA Multi-Provedor (~867 linhas)
 
 Pipeline de extração em 2 estágios:
 
@@ -196,11 +206,11 @@ Pipeline de extração em 2 estágios:
 
 **Função de tradução:** `translate_to_pt_br()` — traduz título e resumo de registros europeus para pt-br using IA.
 
-### `R/helpers_db.R` — Persistência (593 linhas)
+### `R/helpers_db.R` — Persistência (~722 linhas)
 
 - SQLite em modo WAL com busy timeout
 - Schema idempotente com `IF NOT EXISTS`
-- Catálogo de 6 fontes com UPSERT
+- Catálogo de 11 fontes com UPSERT
 - Migrações automáticas de schema
 
 ### `R/helpers_text.R` — Busca Booleana (247 linhas)
@@ -230,7 +240,7 @@ Pipeline de extração em 2 estágios:
 
 ```
 funding_intelligence.sqlite
-├── fontes_financiamento      — Catálogo de 6 agências ativas
+├── fontes_financiamento      — Catálogo de 11 agências ativas
 ├── oportunidades             — Editais coletados e enriquecidos pela IA
 ├── editais_rastreados        — Funil de candidaturas do usuário
 ├── perfil_usuario            — Preferências institucionais e áreas de interesse
@@ -505,7 +515,7 @@ Deve retornar JSON com `"totalResults"` > 0.
 | `AI_MAX_CHARS` | Contexto máximo por edital | `20000` |
 | `AI_VERIFY_METADATA` | Habilita auditoria de qualidade | `true` |
 | `AI_BATCH_SIZE` | Lote de requisições paralelas | `3` |
-| `GROQ_RATE_DELAY` | Atraso entre chamadas Groq (seg) | `6` |
+| `AI_DELAY_BETWEEN_BATCHES` | Atraso entre lotes de IA (seg) | `2` |
 
 ### Google Drive (opcional)
 

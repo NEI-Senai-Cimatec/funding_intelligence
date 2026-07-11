@@ -28,3 +28,20 @@ data_exports/
 
 # Google Drive credentials file
 gdrive_credentials.json
+
+# OpenSpec
+.openspec_cache/
+*.openspec.log
+
+# Arquivos ENV
+*.env
+
+#Node Modules
+node_modules/
+
+
+node_modules
+package.json
+package-lock.json
+bun.lock
+.gitignore

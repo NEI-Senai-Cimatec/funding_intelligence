@@ -4911,3 +4911,278 @@ collect_quantum <- function(source_row, max_pages, max_records, use_ai, log_path
 }
 
 register_collector("quantum", collect_quantum, "EU F&T Portal REST API - Multi-keyword quantum + filtros HEU")
+
+# --- Humboldt Foundation Collector (HTML scraping) ---
+
+normalize_humboldt_country <- function(from_where) {
+  txt <- tolower(trimws(from_where %||% ""))
+  if (!nzchar(txt)) return("Internacional")
+  if (grepl("brazil", txt)) return("Brasil")
+  if (grepl("germany", txt)) return("Alemanha")
+  if (grepl("non-european.*developing|developing.*transition", txt)) return("Internacional (países em desenvolvimento)")
+  if (grepl("all countries|all nations", txt)) return("Internacional")
+  if (grepl("developing countries", txt)) return("Internacional (países em desenvolvimento)")
+  from_where
+}
+
+infer_humboldt_status <- function(detail_text) {
+  txt <- tolower(detail_text %||% "")
+  if (grepl("closing date.*elapsed|not currently possible to apply|unfortunately.*not.*apply", txt)) return("encerrado")
+  if (grepl("next application round|next round.*opens|application round.*scheduled", txt)) return("futuro")
+  "aberto"
+}
+
+extract_humboldt_listing <- function(html, base_url, program_type) {
+  cards <- try(rvest::html_elements(html, "article.teaser"), silent = TRUE)
+  if (inherits(cards, "try-error") || length(cards) == 0) {
+    return(tibble::tibble())
+  }
+
+  records <- purrr::map_dfr(seq_along(cards), function(i) {
+    card <- cards[[i]]
+
+    title_node <- rvest::html_node(card, ".teaser__headline, h3")
+    title <- if (!is.null(title_node) && !inherits(title_node, "xml_missing")) {
+      trimws(rvest::html_text(title_node, trim = TRUE))
+    } else { "" }
+
+    if (!nzchar(title)) return(tibble::tibble())
+
+    text_node <- rvest::html_node(card, ".teaser__text")
+    text_html <- if (!is.null(text_node) && !inherits(text_node, "xml_missing")) {
+      rvest::html_text(text_node, trim = TRUE)
+    } else { "" }
+
+    for_whom <- ""
+    from_where <- ""
+    for_what <- ""
+    if (grepl("For whom:", text_html, fixed = TRUE)) {
+      for_whom <- sub(".*For whom:\\s*", "", text_html)
+      for_whom <- sub("\\s*From where:.*", "", for_whom)
+      for_whom <- trimws(for_whom)
+    }
+    if (grepl("From where:", text_html, fixed = TRUE)) {
+      from_where <- sub(".*From where:\\s*", "", text_html)
+      from_where <- sub("\\s*For what:.*", "", from_where)
+      from_where <- trimws(from_where)
+    }
+    if (grepl("For what:", text_html, fixed = TRUE)) {
+      for_what <- sub(".*For what:\\s*", "", text_html)
+      for_what <- trimws(for_what)
+    }
+
+    link_node <- rvest::html_node(card, "a[href]")
+    detail_href <- if (!is.null(link_node) && !inherits(link_node, "xml_missing")) {
+      rvest::html_attr(link_node, "href")
+    } else { "" }
+    detail_url <- if (nzchar(detail_href)) {
+      resolve_url(base_url, detail_href)
+    } else { NA_character_ }
+
+    tibble::tibble(
+      listing_title = title,
+      for_whom = for_whom,
+      from_where_raw = from_where,
+      for_what = for_what,
+      detail_url = detail_url,
+      program_type = program_type
+    )
+  })
+
+  records
+}
+
+extract_humboldt_detail <- function(detail_url, log_path = NULL) {
+  if (is.na(detail_url) || !nzchar(detail_url)) {
+    return(list(title = NA_character_, description = NA_character_, status_text = ""))
+  }
+
+  pg <- tryCatch({
+    hdrs <- build_scrape_headers()
+    req <- httr2::request(detail_url) |>
+      httr2::req_user_agent(hdrs$`User-Agent`) |>
+      httr2::req_timeout(15) |>
+      httr2::req_retry(max_tries = 2)
+    resp <- httr2::req_perform(req)
+    txt <- httr2::resp_body_string(resp, encoding = "UTF-8")
+    list(ok = TRUE, html = rvest::read_html(txt), text = txt)
+  }, error = function(e) {
+    if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Humboldt detail falhou: %s", e$message))
+    list(ok = FALSE, html = NULL, text = "")
+  })
+
+  if (!isTRUE(pg$ok) || is.null(pg$html)) {
+    return(list(title = NA_character_, description = NA_character_, status_text = ""))
+  }
+
+  h1_node <- rvest::html_node(pg$html, "h1.headline")
+  title <- if (!is.null(h1_node) && !inherits(h1_node, "xml_missing")) {
+    trimws(rvest::html_text(h1_node, trim = TRUE))
+  } else { NA_character_ }
+
+  content_nodes <- try(rvest::html_elements(pg$html, ".article-content__block--text .text"), silent = TRUE)
+  desc_parts <- character()
+  if (!inherits(content_nodes, "try-error") && length(content_nodes) > 0) {
+    for (node in utils::head(content_nodes, 3)) {
+      txt <- trimws(rvest::html_text(node, trim = TRUE))
+      if (nzchar(txt) && nchar(txt) > 20) {
+        desc_parts <- c(desc_parts, txt)
+      }
+    }
+  }
+  description <- if (length(desc_parts) > 0) {
+    paste(desc_parts, collapse = "\n\n")
+  } else { NA_character_ }
+
+  status_text <- tolower(pg$text)
+  if (grepl("closing date.*elapsed|not currently possible to apply", status_text)) {
+    status_text <- "closing date has elapsed"
+  } else if (grepl("next application round|next round.*opens", status_text)) {
+    status_text <- "next application round"
+  } else {
+    status_text <- ""
+  }
+
+  list(title = title, description = description, status_text = status_text)
+}
+
+collect_humboldt <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[HUMBOLDT][%s] %s", level, msg))
+  }
+
+  .log("INFO", "Iniciando coleta Alexander von Humboldt Foundation.")
+  try(log_progress("Iniciando coleta Humboldt", "Scraping"), silent = TRUE)
+
+  base_url <- "https://www.humboldt-foundation.de"
+  listing_base <- "/en/apply/sponsorship-programmes/programmes-a-to-z"
+  user_agent <- "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+
+  # Fetch fellowships listing
+  .log("INFO", "Buscando fellowships...")
+  all_listings <- tibble::tibble()
+
+  for (filter_param in c("schollarships", "award")) {
+    listing_url <- paste0(base_url, listing_base, "?tx_rsmavhcontent_programmes[controller]=Programmes&tx_rsmavhcontent_programmes[filterBy]=", filter_param)
+    program_type <- if (filter_param == "schollarships") "fellowship" else "award"
+
+    resp <- tryCatch({
+      req <- httr2::request(listing_url) |>
+        httr2::req_user_agent(user_agent) |>
+        httr2::req_timeout(20) |>
+        httr2::req_retry(max_tries = 3)
+      httr2::req_perform(req)
+    }, error = function(e) {
+      .log("WARN", sprintf("Falha ao buscar listing %s: %s", filter_param, e$message))
+      NULL
+    })
+
+    if (is.null(resp) || httr2::resp_status(resp) != 200) next
+
+    html_text <- httr2::resp_body_string(resp, encoding = "UTF-8")
+    html <- rvest::read_html(html_text)
+
+    listing_df <- extract_humboldt_listing(html, base_url, program_type)
+    if (nrow(listing_df) > 0) {
+      .log("INFO", sprintf("Filter '%s': %d programas encontrados.", filter_param, nrow(listing_df)))
+      all_listings <- dplyr::bind_rows(all_listings, listing_df)
+    }
+    Sys.sleep(1)
+  }
+
+  if (nrow(all_listings) == 0) {
+    .log("WARN", "Nenhum programa encontrado no listing.")
+    return(list(records = tibble::tibble(), pages_visited = 0L, last_url = listing_url))
+  }
+
+  # Deduplicate by listing title
+  all_listings <- all_listings |> dplyr::distinct(listing_title, .keep_all = TRUE)
+  .log("INFO", sprintf("Total de %d programas únicos após dedup.", nrow(all_listings)))
+
+  if (nrow(all_listings) > max_records) {
+    all_listings <- all_listings[seq_len(max_records), ]
+  }
+
+  # Fetch detail pages
+  records <- list()
+  detail_failures <- 0L
+
+  for (i in seq_len(nrow(all_listings))) {
+    row <- all_listings[i, , drop = FALSE]
+    detail_url <- row$detail_url[[1]]
+
+    if (i > 1) Sys.sleep(0.5)
+
+    detail <- extract_humboldt_detail(detail_url, log_path)
+    if (is.na(detail$title) || !nzchar(detail$title)) {
+      detail$title <- row$listing_title[[1]]
+    }
+    if (is.na(detail$description) || !nzchar(detail$description)) {
+      detail$description <- row$for_what[[1]]
+    }
+
+    status <- infer_humboldt_status(detail$status_text)
+    country <- normalize_humboldt_country(row$from_where_raw[[1]])
+
+    titulo <- detail$title
+    detail_text <- paste(collapse_non_empty(titulo, detail$description, row$for_whom[[1]], row$from_where_raw[[1]]), collapse = "\n")
+    hash_input <- paste0(titulo, "|", detail_url)
+    hash_dedup <- digest::digest(hash_input, algo = "xxhash64")
+
+    rec <- tibble::tibble(
+      id_registro = sprintf("humboldt_%s", substr(hash_dedup, 1, 16)),
+      entidade = "Alexander von Humboldt Foundation",
+      pais_origem = "Alemanha",
+      titulo = titulo,
+      subtitulo = NA_character_,
+      descricao_resumida = substr(detail$description %||% row$for_what[[1]], 1, 500),
+      descricao_completa = detail$description %||% detail_text,
+      tipo_oportunidade = row$program_type[[1]],
+      modalidade = if (row$program_type[[1]] == "fellowship") "bolsa" else "prêmio",
+      area_tematica = NA_character_,
+      palavras_chave = NA_character_,
+      elegibilidade = row$for_whom[[1]],
+      publico_alvo = row$for_whom[[1]],
+      nivel_academico = NA_character_,
+      instituicao_financiadora = "Alexander von Humboldt Foundation",
+      valor_financiado = NA_real_,
+      moeda = NA_character_,
+      data_publicacao = NA_character_,
+      data_abertura = NA_character_,
+      data_limite = NA_character_,
+      data_encerramento = NA_character_,
+      status_oportunidade = status,
+      link_origem = paste0(base_url, listing_base),
+      link_detalhe = as.character(detail_url),
+      link_documento_pdf = NA_character_,
+      idioma = "en",
+      localidade = row$from_where_raw[[1]],
+      observacoes = row$for_what[[1]],
+      texto_bruto = detail_text,
+      pagina_coletada = 1L,
+      fonte_oficial = "humboldt",
+      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      hash_deduplicacao = hash_dedup,
+      campos_inferidos_ia = ""
+    )
+
+    records[[i]] <- rec
+
+    if (i %% 5 == 0) {
+      .log("INFO", sprintf("Progresso: %d/%d detalhes coletados.", i, nrow(all_listings)))
+    }
+  }
+
+  if (length(records) == 0) {
+    .log("WARN", "Nenhum registro coletado.")
+    return(list(records = tibble::tibble(), pages_visited = 1L, last_url = listing_url))
+  }
+
+  df <- dplyr::bind_rows(records)
+  .log("INFO", sprintf("HUMBOLDT: %d registros finais coletados.", nrow(df)))
+
+  list(records = df, pages_visited = 2L, last_url = listing_url)
+}
+
+register_collector("humboldt", collect_humboldt, "Alexander von Humboldt Foundation HTML scraper")

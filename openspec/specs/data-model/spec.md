@@ -28,12 +28,12 @@ The system SHALL maintain the `oportunidades` table with 35 columns: `id_registr
 - **WHEN** a record with an existing `id_registro` is inserted
 - **THEN** the existing record is updated with the new values (all fields except PK)
 
-### Requirement: Source catalog with 11 funding sources
-The system SHALL maintain a source catalog in `fontes_financiamento` with 11 entries: cnpq, capes, finep, fapesb, horizon_europe, erc, sigitec, undp, embrapii, daad, quantum. Each entry includes: id_fonte, nome_fonte, sigla, pais, categoria, tipo_financiador, url_principal, url_oportunidades, metodo_coleta, idioma, periodicidade_atualizacao, observacoes.
+### Requirement: Source catalog with 12 funding sources
+The system SHALL maintain a source catalog in `fontes_financiamento` with 12 entries: cnpq, capes, finep, fapesb, horizon_europe, erc, sigitec, undp, embrapii, daad, quantum, humboldt. Each entry includes: id_fonte, nome_fonte, sigla, pais, categoria, tipo_financiador, url_principal, url_oportunidades, metodo_coleta, idioma, periodicidade_atualizacao, observacoes.
 
 #### Scenario: Source catalog initialization
 - **WHEN** `seed_sources()` is called
-- **THEN** all 11 sources are inserted via UPSERT (existing sources are updated)
+- **THEN** all 12 sources are inserted via UPSERT (existing sources are updated)
 
 #### Scenario: Source removal
 - **WHEN** `init_database()` runs and a source ID is not in the 11 configured IDs

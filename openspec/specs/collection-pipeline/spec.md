@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines the data collection pipeline: collector dispatch, HTTP request strategies with anti-detection, rate limiting, HTML pagination, candidate extraction, detail/PDF fetching, specialized collectors for 11 funding sources, and record finalization with deduplication.
+Defines the data collection pipeline: collector dispatch, HTTP request strategies with anti-detection, rate limiting, HTML pagination, candidate extraction, detail/PDF fetching, specialized collectors for 12 funding sources, and record finalization with deduplication.
 
 ## Requirements
 
@@ -159,3 +159,18 @@ The system SHALL deduplicate records via `dedupe_records()` which: normalizes ti
 #### Scenario: Cross-entity duplicate titles
 - **WHEN** two records have different entities but the same title
 - **THEN** both records are kept (dedup is per-entity)
+
+### Requirement: Specialized Humboldt Foundation collection via HTML scraping
+The system SHALL collect Alexander von Humboldt Foundation programs via HTML scraping of the listing page at `/en/apply/sponsorship-programmes/programmes-a-to-z`. The collector fetches both `filterBy=schollarships` and `filterBy=award` listing pages, parses teaser cards (`.teaser`) extracting title, "For whom", "From where", "For what" metadata, and detail URLs. Detail pages are fetched individually to extract full descriptions and status inference. Country normalization maps "Brazil" → "Brasil", "Germany" → "Alemanha", etc.
+
+#### Scenario: Humboldt listing page parsed
+- **WHEN** `collect_humboldt()` runs
+- **THEN** all teaser cards from both scholarship and award listing pages are extracted and deduplicated by title
+
+#### Scenario: Humboldt detail page with status
+- **WHEN** a detail page contains "closing date has elapsed"
+- **THEN** status_oportunidade is classified as "encerrado"
+
+#### Scenario: Humboldt permanent program
+- **WHEN** a detail page has no closing date or next round text
+- **THEN** status_oportunidade is classified as "aberto"

@@ -8,7 +8,7 @@
 
 Plataforma de inteligência estratégica para monitoramento, busca booleana avançada e recomendação personalizada de editais de financiamento científico e tecnológico — nacionais e internacionais.
 
-Centraliza **11 fontes de fomento** (CNPq, CAPES, FINEP, FAPESB, Horizon Europe, ERC, SIGITEC, UNDP, EMBRAPII, DAAD, Quantum) em uma única interface, enriquece cada oportunidade com IA generativa multi-provedor, traduz automaticamente registros europeus para pt-br e recomenda parceiros internos com base em afinidade temática.
+Centraliza **12 fontes de fomento** (CNPq, CAPES, FINEP, FAPESB, Horizon Europe, ERC, SIGITEC, UNDP, EMBRAPII, DAAD, Quantum, Humboldt) em uma única interface, enriquece cada oportunidade com IA generativa multi-provedor, traduz automaticamente registros europeus para pt-br e recomenda parceiros internos com base em afinidade temática.
 
 ---
 
@@ -100,7 +100,7 @@ flowchart TD
     end
 
     subgraph External [Fontes Externas]
-        Fontes[11 Portais de Fomento]
+        Fontes[12 Portais de Fomento]
         LLMAPIs[APIs de IA]
     end
 
@@ -134,6 +134,7 @@ flowchart TD
 | `embrapii` | EMBRAPII | Brasil | HTML scraping | pt |
 | `daad` | DAAD Brasil | Alemanha | Hybrid JSON+HTML | en |
 | `quantum` | EU Quantum Technologies | UE | EU FTOP REST API | en |
+| `humboldt` | Alexander von Humboldt Foundation | Alemanha | HTML scraping | en |
 
 **Coletores especializados:**
 
@@ -147,6 +148,7 @@ flowchart TD
 - `collect_embrapii` — Parsing HTML estático da página de transparência
 - `collect_daad` — Híbrido: JSON catálogo global (scholarships.js) + HTML scraping detalhe
 - `collect_quantum` — EU F&T Portal Search API com busca por keyword "quantum"
+- `collect_humboldt` — HTML scraping da Humboldt Foundation (listing + detalhe)
 - `collect_generic_official` — Fallback HTML para CNPq e fontes não especializadas
 
 > **Nota sobre fontes EU:** Horizon Europe e ERC utilizam a EU F&T Portal API via

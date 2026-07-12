@@ -588,6 +588,12 @@ clean_edital_title <- function(title) {
 is_current_year_record <- function(pub_date_str, limit_date_str, title, text, is_eu_source = FALSE) {
   current_year <- as.integer(format(Sys.Date(), "%Y"))
 
+  # Heuristica rapida: se o titulo menciona explicitamente o ano corrente, aceitar
+  year_pattern <- sprintf("\\b%d\\b", current_year)
+  if (grepl(year_pattern, title %||% "")) {
+    return(TRUE)
+  }
+
   pub_date <- parse_date_safe(pub_date_str)
   limit_date <- parse_date_safe(limit_date_str)
 
@@ -603,26 +609,14 @@ is_current_year_record <- function(pub_date_str, limit_date_str, title, text, is
     if (!is.na(pub_year) && pub_year >= current_year) {
       return(TRUE)
     }
-    # Se nao tem datas mas menciona ano corrente ou futuro, aceitar
-    year_pattern <- sprintf("\\b(%d|%d)\\b", current_year, current_year + 1)
-    if (grepl(year_pattern, title %||% "")) {
+    year_pattern_future <- sprintf("\\b(%d|%d)\\b", current_year, current_year + 1)
+    if (grepl(year_pattern_future, title %||% "")) {
       return(TRUE)
     }
-    if (grepl(year_pattern, text %||% "")) {
+    if (grepl(year_pattern_future, text %||% "")) {
       return(TRUE)
     }
-    # Para EU, so rejeitar se explicitamente menciona anos muito antigos
     return(TRUE)
-  }
-
-  # Se tiver data de publicação, valida pelo ano corrente
-  if (!is.na(pub_year)) {
-    if (pub_year == current_year) {
-      return(TRUE)
-    }
-    if (pub_year < current_year) {
-      return(FALSE)
-    }
   }
 
   # Se tiver data limite, valida pelo ano corrente
@@ -630,22 +624,28 @@ is_current_year_record <- function(pub_date_str, limit_date_str, title, text, is
     if (limit_year == current_year) {
       return(TRUE)
     }
-    if (limit_year < current_year) {
-      return(FALSE)
+    if (limit_year > current_year) {
+      return(TRUE)
     }
   }
 
-  # Heurística: se mencionar o ano corrente em formato de ano no título ou texto
-  year_pattern <- sprintf("\\b%d\\b", current_year)
-  if (grepl(year_pattern, title %||% "")) {
-    return(TRUE)
+  # Se tiver data de publicacao, valida pelo ano corrente
+  if (!is.na(pub_year)) {
+    if (pub_year == current_year) {
+      return(TRUE)
+    }
+    if (pub_year > current_year) {
+      return(TRUE)
+    }
   }
+
+  # Heuristica: se mencionar o ano corrente no texto
   if (grepl(year_pattern, text %||% "")) {
     return(TRUE)
   }
 
-  # Se mencionar anos passados recentes e nenhum 2026, consideramos edital antigo
-  past_years <- (current_year - 5):(current_year - 1)
+  # Se mencionar anos passados recentes e nenhum sinal de ano corrente, consideramos edital antigo
+  past_years <- (current_year - 2):(current_year - 1)
   past_patterns <- paste0("\\b", past_years, "\\b")
   has_past_year <- any(vapply(past_patterns, function(p) grepl(p, title %||% "") || grepl(p, text %||% ""), logical(1)))
   if (has_past_year) {
@@ -825,3 +825,31 @@ DomainRateLimiter <- R6::R6Class("DomainRateLimiter",
   min_delay_same = as.numeric(Sys.getenv("SCRAPE_DOMAIN_DELAY", "2.0")),
   min_delay_diff = as.numeric(Sys.getenv("SCRAPE_DIFF_DELAY", "0.5"))
 )
+
+is_plone_search_url <- function(url, current_url = NULL) {
+  if (is.null(url) || !nzchar(url)) return(FALSE)
+  u <- tolower(url)
+  if (grepl("@@search", u, fixed = TRUE)) return(TRUE)
+  if (grepl("/search\\?|/\\?q=|SearchableText=", u)) return(TRUE)
+  if (!is.null(current_url) && nzchar(current_url)) {
+    cu <- tolower(current_url)
+    base_current <- sub("\\?.*", "", cu)
+    base_target <- sub("\\?.*", "", u)
+    if (identical(base_current, base_target)) return(FALSE)
+  }
+  FALSE
+}
+
+extract_inscricoes_dates <- function(text) {
+  txt <- text %||% ""
+  pattern <- "inscri[çc][õo]es?\\s*:\\s*(\\d{1,2}/\\d{1,2}/\\d{4})\\s*a\\s*(\\d{1,2}/\\d{1,2}/\\d{4})"
+  m <- regmatches(txt, regexec(pattern, txt, ignore.case = TRUE))[[1]]
+  if (length(m) == 3) {
+    list(
+      data_abertura = as.character(parse_date_safe(m[2])),
+      data_limite = as.character(parse_date_safe(m[3]))
+    )
+  } else {
+    list(data_abertura = NA_character_, data_limite = NA_character_)
+  }
+}

@@ -522,7 +522,11 @@ is_funding_opportunity_heuristics <- function(title, description = "", url = "",
     "/financiamento-reembolsavel", "retificacao", "retificado",
     "prorrogacao", "aditivo", "errata", "gabarito", "homologacao",
     "perguntas-frequentes", "perguntas_frequentes",
-    "nota-de-esclarecimento", "anexo"
+    "nota-de-esclarecimento", "anexo",
+    "facebook.com/sharer", "facebook.com/share",
+    "twitter.com/share", "twitter.com/intent",
+    "linkedin.com/share", "api.whatsapp.com/send",
+    "b_start:int=", "b_start%3Aint%3D"
   )
 
   if (any(vapply(invalid_url_patterns, function(pat) grepl(pat, u_norm, fixed = TRUE), logical(1)))) {
@@ -824,7 +828,7 @@ extract_listing_candidates <- function(html, base_url, source_row) {
   out
 }
 
-extract_detail_bundle <- function(detail_url = NA_character_, page_url = NA_character_, pdf_url = NA_character_, log_path = NULL) {
+extract_detail_bundle <- function(detail_url = NA_character_, page_url = NA_character_, pdf_url = NA_character_, log_path = NULL, use_browser_fallback = TRUE) {
   out <- list(
     detail_title = NA_character_,
     detail_subtitle = NA_character_,
@@ -834,7 +838,7 @@ extract_detail_bundle <- function(detail_url = NA_character_, page_url = NA_char
   )
 
   if (!is.na(detail_url) && nzchar(detail_url)) {
-    det <- safe_request_page(detail_url, log_path = log_path)
+    det <- safe_request_page(detail_url, log_path = log_path, use_browser_fallback = use_browser_fallback)
     if (isTRUE(det$ok) && !is.null(det$html)) {
       out$detail_title <- extract_meta_title(det$html)
 
@@ -1458,7 +1462,188 @@ collect_generic_official <- function(source_row, max_pages, max_records, use_ai,
   )
 }
 
-collect_cnpq <- collect_generic_official
+collect_cnpq <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  buscar_url <- "https://www.gov.br/cnpq/pt-br/chamadas/Busca_abertas"
+  submissao_url <- "https://www.gov.br/cnpq/pt-br/chamadas/abertas-para-submissao"
+  pages_seen <- character()
+  all_candidates <- list()
+
+  log_progress("CNPq: Iniciando coleta customizada (Busca_abertas + abertas-para-submissao)...", "Scraping")
+
+  # Extrator otimizado para paginas CNPq Plone
+  extract_cnpq_listing <- function(html, base_url) {
+    results <- tibble::tibble(
+      title = character(), summary = character(), detail_url = character(),
+      pdf_url = character(), source_text = character()
+    )
+
+    # Caminho 1: div.item blocks (abertas-para-submissao)
+    items <- try(rvest::html_elements(html, "div.item"), silent = TRUE)
+    if (!inherits(items, "try-error") && length(items) > 0) {
+      for (node in items) {
+        heading <- try(rvest::html_element(node, "h2.headline a, h2 a.summary"), silent = TRUE)
+        if (inherits(heading, "try-error") || is.null(heading)) next
+        title_txt <- safe_html_text(heading)
+        if (is.na(title_txt) || !nzchar(title_txt)) next
+        href <- rvest::html_attr(heading, "href")
+        detail <- if (!is.na(href) && nzchar(href)) resolve_url(base_url, href) else NA_character_
+        body_txt <- safe_html_text(node)
+        pdfs <- try(rvest::html_elements(node, "a[href$='.pdf']"), silent = TRUE)
+        pdf_url <- NA_character_
+        if (!inherits(pdfs, "try-error") && length(pdfs) > 0) {
+          pdf_hrefs <- rvest::html_attr(pdfs, "href")
+          pdf_abs <- vapply(pdf_hrefs, function(h) resolve_url(base_url, h), character(1))
+          pdf_url <- pdf_abs[[1]]
+        }
+        if (!is.na(detail) || !is.na(pdf_url)) {
+          results <- dplyr::bind_rows(results, tibble::tibble(
+            title = title_txt, summary = stringr::str_squish(stringr::str_sub(body_txt %||% "", 1, 700)),
+            detail_url = detail, pdf_url = pdf_url, source_text = body_txt
+          ))
+        }
+      }
+    }
+
+    # Caminho 2: article.contenttype-document blocks (Busca_abertas)
+    articles <- try(rvest::html_elements(html, "article.contenttype-document"), silent = TRUE)
+    if (!inherits(articles, "try-error") && length(articles) > 0) {
+      for (node in articles) {
+        heading <- try(rvest::html_element(node, "h2.tileHeadline a, h2 a"), silent = TRUE)
+        if (inherits(heading, "try-error") || is.null(heading)) next
+        title_txt <- safe_html_text(heading)
+        if (is.na(title_txt) || !nzchar(title_txt)) next
+        href <- rvest::html_attr(heading, "href")
+        detail <- if (!is.na(href) && nzchar(href)) resolve_url(base_url, href) else NA_character_
+        body_txt <- safe_html_text(node)
+        if (!is.na(detail)) {
+          results <- dplyr::bind_rows(results, tibble::tibble(
+            title = title_txt, summary = stringr::str_squish(stringr::str_sub(body_txt %||% "", 1, 700)),
+            detail_url = detail, pdf_url = NA_character_, source_text = body_txt
+          ))
+        }
+      }
+    }
+
+    # Deduplicate by detail_url
+    if (nrow(results) > 0 && !all(is.na(results$detail_url))) {
+      results <- results[!is.na(results$detail_url), ]
+      results <- results |> dplyr::distinct(detail_url, .keep_all = TRUE)
+    }
+    results
+  }
+
+  # --- ETAPA 1: Scraping de abertas-para-submissao (conteudo rico) ---
+  log_progress("CNPq: Buscando abertas-para-submissao (conteudo rico)...", "Scraping")
+  pg_sub <- safe_request_page(submissao_url, log_path = log_path, use_browser_fallback = FALSE)
+  if (isTRUE(pg_sub$ok) && !is.null(pg_sub$html)) {
+    pages_seen <- c(pages_seen, submissao_url)
+    cands_sub <- try(extract_cnpq_listing(pg_sub$html, submissao_url), silent = TRUE)
+    if (!inherits(cands_sub, "try-error") && nrow(cands_sub) > 0) {
+      log_progress(sprintf("CNPq: abertas-para-submissao: %d chamadas encontradas.", nrow(cands_sub)), "Scraping")
+      all_candidates <- c(all_candidates, list(cands_sub))
+    }
+  }
+
+  # --- ETAPA 2: Scraping de Busca_abertas com paginacao b_start:int ---
+  log_progress("CNPq: Buscando Busca_abertas (paginacao)...", "Scraping")
+  page_no <- 0L
+  b_size <- 5L
+  consecutive_empty <- 0L
+
+  while (page_no <= max_pages) {
+    b_start <- page_no * b_size
+    page_url <- if (page_no == 0L) buscar_url else sprintf("%s?b_start:int=%d", buscar_url, b_start)
+    if (page_url %in% pages_seen) break
+    pages_seen <- c(pages_seen, page_url)
+
+    pg <- safe_request_page(page_url, log_path = log_path, use_browser_fallback = FALSE)
+    if (!isTRUE(pg$ok) || is.null(pg$html)) break
+
+    cands <- try(extract_cnpq_listing(pg$html, page_url), silent = TRUE)
+    if (inherits(cands, "try-error") || nrow(cands) == 0) {
+      consecutive_empty <- consecutive_empty + 1L
+      if (consecutive_empty >= 2L) break
+      page_no <- page_no + 1L
+      next
+    }
+    consecutive_empty <- 0L
+
+    log_progress(sprintf("CNPq: Busca_abertas pagina %d (b_start=%d): %d chamadas.", page_no + 1L, b_start, nrow(cands)), "Scraping")
+    all_candidates <- c(all_candidates, list(cands))
+    page_no <- page_no + 1L
+  }
+
+  # --- Consolidar e deduplicar ---
+  if (length(all_candidates) == 0) {
+    log_progress("CNPq: Nenhum candidato encontrado.", "Scraping")
+    return(list(records = finalize_records(tibble::tibble()), pages_visited = length(pages_seen), last_url = submissao_url))
+  }
+
+  combined <- dplyr::bind_rows(all_candidates) |>
+    dplyr::filter(!is.na(detail_url) | !is.na(pdf_url)) |>
+    dplyr::distinct(dplyr::coalesce(detail_url, pdf_url), .keep_all = TRUE)
+
+  if (nrow(combined) > max_records) combined <- combined[seq_len(max_records), , drop = FALSE]
+  log_progress(sprintf("CNPq: %d chamadas unicas finais.", nrow(combined)), "Scraping")
+
+  # --- Buscar detalhes (limitado) ---
+  detail_cache <- new.env(parent = emptyenv())
+  detail_count <- 0L
+  max_details <- as.integer(Sys.getenv("CNPQ_MAX_DETAIL_FETCHES", "10"))
+
+  for (i in seq_len(nrow(combined))) {
+    if (detail_count >= max_details) break
+    det_url <- combined$detail_url[[i]]
+    if (is.na(det_url) || !nzchar(det_url)) next
+    detail_count <- detail_count + 1L
+    det <- tryCatch(
+      extract_detail_bundle(detail_url = det_url, page_url = buscar_url, log_path = log_path, use_browser_fallback = FALSE),
+      error = function(e) list(detail_title = NA_character_, detail_subtitle = NA_character_, detail_summary = NA_character_, full_text = NA_character_, pdf_url = NA_character_)
+    )
+    assign(det_url, det, envir = detail_cache)
+  }
+
+  # --- Converter em registros ---
+  page_records <- purrr::map_dfr(seq_len(nrow(combined)), function(i) {
+    one <- combined[i, , drop = FALSE]
+    det_url <- one$detail_url[[1]]
+    det <- if (!is.na(det_url) && exists(det_url %||% "", envir = detail_cache)) {
+      get(det_url, envir = detail_cache)
+    } else {
+      list(detail_title = NA_character_, detail_subtitle = NA_character_, detail_summary = NA_character_, full_text = NA_character_, pdf_url = one$pdf_url[[1]])
+    }
+    detail_summ <- pick_first_nonempty(det$detail_summary, one$summary[[1]])
+    detail_full <- pick_first_nonempty(det$full_text, one$source_text[[1]])
+    detail_pdf <- pick_first_nonempty(det$pdf_url, one$pdf_url[[1]])
+
+    raw_for_dates <- paste(det$detail_summary %||% "", det$full_text %||% "", one$source_text[[1]] %||% "", sep = " ")
+    insc_dates <- extract_inscricoes_dates(raw_for_dates)
+
+    rec <- extract_core_record(
+      source_row = source_row,
+      input_title = pick_first_nonempty(det$detail_title, one$title[[1]]),
+      input_subtitle = det$detail_subtitle,
+      input_summary = detail_summ,
+      input_full_text = detail_full,
+      page_url = buscar_url,
+      detail_url = det_url,
+      pdf_url = detail_pdf,
+      page_no = 1L
+    )
+    if (!is.na(insc_dates$data_abertura)) rec$data_abertura <- insc_dates$data_abertura
+    if (!is.na(insc_dates$data_limite)) {
+      rec$data_limite <- insc_dates$data_limite
+    }
+    rec$tipo_oportunidade <- infer_type_from_text(paste(rec$titulo, rec$texto_bruto))
+    rec
+  })
+
+  list(
+    records = finalize_records(page_records),
+    pages_visited = length(pages_seen),
+    last_url = buscar_url
+  )
+}
 
 collect_capes <- function(source_row, max_pages, max_records, use_ai, log_path) {
   base_api <- "https://www.gov.br/capes/++api++/pt-br/@search"
@@ -5186,3 +5371,4 @@ collect_humboldt <- function(source_row, max_pages, max_records, use_ai, log_pat
 }
 
 register_collector("humboldt", collect_humboldt, "Alexander von Humboldt Foundation HTML scraper")
+register_collector("cnpq", collect_cnpq, "CNPq custom scraper: Busca_abertas + abertas-para-submissao + Plone Search API fallback")

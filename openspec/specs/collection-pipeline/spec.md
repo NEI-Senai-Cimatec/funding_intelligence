@@ -182,3 +182,59 @@ The system SHALL collect Alexander von Humboldt Foundation programs via HTML scr
 #### Scenario: Humboldt permanent program
 - **WHEN** a detail page has no closing date or next round text
 - **THEN** status_oportunidade is classified as "aberto"
+
+### Requirement: World Bank collector registration
+The system SHALL register `collect_world_bank` in the collector registry for `id_fonte = "world_bank"` and dispatch to it via `source_dispatch()`.
+
+#### Scenario: Dispatcher invokes World Bank collector
+- **WHEN** `source_dispatch()` is called with `source_row$id_fonte == "world_bank"`
+- **THEN** `collect_world_bank()` is invoked with API-first collection strategy
+
+### Requirement: World Bank collection cascade
+The system SHALL attempt World Bank collection in a 3-tier cascade: (1) Procurement Notices API query, (2) Excel (calls API internally), (3) HTML scraping with Playwright. The cascade stops at the first successful non-empty result.
+
+#### Scenario: API collection succeeds
+- **WHEN** the Procurement Notices API returns valid procurement notice data
+- **THEN** the records are processed and returned without attempting Excel or HTML
+
+#### Scenario: API fails, Excel succeeds
+- **WHEN** the API fails or returns empty results
+- **AND** the Excel collector (via API) returns valid candidates
+- **THEN** the Excel-sourced records are processed and returned
+
+#### Scenario: API and Excel fail, HTML succeeds
+- **WHEN** both API and Excel collection fail
+- **AND** the HTML scraping with Playwright returns valid candidates
+- **THEN** the HTML-sourced records are processed and returned
+
+#### Scenario: All methods fail
+- **WHEN** all three collection methods fail or return empty results
+- **THEN** a warning is logged and an empty tibble is returned
+
+### Requirement: World Bank source catalog entry
+The system SHALL include the World Bank as a configured source in `fontes_financiamento` with: `id_fonte = "world_bank"`, `nome_fonte = "World Bank"`, `sigla = "WB"`, `pais = "Estados Unidos"`, `categoria = "organismo internacional"`, `tipo_financiador = "multilateral"`, `url_principal = "https://www.worldbank.org/"`, `url_oportunidades = "https://projects.worldbank.org/pt/projects-operations/opportunities?project_ctry_name_exact=Brazil"`, `metodo_coleta = "hybrid"`, `idioma = "pt"`, `periodicidade_atualizacao = "diaria"`.
+
+#### Scenario: Source catalog includes World Bank
+- **WHEN** `seed_sources()` is called
+- **THEN** the World Bank entry is inserted via UPSERT into `fontes_financiamento`
+
+### Requirement: World Bank field mapping to opportunity schema
+The system SHALL map World Bank data (from API) to the 35-column opportunity schema with the following mappings:
+- `bid_description` to `titulo`
+- `project_name` to `subtitulo`
+- `noticedate` to `data_publicacao`
+- `submission_deadline_date` to `data_limite`
+- `notice_type` to `tipo_oportunidade` and `modalidade`
+- `notice_status` to `status_oportunidade`
+- `notice_lang_name` to `idioma`
+- `project_ctry_name` to `pais_origem`
+- `id` to `link_detalhe` (constructed as procurement-detail URL)
+- "World Bank" to `instituicao_financiadora`
+
+#### Scenario: Field mapping completeness
+- **WHEN** a World Bank record has all required fields
+- **THEN** the record is created with all mapped fields populated
+
+#### Scenario: Missing optional fields
+- **WHEN** a World Bank record has missing optional fields
+- **THEN** the field is set to NA and the record is still processed

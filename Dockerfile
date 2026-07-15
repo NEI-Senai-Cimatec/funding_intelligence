@@ -33,7 +33,8 @@ RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux
     'rvest', 'xml2', 'httr2', 'tibble', 'readr', 'writexl', \
     'janitor', 'glue', 'progress', 'pdftools', 'polite', \
     'callr', 'shinycssloaders', 'reticulate', 'chromote', \
-    'googledrive', 'httr', 'memoise', 'ratelimitr', 'uuid' \
+    'googledrive', 'httr', 'memoise', 'ratelimitr', 'uuid', \
+    'readxl' \
   ); \
   suppressMessages(install.packages(pkgs, dependencies = TRUE)); \
   tryCatch(remove.packages('otelsdk'), error = function(e) invisible(NULL)); \

@@ -5372,3 +5372,361 @@ collect_humboldt <- function(source_row, max_pages, max_records, use_ai, log_pat
 
 register_collector("humboldt", collect_humboldt, "Alexander von Humboldt Foundation HTML scraper")
 register_collector("cnpq", collect_cnpq, "CNPq custom scraper: Busca_abertas + abertas-para-submissao + Plone Search API fallback")
+
+# --- World Bank Collectors ---
+
+collect_world_bank_excel <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[WORLD_BANK_EXCEL][%s] %s", level, msg))
+  }
+
+  .log("INFO", "Excel export is client-side JavaScript; using API as data source.")
+  try(log_progress("Iniciando coleta World Bank Excel (via API)", "Scraping"), silent = TRUE)
+
+  # Excel export is done client-side via JavaScript (ExcelJS)
+  # We use the API directly as the data source
+  collect_world_bank_api(source_row, max_pages, max_records, use_ai, log_path)
+}
+
+collect_world_bank_html <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[WORLD_BANK_HTML][%s] %s", level, msg))
+  }
+
+  .log("INFO", "Iniciando coleta World Bank via HTML (fallback com Playwright).")
+  try(log_progress("Iniciando coleta World Bank HTML", "Scraping"), silent = TRUE)
+
+  listing_url <- "https://projects.worldbank.org/pt/projects-operations/opportunities?project_ctry_name_exact=Brazil"
+  detail_base <- "https://projects.worldbank.org/pt/projects-operations/procurement-detail"
+
+  # Use Playwright to render JavaScript
+  result <- safe_request_page_playwright(listing_url, log_path)
+
+  if (!result$ok) {
+    .log("WARN", "Playwright failed for HTML listing.")
+    return(list(records = tibble::tibble(), pages_visited = 0L, last_url = listing_url))
+  }
+
+  html <- result$html
+
+  # Extract notice IDs from the rendered page
+  # The page uses Angular procurement-search component
+  # Look for links to detail pages
+  links <- rvest::html_nodes(html, "a[href*='procurement-detail']")
+  if (length(links) == 0) {
+    # Fallback: look for any links with OP pattern
+    all_links <- rvest::html_nodes(html, "a")
+    hrefs <- rvest::html_attr(all_links, "href")
+    op_pattern <- grepl("OP\\d{8}", hrefs)
+    links <- all_links[op_pattern]
+  }
+
+  if (length(links) == 0) {
+    .log("WARN", "Nenhum link de detail encontrado no HTML.")
+    return(list(records = tibble::tibble(), pages_visited = 1L, last_url = listing_url))
+  }
+
+  records <- list()
+  seen_ids <- character()
+
+  for (i in seq_len(min(length(links), max_records))) {
+    link <- links[[i]]
+    href <- rvest::html_attr(link, "href")
+
+    # Extract notice ID from URL
+    notice_id <- sub(".*?(OP\\d{8}).*", "\\1", href)
+    if (is.na(notice_id) || !nzchar(notice_id)) next
+    if (notice_id %in% seen_ids) next
+    seen_ids <- c(seen_ids, notice_id)
+
+    # Get title from link text or nearby elements
+    titulo <- rvest::html_text(link, trim = TRUE)
+    if (!nzchar(titulo)) {
+      # Try to get title from parent row
+      parent_row <- rvest::html_parent(link)
+      titulo <- rvest::html_text(parent_row, trim = TRUE)
+    }
+    if (!nzchar(titulo)) titulo <- notice_id
+
+    # Resolve URL
+    detail_url <- if (grepl("^https?://", href)) {
+      href
+    } else {
+      paste0("https://projects.worldbank.org", href)
+    }
+
+    hash_input <- paste0("World Bank", "||", notice_id, "||", titulo)
+    hash_dedup <- digest::digest(hash_input, algo = "xxhash64")
+
+    rec <- tibble::tibble(
+      id_registro = sprintf("wb_%s", substr(hash_dedup, 1, 16)),
+      entidade = "World Bank",
+      pais_origem = "Brazil",
+      titulo = titulo,
+      subtitulo = NA_character_,
+      descricao_resumida = substr(titulo, 1, 500),
+      descricao_completa = titulo,
+      tipo_oportunidade = NA_character_,
+      modalidade = NA_character_,
+      area_tematica = NA_character_,
+      palavras_chave = NA_character_,
+      elegibilidade = NA_character_,
+      publico_alvo = NA_character_,
+      nivel_academico = NA_character_,
+      instituicao_financiadora = "World Bank",
+      valor_financiado = NA_real_,
+      moeda = NA_character_,
+      data_publicacao = NA_character_,
+      data_abertura = NA_character_,
+      data_limite = NA_character_,
+      data_encerramento = NA_character_,
+      status_oportunidade = "aberto",
+      link_origem = listing_url,
+      link_detalhe = detail_url,
+      link_documento_pdf = NA_character_,
+      idioma = "pt",
+      localidade = "Brazil",
+      observacoes = NA_character_,
+      texto_bruto = titulo,
+      pagina_coletada = 1L,
+      fonte_oficial = "world_bank",
+      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      hash_deduplicacao = hash_dedup,
+      campos_inferidos_ia = ""
+    )
+
+    records[[length(records) + 1]] <- rec
+  }
+
+  if (length(records) == 0) {
+    .log("WARN", "Nenhum registro extraído do HTML.")
+    return(list(records = tibble::tibble(), pages_visited = 1L, last_url = listing_url))
+  }
+
+  df <- dplyr::bind_rows(records)
+  .log("INFO", sprintf("WORLD_BANK_HTML: %d registros extraídos.", nrow(df)))
+
+  list(records = df, pages_visited = 1L, last_url = listing_url)
+}
+
+collect_world_bank_api <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[WORLD_BANK_API][%s] %s", level, msg))
+  }
+
+  .log("INFO", "Iniciando coleta World Bank via Procurement Notices API.")
+  try(log_progress("Iniciando coleta World Bank API", "Scraping"), silent = TRUE)
+
+  api_base <- "https://search.worldbank.org/api/v2/procnotices"
+  detail_base <- "https://projects.worldbank.org/pt/projects-operations/procurement-detail"
+  user_agent <- "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+
+  all_records <- list()
+  offset <- 0L
+  rows_per_page <- 50L
+  pages_visited <- 0L
+
+  repeat {
+    if (length(all_records) >= max_records) break
+    if (pages_visited >= max_pages) break
+
+    api_url <- sprintf(
+      "%s?format=json&fl=id,submission_deadline_date,bid_description,project_ctry_name,project_name,notice_type,notice_status,notice_lang_name,submission_date,noticedate&os=%d&rows=%d&apilang=en&project_ctry_name_exact=Brazil",
+      api_base, offset, rows_per_page
+    )
+
+    .log("INFO", sprintf("Buscando API offset=%d...", offset))
+    resp <- tryCatch({
+      req <- httr2::request(api_url) |>
+        httr2::req_user_agent(user_agent) |>
+        httr2::req_timeout(30) |>
+        httr2::req_retry(max_tries = 3)
+      httr2::req_perform(req)
+    }, error = function(e) {
+      .log("WARN", sprintf("Falha na API: %s", e$message))
+      NULL
+    })
+
+    if (is.null(resp)) break
+
+    status <- httr2::resp_status(resp)
+    if (status == 429L) {
+      .log("WARN", "Rate limited by API. Waiting 60 seconds...")
+      Sys.sleep(60)
+      next
+    }
+    if (status != 200L) break
+
+    body <- tryCatch(httr2::resp_body_json(resp), error = function(e) NULL)
+    if (is.null(body)) break
+
+    num_found <- as.integer(body$total %||% 0L)
+    notices <- body$procnotices %||% list()
+
+    if (length(notices) == 0) break
+
+    pages_visited <- pages_visited + 1L
+
+    for (notice in notices) {
+      if (length(all_records) >= max_records) break
+
+      notice_id <- notice$id %||% NA_character_
+      titulo <- notice$bid_description %||% NA_character_
+      if (is.na(titulo) || !nzchar(titulo)) next
+
+      project_name <- notice$project_name %||% NA_character_
+      notice_type <- notice$notice_type %||% NA_character_
+      noticedate <- notice$noticedate %||% NA_character_
+      deadline <- notice$submission_deadline_date %||% NA_character_
+      country <- notice$project_ctry_name %||% "Brazil"
+      notice_status <- notice$notice_status %||% NA_character_
+      lang <- notice$notice_lang_name %||% "Portuguese"
+
+      # Parse deadline date (format: 2026-07-22T00:00:00Z)
+      data_limite <- NA_character_
+      if (!is.na(deadline) && nzchar(deadline)) {
+        data_limite <- tryCatch({
+          parsed <- as.POSIXct(deadline, format = "%Y-%m-%dT%H:%M:%S", tz = "UTC")
+          format(parsed, "%Y-%m-%d")
+        }, error = function(e) deadline)
+      }
+
+      # Map notice status to Portuguese
+      status_map <- c(
+        "Published" = "aberto",
+        "Closed" = "encerrado",
+        "Cancelled" = "encerrado",
+        "Active" = "aberto"
+      )
+      status_oportunidade <- status_map[notice_status] %||% "aberto"
+
+      # Build detail URL
+      detail_url <- if (!is.na(notice_id) && nzchar(notice_id)) {
+        sprintf("%s/%s", detail_base, notice_id)
+      } else {
+        NA_character_
+      }
+
+      hash_input <- paste0("World Bank", "||", notice_id, "||", titulo)
+      hash_dedup <- digest::digest(hash_input, algo = "xxhash64")
+
+      rec <- tibble::tibble(
+        id_registro = sprintf("wb_%s", substr(hash_dedup, 1, 16)),
+        entidade = "World Bank",
+        pais_origem = country,
+        titulo = titulo,
+        subtitulo = project_name,
+        descricao_resumida = substr(titulo, 1, 500),
+        descricao_completa = titulo,
+        tipo_oportunidade = notice_type,
+        modalidade = notice_type,
+        area_tematica = NA_character_,
+        palavras_chave = NA_character_,
+        elegibilidade = NA_character_,
+        publico_alvo = NA_character_,
+        nivel_academico = NA_character_,
+        instituicao_financiadora = "World Bank",
+        valor_financiado = NA_real_,
+        moeda = NA_character_,
+        data_publicacao = noticedate,
+        data_abertura = NA_character_,
+        data_limite = data_limite,
+        data_encerramento = NA_character_,
+        status_oportunidade = status_oportunidade,
+        link_origem = api_url,
+        link_detalhe = detail_url,
+        link_documento_pdf = NA_character_,
+        idioma = tolower(substr(lang, 1, 2)),
+        localidade = "Brazil",
+        observacoes = NA_character_,
+        texto_bruto = paste(collapse_non_empty(titulo, project_name, notice_type), collapse = "\n"),
+        pagina_coletada = as.integer(pages_visited),
+        fonte_oficial = "world_bank",
+        data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+        hash_deduplicacao = hash_dedup,
+        campos_inferidos_ia = ""
+      )
+
+      all_records[[length(all_records) + 1]] <- rec
+    }
+
+    if (num_found <= offset + rows_per_page) break
+    offset <- offset + rows_per_page
+  }
+
+  if (length(all_records) == 0) {
+    .log("WARN", "Nenhum registro retornado pela API.")
+    return(list(records = tibble::tibble(), pages_visited = pages_visited, last_url = api_base))
+  }
+
+  df <- dplyr::bind_rows(all_records)
+  .log("INFO", sprintf("WORLD_BANK_API: %d registros extraídos.", nrow(df)))
+
+  list(records = df, pages_visited = pages_visited, last_url = api_base)
+}
+
+collect_world_bank <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[WORLD_BANK][%s] %s", level, msg))
+  }
+
+  .log("INFO", "Iniciando coleta World Bank (cascade: API -> Excel -> HTML).")
+  try(log_progress("Iniciando coleta World Bank", "Scraping"), silent = TRUE)
+
+  base_url <- "https://projects.worldbank.org/pt/projects-operations/opportunities?project_ctry_name_exact=Brazil"
+
+  # Tier 1: API (most reliable - direct access to procurement notices)
+  .log("INFO", "Tentativa 1: Procurement Notices API...")
+  result_api <- tryCatch(
+    collect_world_bank_api(source_row, max_pages, max_records, use_ai, log_path),
+    error = function(e) {
+      .log("WARN", sprintf("API collector failed: %s", e$message))
+      NULL
+    }
+  )
+
+  if (!is.null(result_api) && nrow(result_api$records) > 0) {
+    .log("INFO", sprintf("API coleta bem-sucedida: %d registros.", nrow(result_api$records)))
+    return(result_api)
+  }
+
+  # Tier 2: Excel (calls API internally)
+  .log("INFO", "Tentativa 2: Excel (via API)...")
+  result_excel <- tryCatch(
+    collect_world_bank_excel(source_row, max_pages, max_records, use_ai, log_path),
+    error = function(e) {
+      .log("WARN", sprintf("Excel collector failed: %s", e$message))
+      NULL
+    }
+  )
+
+  if (!is.null(result_excel) && nrow(result_excel$records) > 0) {
+    .log("INFO", sprintf("Excel coleta bem-sucedida: %d registros.", nrow(result_excel$records)))
+    return(result_excel)
+  }
+
+  # Tier 3: HTML with Playwright (JavaScript rendering)
+  .log("INFO", "Tentativa 3: HTML com Playwright...")
+  result_html <- tryCatch(
+    collect_world_bank_html(source_row, max_pages, max_records, use_ai, log_path),
+    error = function(e) {
+      .log("WARN", sprintf("HTML collector failed: %s", e$message))
+      NULL
+    }
+  )
+
+  if (!is.null(result_html) && nrow(result_html$records) > 0) {
+    .log("INFO", sprintf("HTML coleta bem-sucedida: %d registros.", nrow(result_html$records)))
+    return(result_html)
+  }
+
+  # All methods failed
+  .log("WARN", "Todos os métodos de coleta falharam. Retornando vazio.")
+  list(records = tibble::tibble(), pages_visited = 0L, last_url = base_url)
+}
+
+register_collector("world_bank", collect_world_bank, "World Bank: Excel download + HTML scraping + Projects API fallback")

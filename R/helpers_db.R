@@ -27,7 +27,8 @@ source_catalog <- function() {
     "embrapii", "Empresa Brasileira de Pesquisa e Inovação Industrial", "EMBRAPII", "Brasil", "empresa estatal", "empresa pública", "https://embrapii.org.br", "https://embrapii.org.br/transparencia/", "html", "pt", "diária", "Chamadas públicas EMBRAPII via parsing HTML estático da página de transparência. Detalhes com cronograma e documentos PDF.",
     "daad", "Deutscher Akademischer Austauschdienst - Brasil", "DAAD", "Alemanha", "agência internacional", "organização internacional", "https://www.daad-brasil.org/pt/", "https://www.daad-brasil.org/pt/bolsas/busca/", "hybrid", "en", "mensal", "Bolsas de estudo DAAD Brasil. Híbrido: JSON catálogo global (scholarships.js) + HTML scraping detalhe. ~82 bolsas filtradas para Brasil (origin=48).",
     "quantum", "EU Quantum Technologies - Calls for Proposals", "QUANTUM", "União Europeia", "programa temático", "união supranacional", "https://ec.europa.eu/info/funding-tenders/opportunities/portal/", "https://api.tech.ec.europa.eu/search-api/prod/rest/search?apiKey=SEDIA&text=quantum", "api_json", "en", "diária", "API REST EU F&T Portal. Busca por palavra-chave quantum + filtro Horizon Europe (43108390) + status Open. Garante captura de editais de computação e comunicação quântica.",
-    "humboldt", "Alexander von Humboldt Foundation", "HUMBOLDT", "Alemanha", "fundação privada", "fundação", "https://www.humboldt-foundation.de/en/", "https://www.humboldt-foundation.de/en/apply/sponsorship-programmes/programmes-a-to-z", "html", "en", "mensal", "Bolsas e prêmios da Fundação Alexander von Humboldt. HTML scraping de listing com filtros (scholarships/awards) + detalhe por programa. Fellowships e awards para pesquisadores internacionais."
+    "humboldt", "Alexander von Humboldt Foundation", "HUMBOLDT", "Alemanha", "fundação privada", "fundação", "https://www.humboldt-foundation.de/en/", "https://www.humboldt-foundation.de/en/apply/sponsorship-programmes/programmes-a-to-z", "html", "en", "mensal", "Bolsas e prêmios da Fundação Alexander von Humboldt. HTML scraping de listing com filtros (scholarships/awards) + detalhe por programa. Fellowships e awards para pesquisadores internacionais.",
+    "world_bank", "World Bank", "WB", "Estados Unidos", "organismo internacional", "multilateral", "https://www.worldbank.org/", "https://projects.worldbank.org/pt/projects-operations/opportunities?project_ctry_name_exact=Brazil", "hybrid", "pt", "diaria", "Oportunidades de procurement do World Bank para Brasil. Download Excel + HTML scraping + API fallback (Projects API)."
   )
 }
 
@@ -480,7 +481,7 @@ init_database <- function(db_path) {
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
   create_tables(conn)
   seed_sources(conn)
-  try(DBI::dbExecute(conn, "DELETE FROM fontes_financiamento WHERE id_fonte NOT IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", params = list("cnpq", "capes", "finep", "fapesb", "horizon_europe", "erc", "sigitec", "undp", "embrapii", "daad", "quantum", "humboldt")), silent = TRUE)
+  try(DBI::dbExecute(conn, "DELETE FROM fontes_financiamento WHERE id_fonte NOT IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", params = list("cnpq", "capes", "finep", "fapesb", "horizon_europe", "erc", "sigitec", "undp", "embrapii", "daad", "quantum", "humboldt", "world_bank")), silent = TRUE)
   try(DBI::dbExecute(conn, "UPDATE oportunidades SET pais_origem = 'União Europeia' WHERE pais_origem = 'Uniao Europeia'"), silent = TRUE)
   seed_profile(conn)
   seed_saved_searches(conn)

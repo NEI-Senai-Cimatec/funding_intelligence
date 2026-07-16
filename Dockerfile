@@ -29,7 +29,7 @@ RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux
   pkgs <- c( \
     'shiny', 'bslib', 'DT', 'dplyr', 'tidyr', 'purrr', \
     'stringr', 'stringi', 'lubridate', 'ggplot2', 'plotly', \
-    'DBI', 'RSQLite', 'jsonlite', 'digest', 'htmltools', \
+    'DBI', 'RSQLite', 'RPostgres', 'jsonlite', 'digest', 'htmltools', \
     'rvest', 'xml2', 'httr2', 'tibble', 'readr', 'writexl', \
     'janitor', 'glue', 'progress', 'pdftools', 'polite', \
     'callr', 'shinycssloaders', 'reticulate', 'chromote', \

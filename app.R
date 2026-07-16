@@ -8,7 +8,7 @@ required_packages <- c(
   "ggplot2", "plotly", "DBI", "RSQLite", "jsonlite", "digest", "htmltools",
   "rvest", "xml2", "httr", "httr2", "tibble", "tools", "readr", "writexl", "janitor",
   "glue", "progress", "pdftools", "polite", "callr", "shinycssloaders", "googledrive",
-  "readxl"
+  "readxl", "RPostgres"
 )
 
 install_missing_packages <- function(pkgs) {
@@ -105,32 +105,60 @@ safe_source <- function(path) {
 }
 
 safe_source("R/helpers_utils.R")
-safe_source("R/helpers_db.R")
 safe_source("R/helpers_text.R")
 safe_source("R/helpers_ai.R")
 safe_source("R/helpers_recommend.R")
 safe_source("R/helpers_collect.R")
-safe_source("R/helpers_drive.R")
 safe_source("R/helpers_export.R")
 
 # Registra a pasta logos como recurso estático do Shiny
 shiny::addResourcePath("logos", app_file("logos"))
 
-db_path <- app_file("funding_intelligence.sqlite")
 export_dir <- app_file("data_exports")
 log_path <- app_file("logs", "funding_collection.log")
 ensure_dir(export_dir)
 ensure_dir(dirname(log_path))
 
-# Baixa a base de dados atualizada do Google Drive, se configurado
-try(drive_download_db(db_path), silent = TRUE)
+# Detecta se PostgreSQL está configurado
+use_postgres <- nzchar(Sys.getenv("DATABASE_URL")) || nzchar(Sys.getenv("DB_HOST"))
+db_path <- app_file("funding_intelligence.sqlite")
 
-try(init_database(db_path), silent = TRUE)
-conn <- tryCatch(get_db_connection(db_path), error = function(e) NULL)
+if (use_postgres) {
+  message("[DB] PostgreSQL detectado. Usando conexão externa.")
+  safe_source("R/helpers_db_postgres.R")
+  conn <- tryCatch(get_db_connection(), error = function(e) {
+    message(sprintf("[DB] Falha ao conectar ao PostgreSQL: %s. Tentando fallback SQLite.", e$message))
+    NULL
+  })
+  
+  # Se PostgreSQL falhou, tenta SQLite como fallback
+  if (is.null(conn)) {
+    message("[DB] Fallback para SQLite.")
+    use_postgres <- FALSE
+    safe_source("R/helpers_db.R")
+    db_path <- app_file("funding_intelligence.sqlite")
+    try(drive_download_db(db_path), silent = TRUE)
+    try(init_database(db_path), silent = TRUE)
+    conn <- tryCatch(get_db_connection(db_path), error = function(e) NULL)
+  } else {
+    # Inicializa tabelas no PostgreSQL
+    try(init_database(), silent = TRUE)
+  }
+} else {
+  message("[DB] PostgreSQL não configurado. Usando SQLite local.")
+  safe_source("R/helpers_db.R")
+  db_path <- app_file("funding_intelligence.sqlite")
+  try(drive_download_db(db_path), silent = TRUE)
+  try(init_database(db_path), silent = TRUE)
+  conn <- tryCatch(get_db_connection(db_path), error = function(e) NULL)
+}
+
 onStop(function() {
   if (!is.null(conn) && DBI::dbIsValid(conn)) DBI::dbDisconnect(conn)
-  # Sincroniza a base local com o Google Drive ao fechar a aplicação
-  try(drive_upload_db(db_path), silent = TRUE)
+  # Só faz upload se estiver usando SQLite (Google Drive sync)
+  if (!use_postgres) {
+    try(drive_upload_db(db_path), silent = TRUE)
+  }
 })
 
 # Rodar testes automaticamente no startup (se configurado)

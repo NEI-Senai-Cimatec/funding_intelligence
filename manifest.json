@@ -202,6 +202,44 @@
         "Archs": "x64"
       }
     },
+    "RPostgres": {
+      "Source": "CRAN",
+      "Repository": "https://cloud.r-project.org",
+      "description": {
+        "Package": "RPostgres",
+        "Title": "C++ Interface to PostgreSQL",
+        "Version": "1.4.10",
+        "Date": "2026-02-11",
+        "Authors@R": "c(\n    person(\"Hadley\", \"Wickham\", role = \"aut\"),\n    person(\"Jeroen\", \"Ooms\", role = \"aut\"),\n    person(\"Kirill\", \"Müller\", , \"kirill@cynkra.com\", role = c(\"aut\", \"cre\"),\n           comment = c(ORCID = \"0000-0002-1416-3412\")),\n    person(\"RStudio\", role = \"cph\"),\n    person(\"R Consortium\", role = \"fnd\"),\n    person(\"Tomoaki\", \"Nishiyama\", role = \"ctb\",\n           comment = \"Code for encoding vectors into strings derived from RPostgreSQL\")\n  )",
+        "Description": "Fully DBI-compliant C++-backed interface to PostgreSQL\n    <https://www.postgresql.org/>, an open-source relational database.",
+        "License": "MIT + file LICENSE",
+        "URL": "https://rpostgres.r-dbi.org, https://github.com/r-dbi/RPostgres",
+        "BugReports": "https://github.com/r-dbi/RPostgres/issues",
+        "Depends": "R (>= 3.1.0)",
+        "Imports": "bit64, blob (>= 1.2.0), DBI (>= 1.2.0), hms (>= 1.0.0),\nlubridate, methods, withr",
+        "Suggests": "callr, covr, DBItest (>= 1.7.3), knitr, rlang, rmarkdown,\ntestthat (>= 3.0.0)",
+        "LinkingTo": "cpp11",
+        "Config/Needs/website": "r-dbi/dbitemplate",
+        "VignetteBuilder": "knitr",
+        "Config/Needs/build": "decor",
+        "Config/autostyle/scope": "line_breaks",
+        "Config/autostyle/strict": "false",
+        "Config/testthat/edition": "3",
+        "Encoding": "UTF-8",
+        "LazyLoad": "true",
+        "RoxygenNote": "7.3.3.9000",
+        "SystemRequirements": "libpq >= 9.0: libpq-dev (deb) or postgresql-devel\n(rpm)",
+        "Collate": "'PqDriver.R' 'PqConnection.R' 'PqResult.R' 'RPostgres-pkg.R'\n'Redshift.R' 'cpp11.R' 'dbAppendTable_PqConnection.R'\n'dbBegin_PqConnection.R' 'dbBind_PqResult.R'\n'dbClearResult_PqResult.R' 'dbColumnInfo_PqResult.R'\n'dbCommit_PqConnection.R' 'dbConnect_PqDriver.R'\n'dbConnect_RedshiftDriver.R' 'dbDataType_PqConnection.R'\n'dbDataType_PqDriver.R' 'dbDisconnect_PqConnection.R'\n'dbExistsTable_PqConnection_Id.R'\n'dbExistsTable_PqConnection_character.R' 'dbFetch_PqResult.R'\n'dbGetInfo_PqConnection.R' 'dbGetInfo_PqDriver.R'\n'dbGetRowCount_PqResult.R' 'dbGetRowsAffected_PqResult.R'\n'dbGetStatement_PqResult.R' 'dbHasCompleted_PqResult.R'\n'dbIsValid_PqConnection.R' 'dbIsValid_PqDriver.R'\n'dbIsValid_PqResult.R' 'dbListFields_PqConnection_Id.R'\n'dbListFields_PqConnection_character.R'\n'dbListObjects_PqConnection_ANY.R'\n'dbListTables_PqConnection.R'\n'dbQuoteIdentifier_PqConnection_Id.R'\n'dbQuoteIdentifier_PqConnection_SQL.R'\n'dbQuoteIdentifier_PqConnection_character.R'\n'dbQuoteLiteral_PqConnection.R'\n'dbQuoteString_PqConnection_SQL.R'\n'dbQuoteString_PqConnection_character.R'\n'dbReadTable_PqConnection_character.R'\n'dbRemoveTable_PqConnection_character.R'\n'dbRollback_PqConnection.R' 'dbSendQuery_PqConnection.R'\n'dbUnloadDriver_PqDriver.R'\n'dbUnquoteIdentifier_PqConnection_SQL.R'\n'dbWriteTable_PqConnection_character_data.frame.R' 'default.R'\n'export.R' 'quote.R' 'show_PqConnection.R'\n'sqlData_PqConnection.R' 'tables.R' 'transactions.R' 'utils.R'",
+        "NeedsCompilation": "yes",
+        "Packaged": "2026-02-15 18:54:00 UTC; kirill",
+        "Author": "Hadley Wickham [aut],\n  Jeroen Ooms [aut],\n  Kirill Müller [aut, cre] (ORCID:\n    <https://orcid.org/0000-0002-1416-3412>),\n  RStudio [cph],\n  R Consortium [fnd],\n  Tomoaki Nishiyama [ctb] (Code for encoding vectors into strings derived\n    from RPostgreSQL)",
+        "Maintainer": "Kirill Müller <kirill@cynkra.com>",
+        "Repository": "CRAN",
+        "Date/Publication": "2026-02-16 10:30:09 UTC",
+        "Built": "R 4.6.1; x86_64-w64-mingw32; 2026-07-14 02:42:38 UTC; windows",
+        "Archs": "x64"
+      }
+    },
     "RSQLite": {
       "Source": "CRAN",
       "Repository": "https://cloud.r-project.org",
@@ -541,6 +579,34 @@
         "Repository": "CRAN",
         "Date/Publication": "2026-01-14 09:10:14 UTC",
         "Built": "R 4.6.0; ; 2026-05-30 02:35:11 UTC; windows"
+      }
+    },
+    "brio": {
+      "Source": "CRAN",
+      "Repository": "https://cloud.r-project.org",
+      "description": {
+        "Package": "brio",
+        "Title": "Basic R Input Output",
+        "Version": "1.1.5",
+        "Authors@R": "c(\n    person(\"Jim\", \"Hester\", role = \"aut\",\n           comment = c(ORCID = \"0000-0002-2739-7082\")),\n    person(\"Gábor\", \"Csárdi\", , \"csardi.gabor@gmail.com\", role = c(\"aut\", \"cre\")),\n    person(given = \"Posit Software, PBC\", role = c(\"cph\", \"fnd\"))\n  )",
+        "Description": "Functions to handle basic input output, these functions\n    always read and write UTF-8 (8-bit Unicode Transformation Format)\n    files and provide more explicit control over line endings.",
+        "License": "MIT + file LICENSE",
+        "URL": "https://brio.r-lib.org, https://github.com/r-lib/brio",
+        "BugReports": "https://github.com/r-lib/brio/issues",
+        "Depends": "R (>= 3.6)",
+        "Suggests": "covr, testthat (>= 3.0.0)",
+        "Config/Needs/website": "tidyverse/tidytemplate",
+        "Config/testthat/edition": "3",
+        "Encoding": "UTF-8",
+        "RoxygenNote": "7.2.3",
+        "NeedsCompilation": "yes",
+        "Packaged": "2024-04-24 18:51:29 UTC; gaborcsardi",
+        "Author": "Jim Hester [aut] (<https://orcid.org/0000-0002-2739-7082>),\n  Gábor Csárdi [aut, cre],\n  Posit Software, PBC [cph, fnd]",
+        "Maintainer": "Gábor Csárdi <csardi.gabor@gmail.com>",
+        "Repository": "CRAN",
+        "Date/Publication": "2024-04-24 19:20:07 UTC",
+        "Built": "R 4.6.1; x86_64-w64-mingw32; 2026-06-25 00:56:54 UTC; windows",
+        "Archs": "x64"
       }
     },
     "broom": {
@@ -1156,6 +1222,36 @@
         "Repository": "CRAN",
         "Date/Publication": "2023-12-10 11:40:08 UTC",
         "Built": "R 4.6.0; ; 2026-05-30 02:00:55 UTC; windows"
+      }
+    },
+    "diffobj": {
+      "Source": "CRAN",
+      "Repository": "https://cloud.r-project.org",
+      "description": {
+        "Package": "diffobj",
+        "Type": "Package",
+        "Title": "Diffs for R Objects",
+        "Description": "Generate a colorized diff of two R objects for an intuitive\n    visualization of their differences.",
+        "Version": "0.3.6",
+        "Authors@R": "c(\n    person(\n    \"Brodie\", \"Gaslam\", email=\"brodie.gaslam@yahoo.com\",\n    role=c(\"aut\", \"cre\")),\n    person(\n    \"Michael B.\", \"Allen\", email=\"ioplex@gmail.com\",\n    role=c(\"ctb\", \"cph\"),\n    comment=\"Original C implementation of Myers Diff Algorithm\"))",
+        "Depends": "R (>= 3.1.0)",
+        "License": "GPL-2 | GPL-3",
+        "URL": "https://github.com/brodieG/diffobj",
+        "BugReports": "https://github.com/brodieG/diffobj/issues",
+        "RoxygenNote": "7.2.3",
+        "VignetteBuilder": "knitr",
+        "Encoding": "UTF-8",
+        "Suggests": "knitr, rmarkdown",
+        "Collate": "'capt.R' 'options.R' 'pager.R' 'check.R' 'finalizer.R'\n'misc.R' 'html.R' 'styles.R' 's4.R' 'core.R' 'diff.R' 'get.R'\n'guides.R' 'hunks.R' 'layout.R' 'myerssimple.R' 'rdiff.R'\n'rds.R' 'set.R' 'subset.R' 'summmary.R' 'system.R' 'text.R'\n'tochar.R' 'trim.R' 'word.R'",
+        "Imports": "crayon (>= 1.3.2), tools, methods, utils, stats",
+        "NeedsCompilation": "yes",
+        "Packaged": "2025-04-21 00:11:01 UTC; brodie",
+        "Author": "Brodie Gaslam [aut, cre],\n  Michael B. Allen [ctb, cph] (Original C implementation of Myers Diff\n    Algorithm)",
+        "Maintainer": "Brodie Gaslam <brodie.gaslam@yahoo.com>",
+        "Repository": "CRAN",
+        "Date/Publication": "2025-04-21 08:30:02 UTC",
+        "Built": "R 4.6.1; x86_64-w64-mingw32; 2026-07-07 01:09:47 UTC; windows",
+        "Archs": "x64"
       }
     },
     "digest": {
@@ -2829,6 +2925,35 @@
         "Built": "R 4.6.0; ; 2026-05-30 02:33:54 UTC; windows"
       }
     },
+    "pkgbuild": {
+      "Source": "CRAN",
+      "Repository": "https://cloud.r-project.org",
+      "description": {
+        "Package": "pkgbuild",
+        "Title": "Find Tools Needed to Build R Packages",
+        "Version": "1.4.8",
+        "Authors@R": "c(\n    person(\"Hadley\", \"Wickham\", role = \"aut\"),\n    person(\"Jim\", \"Hester\", role = \"aut\"),\n    person(\"Gábor\", \"Csárdi\", , \"csardi.gabor@gmail.com\", role = c(\"aut\", \"cre\")),\n    person(\"Posit Software, PBC\", role = c(\"cph\", \"fnd\"),\n           comment = c(ROR = \"03wc8by49\"))\n  )",
+        "Description": "Provides functions used to build R packages. Locates\n    compilers needed to build R packages on various platforms and ensures\n    the PATH is configured appropriately so R can use them.",
+        "License": "MIT + file LICENSE",
+        "URL": "https://github.com/r-lib/pkgbuild, https://pkgbuild.r-lib.org",
+        "BugReports": "https://github.com/r-lib/pkgbuild/issues",
+        "Depends": "R (>= 3.5)",
+        "Imports": "callr (>= 3.2.0), cli (>= 3.4.0), desc, processx, R6",
+        "Suggests": "covr, cpp11, knitr, Rcpp, rmarkdown, testthat (>= 3.2.0),\nwithr (>= 2.3.0)",
+        "Config/Needs/website": "tidyverse/tidytemplate",
+        "Config/testthat/edition": "3",
+        "Config/usethis/last-upkeep": "2025-04-30",
+        "Encoding": "UTF-8",
+        "RoxygenNote": "7.3.2",
+        "NeedsCompilation": "no",
+        "Packaged": "2025-05-26 10:36:48 UTC; gaborcsardi",
+        "Author": "Hadley Wickham [aut],\n  Jim Hester [aut],\n  Gábor Csárdi [aut, cre],\n  Posit Software, PBC [cph, fnd] (ROR: <https://ror.org/03wc8by49>)",
+        "Maintainer": "Gábor Csárdi <csardi.gabor@gmail.com>",
+        "Repository": "CRAN",
+        "Date/Publication": "2025-05-26 14:10:06 UTC",
+        "Built": "R 4.6.1; ; 2026-06-25 02:30:26 UTC; windows"
+      }
+    },
     "pkgconfig": {
       "Source": "CRAN",
       "Repository": "https://cloud.r-project.org",
@@ -2851,6 +2976,36 @@
         "Repository": "CRAN",
         "Date/Publication": "2019-09-22 09:20:02 UTC",
         "Built": "R 4.6.0; ; 2026-05-30 00:57:18 UTC; windows"
+      }
+    },
+    "pkgload": {
+      "Source": "CRAN",
+      "Repository": "https://cloud.r-project.org",
+      "description": {
+        "Package": "pkgload",
+        "Title": "Simulate Package Installation and Attach",
+        "Version": "1.5.3",
+        "Authors@R": "c(\n    person(\"Hadley\", \"Wickham\", role = \"aut\"),\n    person(\"Winston\", \"Chang\", role = \"aut\"),\n    person(\"Jim\", \"Hester\", role = \"aut\"),\n    person(\"Lionel\", \"Henry\", , \"lionel@posit.co\", role = c(\"aut\", \"cre\")),\n    person(\"Posit Software, PBC\", role = c(\"cph\", \"fnd\")),\n    person(\"R Core team\", role = \"ctb\",\n           comment = \"Some namespace and vignette code extracted from base R\")\n  )",
+        "Description": "Simulates the process of installing a package and then\n    attaching it. This is a key part of the 'devtools' package as it\n    allows you to rapidly iterate while developing a package.",
+        "License": "MIT + file LICENSE",
+        "URL": "https://github.com/r-lib/pkgload, https://pkgload.r-lib.org",
+        "BugReports": "https://github.com/r-lib/pkgload/issues",
+        "Depends": "R (>= 3.4.0)",
+        "Imports": "cli (>= 3.3.0), desc, fs, glue, lifecycle, methods, pkgbuild,\nprocessx, rlang (>= 1.1.1), rprojroot, utils",
+        "Suggests": "bitops, jsonlite, mathjaxr, pak, Rcpp, remotes, rstudioapi,\ntestthat (>= 3.2.1.1), usethis, withr",
+        "Config/Needs/website": "tidyverse/tidytemplate, ggplot2",
+        "Config/testthat/edition": "3",
+        "Config/testthat/parallel": "TRUE",
+        "Config/testthat/start-first": "dll",
+        "Encoding": "UTF-8",
+        "RoxygenNote": "7.3.2",
+        "NeedsCompilation": "no",
+        "Packaged": "2026-06-15 13:09:18 UTC; lionel",
+        "Author": "Hadley Wickham [aut],\n  Winston Chang [aut],\n  Jim Hester [aut],\n  Lionel Henry [aut, cre],\n  Posit Software, PBC [cph, fnd],\n  R Core team [ctb] (Some namespace and vignette code extracted from base\n    R)",
+        "Maintainer": "Lionel Henry <lionel@posit.co>",
+        "Repository": "CRAN",
+        "Date/Publication": "2026-06-15 15:00:11 UTC",
+        "Built": "R 4.6.1; ; 2026-06-25 02:51:07 UTC; windows"
       }
     },
     "plotly": {
@@ -2959,6 +3114,29 @@
         "Repository": "CRAN",
         "Date/Publication": "2026-06-08 08:20:02 UTC",
         "Built": "R 4.6.1; ; 2026-07-04 03:23:59 UTC; windows"
+      }
+    },
+    "praise": {
+      "Source": "CRAN",
+      "Repository": "https://cloud.r-project.org",
+      "description": {
+        "Package": "praise",
+        "Title": "Praise Users",
+        "Version": "1.0.0",
+        "Author": "Gabor Csardi, Sindre Sorhus",
+        "Maintainer": "Gabor Csardi <csardi.gabor@gmail.com>",
+        "Description": "Build friendly R packages that\n    praise their users if they have done something\n    good, or they just need it to feel better.",
+        "License": "MIT + file LICENSE",
+        "LazyData": "true",
+        "URL": "https://github.com/gaborcsardi/praise",
+        "BugReports": "https://github.com/gaborcsardi/praise/issues",
+        "Suggests": "testthat",
+        "Collate": "'adjective.R' 'adverb.R' 'exclamation.R' 'verb.R' 'rpackage.R'\n'package.R'",
+        "NeedsCompilation": "no",
+        "Packaged": "2015-08-11 02:01:43 UTC; gaborcsardi",
+        "Repository": "CRAN",
+        "Date/Publication": "2015-08-11 08:22:28",
+        "Built": "R 4.6.1; ; 2026-07-07 01:09:46 UTC; windows"
       }
     },
     "prettyunits": {
@@ -4035,6 +4213,38 @@
         "Archs": "x64"
       }
     },
+    "testthat": {
+      "Source": "CRAN",
+      "Repository": "https://cloud.r-project.org",
+      "description": {
+        "Package": "testthat",
+        "Title": "Unit Testing for R",
+        "Version": "3.3.2",
+        "Authors@R": "c(\n    person(\"Hadley\", \"Wickham\", , \"hadley@posit.co\", role = c(\"aut\", \"cre\")),\n    person(\"Posit Software, PBC\", role = c(\"cph\", \"fnd\")),\n    person(\"R Core team\", role = \"ctb\",\n           comment = \"Implementation of utils::recover()\")\n  )",
+        "Description": "Software testing is important, but, in part because it is\n    frustrating and boring, many of us avoid it. 'testthat' is a testing\n    framework for R that is easy to learn and use, and integrates with\n    your existing 'workflow'.",
+        "License": "MIT + file LICENSE",
+        "URL": "https://testthat.r-lib.org, https://github.com/r-lib/testthat",
+        "BugReports": "https://github.com/r-lib/testthat/issues",
+        "Depends": "R (>= 4.1.0)",
+        "Imports": "brio (>= 1.1.5), callr (>= 3.7.6), cli (>= 3.6.5), desc (>=\n1.4.3), evaluate (>= 1.0.4), jsonlite (>= 2.0.0), lifecycle (>=\n1.0.4), magrittr (>= 2.0.3), methods, pkgload (>= 1.4.0),\npraise (>= 1.0.0), processx (>= 3.8.6), ps (>= 1.9.1), R6 (>=\n2.6.1), rlang (>= 1.1.6), utils, waldo (>= 0.6.2), withr (>=\n3.0.2)",
+        "Suggests": "covr, curl (>= 0.9.5), diffviewer (>= 0.1.0), digest (>=\n0.6.33), gh, knitr, otel, otelsdk, rmarkdown, rstudioapi, S7,\nshiny, usethis, vctrs (>= 0.1.0), xml2",
+        "VignetteBuilder": "knitr",
+        "Config/Needs/website": "tidyverse/tidytemplate",
+        "Config/testthat/edition": "3",
+        "Config/testthat/parallel": "true",
+        "Config/testthat/start-first": "watcher, parallel*",
+        "Encoding": "UTF-8",
+        "RoxygenNote": "7.3.3",
+        "NeedsCompilation": "yes",
+        "Packaged": "2026-01-09 17:49:32 UTC; hadleywickham",
+        "Author": "Hadley Wickham [aut, cre],\n  Posit Software, PBC [cph, fnd],\n  R Core team [ctb] (Implementation of utils::recover())",
+        "Maintainer": "Hadley Wickham <hadley@posit.co>",
+        "Repository": "CRAN",
+        "Date/Publication": "2026-01-11 09:10:02 UTC",
+        "Built": "R 4.6.1; x86_64-w64-mingw32; 2026-07-07 03:27:21 UTC; windows",
+        "Archs": "x64"
+      }
+    },
     "textshaping": {
       "Source": "CRAN",
       "Repository": "https://cloud.r-project.org",
@@ -4526,6 +4736,34 @@
         "Archs": "x64"
       }
     },
+    "waldo": {
+      "Source": "CRAN",
+      "Repository": "https://cloud.r-project.org",
+      "description": {
+        "Package": "waldo",
+        "Title": "Find Differences Between R Objects",
+        "Version": "0.6.2",
+        "Authors@R": "c(\n    person(\"Hadley\", \"Wickham\", , \"hadley@posit.co\", role = c(\"aut\", \"cre\")),\n    person(\"Posit Software, PBC\", role = c(\"cph\", \"fnd\"))\n  )",
+        "Description": "Compare complex R objects and reveal the key differences.\n    Designed particularly for use in testing packages where being able to\n    quickly isolate key differences makes understanding test failures much\n    easier.",
+        "License": "MIT + file LICENSE",
+        "URL": "https://waldo.r-lib.org, https://github.com/r-lib/waldo",
+        "BugReports": "https://github.com/r-lib/waldo/issues",
+        "Depends": "R (>= 4.0)",
+        "Imports": "cli, diffobj (>= 0.3.4), glue, methods, rlang (>= 1.1.0)",
+        "Suggests": "bit64, R6, S7, testthat (>= 3.0.0), withr, xml2",
+        "Config/Needs/website": "tidyverse/tidytemplate",
+        "Config/testthat/edition": "3",
+        "Encoding": "UTF-8",
+        "RoxygenNote": "7.3.2",
+        "NeedsCompilation": "no",
+        "Packaged": "2025-07-11 13:27:03 UTC; hadleywickham",
+        "Author": "Hadley Wickham [aut, cre],\n  Posit Software, PBC [cph, fnd]",
+        "Maintainer": "Hadley Wickham <hadley@posit.co>",
+        "Repository": "CRAN",
+        "Date/Publication": "2025-07-11 15:20:02 UTC",
+        "Built": "R 4.6.1; ; 2026-07-07 02:20:48 UTC; windows"
+      }
+    },
     "websocket": {
       "Source": "CRAN",
       "Repository": "https://cloud.r-project.org",
@@ -4781,17 +5019,95 @@
     }
   },
   "files": {
+    ".agent/skills/openspec-apply-change/SKILL.md": {
+      "checksum": "a40dbab76621dbfb45f0fde5b3a57752"
+    },
+    ".agent/skills/openspec-archive-change/SKILL.md": {
+      "checksum": "aef71f570de0af41632c8893a2e62557"
+    },
+    ".agent/skills/openspec-explore/SKILL.md": {
+      "checksum": "8e0634103903b7af4722dd1f02b204b2"
+    },
+    ".agent/skills/openspec-propose/SKILL.md": {
+      "checksum": "1b3e246e085ad709b229df1e3235da44"
+    },
+    ".agent/skills/openspec-sync-specs/SKILL.md": {
+      "checksum": "c26bd6ec3c54350a602556b160bb91f9"
+    },
+    ".agent/skills/openspec-update-change/SKILL.md": {
+      "checksum": "b94e22f483569c35ac2e8894d26927be"
+    },
+    ".agent/workflows/opsx-apply.md": {
+      "checksum": "aeb383ca2aaacfc81cc3ad29c6f89ac3"
+    },
+    ".agent/workflows/opsx-archive.md": {
+      "checksum": "dace262f9a4ae6cc9bf69f042ed50d2a"
+    },
+    ".agent/workflows/opsx-explore.md": {
+      "checksum": "ec9c667222ecbbaf641d96dfb2889ebf"
+    },
+    ".agent/workflows/opsx-propose.md": {
+      "checksum": "c8e375875d0dd331816bd2e3f1df00c7"
+    },
+    ".agent/workflows/opsx-sync.md": {
+      "checksum": "6787e703a38575e602065a60ee82eefb"
+    },
+    ".agent/workflows/opsx-update.md": {
+      "checksum": "cf81f06b215efa0688997bbfbad9d125"
+    },
     ".dockerignore": {
       "checksum": "069c899db7331173771220ce1a5deb12"
     },
+    ".opencode/commands/opsx-apply.md": {
+      "checksum": "a4cc3b67b816763d6d472a9351a2ab28"
+    },
+    ".opencode/commands/opsx-archive.md": {
+      "checksum": "ca33b67d4b85dec275b98d26d080bf74"
+    },
+    ".opencode/commands/opsx-explore.md": {
+      "checksum": "792e79a4677aa8ab684f808c1999abb6"
+    },
+    ".opencode/commands/opsx-propose.md": {
+      "checksum": "d01f58a0e3cf179fe11bd8bc063b22db"
+    },
+    ".opencode/commands/opsx-sync.md": {
+      "checksum": "120bf321080d8651322c5e3554e91075"
+    },
+    ".opencode/commands/opsx-update.md": {
+      "checksum": "a49d6b4f83d8fc49c5ceeb551a8d8a4e"
+    },
+    ".opencode/package-lock.json": {
+      "checksum": "424f48f52f26afb1550dd7fc3424f918"
+    },
+    ".opencode/package.json": {
+      "checksum": "b597387321616f5d7d7680f907bfaec0"
+    },
+    ".opencode/skills/openspec-apply-change/SKILL.md": {
+      "checksum": "9b402128aac7710eed57892ba7f34ea8"
+    },
+    ".opencode/skills/openspec-archive-change/SKILL.md": {
+      "checksum": "aef71f570de0af41632c8893a2e62557"
+    },
+    ".opencode/skills/openspec-explore/SKILL.md": {
+      "checksum": "a2c758cac56554b84a1958688d3a9bd6"
+    },
+    ".opencode/skills/openspec-propose/SKILL.md": {
+      "checksum": "2468aa51328eb9d8847afebb9f963e2a"
+    },
+    ".opencode/skills/openspec-sync-specs/SKILL.md": {
+      "checksum": "c26bd6ec3c54350a602556b160bb91f9"
+    },
+    ".opencode/skills/openspec-update-change/SKILL.md": {
+      "checksum": "5f2ae8b55d3f7fb9ae15db7fc7b05cd0"
+    },
     ".Renviron": {
-      "checksum": "d4a40ee59bff08f66d05dcaf86a26ea1"
+      "checksum": "3b9c418001c5e651eacfa464740396e2"
     },
     "app.R": {
-      "checksum": "500faba31febe794c35af22f9ae62a35"
+      "checksum": "68ec051c8bfa29574ee67e1ca8fd7c8b"
     },
     "data/funding_intelligence.sqlite": {
-      "checksum": "504cdc8dd8cbdb209121d9032a78eabe"
+      "checksum": "d9ca7e7f35dace8ab221df072de79772"
     },
     "data_exports/funding_intelligence_base_20260605_143205.csv": {
       "checksum": "d5bdb43de8c9cca66868f0f21f00208a"
@@ -5018,14 +5334,32 @@
     "data_exports/funding_intelligence_base_20260705_144317.xlsx": {
       "checksum": "157bb4b2787246ad0a6b711652987bf6"
     },
+    "data_exports/funding_intelligence_base_20260711_104856.csv": {
+      "checksum": "2107a7d73777933fefb6df4c5d0d9b7d"
+    },
+    "data_exports/funding_intelligence_base_20260711_104856.rds": {
+      "checksum": "c2e6c3c3ecc44b0c303cdb1874084945"
+    },
+    "data_exports/funding_intelligence_base_20260711_104856.xlsx": {
+      "checksum": "ca25ddc78a1dd3a6ecad0d6e28611f91"
+    },
+    "data_exports/funding_intelligence_base_20260712_114128.csv": {
+      "checksum": "d885b6a89b113ee54d759e6f79cc8088"
+    },
+    "data_exports/funding_intelligence_base_20260712_114128.rds": {
+      "checksum": "df9210b6df012626738f0e3bbec1a6f8"
+    },
+    "data_exports/funding_intelligence_base_20260712_114128.xlsx": {
+      "checksum": "cbb617509482862f96d2963c869310b7"
+    },
     "docker-compose.yml": {
-      "checksum": "8faea6cf3c95cc94ba115a0517ff5dc8"
+      "checksum": "746f42466edff13c7d1d8f76b63798e0"
     },
     "Dockerfile": {
-      "checksum": "1845520677f7d4508e47848977324725"
+      "checksum": "e7cdc9e16fd3f2017f4e473fcaac5627"
     },
     "funding_intelligence.sqlite": {
-      "checksum": "2b563b7e15a8df7a16f57d1e715883bd"
+      "checksum": "16c212eebacff7b89343039263e5c03e"
     },
     "funding_intelligence.sqlite-shm": {
       "checksum": "b7c14ec6110fa820ca6b65f5aec85911"
@@ -5033,23 +5367,26 @@
     "funding_intelligence.sqlite-wal": {
       "checksum": "d41d8cd98f00b204e9800998ecf8427e"
     },
+    "gdrive_credentials.json": {
+      "checksum": "bb4d7e5dc727e9b9cbe3302b93b5106c"
+    },
     "logos/logos.png": {
-      "checksum": "a1476fcbe354cf7e7d0ba5ab8110ef96"
+      "checksum": "dd43aae35d14417322fdd24fde680eaa"
     },
     "logs/collection_modal_log.txt": {
-      "checksum": "2b8eef633ab2bd83100b162a316ce1fa"
+      "checksum": "1bf65b62284fcbcd4a27ad2f1b6ab51f"
     },
     "logs/collection_status.json": {
-      "checksum": "72921b612e891cee11699230fff0ad75"
+      "checksum": "56af8d8c957ad81abaeeb4b2cd54ebe7"
     },
     "logs/collection_stderr.log": {
-      "checksum": "8636f1c26bfc73e8591dd0dd6cf3fc59"
+      "checksum": "51415022dbe09aba04ac21d0f72700bf"
     },
     "logs/collection_stdout.log": {
       "checksum": "d41d8cd98f00b204e9800998ecf8427e"
     },
     "logs/funding_collection.log": {
-      "checksum": "3afa06e0db9131a9301a57f55755292f"
+      "checksum": "a2a6ec53332b2ff798830785d5090090"
     },
     "logs/search_stderr.log": {
       "checksum": "22ebcec1724e4be3a16442a6cb44f10b"
@@ -5060,17 +5397,200 @@
     "logs/test.log": {
       "checksum": "000dccbd824166d181706e21c8c13584"
     },
+    "logs/test_cnpq.log": {
+      "checksum": "9a2579b8a3403ac8207afc7521254126"
+    },
+    "logs/test_sigitec_v2.log": {
+      "checksum": "5a48b7d8203973ab290d5a74ead8c682"
+    },
+    "migrate_to_postgres.R": {
+      "checksum": "d324f7fdff31afb41a8eedae1f3e71af"
+    },
+    "openspec/baseline-spec.md": {
+      "checksum": "042666128193bc0519d38886083b6484"
+    },
+    "openspec/changes/archive/2026-07-11-add-humboldt-collector/.openspec.yaml": {
+      "checksum": "976471bb24857415345a49b9aa182eb1"
+    },
+    "openspec/changes/archive/2026-07-11-add-humboldt-collector/design.md": {
+      "checksum": "82d08274eeaabbd719b5d909e54f2b8b"
+    },
+    "openspec/changes/archive/2026-07-11-add-humboldt-collector/proposal.md": {
+      "checksum": "f469bae7cec04059c0213a5cd9b981cf"
+    },
+    "openspec/changes/archive/2026-07-11-add-humboldt-collector/specs/humboldt-source/spec.md": {
+      "checksum": "af57e2b5a45675e1b5924e3dbcb80abd"
+    },
+    "openspec/changes/archive/2026-07-11-add-humboldt-collector/tasks.md": {
+      "checksum": "e73a2c0cf54430ff5c33b004407f5f10"
+    },
+    "openspec/changes/archive/2026-07-11-baseline-spec/.openspec.yaml": {
+      "checksum": "737eb2d5bc768404f32bf48c93ebc43b"
+    },
+    "openspec/changes/archive/2026-07-11-baseline-spec/design.md": {
+      "checksum": "8109b9b9febd5445b1ed9195437ba7dd"
+    },
+    "openspec/changes/archive/2026-07-11-baseline-spec/proposal.md": {
+      "checksum": "877a31249a91a4d1b6af6fae68cab3f1"
+    },
+    "openspec/changes/archive/2026-07-11-baseline-spec/specs/ai-integration/spec.md": {
+      "checksum": "71fdbbe4b05cbc7b62eda6a0e354273f"
+    },
+    "openspec/changes/archive/2026-07-11-baseline-spec/specs/app-architecture/spec.md": {
+      "checksum": "5bbda8c05db5e148558ded35e9a3cb46"
+    },
+    "openspec/changes/archive/2026-07-11-baseline-spec/specs/business-rules/spec.md": {
+      "checksum": "196f99c5aae1a198f8780d553e0fa8e2"
+    },
+    "openspec/changes/archive/2026-07-11-baseline-spec/specs/collection-pipeline/spec.md": {
+      "checksum": "4688bac5670de34f837a01628dbe0736"
+    },
+    "openspec/changes/archive/2026-07-11-baseline-spec/specs/data-model/spec.md": {
+      "checksum": "7d0fcd88c47a0becd63d2b729c843aa2"
+    },
+    "openspec/changes/archive/2026-07-11-baseline-spec/specs/search-recommendation/spec.md": {
+      "checksum": "539b594283d2c87b833d09b10d95ce01"
+    },
+    "openspec/changes/archive/2026-07-11-baseline-spec/tasks.md": {
+      "checksum": "43b16b42cdc61d3650678588a87636a5"
+    },
+    "openspec/changes/archive/2026-07-11-update-design-baseline/.openspec.yaml": {
+      "checksum": "737eb2d5bc768404f32bf48c93ebc43b"
+    },
+    "openspec/changes/archive/2026-07-11-update-design-baseline/design.md": {
+      "checksum": "45ce0ccc35842396d98e7150562c411a"
+    },
+    "openspec/changes/archive/2026-07-11-update-design-baseline/proposal.md": {
+      "checksum": "b5ebf854045302334fde1fe7b54c9f22"
+    },
+    "openspec/changes/archive/2026-07-11-update-design-baseline/tasks.md": {
+      "checksum": "bca0af3e9ac295a218dacd1276d94ff2"
+    },
+    "openspec/changes/archive/2026-07-12-fix-cnpq-edital-collection/.openspec.yaml": {
+      "checksum": "976471bb24857415345a49b9aa182eb1"
+    },
+    "openspec/changes/archive/2026-07-12-fix-cnpq-edital-collection/design.md": {
+      "checksum": "366dccb2d9b055bed3e5daee9ee7516e"
+    },
+    "openspec/changes/archive/2026-07-12-fix-cnpq-edital-collection/proposal.md": {
+      "checksum": "a0b7e0bc91040df348600a91c782e73d"
+    },
+    "openspec/changes/archive/2026-07-12-fix-cnpq-edital-collection/specs/cnpq-collector/spec.md": {
+      "checksum": "08574535e14be5993ed07d62dc7c2531"
+    },
+    "openspec/changes/archive/2026-07-12-fix-cnpq-edital-collection/specs/collection-pipeline/spec.md": {
+      "checksum": "797474696fd882ccb51d2efd515a9d8e"
+    },
+    "openspec/changes/archive/2026-07-12-fix-cnpq-edital-collection/tasks.md": {
+      "checksum": "8df903fab3508daa77b2cc0422daa24f"
+    },
+    "openspec/changes/archive/2026-07-15-world-bank-scraper/.openspec.yaml": {
+      "checksum": "b73f0410aeac8b90ea4cea74566c933d"
+    },
+    "openspec/changes/archive/2026-07-15-world-bank-scraper/design.md": {
+      "checksum": "192614f144545de5ee8c8d5a5152c357"
+    },
+    "openspec/changes/archive/2026-07-15-world-bank-scraper/proposal.md": {
+      "checksum": "3f6154ba580d038af82f7d10a3c28956"
+    },
+    "openspec/changes/archive/2026-07-15-world-bank-scraper/specs/collection-pipeline/spec.md": {
+      "checksum": "4e6eeb717ce865badf9a6b95f3133b1c"
+    },
+    "openspec/changes/archive/2026-07-15-world-bank-scraper/specs/world-bank-api/spec.md": {
+      "checksum": "d588536fa354383425dbcde15ac4a456"
+    },
+    "openspec/changes/archive/2026-07-15-world-bank-scraper/specs/world-bank-excel/spec.md": {
+      "checksum": "8ba0f186a1fe0de6f0b9b7a8c82b4aa0"
+    },
+    "openspec/changes/archive/2026-07-15-world-bank-scraper/specs/world-bank-source/spec.md": {
+      "checksum": "de47cf5fdfdfc5ffb525ec42acf0e521"
+    },
+    "openspec/changes/archive/2026-07-15-world-bank-scraper/tasks.md": {
+      "checksum": "0509308e49dd7eb767596636391cc3d9"
+    },
+    "openspec/changes/archive/2026-07-16-add-download-functionality/.openspec.yaml": {
+      "checksum": "763dfb4569e0c58351e4302dd18547a2"
+    },
+    "openspec/changes/archive/2026-07-16-add-download-functionality/design.md": {
+      "checksum": "e4356506b026125a52e7e8dbb6e50f0a"
+    },
+    "openspec/changes/archive/2026-07-16-add-download-functionality/proposal.md": {
+      "checksum": "424b2ae74ce7dc759e88b910e481eb8a"
+    },
+    "openspec/changes/archive/2026-07-16-add-download-functionality/specs/data-export/spec.md": {
+      "checksum": "4e7ad4d5613c6a766905d6384f5c68a5"
+    },
+    "openspec/changes/archive/2026-07-16-add-download-functionality/specs/download-ui/spec.md": {
+      "checksum": "6f8fb7e91e6d08c394d5c44aaab36dab"
+    },
+    "openspec/changes/archive/2026-07-16-add-download-functionality/tasks.md": {
+      "checksum": "d994ad820da1390699217d4ec2ae6f54"
+    },
+    "openspec/config.yaml": {
+      "checksum": "63c26766698dd49488b53c274bfec0f9"
+    },
+    "openspec/specs/ai-integration/spec.md": {
+      "checksum": "a963d0ca76c9aabad9fa1e281c03001d"
+    },
+    "openspec/specs/app-architecture/spec.md": {
+      "checksum": "0633512b954a39ed3a63defd1bd16a31"
+    },
+    "openspec/specs/business-rules/spec.md": {
+      "checksum": "2266406e72af72810fae3d64d8e0f295"
+    },
+    "openspec/specs/cnpq-collector/spec.md": {
+      "checksum": "e7fc44669b1c451f510e0d84ce117c4e"
+    },
+    "openspec/specs/collection-pipeline/spec.md": {
+      "checksum": "fa97c2180ef9c13126a71a1b36ea993e"
+    },
+    "openspec/specs/data-export/spec.md": {
+      "checksum": "4e7ad4d5613c6a766905d6384f5c68a5"
+    },
+    "openspec/specs/data-model/spec.md": {
+      "checksum": "6d05aeb7159785cabe7f75da061bfe4c"
+    },
+    "openspec/specs/download-ui/spec.md": {
+      "checksum": "6f8fb7e91e6d08c394d5c44aaab36dab"
+    },
+    "openspec/specs/humboldt-source/spec.md": {
+      "checksum": "ee59e460da088276fd3820bbf537900d"
+    },
+    "openspec/specs/search-recommendation/spec.md": {
+      "checksum": "1f4950faa322507d86b25e9163b37a2e"
+    },
+    "openspec/specs/world-bank-api/spec.md": {
+      "checksum": "7707c3de3b3bf40129f7fc4813ea98d5"
+    },
+    "openspec/specs/world-bank-excel/spec.md": {
+      "checksum": "952083c803f41e581772e49a7af4761c"
+    },
+    "openspec/specs/world-bank-source/spec.md": {
+      "checksum": "f3c61e330fbc730143a5b6acad6d10c3"
+    },
+    "package-lock.json": {
+      "checksum": "8cdbb670cd60b316e7172a8458f24d25"
+    },
+    "package.json": {
+      "checksum": "d353fd4b86e6fe7d637647b6fdffa634"
+    },
     "R/helpers_ai.R": {
       "checksum": "8a8be9a1d41aae34ed39d773af8e3ece"
     },
     "R/helpers_collect.R": {
-      "checksum": "a114e33979d8ca30d62b0c37adbb150e"
+      "checksum": "a71a132130f69b9587c1da44d9d42eac"
     },
     "R/helpers_db.R": {
-      "checksum": "53249a799c5b8f95bf38d1bd9628d798"
+      "checksum": "f7c603499711ab42c90ffc75e67e953e"
+    },
+    "R/helpers_db_postgres.R": {
+      "checksum": "e528888fb5b888fe1f2ccdb45717b369"
     },
     "R/helpers_drive.R": {
       "checksum": "5723937c6caf0f076b3bbeabaa283f5d"
+    },
+    "R/helpers_export.R": {
+      "checksum": "06e9d3311f60c3965f1406ad65941abd"
     },
     "R/helpers_recommend.R": {
       "checksum": "0162eac41fec283b9788c0f008c40942"
@@ -5079,7 +5599,7 @@
       "checksum": "07206994bcd24583e419b971567545f3"
     },
     "R/helpers_utils.R": {
-      "checksum": "d297ac6695b51a94b2e8c29cc65caae7"
+      "checksum": "30d37b5f470bc026de7d5a2874b78e32"
     },
     "R_libs/backports/DESCRIPTION": {
       "checksum": "3a06d70675de422672893f1bfa8d3708"
@@ -7107,7 +7627,7 @@
       "checksum": "0857e8fe59d5508c1c0799bec801fc06"
     },
     "README.md": {
-      "checksum": "38174befed3747b3b4c03a495c77f1d0"
+      "checksum": "7f67fa41b6ac5993d9a52747a12d8c08"
     },
     "scratch/db_audit.R": {
       "checksum": "c695a9790d50ccdfdf837fe7338ac189"
@@ -7202,20 +7722,29 @@
     "scratch/test_sigitec.R": {
       "checksum": "3edda10ec6d29c47dd5ca68be0624abf"
     },
+    "scratch/test_sigitec_v2.R": {
+      "checksum": "e87e8dfde56ec94ebde9cbfbdef44a12"
+    },
     "scratch/test_stealth_request.R": {
       "checksum": "94150f0d0ae245de14ab9c8fab17fb3f"
     },
     "scratch/validate_fixes.R": {
-      "checksum": "b6e89118c9e977d67863a7ae1a2e96b2"
+      "checksum": "a20cf097dfe015ea896c2b5575e60831"
+    },
+    "temp_design.md": {
+      "checksum": "6fbffa68fa200a4d6953b159d92fb1ac"
     },
     "tests/testthat.R": {
-      "checksum": "9aa1cfd341c49d6eb8a5f1114733cec9"
+      "checksum": "6b2a4b1fd11c607c0c705b21f2c51096"
     },
     "tests/testthat/fixtures/json/ai_response_valid.json": {
-      "checksum": "db46be0c41ea0c77a3935f940742c07a"
+      "checksum": "b86dc7380e812a9b9b1150844f355277"
+    },
+    "tests/testthat/test-cnpq-collection.R": {
+      "checksum": "764281f432e30d809029b467aca0d320"
     },
     "tests/testthat/test-utils.R": {
-      "checksum": "ff8f53e1ba737fb1270384ccb889f769"
+      "checksum": "a242b21cb2dcc402e7f20c89e9a95f93"
     },
     "www/logotipo-SENAI-CIMATEC-Vjul2025 1.png": {
       "checksum": "270b2a2cc909d974cd7e9c8a3fb39fd7"
@@ -7230,7 +7759,7 @@
       "checksum": "5134d2e95151c3e1ca2d55024154fe5f"
     },
     "www/styles.css": {
-      "checksum": "9b6ac437b978632f9e37e7f6c27145b7"
+      "checksum": "074d3c294c2e730068397d5383f0263e"
     }
   },
   "users": null

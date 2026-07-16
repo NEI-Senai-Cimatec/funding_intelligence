@@ -26,6 +26,13 @@ services:
       - GDRIVE_SERVICE_ACCOUNT_JSON=${GDRIVE_SERVICE_ACCOUNT_JSON}
       - GDRIVE_SERVICE_ACCOUNT_CONTENT=${GDRIVE_SERVICE_ACCOUNT_CONTENT}
       - GDRIVE_FILE_ID=${GDRIVE_FILE_ID}
+      # PostgreSQL (opcional - se não configurado, usa SQLite)
+      - DATABASE_URL=${DATABASE_URL:-}
+      - DB_HOST=${DB_HOST:-}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${DB_NAME:-}
+      - DB_USER=${DB_USER:-}
+      - DB_PASSWORD=${DB_PASSWORD:-}
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:3838/ || exit 1"]

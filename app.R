@@ -111,6 +111,7 @@ safe_source("R/helpers_ai.R")
 safe_source("R/helpers_recommend.R")
 safe_source("R/helpers_collect.R")
 safe_source("R/helpers_drive.R")
+safe_source("R/helpers_export.R")
 
 # Registra a pasta logos como recurso estático do Shiny
 shiny::addResourcePath("logos", app_file("logos"))
@@ -282,7 +283,15 @@ ui <- bslib::page_sidebar(
           uiOutput("export_status_ui")
         )
       ),
-      shinycssloaders::withSpinner(DTOutput("results_table"), type = 6, color = "#004691")
+      bslib::card(
+        tags$div(
+          style = "display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding: 5px 0;",
+          tags$strong(style = "font-size: 0.8rem; color: #475569; text-transform: uppercase;", "Exportar:"),
+          downloadButton("btn_export_xlsx", "XLSX", class = "btn-sm btn-outline-success", style = "font-size: 0.75rem;"),
+          downloadButton("btn_export_csv", "CSV", class = "btn-sm btn-outline-primary", style = "font-size: 0.75rem;")
+        ),
+        shinycssloaders::withSpinner(DTOutput("results_table"), type = 6, color = "#004691")
+      )
     ),
     bslib::nav_panel(
       "Por financiador",
@@ -573,8 +582,18 @@ server <- function(input, output, session) {
   output$modal_log_text <- renderText(progress_rv$logs)
   
   output$progress_modal_footer <- renderUI({
-    if (progress_rv$status %in% c("done", "error")) {
-      actionButton("btn_close_progress_modal", "Concluir", class = "btn-success")
+    if (progress_rv$status == "done") {
+      tagList(
+        tags$div(
+          style = "display: flex; gap: 10px; align-items: center;",
+          tags$span(style = "font-weight: 600; color: #22c55e;", "Coleta concluída!"),
+          downloadButton("btn_modal_export_xlsx", "Baixar XLSX", class = "btn-sm btn-success"),
+          downloadButton("btn_modal_export_csv", "Baixar CSV", class = "btn-sm btn-primary"),
+          actionButton("btn_close_progress_modal", "Concluir", class = "btn-outline-secondary")
+        )
+      )
+    } else if (progress_rv$status == "error") {
+      actionButton("btn_close_progress_modal", "Fechar", class = "btn-danger")
     } else {
       tagList(
         actionButton("btn_minimize_progress_modal", "Minimizar (Rodar em 2º Plano)", class = "btn-outline-secondary"),
@@ -621,6 +640,29 @@ server <- function(input, output, session) {
     removeModal()
     showNotification("Coleta continua em execução em segundo plano.", type = "message")
   })
+
+  # Export handlers for modal after collection
+  output$btn_modal_export_xlsx <- downloadHandler(
+    filename = function() {
+      generate_export_filename("quiiin_coleta", "xlsx")
+    },
+    content = function(file) {
+      data <- filtered_results()
+      export_data <- prepare_export_data(data)
+      writexl::write_xlsx(export_data, file)
+    }
+  )
+
+  output$btn_modal_export_csv <- downloadHandler(
+    filename = function() {
+      generate_export_filename("quiiin_coleta", "csv")
+    },
+    content = function(file) {
+      data <- filtered_results()
+      export_data <- prepare_export_data(data)
+      write.csv(export_data, file, row.names = FALSE, fileEncoding = "UTF-8")
+    }
+  )
 
   # Validação de API Key no startup do Shiny
   observe({
@@ -1182,6 +1224,29 @@ server <- function(input, output, session) {
       )
     )
   }, server = FALSE)
+
+  # Export handlers for results table
+  output$btn_export_xlsx <- downloadHandler(
+    filename = function() {
+      generate_export_filename("quiiin_export", "xlsx")
+    },
+    content = function(file) {
+      data <- filtered_results()
+      export_data <- prepare_export_data(data)
+      writexl::write_xlsx(export_data, file)
+    }
+  )
+
+  output$btn_export_csv <- downloadHandler(
+    filename = function() {
+      generate_export_filename("quiiin_export", "csv")
+    },
+    content = function(file) {
+      data <- filtered_results()
+      export_data <- prepare_export_data(data)
+      write.csv(export_data, file, row.names = FALSE, fileEncoding = "UTF-8")
+    }
+  )
 
   observeEvent(input$row_action, {
     rv$selected_tracked_id <- input$row_action$id

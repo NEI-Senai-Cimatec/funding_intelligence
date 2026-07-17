@@ -5,10 +5,59 @@ get_db_connection <- function() {
   database_url <- Sys.getenv("DATABASE_URL")
   
   if (nzchar(database_url)) {
-    # Conexão via URL completa
+    message("[DB] Parseando DATABASE_URL manualmente...")
+    
+    # Parse manual da URL PostgreSQL
+    # Formato: postgresql://user:password@host:port/dbname
+    parsed <- tryCatch({
+      url_clean <- sub("^postgresql://", "", database_url)
+      
+      # Extrai user:password (tudo antes do ultimo @)
+      user_pass <- sub("@[^@]+$", "", url_clean)
+      user <- sub(":.*$", "", user_pass)
+      password <- sub("^.*:", "", user_pass)
+      
+      # Extrai host:port/dbname (tudo depois do ultimo @)
+      host_db <- sub("^[^@]*@", "", url_clean)
+      
+      # host:port (antes da barra)
+      host_port <- sub("/.*$", "", host_db)
+      
+      # Trata IPv6 [::1] e host normal
+      if (grepl("^\\[", host_port)) {
+        host <- sub("^\\[", "", sub("\\].*$", "", host_port))
+        port <- as.integer(sub("^\\]:", "", sub("\\]$", "", host_port)))
+      } else {
+        host <- sub(":.*$", "", host_port)
+        port <- suppressWarnings(as.integer(sub("^.*:", "", host_port)))
+        if (is.na(port)) port <- 5432L
+      }
+      
+      # dbname (depois da barra)
+      dbname <- sub("^/", "", sub("^[^/]*", "", host_db))
+      if (!nzchar(dbname)) dbname <- "postgres"
+      
+      list(host = host, port = port, dbname = dbname, 
+           user = user, password = password)
+    }, error = function(e) {
+      message(sprintf("[DB] Erro ao parsear URL: %s", e$message))
+      NULL
+    })
+    
+    if (is.null(parsed)) {
+      stop("Falha ao parsear DATABASE_URL: ", database_url)
+    }
+    
+    message(sprintf("[DB] Conectando: host=%s port=%d dbname=%s user=%s",
+                    parsed$host, parsed$port, parsed$dbname, parsed$user))
+    
     conn <- DBI::dbConnect(
       RPostgres::Postgres(),
-      dbname = database_url
+      host = parsed$host,
+      port = parsed$port,
+      dbname = parsed$dbname,
+      user = parsed$user,
+      password = parsed$password
     )
   } else {
     # Conexão via parâmetros individuais

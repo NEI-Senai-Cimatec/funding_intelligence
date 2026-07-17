@@ -120,8 +120,13 @@ ensure_dir(export_dir)
 ensure_dir(dirname(log_path))
 
 # Detecta se PostgreSQL está configurado
-use_postgres <- nzchar(Sys.getenv("DATABASE_URL")) || nzchar(Sys.getenv("DB_HOST"))
+db_url <- Sys.getenv("DATABASE_URL")
+db_host <- Sys.getenv("DB_HOST")
+use_postgres <- nzchar(db_url) || nzchar(db_host)
 db_path <- app_file("funding_intelligence.sqlite")
+
+message(sprintf("[DB] DATABASE_URL presente: %s", nzchar(db_url)))
+message(sprintf("[DB] DB_HOST presente: %s", nzchar(db_host)))
 
 if (use_postgres) {
   message("[DB] PostgreSQL detectado. Usando conexão externa.")

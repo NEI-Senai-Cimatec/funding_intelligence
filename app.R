@@ -349,8 +349,8 @@ ui <- bslib::page_sidebar(
     style = "background-color: #E9E9E9; color: #64748b; border-top: 4px solid #004691; box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05); padding: 2.5rem 2rem 2rem 2rem; margin-top: 3rem; text-align: center; border-radius: 12px 12px 0 0;",
     tags$div(
       style = "text-align: center; margin-bottom: 15px; display: flex; align-items: center; justify-content: center; gap: 1.5rem;",
-      tags$img(src = "logos/logo.png", style = "height: 45px; width: auto;", alt = "Logo"),
-      tags$img(src = "logos/logo fieb.png", style = "height: 35px; width: auto;", alt = "Logo FIEB")
+      tags$img(src = "logos/logo fieb.png", style = "height: 45px; width: auto;", alt = "Logo FIEB"),
+      tags$img(src = "logos/logo.png", style = "height: 45px; width: auto;", alt = "Logo")
     ),
     tags$div(
       class = "footer-top-centered",
@@ -367,7 +367,7 @@ ui <- bslib::page_sidebar(
       ),
       tags$p(
         style = "color: #64748b; font-size: 0.8rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
-        "Curador responsável: David Franco Regalado, Ítalo Ferreira da Silva, João Carlos Pereira Passos e Raphael de Oliveira Silva."
+        "Curador responsável: David Franco Regalado, Ítalo Ferreira da Silva e Raphael de Oliveira Silva."
       ),
       tags$p(
         style = "color: #64748b; font-size: 0.8rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",

@@ -329,6 +329,137 @@ ai_make_request <- function(prompt, system_prompt = .AI_SYSTEM_PROMPT, cfg = NUL
   req
 }
 
+# Chamada de IA com suporte a imagens (multimodal/vision)
+ai_request_vision <- function(prompt, image_b64, mime = "image/png",
+                               timeout_sec = 60, retries = 1,
+                               log_path = NULL, conn = NULL) {
+  cfg <- get_ai_config()
+  if (!nzchar(cfg$provider) || !nzchar(cfg$api_key)) {
+    if (!is.null(log_path)) log_write(log_path, "WARN", "ai_request_vision: configuracao de IA ausente.")
+    return(NULL)
+  }
+
+  # Gemini nao suporta images via generateContent com data URI nestes provedores
+  if (cfg$provider == "gemini") {
+    if (!is.null(log_path)) log_write(log_path, "WARN",
+      sprintf("ai_request_vision: provedor %s nao suporta vision neste contexto. Ignorando.", cfg$provider))
+    return(NULL)
+  }
+
+  data_uri <- sprintf("data:%s;base64,%s", mime, image_b64)
+
+  user_content <- list(
+    list(type = "text", text = prompt),
+    list(type = "image_url", image_url = list(url = data_uri))
+  )
+
+  req <- NULL
+  if (cfg$provider %in% c("openai", "groq", "openrouter", "deepseek", "bluesminds", "nvidia")) {
+    messages <- list(list(role = "user", content = user_content))
+    req <- httr2::request(cfg$api_url) |>
+      httr2::req_method("POST") |>
+      httr2::req_timeout(timeout_sec) |>
+      httr2::req_headers(
+        `Content-Type` = "application/json",
+        `Authorization` = sprintf("Bearer %s", cfg$api_key)
+      ) |>
+      httr2::req_body_json(list(
+        model = cfg$model,
+        messages = messages,
+        max_tokens = 1024,
+        temperature = 0.1
+      ), auto_unbox = TRUE)
+  } else if (cfg$provider == "anthropic") {
+    anthropic_content <- list(
+      list(type = "image", source = list(
+        type = "base64",
+        media_type = mime,
+        data = image_b64
+      )),
+      list(type = "text", text = prompt)
+    )
+    body <- list(
+      model = cfg$model,
+      messages = list(list(role = "user", content = anthropic_content)),
+      max_tokens = 1024,
+      temperature = 0.1
+    )
+    req <- httr2::request(cfg$api_url) |>
+      httr2::req_method("POST") |>
+      httr2::req_timeout(timeout_sec) |>
+      httr2::req_headers(
+        `Content-Type` = "application/json",
+        `x-api-key` = cfg$api_key,
+        `anthropic-version` = "2023-06-01"
+      ) |>
+      httr2::req_body_json(body, auto_unbox = TRUE)
+  }
+
+  if (is.null(req)) {
+    if (!is.null(log_path)) log_write(log_path, "WARN",
+      sprintf("ai_request_vision: provedor %s nao suportado para vision.", cfg$provider))
+    return(NULL)
+  }
+
+  start_time <- Sys.time()
+  for (attempt in seq_len(retries + 1)) {
+    resp <- tryCatch(httr2::req_perform(req), error = function(e) {
+      if (!is.null(log_path)) log_write(log_path, "WARN",
+        sprintf("ai_request_vision: erro de rede (tentativa %d/%d): %s", attempt, retries + 1, e$message))
+      NULL
+    })
+
+    if (is.null(resp)) {
+      if (attempt <= retries) Sys.sleep(2^attempt + stats::runif(1, 0, 1))
+      next
+    }
+
+    status <- tryCatch(httr2::resp_status(resp), error = function(e) 500L)
+
+    if (status == 429L && attempt <= retries) {
+      retry_after <- tryCatch(httr2::resp_header(resp, "Retry-After"), error = function(e) NULL)
+      delay <- if (!is.null(retry_after)) {
+        val <- suppressWarnings(as.numeric(retry_after))
+        if (!is.na(val) && val > 0) val else 2^attempt
+      } else 2^attempt + stats::runif(1, 0, 1)
+      if (!is.null(log_path)) log_write(log_path, "WARN",
+        sprintf("ai_request_vision: 429 — aguardando %.1fs (tentativa %d/%d)", delay, attempt, retries + 1))
+      Sys.sleep(delay)
+      next
+    }
+
+    if (status >= 500L && attempt <= retries) {
+      Sys.sleep(2^attempt + stats::runif(1, 0, 1))
+      next
+    }
+
+    txt <- try(httr2::resp_body_string(resp), silent = TRUE)
+    if (!inherits(txt, "try-error") && nzchar(txt)) {
+      parsed_res <- try(jsonlite::fromJSON(txt, simplifyVector = FALSE), silent = TRUE)
+      if (inherits(parsed_res, "try-error")) return(NULL)
+
+      extracted <- NULL
+      if (cfg$provider %in% c("openai", "groq", "openrouter", "deepseek", "bluesminds", "nvidia")) {
+        extracted <- tryCatch(parsed_res$choices[[1]]$message$content %||% txt, error = function(e) txt)
+      } else if (cfg$provider == "anthropic") {
+        extracted <- tryCatch(parsed_res$content[[1]]$text %||% txt, error = function(e) txt)
+      }
+
+      if (!is.null(extracted) && nzchar(extracted)) {
+        elapsed <- as.numeric(Sys.time() - start_time, units = "secs")
+        if (!is.null(conn)) log_metric(conn, cfg$provider, "ai_request_vision", elapsed,
+          list(provider = cfg$provider, model = cfg$model, status = status))
+        return(extracted)
+      }
+    }
+  }
+
+  elapsed <- as.numeric(Sys.time() - start_time, units = "secs")
+  if (!is.null(conn)) log_metric(conn, cfg$provider, "ai_request_vision", elapsed,
+    list(provider = cfg$provider, model = cfg$model, status = "failed"))
+  NULL
+}
+
 ai_request <- function(prompt, timeout_sec = 45, retries = 2, log_path = NULL, conn = NULL, cfg = NULL) {
   start_time <- Sys.time()
   if (is.null(cfg)) cfg <- get_ai_config()

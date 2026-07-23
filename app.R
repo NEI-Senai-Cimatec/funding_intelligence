@@ -8,7 +8,7 @@ required_packages <- c(
   "ggplot2", "plotly", "DBI", "RSQLite", "jsonlite", "digest", "htmltools",
   "rvest", "xml2", "httr", "httr2", "tibble", "tools", "readr", "writexl", "janitor",
   "glue", "progress", "pdftools", "polite", "callr", "shinycssloaders", "googledrive",
-  "readxl"
+  "readxl", "base64enc", "tesseract"
 )
 
 install_missing_packages <- function(pkgs) {

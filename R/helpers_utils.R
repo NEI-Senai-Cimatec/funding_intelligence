@@ -315,8 +315,11 @@ extract_dates_from_text <- function(text) {
   txt <- text %||% ""
   pats <- c(
     "\\b\\d{1,2}/\\d{1,2}/\\d{4}\\b",
+    "\\b\\d{1,2}/\\d{1,2}/\\d{2}\\b",
     "\\b\\d{4}-\\d{2}-\\d{2}\\b",
-    "\\b\\d{1,2} de [A-Za-zçãéíóúâêô]+ de \\d{4}\\b"
+    "\\b\\d{1,2}\\.\\d{1,2}\\.\\d{4}\\b",
+    "\\b\\d{1,2}º?\\s+de\\s+[A-Za-zçãéíóúâêô]+(?:\\s+de)?\\s+\\d{4}\\b",
+    "\\b[A-Za-zçãéíóúâêô]+\\s*/\\s*\\d{4}\\b"
   )
   hits <- unique(unlist(lapply(pats, function(p) stringr::str_extract_all(txt, stringr::regex(p, ignore_case = TRUE))[[1]]), use.names = FALSE))
   hits <- hits[nzchar(hits)]
@@ -325,15 +328,43 @@ extract_dates_from_text <- function(text) {
   }
   month_map <- c(
     janeiro = "01", fevereiro = "02", marco = "03", março = "03", abril = "04", maio = "05", junho = "06",
-    julho = "07", agosto = "08", setembro = "09", outubro = "10", novembro = "11", dezembro = "12"
+    julho = "07", agosto = "08", setembro = "09", outubro = "10", novembro = "11", dezembro = "12",
+    jan = "01", fev = "02", mar = "03", abr = "04", mai = "05", jun = "06",
+    jul = "07", ago = "08", set = "09", out = "10", nov = "11", dez = "12",
+    sept = "09", oct = "10", nov = "11", dec = "12"
   )
   normalize_pt_date <- function(x) {
+    x <- trimws(x)
     key <- normalize_text(x)
-    if (!grepl(" de ", key, fixed = TRUE)) {
-      return(x)
+    # Formato ordinal: "1º de setembro de 2026" -> normalizar para "1 de setembro de 2026"
+    key <- gsub("º", "", key, fixed = TRUE)
+    key <- trimws(key)
+    # Formato "Mes/YYYY" -> dia 15
+    month_year_match <- regmatches(key, regexec("^([a-zçãéíóúâêô]+)\\s*/?\\s*(\\d{4})$", key))[[1]]
+    if (length(month_year_match) == 3) {
+      mo <- month_map[[month_year_match[2]]]
+      if (!is.null(mo)) {
+        return(sprintf("%s-%s-15", month_year_match[3], mo))
+      }
     }
-    m <- regmatches(key, regexec("(\\d{1,2}) de ([a-zçãéíóúâêô]+) de (\\d{4})", key))[[1]]
-    if (length(m) == 4) sprintf("%s-%s-%02d", m[4], month_map[[m[3]]] %||% "01", as.integer(m[2])) else x
+    # Formato longo: "1 de setembro de 2026"
+    if (grepl(" de ", key, fixed = TRUE)) {
+      m <- regmatches(key, regexec("(\\d{1,2})\\s+de\\s+([a-zçãéíóúâêô]+)\\s+de\\s*(\\d{4})", key))[[1]]
+      if (length(m) == 4) {
+        mo <- month_map[[m[3]]]
+        if (!is.null(mo)) {
+          return(sprintf("%s-%s-%02d", m[4], mo, as.integer(m[2])))
+        }
+      }
+    }
+    # Formato DD.MM.YYYY
+    if (grepl("\\.", x, fixed = TRUE)) {
+      partes <- strsplit(x, "\\.")[[1]]
+      if (length(partes) == 3 && nchar(partes[3]) == 4) {
+        return(sprintf("%s-%s-%s", partes[3], partes[2], partes[1]))
+      }
+    }
+    x
   }
   parse_date_safe(vapply(hits, normalize_pt_date, character(1)))
 }

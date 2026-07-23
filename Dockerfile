@@ -19,6 +19,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libfontconfig1-dev \
     libprotobuf23 \
     libuv1-dev \
+    libtesseract-dev \
+    libleptonica-dev \
+    tesseract-ocr \
+    tesseract-ocr-por \
     wget \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
@@ -34,7 +38,7 @@ RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux
     'janitor', 'glue', 'progress', 'pdftools', 'polite', \
     'callr', 'shinycssloaders', 'reticulate', 'chromote', \
     'googledrive', 'httr', 'memoise', 'ratelimitr', 'uuid', \
-    'readxl' \
+    'readxl', 'base64enc', 'tesseract' \
   ); \
   suppressMessages(install.packages(pkgs, dependencies = TRUE)); \
   tryCatch(remove.packages('otelsdk'), error = function(e) invisible(NULL)); \

@@ -2642,186 +2642,490 @@ collect_erc <- function(source_row, max_pages, max_records, use_ai, log_path) {
 
   return(list(records = records, pages_visited = length(search_terms), last_url = api_url))
 }
-collect_fapesb <- function(source_row, max_pages, max_records, use_ai, log_path) {
-  #' Coleta editais abertos da FAPESB via WordPress REST API
-  #' Endpoint: /wp-json/wp/v2/posts?categories=11 (Aberto)
-  #' NOTA: WordPress REST API fornece dados estruturados, mais confiável que HTML scraping
+# ---------------------------------------------------------------------------
+# FAPESB — Extração de prazo final a partir do texto do edital (PDF ou HTML)
+# ---------------------------------------------------------------------------
 
+.extract_deadline_from_cronograma_section <- function(txt) {
+  txt <- txt %||% ""
+  if (nchar(txt) < 20) return(NA_character_)
+  lines <- strsplit(txt, "\n")[[1]]
+  lower <- tolower(lines)
+  cronograma_idx <- grep("cronograma", lower, fixed = TRUE)
+  if (length(cronograma_idx) == 0) {
+    return(.extract_deadline_generic(txt))
+  }
+  start <- cronograma_idx[1]
+  window_end <- min(length(lines), start + 40L)
+  window_lines <- lines[start:window_end]
+  window_lower <- lower[start:window_end]
+  sub_kw <- c(
+    "submiss", "envio da proposta", "envio de proposta", "envio de propostas",
+    "postagem", "preenchimento e envio", "preenchimento",
+    "inscricao", "inscricao", "encaminhamento",
+    "data final", "prazo final", "prazo limite", "data limite"
+  )
+  for (kw in sub_kw) {
+    kw_hits <- grep(kw, window_lower, fixed = TRUE)
+    for (h in kw_hits) {
+      line_window <- window_lines[h]
+      dates <- extract_dates_from_text(line_window)
+      dates <- dates[!is.na(dates)]
+      dates <- dates[as.numeric(dates - Sys.Date()) >= -30]
+      if (length(dates) > 0) {
+        return(format(max(dates), "%Y-%m-%d"))
+      }
+    }
+  }
+  all_dates <- extract_dates_from_text(paste(window_lines, collapse = " "))
+  all_dates <- all_dates[!is.na(all_dates)]
+  future_dates <- all_dates[as.numeric(all_dates - Sys.Date()) >= -7]
+  if (length(future_dates) > 0) {
+    return(format(min(future_dates), "%Y-%m-%d"))
+  }
+  NA_character_
+}
+
+.extract_deadline_generic <- function(txt) {
+  txt <- txt %||% ""
+  if (nchar(txt) < 20) return(NA_character_)
+  lines <- strsplit(txt, "\n")[[1]]
+  lower <- tolower(lines)
+  kw_priority <- c(
+    "data final de postagem",
+    "prazo final", "prazo limite",
+    "envio da proposta", "envio de propostas",
+    "submissao de propostas", "submissao",
+    "preenchimento e envio", "preenchimento",
+    "encaminhamento da proposta", "encaminhamento",
+    "data limite", "data final",
+    "periodo de submissao", "periodo de inscricao"
+  )
+  for (kw in kw_priority) {
+    hits <- grep(kw, lower, fixed = TRUE)
+    if (length(hits) == 0) next
+    for (h in hits) {
+      window_start <- max(1L, h - 2L)
+      window_end <- min(length(lines), h + 3L)
+      window_txt <- paste(lines[window_start:window_end], collapse = " ")
+      # If the keyword says the deadline is in the cronograma (image), skip - let vision LLM handle it
+      if (grepl("indicad[ao] no cronograma|conforme cronograma|apresentad[ao] no cronograma", window_txt, ignore.case = TRUE)) {
+        next
+      }
+      dates <- extract_dates_from_text(window_txt)
+      dates <- dates[!is.na(dates)]
+      if (length(dates) > 0) {
+        return(format(max(dates), "%Y-%m-%d"))
+      }
+    }
+  }
+  # Fallback: find dates near deadline keywords only, not near publication/signing keywords
+  neg_kw <- c("publica", "assinatura", "salvador", "comunicado", "errata", "retifica")
+  all_dates <- extract_dates_from_text(txt)
+  all_dates <- all_dates[!is.na(all_dates)]
+  future <- all_dates[as.numeric(all_dates - Sys.Date()) >= -30]
+  if (length(future) > 0) {
+    lines <- strsplit(txt, "\n")[[1]]
+    lower <- tolower(lines)
+    valid_dates <- character(0)
+    pt_months <- c(janeiro="01",fevereiro="02",marco="03",abril="04",maio="05",junho="06",
+                   julho="07",agosto="08",setembro="09",outubro="10",novembro="11",dezembro="12")
+    for (d in future) {
+      d_num <- as.integer(format(d, "%d"))
+      d_month_num <- as.integer(format(d, "%m"))
+      d_year <- format(d, "%Y")
+      pt_month <- names(pt_months)[match(d_month_num, as.integer(pt_months))]
+      patterns <- c(
+        format(d, "%d/%m/%Y"),
+        format(d, "%d.%m.%Y"),
+        format(d, "%Y-%m-%d"),
+        paste(d_num, "de", pt_month, "de", d_year)
+      )
+      date_lines <- integer(0)
+      for (pat in patterns) {
+        hits <- grep(gsub("/", "[./]", pat), lower, fixed = FALSE)
+        date_lines <- c(date_lines, hits)
+      }
+      date_lines <- unique(date_lines)
+      near_neg <- FALSE
+      for (dl in date_lines) {
+        w_start <- max(1L, dl - 2L)
+        w_end <- min(length(lower), dl + 2L)
+        window <- paste(lower[w_start:w_end], collapse = " ")
+        if (any(grepl(neg_kw, window, fixed = TRUE))) {
+          near_neg <- TRUE
+          break
+        }
+      }
+      if (!near_neg) valid_dates <- c(valid_dates, as.character(d))
+    }
+    if (length(valid_dates) > 0) {
+      return(format(max(as.Date(valid_dates)), "%Y-%m-%d"))
+    }
+  }
+  if (length(all_dates) > 0) {
+    return(format(max(all_dates), "%Y-%m-%d"))
+  }
+  NA_character_
+}
+
+# ---------------------------------------------------------------------------
+# FAPESB — Extração de prazo a partir do PDF do edital
+# ---------------------------------------------------------------------------
+
+.extract_fapesb_prazo_from_pdf <- function(pdf_url, log_path = NULL) {
+  pdf_txt <- try(extract_text_from_pdf(pdf_url, log_path = log_path), silent = TRUE)
+  if (!inherits(pdf_txt, "try-error") && !is.na(pdf_txt) && nchar(pdf_txt) > 50) {
+    deadline <- .extract_deadline_from_cronograma_section(pdf_txt)
+    if (!is.na(deadline)) {
+      return(list(data_limite = deadline, link_documento_pdf = pdf_url))
+    }
+  }
+  if (requireNamespace("tesseract", quietly = TRUE)) {
+    tf <- try({
+      req <- httr2::request(pdf_url) |>
+        httr2::req_user_agent("FundingIntelligence/1.0") |>
+        httr2::req_timeout(30)
+      resp <- httr2::req_perform(req)
+      path <- tempfile(fileext = ".pdf")
+      writeBin(httr2::resp_body_raw(resp), path)
+      ocr_txt <- try(pdftools::pdf_ocr_text(path, language = "por"), silent = TRUE)
+      unlink(path)
+      if (inherits(ocr_txt, "try-error") || length(ocr_txt) == 0) NULL else paste(ocr_txt, collapse = "\n")
+    }, silent = TRUE)
+    if (!is.null(tf) && !inherits(tf, "try-error") && nzchar(tf) && nchar(tf) > 50) {
+      deadline <- .extract_deadline_from_cronograma_section(tf)
+      if (!is.na(deadline)) {
+        return(list(data_limite = deadline, link_documento_pdf = pdf_url))
+      }
+    }
+  }
+  list(data_limite = NA_character_, link_documento_pdf = NA_character_)
+}
+
+# ---------------------------------------------------------------------------
+# FAPESB — Extração de prazo via visão LLM (imagem do cronograma)
+# ---------------------------------------------------------------------------
+
+.extract_fapesb_prazo_from_image_llm <- function(detail_html, detail_url, log_path = NULL) {
+  html <- tryCatch(xml2::read_html(detail_html), error = function(e) NULL)
+  if (is.null(html)) {
+    return(list(data_limite = NA_character_, observacoes = NA_character_))
+  }
+  all_imgs <- rvest::html_elements(html, "img")
+  if (length(all_imgs) == 0) {
+    return(list(data_limite = NA_character_, observacoes = NA_character_))
+  }
+  cronograma_img <- NULL
+  for (img in all_imgs) {
+    alt <- tolower(rvest::html_attr(img, "alt") %||% "")
+    title <- tolower(rvest::html_attr(img, "title") %||% "")
+    src <- rvest::html_attr(img, "src") %||% ""
+    if (grepl("imagem do edital|cronograma|cronogram", alt, fixed = FALSE) ||
+        grepl("imagem do edital|cronograma|cronogram", title, fixed = FALSE) ||
+        grepl("cronograma|cronogram|edital", src, ignore.case = TRUE)) {
+      cronograma_img <- src
+      break
+    }
+  }
+  if (is.null(cronograma_img)) {
+    for (img in all_imgs) {
+      src <- rvest::html_attr(img, "src") %||% ""
+      if (nzchar(src) && !grepl("logo|icon|favicon|avatar|badge|button", src, ignore.case = TRUE)) {
+        cronograma_img <- src
+        break
+      }
+    }
+  }
+  if (is.null(cronograma_img) || !nzchar(cronograma_img)) {
+    return(list(data_limite = NA_character_, observacoes = NA_character_))
+  }
+  img_url <- resolve_url(detail_url, cronograma_img)
+  if (is.na(img_url) || !nzchar(img_url)) {
+    return(list(data_limite = NA_character_, observacoes = NA_character_))
+  }
+  img_bytes <- try({
+    req <- httr2::request(img_url) |>
+      httr2::req_user_agent("FundingIntelligence/1.0") |>
+      httr2::req_timeout(15)
+    resp <- httr2::req_perform(req)
+    httr2::resp_body_raw(resp)
+  }, silent = TRUE)
+  if (inherits(img_bytes, "try-error") || length(img_bytes) == 0) {
+    return(list(data_limite = NA_character_, observacoes = NA_character_))
+  }
+  if (length(img_bytes) > 1.5e6) {
+    return(list(data_limite = NA_character_, observacoes = NA_character_))
+  }
+  mime <- "image/png"
+  if (length(img_bytes) >= 3) {
+    hdr <- rawToChar(img_bytes[1:min(4, length(img_bytes))], useBytes = TRUE)
+    if (grepl("PNG", hdr, fixed = TRUE)) mime <- "image/png"
+    else if (grepl("\\xff\\xd8\\xff", hdr, fixed = FALSE)) mime <- "image/jpeg"
+    else if (grepl("GIF", hdr, fixed = TRUE)) mime <- "image/gif"
+  }
+  b64 <- base64enc::base64encode(img_bytes)
+  prompt <- paste(
+    "Esta imagem mostra a tabela de CRONOGRAMA de um edital da FAPESB.",
+    "Identifique a data final para envio/preenchimento/postagem da proposta.",
+    "Responda SOMENTE com a data no formato YYYY-MM-DD.",
+    "Se nao encontrar nenhuma data de submissao, responda: null"
+  )
+  resp_text <- try(ai_request_vision(prompt, b64, mime = mime, log_path = log_path), silent = TRUE)
+  if (inherits(resp_text, "try-error") || is.null(resp_text) || !nzchar(resp_text)) {
+    return(list(data_limite = NA_character_, observacoes = NA_character_))
+  }
+  resp_clean <- trimws(resp_text)
+  date_match <- regmatches(resp_clean, regexpr("\\d{4}-\\d{2}-\\d{2}", resp_clean))
+  if (length(date_match) == 0 || !nzchar(date_match)) {
+    br_match <- regmatches(resp_clean, regexpr("\\d{2}/\\d{2}/\\d{4}", resp_clean))
+    if (length(br_match) > 0 && nzchar(br_match)) {
+      partes <- strsplit(br_match, "/")[[1]]
+      date_match <- sprintf("%s-%s-%s", partes[3], partes[2], partes[1])
+    } else {
+      return(list(data_limite = NA_character_, observacoes = NA_character_))
+    }
+  }
+  parsed <- try(lubridate::ymd(date_match), silent = TRUE)
+  if (inherits(parsed, "try-error") || is.na(parsed)) {
+    return(list(data_limite = NA_character_, observacoes = NA_character_))
+  }
+  list(data_limite = format(parsed, "%Y-%m-%d"),
+       observacoes = sprintf("Prazo extraido via visao LLM da imagem: %s", img_url))
+}
+
+.fetch_fapesb_category_page <- function(year, log_path = NULL) {
+  cat_url <- "https://www.fapesb.ba.gov.br/category/edital/"
+  resp <- try(safe_request_page(cat_url, log_path = log_path, use_browser_fallback = TRUE), silent = TRUE)
+  if (inherits(resp, "try-error") || is.null(resp) || is.null(resp$html)) {
+    if (!is.null(log_path)) log_write(log_path, "ERROR", "FAPESB: falha ao buscar pagina de categoria")
+    return(NULL)
+  }
+  html <- resp$html
+  year_str <- as.character(year)
+  selected_btn <- rvest::html_element(html, "button.selecionado")
+  selected_year <- rvest::html_attr(selected_btn, "value") %||% ""
+  if (selected_year != year_str) {
+    post_resp <- try({
+      req <- httr2::request(cat_url) |>
+        httr2::req_user_agent("FundingIntelligence/1.0") |>
+        httr2::req_body_form(ano_filtro = year_str, ofsubmitted = "1") |>
+        httr2::req_timeout(30)
+      httr2::req_perform(req)
+    }, silent = TRUE)
+    if (!inherits(post_resp, "try-error") && httr2::resp_status(post_resp) == 200) {
+      post_txt <- httr2::resp_body_string(post_resp)
+      html <- try(xml2::read_html(post_txt), silent = TRUE)
+      if (inherits(html, "try-error")) {
+        if (!is.null(log_path)) log_write(log_path, "WARN", "FAPESB: falha ao parsear POST ano_filtro")
+        return(resp$html)
+      }
+    }
+  }
+  html
+}
+
+.parse_fapesb_category_items <- function(html, year, log_path = NULL) {
+  items_nodes <- rvest::html_elements(html, "#tab1 .edital-item")
+  year_str <- as.character(year)
+  parsed <- lapply(items_nodes, function(node) {
+    title_node <- rvest::html_element(node, ".edital-title a")
+    if (is.null(title_node) || inherits(title_node, "xml_missing")) return(NULL)
+    href <- rvest::html_attr(title_node, "href") %||% ""
+    titulo <- trimws(rvest::html_text2(title_node))
+    if (!nzchar(href)) return(NULL)
+    titulo_lower <- tolower(titulo)
+    if (grepl("errata|retifica|prorrog", titulo_lower, fixed = FALSE)) return(NULL)
+    contains_year <- grepl(year_str, titulo, fixed = TRUE)
+    contains_prev <- grepl(as.character(year - 1L), titulo, fixed = TRUE)
+    if (contains_prev && !contains_year) return(NULL)
+    resumo_node <- rvest::html_element(node, "p")
+    resumo <- if (!is.null(resumo_node) && !inherits(resumo_node, "xml_missing")) {
+      trimws(rvest::html_text2(resumo_node))
+    } else ""
+    tibble::tibble(link_detalhe = href, titulo = titulo, resumo = resumo)
+  })
+  parsed <- Filter(Negate(is.null), parsed)
+  if (length(parsed) == 0) return(tibble::tibble(link_detalhe = character(0), titulo = character(0), resumo = character(0)))
+  dplyr::bind_rows(parsed)
+}
+
+.extract_fapesb_prazo_from_detail <- function(detail_html, detail_url, log_path = NULL) {
+  html <- tryCatch(xml2::read_html(detail_html), error = function(e) NULL)
+  if (is.null(html)) {
+    return(list(data_limite = NA_character_, link_documento_pdf = NA_character_, observacoes = NA_character_, status = "html_parse_error"))
+  }
+  corpo_nodes <- tryCatch(
+    rvest::html_elements(html, "#content .content-area, main#main article, #main .edital-item, .site-content article, .site-content #content"),
+    error = function(e) NULL
+  )
+  if (is.null(corpo_nodes) || length(corpo_nodes) == 0) {
+    corpo_nodes <- rvest::html_elements(html, "body")
+  }
+  corpo_html <- paste(vapply(corpo_nodes, as.character, character(1)), collapse = "\n")
+  corpo_text <- gsub("<[^>]+>", " ", corpo_html)
+  corpo_text <- gsub("&amp;", "&", corpo_text)
+  corpo_text <- gsub("&nbsp;", " ", corpo_text)
+  corpo_text <- gsub("\\s+", " ", trimws(corpo_text))
+  data_limite <- NA_character_
+  link_pdf <- NA_character_
+  status <- "no_match"
+  if (nchar(corpo_text) > 10) {
+    data_limite <- .extract_deadline_from_cronograma_section(corpo_text)
+  }
+  if (!is.na(data_limite)) {
+    parsed <- try(lubridate::ymd(data_limite), silent = TRUE)
+    if (!inherits(parsed, "try-error") && !is.na(parsed)) {
+      diff_days <- as.numeric(parsed - Sys.Date())
+      if (diff_days >= 0 && diff_days <= 730) {
+        if (!is.null(log_path)) log_write(log_path, "INFO", sprintf("FAPESB prazo extraido via regex: %s", data_limite))
+        return(list(data_limite = data_limite, link_documento_pdf = NA_character_, observacoes = NA_character_, status = "regex"))
+      }
+    }
+  }
+  data_limite <- NA_character_
+  if (nchar(corpo_html) > 0) {
+    link_pdf_node <- rvest::html_element(html, "a.link-pdf, a[class*='link-pdf']")
+    if (!is.null(link_pdf_node) && !inherits(link_pdf_node, "xml_missing")) {
+      link_pdf <- rvest::html_attr(link_pdf_node, "href")
+    }
+    if (is.na(link_pdf) || !nzchar(link_pdf)) {
+      pdf_links <- try(extract_pdf_links(html, detail_url), silent = TRUE)
+      if (!inherits(pdf_links, "try-error") && length(pdf_links) > 0) {
+        edital_links <- pdf_links[grepl("edital|EDITAL", basename(pdf_links), ignore.case = FALSE)]
+        link_pdf <- if (length(edital_links) > 0) edital_links[1] else pdf_links[1]
+      }
+    }
+    if (!is.na(link_pdf) && nzchar(link_pdf)) {
+      link_pdf <- resolve_url(detail_url, link_pdf)
+      pdf_result <- try(.extract_fapesb_prazo_from_pdf(link_pdf, log_path), silent = TRUE)
+      if (!inherits(pdf_result, "try-error") && !is.na(pdf_result$data_limite)) {
+        if (!is.null(log_path)) log_write(log_path, "INFO", sprintf("FAPESB prazo extraido via PDF: %s (%s)", pdf_result$data_limite, link_pdf))
+        return(list(data_limite = pdf_result$data_limite, link_documento_pdf = link_pdf, observacoes = NA_character_, status = "pdf"))
+      }
+    }
+  }
+  vision_result <- try(.extract_fapesb_prazo_from_image_llm(corpo_html, detail_url, log_path), silent = TRUE)
+  if (!inherits(vision_result, "try-error") && !is.na(vision_result$data_limite)) {
+    if (!is.null(log_path)) log_write(log_path, "INFO", sprintf("FAPESB prazo extraido via visao LLM: %s", vision_result$data_limite))
+    return(list(data_limite = vision_result$data_limite, link_documento_pdf = NA_character_, observacoes = vision_result$observacoes %||% NA_character_, status = "vision_llm"))
+  }
+  if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("FAPESB: nenhuma estrategia extraiu prazo para %s", detail_url))
+  list(data_limite = data_limite, link_documento_pdf = NA_character_, observacoes = NA_character_, status = status)
+}
+
+collect_fapesb <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  #' Coleta editais abertos da FAPESB via pagina de categoria (scraping HTML)
+  #' URL: https://www.fapesb.ba.gov.br/category/edital/ (default = ano corrente, Abertos)
   .log <- function(level, msg) {
     if (!is.null(log_path)) log_write(log_path, level, msg)
     message(sprintf("[FAPESB][%s] %s", level, msg))
   }
-
-  base_api <- "https://www.fapesb.ba.gov.br/wp-json/wp/v2/posts"
-  category_id <- 11L # Categoria "Aberto"
-  page_size <- 10L
-
+  year <- as.integer(format(Sys.Date(), "%Y"))
+  cat_url <- "https://www.fapesb.ba.gov.br/category/edital/"
+  .log("INFO", sprintf("Coletando FAPESB via categoria (ano=%d, status=Abertos)...", year))
+  html <- try(.fetch_fapesb_category_page(year, log_path), silent = TRUE)
+  if (inherits(html, "try-error") || is.null(html)) {
+    .log("ERROR", "Falha ao buscar pagina de categoria FAPESB")
+    return(list(records = tibble::tibble(), pages_visited = 0L, last_url = cat_url))
+  }
+  items <- try(.parse_fapesb_category_items(html, year, log_path), silent = TRUE)
+  if (inherits(items, "try-error")) {
+    .log("ERROR", "Falha ao parsear itens da categoria FAPESB")
+    return(list(records = tibble::tibble(), pages_visited = 1L, last_url = cat_url))
+  }
+  items <- head(items, max_records)
+  n_items <- nrow(items)
+  .log("INFO", sprintf("FAPESB: %d editais abertos em %d", n_items, year))
+  if (n_items == 0) {
+    return(list(records = tibble::tibble(), pages_visited = 1L, last_url = cat_url))
+  }
   all_items <- list()
-  page <- 1L
-
-  repeat {
-    .log("INFO", sprintf("Buscando página %d...", page))
-
-    url <- sprintf(
-      "%s?categories=%d&per_page=%d&page=%d&_fields=id,title,link,date,excerpt,content",
-      base_api, category_id, page_size, page
-    )
-
-    # Usar httr2 para GET (cross-platform, sem dependência de curl CLI)
-    resp <- tryCatch(
-      {
-        req <- httr2::request(url) |>
-          httr2::req_user_agent("FundingIntelligence/1.0") |>
-          httr2::req_timeout(30)
-        httr2::req_perform(req)
-      },
-      error = function(e) {
-        .log("ERROR", sprintf("Erro ao executar request: %s", e$message))
-        NULL
-      }
-    )
-
-    if (is.null(resp)) break
-
-    status <- tryCatch(httr2::resp_status(resp), error = function(e) 0L)
-    if (status != 200L) {
-      .log("WARN", sprintf("Falha na requisição (HTTP %d), interrompendo paginação", status))
-      break
-    }
-
-    data <- tryCatch(httr2::resp_body_json(resp, simplifyVector = FALSE), error = function(e) {
-      .log("ERROR", sprintf("Erro ao parsear JSON: %s", e$message))
-      NULL
-    })
-
-    if (is.null(data) || length(data) == 0) {
-      .log("WARN", "Resposta vazia ou inválida")
-      break
-    }
-
-    # Verificar se é erro da API (400 = página não existe)
-    if (is.list(data) && !is.null(data$code)) {
-      .log("INFO", "Fim da paginação (página não encontrada)")
-      break
-    }
-
-    all_items <- c(all_items, data)
-    .log("INFO", sprintf("Página %d: %d itens coletados, %d acumulados", page, length(data), length(all_items)))
-
-    if (length(data) < page_size) break
-    if (length(all_items) >= max_records) break
-    if (page >= max_pages) {
-      .log("WARN", sprintf("Limite de %d páginas atingido", max_pages))
-      break
-    }
-
-    page <- page + 1L
-    Sys.sleep(0.5)
-  }
-
-  # Truncar para max_records
-  if (length(all_items) > max_records) {
-    all_items <- all_items[seq_len(max_records)]
-    .log("WARN", sprintf("Limitado a %d registros", max_records))
-  }
-
-  if (length(all_items) == 0) {
-    .log("WARN", "Nenhum item encontrado")
-    return(list(records = tibble::tibble(), pages_visited = as.integer(page - 1L), last_url = base_api))
-  }
-
-  # Converter para tibble
-  records <- purrr::map_dfr(all_items, function(item) {
-    titulo <- gsub("<[^>]+>", "", item$title$rendered)
-    # Decodificar entidades HTML
-    titulo <- gsub("&#8211;", "–", titulo)
-    titulo <- gsub("&#8212;", "—", titulo)
-    titulo <- gsub("&#8216;", "'", titulo)
-    titulo <- gsub("&#8217;", "'", titulo)
-    titulo <- gsub("&#8220;", '"', titulo)
-    titulo <- gsub("&#8221;", '"', titulo)
-    titulo <- gsub("&amp;", "&", titulo)
-    titulo <- gsub("&nbsp;", " ", titulo)
-    titulo <- gsub("&#8230;", "...", titulo)
-    titulo <- gsub("&hellip;", "...", titulo)
-    titulo <- gsub("&#038;", "&", titulo)
-
-    link <- item$link
-    data_pub <- substr(item$date, 1, 10)
-
-    # Limpar conteúdo HTML
-    conteudo_html <- item$content$rendered %||% ""
-    conteudo_text <- gsub("<[^>]+>", " ", conteudo_html)
-    conteudo_text <- gsub("&amp;", "&", conteudo_text)
-    conteudo_text <- gsub("&nbsp;", " ", conteudo_text)
-    conteudo_text <- gsub("&#8211;", "–", conteudo_text)
-    conteudo_text <- gsub("&#8212;", "—", conteudo_text)
-    conteudo_text <- gsub("&hellip;", "...", conteudo_text)
-    conteudo_text <- gsub("\\s+", " ", trimws(conteudo_text))
-
-    # Extrair datas do conteúdo (se houver tabela de cronograma)
-    data_limite <- NA_character_
-    if (nchar(conteudo_text) > 10) {
-      # Tentar extrair data no formato DD/MM/AA ou DD/MM/AAAA
-      datas <- regmatches(conteudo_text, gregexpr("\\d{2}/\\d{2}/\\d{2,4}", conteudo_text))[[1]]
-      if (length(datas) > 0) {
-        # Usar a última data encontrada (geralmente é o prazo final)
-        data_limite <- utils::tail(datas, 1)
-        # Converter para formato ISO
-        partes <- strsplit(data_limite, "/")[[1]]
-        if (length(partes) == 3) {
-          ano <- if (nchar(partes[3]) == 2) paste0("20", partes[3]) else partes[3]
-          data_limite <- sprintf("%s-%s-%s", ano, partes[2], partes[1])
-        }
-      }
-    }
-
-    # Hash de deduplicação
-    hash_input <- paste0(item$id, "|", titulo)
+  for (i in seq_len(n_items)) {
+    it <- items[i, ]
+    .log("INFO", sprintf("[%d/%d] %s", i, n_items, substr(it$titulo, 1, 70)))
+    hash_input <- paste0(it$link_detalhe, "|", it$titulo)
     hash_dedup <- digest::digest(hash_input, algo = "xxhash64")
-
-    tibble::tibble(
-      id_registro = sprintf("fapesb_%s", substr(hash_dedup, 1, 16)),
-      entidade = "FAPESB",
-      pais_origem = "Brasil",
-      titulo = titulo,
-      subtitulo = NA_character_,
-      descricao_resumida = if (nchar(conteudo_text) > 0) substr(conteudo_text, 1, 500) else titulo,
-      descricao_completa = if (nchar(conteudo_text) > 0) conteudo_text else titulo,
-      tipo_oportunidade = "Edital",
-      modalidade = NA_character_,
-      area_tematica = NA_character_,
-      palavras_chave = "edital",
-      elegibilidade = NA_character_,
-      publico_alvo = NA_character_,
-      nivel_academico = NA_character_,
-      instituicao_financiadora = "Fundação de Amparo à Pesquisa do Estado da Bahia",
-      valor_financiado = NA_real_,
-      moeda = NA_character_,
-      data_publicacao = data_pub,
-      data_abertura = data_pub,
-      data_limite = data_limite,
-      data_encerramento = NA_character_,
-      status_oportunidade = "aberto",
-      link_origem = "https://www.fapesb.ba.gov.br/",
-      link_detalhe = link,
-      link_documento_pdf = NA_character_,
-      idioma = "pt",
-      localidade = "Bahia",
-      observacoes = NA_character_,
-      texto_bruto = paste(titulo, conteudo_text, sep = "\n\n"),
-      pagina_coletada = 1L,
-      fonte_oficial = "fapesb",
-      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
-      hash_deduplicacao = hash_dedup,
-      campos_inferidos_ia = NA_character_
+    detail <- try(safe_request_page(it$link_detalhe, log_path = log_path, use_browser_fallback = TRUE), silent = TRUE)
+    if (inherits(detail, "try-error") || is.null(detail) || is.null(detail$html)) {
+      .log("WARN", sprintf("Falha ao buscar detalhe: %s", it$link_detalhe))
+      all_items[[i]] <- tibble::tibble(
+        id_registro = sprintf("fapesb_%s", substr(hash_dedup, 1, 16)),
+        entidade = "FAPESB", pais_origem = "Brasil",
+        titulo = it$titulo, subtitulo = NA_character_,
+        descricao_resumida = it$resumo, descricao_completa = it$resumo,
+        tipo_oportunidade = "Edital", modalidade = NA_character_,
+        area_tematica = NA_character_, palavras_chave = "edital",
+        elegibilidade = NA_character_, publico_alvo = NA_character_,
+        nivel_academico = NA_character_,
+        instituicao_financiadora = "Fundacao de Amparo a Pesquisa do Estado da Bahia",
+        valor_financiado = NA_real_, moeda = NA_character_,
+        data_publicacao = NA_character_, data_abertura = NA_character_,
+        data_limite = NA_character_, data_encerramento = NA_character_,
+        status_oportunidade = "aberto",
+        link_origem = cat_url, link_detalhe = it$link_detalhe,
+        link_documento_pdf = NA_character_,
+        idioma = "pt", localidade = "Bahia",
+        observacoes = sprintf("Resumo: %s", it$resumo),
+        texto_bruto = it$titulo, pagina_coletada = 1L,
+        fonte_oficial = "fapesb",
+        data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+        hash_deduplicacao = hash_dedup, campos_inferidos_ia = NA_character_
+      )
+      next
+    }
+    detail_html_str <- detail$text %||% as.character(detail$html)
+    prazo <- try(.extract_fapesb_prazo_from_detail(detail_html_str, it$link_detalhe, log_path), silent = TRUE)
+    if (inherits(prazo, "try-error")) {
+      prazo <- list(data_limite = NA_character_, link_documento_pdf = NA_character_, observacoes = NA_character_, status = "error")
+    }
+    corpo_nodes <- tryCatch(
+      rvest::html_elements(detail$html, "#content .content-area, main#main article, #main .edital-item, .site-content article"),
+      error = function(e) NULL
     )
-  })
-
+    corpo_html_str <- if (!is.null(corpo_nodes) && length(corpo_nodes) > 0) {
+      paste(vapply(corpo_nodes, as.character, character(1)), collapse = "\n")
+    } else detail_html_str
+    corpo_text <- gsub("<[^>]+>", " ", corpo_html_str)
+    corpo_text <- gsub("\\s+", " ", trimws(corpo_text))
+    if (nchar(corpo_text) > 1500) corpo_text <- substr(corpo_text, 1, 1500)
+    obs_parts <- c(
+      if (!is.na(prazo$observacoes) && nzchar(prazo$observacoes)) prazo$observacoes,
+      if (nchar(it$resumo) > 0) sprintf("Resumo: %s", substr(it$resumo, 1, 400)),
+      sprintf("Status extracao: %s", prazo$status %||% "unknown")
+    )
+    obs <- paste(obs_parts, collapse = " | ")
+    Sys.sleep(0.5)
+    all_items[[i]] <- tibble::tibble(
+      id_registro = sprintf("fapesb_%s", substr(hash_dedup, 1, 16)),
+      entidade = "FAPESB", pais_origem = "Brasil",
+      titulo = it$titulo, subtitulo = NA_character_,
+      descricao_resumida = if (nchar(corpo_text) > 0) substr(corpo_text, 1, 500) else it$titulo,
+      descricao_completa = if (nchar(corpo_text) > 0) corpo_text else it$titulo,
+      tipo_oportunidade = "Edital", modalidade = NA_character_,
+      area_tematica = NA_character_, palavras_chave = "edital",
+      elegibilidade = NA_character_, publico_alvo = NA_character_,
+      nivel_academico = NA_character_,
+      instituicao_financiadora = "Fundacao de Amparo a Pesquisa do Estado da Bahia",
+      valor_financiado = NA_real_, moeda = NA_character_,
+      data_publicacao = NA_character_, data_abertura = NA_character_,
+      data_limite = prazo$data_limite, data_encerramento = NA_character_,
+      status_oportunidade = "aberto",
+      link_origem = cat_url, link_detalhe = it$link_detalhe,
+      link_documento_pdf = prazo$link_documento_pdf,
+      idioma = "pt", localidade = "Bahia",
+      observacoes = obs,
+      texto_bruto = paste(it$titulo, corpo_text, sep = "\n\n"),
+      pagina_coletada = 1L, fonte_oficial = "fapesb",
+      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      hash_deduplicacao = hash_dedup, campos_inferidos_ia = NA_character_
+    )
+  }
+  records <- dplyr::bind_rows(all_items)
   .log("INFO", sprintf("FAPESB: %d registros finais coletados", nrow(records)))
-
-  return(list(records = records, pages_visited = as.integer(page - 1L), last_url = base_api))
+  return(list(records = records, pages_visited = 1L, last_url = cat_url))
 }
+
 truncate_excel_strings <- function(df, max_chars = 32000L) {
   # Convert to plain data.frame to prevent tibble Rcpp compatibility issues
   out <- as.data.frame(df, stringsAsFactors = FALSE)

@@ -277,10 +277,9 @@ ui <- bslib::page_sidebar(
       "Resultados",
       bslib::card(
         bslib::layout_columns(
-          col_widths = c(4, 4, 4),
+          col_widths = c(6, 6),
           uiOutput("collection_status_ui"),
-          uiOutput("source_counter_ui"),
-          uiOutput("export_status_ui")
+          uiOutput("source_counter_ui")
         )
       ),
       bslib::card(
@@ -329,15 +328,16 @@ ui <- bslib::page_sidebar(
         )
       )
     ),
-    bslib::nav_panel(
-      "Recomendados para mim",
-      bslib::layout_columns(
-        col_widths = c(8, 4),
-        bslib::card(DTOutput("recommended_table")),
-        bslib::card(uiOutput("profile_summary"))
-      ),
-      bslib::card(h4("Colaboradores potenciais por tema"), DTOutput("collaborators_table"))
-    ),
+    # Painel "Recomendados para mim" ocultado da UI — código preservado para reativação futura
+    # bslib::nav_panel(
+    #   "Recomendados para mim",
+    #   bslib::layout_columns(
+    #     col_widths = c(8, 4),
+    #     bslib::card(DTOutput("recommended_table")),
+    #     bslib::card(uiOutput("profile_summary"))
+    #   ),
+    #   bslib::card(h4("Colaboradores potenciais por tema"), DTOutput("collaborators_table"))
+    # ),
     bslib::nav_panel(
       "Logs",
       DTOutput("logs_table")

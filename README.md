@@ -74,7 +74,6 @@ flowchart TD
         Dashboard[Dashboard Principal]
         TabResultados[Resultados]
         TabRastreados[Editais Rastreados]
-        TabRecomendados[Recomendados para Mim]
         TabFinanciador[Por Financiador]
         TabBuscas[Buscas Salvas]
         TabLogs[Logs de Coleta]
@@ -543,7 +542,7 @@ Deve retornar JSON com `"totalResults"` > 0.
 4. **Aderência Dinâmica** — Score recalculado em tempo real com base na query ativa
 5. **Rastrear Editais** — Adicione editais à aba "Editais Rastreados" para acompanhar candidaturas
 6. **Parceiros CIMATEC** — Veja pesquisadores internos recomendados para cada edital rastreado
-7. **Recomendações** — A aba "Recomendados para mim" lista editais com maior aderência ao perfil
+7. ~~**Recomendações**~~ — Aba "Recomendados para mim" atualmente ocultada da UI (código preservado)
 8. **Exportação** — Bases consolidadas salvas automaticamente em `data_exports/` (CSV, RDS, XLSX)
 
 ---
@@ -575,6 +574,15 @@ Rscript scratch/test_stealth_request.R
 # Testar retries da IA
 Rscript scratch/test_ai_backoff.R
 ```
+
+---
+
+## Seções Ocultadas da Interface
+
+| Seção | Estado | Motivo |
+|---|---|---|
+| Card "Exportação" (Resultados) | ❌ Oculto | Substituído pelos botões de exportação direta (XLSX/CSV) |
+| Aba "Recomendados para mim" | ❌ Oculto | Funcionalidade em revisão. Código-fonte preservado e comentado no `app.R` (linhas 332-340) para reativação futura. Toda a lógica de recomendação (`helpers_recommend.R`, `recommended_table`, `profile_summary`, `collaborators_table`) permanece funcional. |
 
 ---
 

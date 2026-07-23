@@ -216,8 +216,8 @@ ui <- bslib::page_sidebar(
       ),
       tags$div(
         class = "app-title-main",
-        h2("QuIIN - QFunding Intelligence Hub"),
-        p("Plataforma de inteligência de financiamento à pesquisa em tecnologias quânticas, com cobertura global de oportunidades")
+        h2("RI - Radar da Inovação"),
+        p("Plataforma de inteligência de financiamento à pesquisa, desenvolvimento e inovação com cobertura global de oportunidades")
       )
     ),
     uiOutput("header_status")
@@ -348,8 +348,9 @@ ui <- bslib::page_sidebar(
     class = "app-footer-centered",
     style = "background-color: #E9E9E9; color: #64748b; border-top: 4px solid #004691; box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05); padding: 2.5rem 2rem 2rem 2rem; margin-top: 3rem; text-align: center; border-radius: 12px 12px 0 0;",
     tags$div(
-      style = "text-align: center; margin-bottom: 15px;",
-      tags$img(src = "logos/logos.png", style = "max-height: 90px; width: auto; display: block; margin: 0 auto 10px auto;", alt = "Logo QuIIN")
+      style = "text-align: center; margin-bottom: 15px; display: flex; align-items: center; justify-content: center; gap: 1.5rem;",
+      tags$img(src = "logos/logo.png", style = "height: 45px; width: auto;", alt = "Logo"),
+      tags$img(src = "logos/logo fieb.png", style = "height: 35px; width: auto;", alt = "Logo FIEB")
     ),
     tags$div(
       class = "footer-top-centered",
@@ -362,15 +363,11 @@ ui <- bslib::page_sidebar(
       class = "footer-bottom-centered",
       tags$p(
         style = "color: #64748b; font-size: 0.8rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
-        tags$i(class = "fa-solid fa-atom", style = "color: #004691;"), " QuIIN • Associação tecnológica"
-      ),
-      tags$p(
-        style = "color: #64748b; font-size: 0.8rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
         tags$i(class = "fa-solid fa-magnifying-glass-chart", style = "color: #004691;"), " NEI • Núcleo de Economia Industrial"
       ),
       tags$p(
         style = "color: #64748b; font-size: 0.8rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
-        "Curador responsável: David Franco Regalado, Ítalo Ferreira da Silva e João Carlos Pereira Passos."
+        "Curador responsável: David Franco Regalado, Ítalo Ferreira da Silva, João Carlos Pereira Passos e Raphael de Oliveira Silva."
       ),
       tags$p(
         style = "color: #64748b; font-size: 0.8rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",

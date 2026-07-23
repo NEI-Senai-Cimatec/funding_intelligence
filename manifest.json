@@ -4068,28 +4068,6 @@
         "Archs": "x64"
       }
     },
-    "tesseract": {
-      "Source": "CRAN",
-      "Repository": "https://cloud.r-project.org",
-      "description": {
-        "Package": "tesseract",
-        "Title": "Bindings to the Tesseract OCR Engine",
-        "Version": "5.2.0",
-        "Authors@R": "c(person(\"Jeroen\", \"Ooms\", role = c(\"aut\", \"cre\"), email = \"jeroenooms@gmail.com\", comment = c(ORCID = \"0000-0002-4035-0289\")))",
-        "Description": "An R client for the Tesseract optical character recognition (OCR) engine. The package provides bindings for text recognition of images containing text. Supports multiple languages and can be used in combination with pdftools for OCR of scanned PDF documents.",
-        "License": "Apache License (>= 2)",
-        "URL": "https://github.com/ropensci/tesseract",
-        "BugReports": "https://github.com/ropensci/tesseract/issues",
-        "Depends": "R (>= 3.1.0)",
-        "LinkingTo": "cpp11",
-        "SystemRequirements": "Tesseract OCR engine (>= 4.0.0)",
-        "NeedsCompilation": "yes",
-        "Packaged": "2024-02-22 12:00:00 UTC; jeroen",
-        "Repository": "CRAN",
-        "Date/Publication": "2024-02-22 15:00:02 UTC",
-        "Built": "R 4.6.0; x86_64-w64-mingw32; 2026-05-30 02:33:57 UTC; windows"
-      }
-    },
     "tibble": {
       "Source": "CRAN",
       "Repository": "https://cloud.r-project.org",

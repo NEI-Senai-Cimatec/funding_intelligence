@@ -357,10 +357,6 @@ ui <- bslib::page_sidebar(
       tags$p(
         style = "color: #334155; font-size: 0.95rem; margin: 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
         tags$i(class = "fa-solid fa-person-chalkboard", style = "color: #004691;"), " SENAI CIMATEC – Educação, Ciência, Tecnologia, Inovação e Negócios para Indústria e a Sociedade"
-      ),
-      tags$p(
-        style = "color: #64748b; font-size: 0.8rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
-        tags$i(class = "fa fa-map-marker-alt", style = "color: #004691;"), "Salvador, Bahia"
       )
     ),
     tags$div(
@@ -371,15 +367,19 @@ ui <- bslib::page_sidebar(
       ),
       tags$p(
         style = "color: #64748b; font-size: 0.8rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
-        "Curador responsável: David Franco Regalado, Ítalo Ferreira da Silva e Raphael de Oliveira Silva."
+        "Responsável técnico: Mabel Diz Marques Mota"
       ),
       tags$p(
         style = "color: #64748b; font-size: 0.8rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
-        "Responsável técnico: Mabel Diz Marques Mota"
+        "Curador: David Franco Regalado, Ítalo Ferreira da Silva, Yuri Conrado Dantas e Raphael de Oliveira Silva."
       ),
       tags$p(
         style = "color: #475569; font-size: 0.85rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
         sprintf("© %s Núcleo de Economia Industrial – SENAI CIMATEC. Transformando conhecimento econômico em vantagem competitiva.", format(Sys.Date(), "%Y"))
+      ),
+      tags$p(
+        style = "color: #64748b; font-size: 0.8rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
+        tags$i(class = "fa fa-map-marker-alt", style = "color: #004691;"), "Salvador, Bahia"
       )
     )
   )

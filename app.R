@@ -356,7 +356,11 @@ ui <- bslib::page_sidebar(
       class = "footer-top-centered",
       tags$p(
         style = "color: #334155; font-size: 0.95rem; margin: 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
-        tags$i(class = "fa fa-map-marker-alt", style = "color: #004691;"), " SENAI CIMATEC – Salvador, Bahia"
+        tags$i(class = "fa-solid fa-person-chalkboard", style = "color: #004691;"), " SENAI CIMATEC – Educação, Ciência, Tecnologia, Inovação e Negócios para Indústria e a Sociedade"
+      ),
+      tags$p(
+        style = "color: #64748b; font-size: 0.8rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
+        tags$i(class = "fa fa-map-marker-alt", style = "color: #004691;"), "Salvador, Bahia"
       )
     ),
     tags$div(

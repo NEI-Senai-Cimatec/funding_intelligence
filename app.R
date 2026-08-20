@@ -241,7 +241,7 @@ ui <- bslib::page_sidebar(
   bslib::card(
     class = "search-card",
     bslib::layout_columns(
-      col_widths = c(5, 3, 1, 1, 1, 1),
+      col_widths = c(8, 4),
       textInput(
         "search_query", 
         label = tags$span(
@@ -255,11 +255,14 @@ ui <- bslib::page_sidebar(
         value = "", 
         placeholder = "Ex.: (health OR medical devices) AND innovation NOT veterinary"
       ),
-      radioButtons("region_filter", "Região das fontes", choices = c("Ambas", "Brasileiras", "Europeias", "Internacionais"), selected = "Ambas", inline = TRUE),
-      actionButton("btn_search", "Buscar", class = "btn-primary action-top", icon = icon("search")),
-      actionButton("btn_advanced", "Busca avançada", class = "btn-outline-primary action-top", icon = icon("sliders-h")),
-      actionButton("btn_save_search", "Salvar busca", class = "btn-outline-secondary action-top", icon = icon("bookmark")),
-      actionButton("btn_collect_official", "Atualizar base", class = "btn-success action-top", icon = icon("sync"))
+      selectInput("region_filter", "Região das fontes", choices = c("Ambas", "Brasileiras", "Europeias", "Internacionais"), selected = "Ambas")
+    ),
+    tags$div(
+      class = "search-actions",
+      actionButton("btn_search", "Buscar", class = "btn-primary", icon = icon("search")),
+      actionButton("btn_advanced", "Busca avançada", class = "btn-outline-primary", icon = icon("sliders-h")),
+      actionButton("btn_save_search", "Salvar busca", class = "btn-outline-secondary", icon = icon("bookmark")),
+      actionButton("btn_collect_official", "Atualizar base", class = "btn-success", icon = icon("sync"))
     )
   ),
 
@@ -346,7 +349,6 @@ ui <- bslib::page_sidebar(
   
   tags$footer(
     class = "app-footer-centered",
-    style = "background-color: #E9E9E9; color: #64748b; border-top: 4px solid #004691; box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05); padding: 2.5rem 2rem 2rem 2rem; margin-top: 3rem; text-align: center; border-radius: 12px 12px 0 0;",
     tags$div(
       style = "text-align: center; margin-bottom: 15px; display: flex; align-items: center; justify-content: center; gap: 1.5rem;",
       tags$img(src = "logos/logo fieb.png", style = "height: 45px; width: auto;", alt = "Logo FIEB"),
@@ -355,30 +357,24 @@ ui <- bslib::page_sidebar(
     tags$div(
       class = "footer-top-centered",
       tags$p(
-        style = "color: #334155; font-size: 0.95rem; margin: 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
         tags$i(class = "fa-solid fa-person-chalkboard", style = "color: #004691;"), " SENAI CIMATEC – Educação, Ciência, Tecnologia, Inovação e Negócios para Indústria e a Sociedade"
       )
     ),
     tags$div(
       class = "footer-bottom-centered",
       tags$p(
-        style = "color: #64748b; font-size: 0.8rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
         tags$i(class = "fa-solid fa-magnifying-glass-chart", style = "color: #004691;"), " NEI • Núcleo de Economia Industrial"
       ),
       tags$p(
-        style = "color: #64748b; font-size: 0.8rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
         "Responsável técnico: Mabel Diz Marques Mota"
       ),
       tags$p(
-        style = "color: #64748b; font-size: 0.8rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
         "Curador: David Franco Regalado, Ítalo Ferreira da Silva, Yuri Conrado Dantas e Raphael de Oliveira Silva."
       ),
       tags$p(
-        style = "color: #475569; font-size: 0.85rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
         sprintf("© %s Núcleo de Economia Industrial – SENAI CIMATEC. Transformando conhecimento econômico em vantagem competitiva.", format(Sys.Date(), "%Y"))
       ),
       tags$p(
-        style = "color: #64748b; font-size: 0.8rem; margin: 0.4rem 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem;",
         tags$i(class = "fa fa-map-marker-alt", style = "color: #004691;"), "Salvador, Bahia"
       )
     )
@@ -1486,7 +1482,7 @@ server <- function(input, output, session) {
   output$funders_table <- renderDT({
     df <- filtered_results() |>
       dplyr::count(entidade, pais_origem, tipo_oportunidade, sort = TRUE, name = "n_editais")
-    DT::datatable(df, options = list(pageLength = 10, scrollX = TRUE))
+    DT::datatable(df, options = list(pageLength = 10, scrollX = TRUE, language = list(emptyTable = "Nenhum dado disponível.")))
   }, server = FALSE)
 
   output$funder_profile <- renderUI({
@@ -1533,10 +1529,17 @@ server <- function(input, output, session) {
   output$saved_searches_table <- renderDT({
     df <- rv$saved_searches
     if (nrow(df) == 0) {
-      shown <- tibble::tibble(id = integer(), nome_busca = character(), query_text = character(), alerta_ativo = integer(), created_at = character(), last_run_at = character())
+      shown <- tibble::tibble(ID = integer(), Nome = character(), Consulta = character(), Alerta = character(), `Criada em` = character(), `Última execução` = character())
     } else {
       shown <- df |>
-        dplyr::select(id, nome_busca, query_text, alerta_ativo, created_at, last_run_at)
+        dplyr::transmute(
+          ID = id,
+          Nome = nome_busca,
+          Consulta = query_text,
+          Alerta = dplyr::if_else(as.integer(alerta_ativo) == 1L, "Sim", "Não", missing = "Não"),
+          `Criada em` = created_at,
+          `Última execução` = last_run_at
+        )
     }
     DT::datatable(shown, escape = FALSE, options = list(pageLength = 10, scrollX = TRUE, language = list(emptyTable = "Nenhuma busca salva.")), selection = "single")
   }, server = FALSE)
@@ -1558,9 +1561,36 @@ server <- function(input, output, session) {
     } else {
       df <- rv$tracked |>
         dplyr::left_join(rv$opportunities, by = c("id_oportunidade" = "id_registro")) |>
-        dplyr::transmute(id = id_oportunidade, Título = titulo, Financiador = entidade, Prazo = format_date_br(data_limite), Status = status_usuario, Observações = observacoes.x)
+        dplyr::transmute(id = id_oportunidade, Título = titulo, Financiador = entidade, Prazo = format_date_br(data_limite), Status = tools::toTitleCase(status_usuario), Observações = observacoes.x)
     }
-    DT::datatable(df, options = list(pageLength = 8, scrollX = TRUE, language = list(emptyTable = "Nenhum edital rastreado.")), selection = "single")
+    DT::datatable(
+      df,
+      options = list(
+        pageLength = 8,
+        scrollX = TRUE,
+        language = list(emptyTable = "Nenhum edital rastreado."),
+        columnDefs = list(
+          list(
+            targets = 4,
+            render = DT::JS("
+              function(data, type, row, meta) {
+                if (type === 'display') {
+                  var s = (data || '').toLowerCase();
+                  var cls = 'badge-soft-neutral';
+                  if (s === 'avaliar') cls = 'badge-soft-neutral';
+                  else if (s === 'prioritário' || s === 'prioritario') cls = 'badge-soft-warning';
+                  else if (s === 'submetido') cls = 'badge-soft-info';
+                  else if (s === 'descartado') cls = 'badge-soft-closed';
+                  return \"<span class='status-badge \" + cls + \"'>\" + data + \"</span>\";
+                }
+                return data;
+              }
+            ")
+          )
+        )
+      ),
+      selection = "single"
+    )
   }, server = FALSE)
 
   observeEvent(input$tracked_table_rows_selected, {
@@ -1715,7 +1745,7 @@ server <- function(input, output, session) {
   }, server = FALSE)
 
   output$logs_table <- renderDT({
-    DT::datatable(rv$logs |> dplyr::arrange(dplyr::desc(parse_datetime_safe(data_execucao))), options = list(pageLength = 15, scrollX = TRUE))
+    DT::datatable(rv$logs |> dplyr::arrange(dplyr::desc(parse_datetime_safe(data_execucao))), options = list(pageLength = 15, scrollX = TRUE, language = list(emptyTable = "Nenhum log registrado.")))
   }, server = FALSE)
 }
 

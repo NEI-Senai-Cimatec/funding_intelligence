@@ -33,13 +33,24 @@ gdrive_credentials.json
 .openspec_cache/
 *.openspec.log
 
+# Opencode
+*.opencode
 # Arquivos ENV
 *.env
 
 #Node Modules
 node_modules/
 
+# Impeccable
+.impeccable
 
+# Agent
+*.agent
+
+# Github agent
+*.github
+
+PRODUCT.md
 node_modules
 package.json
 package-lock.json

@@ -1,9 +1,13 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 /* Reset e Fonte Global */
+:root {
+  --bs-body-font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
 body {
   background-color: #f8fafc;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--bs-body-font-family);
   color: #1e293b;
   margin: 0;
   padding: 0;
@@ -98,6 +102,25 @@ body {
   font-weight: 500;
 }
 
+@media (max-width: 640px) {
+  .app-header {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .app-title-main h2 {
+    font-size: 1.3rem;
+  }
+
+  .app-title-main p {
+    font-size: 0.78rem;
+  }
+
+  .logo-container {
+    padding: 0.35rem 0.75rem;
+  }
+}
+
 /* Cartões (Cards) */
 .card, .search-card {
   background: #ffffff;
@@ -173,14 +196,26 @@ body {
   color: #1e293b !important;
 }
 
-/* Posicionamento do botão na barra de busca */
-.action-top {
-  width: 100%;
-  margin-top: 1.85rem;
-  height: 38px;
+/* Ações da barra de busca */
+.search-actions {
   display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.9rem;
+}
+
+.search-actions .btn {
+  height: 38px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+@media (max-width: 576px) {
+  .search-actions .btn {
+    flex: 1 1 100%;
+  }
 }
 
 /* Badges de Status do Edital */
@@ -305,6 +340,13 @@ table.dataTable tbody tr:hover {
   background-color: #f8fafc !important;
 }
 
+table.dataTable thead .sorting:after,
+table.dataTable thead .sorting_asc:after,
+table.dataTable thead .sorting_desc:after {
+  opacity: 1 !important;
+  color: #ffffff !important;
+}
+
 .dataTables_wrapper .dataTables_paginate .paginate_button.current, 
 .dataTables_wrapper .dataTables_paginate .paginate_button.current:hover {
   background: #004691 !important;
@@ -424,7 +466,7 @@ main {
 .footer-bottom-centered p {
   font-size: 0.8rem;
   margin: 0.4rem 0;
-  color: #64748b;
+  color: #475569;
   display: flex;
   align-items: center;
   justify-content: center;

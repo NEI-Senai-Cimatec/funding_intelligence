@@ -216,7 +216,7 @@ ui <- bslib::page_sidebar(
       ),
       tags$div(
         class = "app-title-main",
-        h2("RI - Radar da Inovação"),
+        h2("QuIIN QFunding Intelligence Hub"),
         p("Plataforma de inteligência de financiamento à pesquisa, desenvolvimento e inovação com cobertura global de oportunidades")
       )
     ),
@@ -351,25 +351,27 @@ ui <- bslib::page_sidebar(
     class = "app-footer-centered",
     tags$div(
       style = "text-align: center; margin-bottom: 15px; display: flex; align-items: center; justify-content: center; gap: 1.5rem;",
-      tags$img(src = "logos/logo fieb.png", style = "height: 45px; width: auto;", alt = "Logo FIEB"),
-      tags$img(src = "logos/logo.png", style = "height: 45px; width: auto;", alt = "Logo")
+      tags$img(src = "logos/logos.png", style = "height: 45px; width: auto;", alt = "Logos")
     ),
     tags$div(
       class = "footer-top-centered",
       tags$p(
         tags$i(class = "fa-solid fa-person-chalkboard", style = "color: #004691;"), " SENAI CIMATEC – Educação, Ciência, Tecnologia, Inovação e Negócios para Indústria e a Sociedade"
+      ),
+      tags$p(
+        tags$i(class = "fa-solid fa-atom", style = "color: #004691;"), " Centro de Competência EMBRAPII CIMATEC em Tecnologias Quânticas"
       )
     ),
     tags$div(
       class = "footer-bottom-centered",
       tags$p(
-        tags$i(class = "fa-solid fa-magnifying-glass-chart", style = "color: #004691;"), " NEI • Núcleo de Economia Industrial"
+        tags$i(class = "fa-solid fa-magnifying-glass-chart", style = "color: #004691;"), " NEI - Núcleo de Economia Industrial"
       ),
       tags$p(
         "Responsável técnico: Mabel Diz Marques Mota"
       ),
       tags$p(
-        "Curador: David Franco Regalado, Ítalo Ferreira da Silva, Yuri Conrado Dantas e Raphael de Oliveira Silva."
+        "Curador: David Franco Regalado, Ítalo Ferreira da Silva, Yuri Conrado Dantas, Raphael de Oliveira Silva e João Carlos Passos"
       ),
       tags$p(
         sprintf("© %s Núcleo de Economia Industrial – SENAI CIMATEC. Transformando conhecimento econômico em vantagem competitiva.", format(Sys.Date(), "%Y"))

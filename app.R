@@ -351,7 +351,7 @@ ui <- bslib::page_sidebar(
     class = "app-footer-centered",
     tags$div(
       style = "text-align: center; margin-bottom: 15px; display: flex; align-items: center; justify-content: center; gap: 1.5rem;",
-      tags$img(src = "logos/logos.png", style = "height: 45px; width: auto;", alt = "Logos")
+      tags$img(src = "logos/logos.png", style = "height: 120px; width: auto;", alt = "Logos")
     ),
     tags$div(
       class = "footer-top-centered",

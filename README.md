@@ -8,7 +8,7 @@
 
 Plataforma de inteligência estratégica para monitoramento, busca booleana avançada e recomendação personalizada de editais de financiamento científico e tecnológico — nacionais e internacionais.
 
-Centraliza **12 fontes de fomento** (CNPq, CAPES, FINEP, FAPESB, Horizon Europe, ERC, SIGITEC, UNDP, EMBRAPII, DAAD, Quantum, Humboldt) em uma única interface, enriquece cada oportunidade com IA generativa multi-provedor, traduz automaticamente registros europeus para pt-br e recomenda parceiros internos com base em afinidade temática.
+Centraliza **21 fontes de fomento** (CNPq, CAPES, FINEP, FAPESB, Horizon Europe, ERC, SIGITEC, UNDP, EMBRAPII, DAAD, Quantum, Humboldt + 9 fontes dos EUA: Grants.gov, DOE ASCR, NSF OISE/QISE/CISE/NQNI, DOE Quantum Genesis/Genesis Mission, DARPA QBI) em uma única interface, enriquece cada oportunidade com IA generativa multi-provedor, traduz automaticamente registros europeus para pt-br e recomenda parceiros internos com base em afinidade temática.
 
 ---
 
@@ -99,7 +99,7 @@ flowchart TD
     end
 
     subgraph External [Fontes Externas]
-        Fontes[12 Portais de Fomento]
+        Fontes[21 Portais de Fomento]
         LLMAPIs[APIs de IA]
     end
 
@@ -134,6 +134,15 @@ flowchart TD
 | `daad` | DAAD Brasil | Alemanha | Hybrid JSON+HTML | en |
 | `quantum` | EU Quantum Technologies | UE | EU FTOP REST API | en |
 | `humboldt` | Alexander von Humboldt Foundation | Alemanha | HTML scraping | en |
+| `grants_gov` | Grants.gov - U.S. Department of State | Estados Unidos | Hybrid API + HTML (CFDA 19.040) | en |
+| `doe_ascr` | DOE Advanced Scientific Computing Research | Estados Unidos | HTML + OSTI API fallback | en |
+| `nsf_international` | NSF Office of International Science and Engineering | Estados Unidos | HTML scraping | en |
+| `nsf_qise` | NSF QISE International Supplements | Estados Unidos | HTML scraping (DCL) | en |
+| `nsf_cise` | NSF CISE | Estados Unidos | Hybrid API + HTML | en |
+| `doe_quantum_genesis` | DOE Quantum Genesis Initiative | Estados Unidos | HTML single-page monitor | en |
+| `doe_genesis` | DOE Genesis Mission | Estados Unidos | HTML single-page monitor | en |
+| `nsf_nqni` | NSF National Quantum Nanotechnology Infrastructure | Estados Unidos | HTML + PDF (nsf26-505) | en |
+| `darpa_quantum_benchmarking` | DARPA Quantum Benchmarking Initiative | Estados Unidos | HTML + Playwright Stealth | en |
 
 **Coletores especializados:**
 
@@ -148,10 +157,20 @@ flowchart TD
 - `collect_daad` — Híbrido: JSON catálogo global (scholarships.js) + HTML scraping detalhe
 - `collect_quantum` — EU F&T Portal Search API com busca por keyword "quantum"
 - `collect_humboldt` — HTML scraping da Humboldt Foundation (listing + detalhe)
+- `collect_grants_gov` — Hybrid API + HTML scraping Grants.gov (CFDA 19.040 Public Diplomacy, filtra NOFOs/APs)
+- `collect_doe_ascr` — HTML scraping DOE ASCR + OSTI API fallback (HPC, quantum, AI for Science, FY2026 deadline 30/09/2026)
+- `collect_nsf_international` — HTML scraping NSF OISE International Collaborations
+- `collect_nsf_qise` — HTML scraping DCL QISE International Supplements (Brasil não prioritário)
+- `collect_nsf_cise` — Hybrid API + HTML NSF CISE (directorate filtering)
+- `collect_doe_quantum_genesis` — Single-page monitor DOE Quantum Genesis (retorna vazio se sem FOA ativa — sem registro fake)
+- `collect_doe_genesis` — Single-page monitor DOE Genesis Mission (idem)
+- `collect_nsf_nqni` — HTML + PDF parsing NSF NQNI nsf26-505 (US$100M)
+- `collect_darpa_quantum_benchmarking` — HTML + Playwright Stealth DARPA QBI
 - `collect_generic_official` — Fallback HTML para CNPq e fontes não especializadas
 
-> **Nota sobre fontes EU:** Horizon Europe e ERC utilizam a EU F&T Portal API via
-> Cloudflare Worker proxy para contornar bloqueio de IPs da AWS no Posit Connect Cloud.
+> **Nota sobre fontes EU/US:** Horizon Europe e ERC (e opcionalmente Grants.gov/NSF/DARPA) utilizam a EU F&T Portal API via
+> Cloudflare Worker proxy (`EU_API_PROXY_URL`) para contornar bloqueio de IPs da AWS no Posit Connect Cloud.
+> A mesma variável `EU_API_PROXY_URL` é generalizada para fontes US quando necessário (Grants.gov, DARPA QBI com WAF).
 > Veja a seção [Configuração do Proxy FTOP](#configuração-do-proxy-ftop-cloudflare-worker).
 
 ### Fontes Descontinuadas

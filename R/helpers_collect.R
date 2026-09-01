@@ -6034,3 +6034,1439 @@ collect_world_bank <- function(source_row, max_pages, max_records, use_ai, log_p
 }
 
 register_collector("world_bank", collect_world_bank, "World Bank: Excel download + HTML scraping + Projects API fallback")
+
+# --- US Sources Proxy Helper (generalizes EU_API_PROXY_URL) ---
+get_us_proxy_url <- function(target_url) {
+  worker <- Sys.getenv("EU_API_PROXY_URL", unset = "")
+  if (!nzchar(worker)) return(target_url)
+  worker <- sub("/+$", "", worker)
+  # If target is EU API, keep original behavior (worker + path)
+  if (grepl("api\\.tech\\.ec\\.europa\\.eu", target_url, ignore.case = TRUE)) {
+    return(target_url)
+  }
+  # Generic proxy fallback: worker?url=TARGET (supports Cloudflare Worker that forwards ?url)
+  # Also try worker/proxy?url= pattern if first fails (handled by caller trying both)
+  paste0(worker, "?url=", utils::URLencode(target_url, reserved = TRUE))
+}
+
+safe_request_page_us <- function(url, log_path = NULL, conn = NULL) {
+  # Wrapper that tries direct request, then proxy fallback if EU_API_PROXY_URL is set
+  res <- safe_request_page(url, log_path = log_path, conn = conn)
+  if (isTRUE(res$ok)) return(res)
+  proxy_base <- Sys.getenv("EU_API_PROXY_URL", unset = "")
+  if (!nzchar(proxy_base)) return(res)
+  # Try proxy URL
+  proxy_url <- get_us_proxy_url(url)
+  if (identical(proxy_url, url)) return(res)
+  # Only attempt proxy if original failure was block/network
+  try(log_write(log_path, "INFO", sprintf("Tentando via proxy EU_API_PROXY_URL para %s", url)), silent = TRUE)
+  res_proxy <- tryCatch(safe_request_page(proxy_url, log_path = log_path, conn = conn), error = function(e) list(ok = FALSE))
+  if (isTRUE(res_proxy$ok)) {
+    # Override url to original for downstream resolve
+    res_proxy$url <- url
+    return(res_proxy)
+  }
+  res
+}
+
+# ---------------------------------------------------------------------------
+#  Grants.gov - Public Diplomacy (CFDA 19.040) - Hybrid API + HTML
+# ---------------------------------------------------------------------------
+collect_grants_gov <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[GRANTS_GOV][%s] %s", level, msg))
+  }
+  .log("INFO", "Iniciando coleta Grants.gov (CFDA 19.040 - Public Diplomacy).")
+  try(log_progress("Iniciando coleta Grants.gov", "Scraping"), silent = TRUE)
+
+  base_search_url <- source_row$url_oportunidades[[1]] %||% "https://simpler.grants.gov/search"
+  # Fallback base if catalog not updated
+  if (is.na(base_search_url) || !nzchar(base_search_url)) base_search_url <- "https://simpler.grants.gov/search"
+
+  # --- Tier 1: Tentar API interna Simpler Grants.gov (POST JSON) ---
+  api_endpoints <- c(
+    "https://simpler.grants.gov/api/opportunities/search",
+    "https://simpler.grants.gov/api/v1/opportunities/search",
+    "https://simpler.grants.gov/api/search",
+    "https://simpler.grants.gov/search/api/search"
+  )
+
+  api_records <- list()
+  api_success <- FALSE
+  for (api_url in api_endpoints) {
+    .log("INFO", sprintf("Tentando API Grants.gov: %s", api_url))
+    .scrape_rate_limiter$wait_if_needed(api_url)
+
+    # Payload filtrando CFDA 19.040 e keywords Public Diplomacy
+    payload <- list(
+      pagination = list(page_offset = 1, page_size = min(25L, max_records), sort_order = list(list(order_by = "opportunity_number", sort_direction = "descending"))),
+      filters = list(
+        opportunity_status = list(one_of = c("posted", "forecasted", "archived")),
+        assistance_listing_number = list(one_of = c("19.040", "19.04")),
+        funding_instrument = list(one_of = c("grant", "cooperative agreement")),
+        search_text = list(one_of = c("public diplomacy", "Public Diplomacy Programs", "people-to-people", "American expertise"))
+      )
+    )
+    # Alternative flat payload for older endpoints
+    payload_alt <- list(
+      filters = list(cfda = "19.040", status = "posted", query = "public diplomacy"),
+      pagination = list(page = 1, pageSize = 25)
+    )
+
+    body_json <- jsonlite::toJSON(payload, auto_unbox = TRUE)
+    body_alt <- jsonlite::toJSON(payload_alt, auto_unbox = TRUE)
+
+    for (body_try in list(body_json, body_alt)) {
+      hdrs <- build_scrape_headers()
+      req <- httr2::request(api_url) |>
+        httr2::req_user_agent(hdrs$`User-Agent`) |>
+        httr2::req_headers(
+          `Accept` = "application/json, text/plain, */*",
+          `Content-Type` = "application/json",
+          `Accept-Language` = "en-US,en;q=0.9",
+          `Origin` = "https://simpler.grants.gov",
+          `Referer` = "https://simpler.grants.gov/search"
+        ) |>
+        httr2::req_body_raw(body_try, type = "application/json") |>
+        httr2::req_timeout(20) |>
+        httr2::req_retry(max_tries = 1)
+
+      resp <- tryCatch(httr2::req_perform(req), error = function(e) NULL)
+      if (is.null(resp) || httr2::resp_status(resp) >= 400) {
+        # Try via proxy if direct blocked
+        proxy_base <- Sys.getenv("EU_API_PROXY_URL", unset = "")
+        if (nzchar(proxy_base)) {
+          proxy_url <- get_us_proxy_url(api_url)
+          req_p <- httr2::request(proxy_url) |>
+            httr2::req_user_agent(hdrs$`User-Agent`) |>
+            httr2::req_headers(`Accept` = "application/json", `Content-Type` = "application/json") |>
+            httr2::req_body_raw(body_try, type = "application/json") |>
+            httr2::req_timeout(20)
+          resp <- tryCatch(httr2::req_perform(req_p), error = function(e) NULL)
+        }
+      }
+      if (is.null(resp) || httr2::resp_status(resp) >= 400) next
+
+      data <- tryCatch(httr2::resp_body_json(resp, simplifyVector = FALSE), error = function(e) NULL)
+      if (is.null(data)) {
+        txt <- tryCatch(httr2::resp_body_string(resp), error = function(e) "")
+        data <- tryCatch(jsonlite::fromJSON(txt, simplifyVector = FALSE), error = function(e) NULL)
+      }
+      if (is.null(data)) next
+
+      # Extract opportunities array - handle multiple response shapes
+      opps <- NULL
+      if (!is.null(data$data$opportunities)) opps <- data$data$opportunities
+      else if (!is.null(data$data)) opps <- data$data
+      else if (!is.null(data$opportunities)) opps <- data$opportunities
+      else if (!is.null(data$hits)) opps <- data$hits
+      else if (!is.null(data$results)) opps <- data$results
+
+      if (is.null(opps) || length(opps) == 0) next
+
+      .log("INFO", sprintf("Grants.gov API retornou %d oportunidades brutas", length(opps)))
+
+      # Filter for CFDA 19.040 if not already
+      filtered <- Filter(function(o) {
+        cfda <- tryCatch({
+          if (!is.null(o$assistance_listings)) paste(o$assistance_listings, collapse = " ")
+          else if (!is.null(o$cfda_numbers)) paste(o$cfda_numbers, collapse = " ")
+          else if (!is.null(o$cfda)) as.character(o$cfda)
+          else ""
+        }, error = function(e) "")
+        grepl("19\\.0?40", cfda) || grepl("19\\.040", jsonlite::toJSON(o, auto_unbox = TRUE))
+      }, opps)
+
+      # If filter removes all, keep all (search already filtered)
+      if (length(filtered) == 0) filtered <- opps
+
+      for (opp in filtered) {
+        if (length(api_records) >= max_records) break
+        opp_id <- opp$opportunity_id %||% opp$opportunity_number %||% opp$id %||% NA_character_
+        titulo <- opp$opportunity_title %||% opp$title %||% opp$opportunityTitle %||% NA_character_
+        if (is.na(titulo) || !nzchar(titulo)) next
+        agency <- opp$agency_name %||% opp$agency %||% opp$top_level_agency_name %||% "U.S. Department of State"
+        desc <- opp$summary %||% opp$description %||% opp$opportunity_description %||% titulo
+        close_date <- opp$close_date %||% opp$closing_date %||% opp$closeDate %||% opp$deadline %||% NA_character_
+        post_date <- opp$post_date %||% opp$posted_date %||% opp$open_date %||% opp$postedDate %||% NA_character_
+        opp_num <- opp$opportunity_number %||% opp_id %||% ""
+        detail_url <- if (!is.na(opp_id) && nzchar(opp_id)) sprintf("https://simpler.grants.gov/opportunity/%s", opp_id) else base_search_url
+        cfda_str <- tryCatch({
+          if (!is.null(opp$assistance_listings)) paste(vapply(opp$assistance_listings, function(x) if (is.list(x)) x$assistance_listing_number %||% x[[1]] else as.character(x), character(1)), collapse = "; ")
+          else "19.040"
+        }, error = function(e) "19.040")
+
+        # Parse USD date MM/DD/YYYY
+        data_limite <- tryCatch(as.character(parse_date_safe(close_date)), error = function(e) NA_character_)
+        data_pub <- tryCatch(as.character(parse_date_safe(post_date)), error = function(e) NA_character_)
+        # If close_date is still NA, try extract from text
+        if (is.na(data_limite) || !nzchar(data_limite)) {
+          dates_txt <- extract_dates_from_text(paste(titulo, desc, close_date))
+          if (length(dates_txt) > 0) data_limite <- as.character(max(dates_txt, na.rm = TRUE))
+        }
+
+        hash_input <- paste0("Grants.gov", "||", opp_num, "||", titulo)
+        hash_dedup <- digest::digest(hash_input, algo = "xxhash64")
+
+        rec <- tibble::tibble(
+          id_registro = sprintf("grants_gov_%s", substr(hash_dedup, 1, 16)),
+          entidade = "Grants.gov",
+          pais_origem = "Estados Unidos",
+          titulo = as.character(titulo),
+          subtitulo = as.character(agency),
+          descricao_resumida = substr(as.character(desc), 1, 500),
+          descricao_completa = as.character(desc),
+          tipo_oportunidade = "grant",
+          modalidade = NA_character_,
+          area_tematica = "Public Diplomacy",
+          palavras_chave = paste(c("public diplomacy", "people-to-people ties", "American expertise", "cultural exchange", cfda_str), collapse = "; "),
+          elegibilidade = NA_character_,
+          publico_alvo = NA_character_,
+          nivel_academico = NA_character_,
+          instituicao_financiadora = "U.S. Department of State",
+          valor_financiado = NA_real_,
+          moeda = "USD",
+          data_publicacao = data_pub,
+          data_abertura = NA_character_,
+          data_limite = data_limite,
+          data_encerramento = NA_character_,
+          status_oportunidade = classify_status(deadline = data_limite, text = titulo)[[1]],
+          link_origem = base_search_url,
+          link_detalhe = detail_url,
+          link_documento_pdf = NA_character_,
+          idioma = "en",
+          localidade = NA_character_,
+          observacoes = sprintf("CFDA %s - NOFO/AP via simpler.grants.gov. Opportunity Number: %s. Sazonal set-nov.", cfda_str, opp_num),
+          texto_bruto = paste(collapse_non_empty(titulo, desc, cfda_str), collapse = "\n\n"),
+          pagina_coletada = 1L,
+          fonte_oficial = "grants_gov",
+          data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+          hash_deduplicacao = hash_dedup,
+          campos_inferidos_ia = NA_character_
+        )
+        api_records[[length(api_records) + 1]] <- rec
+      }
+      if (length(api_records) > 0) {
+        api_success <- TRUE
+        break
+      }
+    }
+    if (api_success) break
+  }
+
+  if (api_success && length(api_records) > 0) {
+    df <- dplyr::bind_rows(api_records)
+    .log("INFO", sprintf("Grants.gov API: %d registros finais coletados.", nrow(df)))
+    return(list(records = df, pages_visited = 1L, last_url = base_search_url))
+  }
+
+  # --- Tier 2: HTML scraping fallback ---
+  .log("INFO", "Grants.gov API falhou ou vazia. Tentando HTML scraping com Playwright fallback.")
+  # Build search URL with CFDA 19.040 filter and public diplomacy query
+  search_urls <- c(
+    paste0(base_search_url, "?status=posted&fundingInstrumentType=grant&assistanceListingNumber=19.040&searchText=public%20diplomacy"),
+    paste0(base_search_url, "?query=public%20diplomacy&cfda=19.040"),
+    base_search_url
+  )
+
+  all_records <- tibble::tibble()
+  pages_visited <- 0L
+  last_url <- base_search_url
+
+  for (search_url in search_urls) {
+    if (nrow(all_records) >= max_records) break
+    .log("INFO", sprintf("Grants.gov HTML: buscando %s", search_url))
+    pg <- safe_request_page_us(search_url, log_path = log_path)
+    pages_visited <- pages_visited + 1L
+    last_url <- search_url
+
+    if (!isTRUE(pg$ok) || is.null(pg$html)) {
+      .log("WARN", sprintf("Falha ao carregar %s", search_url))
+      next
+    }
+
+    # Custom extractor for Simpler Grants.gov (Next.js SSR)
+    nodes <- try(rvest::html_elements(pg$html, "a[href*='/opportunity/'], .search-result, [data-testid='opportunity'], article, .card"), silent = TRUE)
+    candidates <- tryCatch({
+      if (!inherits(nodes, "try-error") && length(nodes) > 0) {
+        purrr::map_dfr(seq_along(nodes), function(i) {
+          node <- nodes[[i]]
+          href <- tryCatch(rvest::html_attr(node, "href"), error = function(e) NA_character_)
+          if (is.na(href) || !nzchar(href)) {
+            a <- try(rvest::html_element(node, "a[href*='/opportunity/']"), silent = TRUE)
+            href <- if (!inherits(a, "try-error")) rvest::html_attr(a, "href") else NA_character_
+          }
+          abs_url <- if (!is.na(href) && nzchar(href)) resolve_url(search_url, href) else NA_character_
+          txt <- safe_html_text(node)
+          if (is.na(txt) || nchar(txt) < 20) return(tibble::tibble())
+          # Must contain 19.040 or public diplomacy signal or look like opportunity
+          if (!grepl("19\\.040|public diplomacy|opportunity|NOFO|assistance listing", txt, ignore.case = TRUE) &&
+              !grepl("19\\.040|public diplomacy", abs_url %||% "", ignore.case = TRUE)) {
+            # Still allow if node is inside search results container
+            if (!grepl("opportunity|grant|diplomacy", txt, ignore.case = TRUE)) return(tibble::tibble())
+          }
+          title <- tryCatch({
+            h <- rvest::html_element(node, "h2, h3, .opportunity-title, [class*='title']")
+            t <- safe_html_text(h)
+            if (!is.na(t) && nzchar(t)) t else stringr::str_sub(txt, 1, 140)
+          }, error = function(e) stringr::str_sub(txt, 1, 140))
+
+          tibble::tibble(
+            title = title,
+            summary = stringr::str_sub(txt, 1, 700),
+            detail_url = abs_url,
+            source_text = txt
+          )
+        })
+      } else tibble::tibble()
+    }, error = function(e) tibble::tibble())
+
+    # Fallback to generic extractor if custom found nothing
+    if (nrow(candidates) == 0) {
+      gen <- tryCatch(extract_listing_candidates(pg$html, search_url, source_row), error = function(e) tibble::tibble())
+      if (nrow(gen) > 0) {
+        candidates <- gen |> dplyr::transmute(title = title, summary = summary, detail_url = detail_url, source_text = source_text)
+      }
+    }
+
+    if (nrow(candidates) == 0) next
+
+    # Deduplicate and limit
+    candidates <- candidates |>
+      dplyr::filter(!is.na(title) | !is.na(detail_url)) |>
+      dplyr::distinct(detail_url, .keep_all = TRUE)
+    if (nrow(candidates) > (max_records - nrow(all_records))) {
+      candidates <- candidates[seq_len(max_records - nrow(all_records)), ]
+    }
+
+    # Convert to records
+    for (i in seq_len(nrow(candidates))) {
+      one <- candidates[i, ]
+      # Try to fetch detail for deadline
+      bundle <- list(detail_title = one$title[[1]], detail_summary = one$summary[[1]], full_text = one$source_text[[1]], pdf_url = NA_character_)
+      if (!is.na(one$detail_url[[1]]) && nzchar(one$detail_url[[1]])) {
+        bundle <- tryCatch(extract_detail_bundle(detail_url = one$detail_url[[1]], page_url = search_url, log_path = log_path), error = function(e) bundle)
+      }
+      rec_title <- pick_first_nonempty(bundle$detail_title, one$title[[1]])
+      raw_for_dates <- paste(bundle$detail_summary %||% "", bundle$full_text %||% "", one$source_text[[1]] %||% "", collapse = " ")
+      dates <- extract_dates_from_text(raw_for_dates)
+      deadline <- if (length(dates) > 0 && any(!is.na(dates))) as.character(max(dates, na.rm = TRUE)) else NA_character_
+      # Prefer explicit close date in text
+      if (grepl("close|deadline|closing date", raw_for_dates, ignore.case = TRUE) && !is.na(deadline)) {
+        # keep
+      }
+
+      hash_dedup <- digest::digest(paste0(rec_title, one$detail_url[[1]] %||% search_url), algo = "xxhash64")
+      rec <- tibble::tibble(
+        id_registro = sprintf("grants_gov_%s", substr(hash_dedup, 1, 16)),
+        entidade = "Grants.gov",
+        pais_origem = "Estados Unidos",
+        titulo = rec_title,
+        subtitulo = NA_character_,
+        descricao_resumida = substr(pick_first_nonempty(bundle$detail_summary, one$summary[[1]]), 1, 500),
+        descricao_completa = bundle$full_text %||% one$source_text[[1]],
+        tipo_oportunidade = "grant",
+        modalidade = NA_character_,
+        area_tematica = "Public Diplomacy",
+        palavras_chave = "public diplomacy; people-to-people ties; American expertise; 19.040",
+        elegibilidade = NA_character_,
+        publico_alvo = NA_character_,
+        nivel_academico = NA_character_,
+        instituicao_financiadora = "U.S. Department of State",
+        valor_financiado = NA_real_,
+        moeda = "USD",
+        data_publicacao = NA_character_,
+        data_abertura = NA_character_,
+        data_limite = deadline,
+        data_encerramento = NA_character_,
+        status_oportunidade = classify_status(deadline = deadline, text = rec_title)[[1]],
+        link_origem = search_url,
+        link_detalhe = one$detail_url[[1]] %||% search_url,
+        link_documento_pdf = bundle$pdf_url,
+        idioma = "en",
+        localidade = NA_character_,
+        observacoes = "CFDA 19.040 Public Diplomacy Programs. NOFO/AP via simpler.grants.gov (HTML fallback).",
+        texto_bruto = paste(collapse_non_empty(rec_title, bundle$full_text, one$source_text[[1]]), collapse = "\n\n"),
+        pagina_coletada = 1L,
+        fonte_oficial = "grants_gov",
+        data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+        hash_deduplicacao = hash_dedup,
+        campos_inferidos_ia = NA_character_
+      )
+      all_records <- dplyr::bind_rows(all_records, rec)
+      if (nrow(all_records) >= max_records) break
+    }
+    if (nrow(all_records) >= max_records) break
+    # Try next page if available
+    next_url <- tryCatch(detect_next_page(pg$html, search_url), error = function(e) NA_character_)
+    if (!is.na(next_url) && nzchar(next_url) && pages_visited < max_pages) {
+      search_urls <- c(search_urls, next_url)
+    }
+  }
+
+  if (nrow(all_records) == 0) {
+    .log("WARN", "Grants.gov: Nenhum registro encontrado após API + HTML scraping. Retornando vazio (sem FOA ativa ou bloqueio WAF).")
+    return(list(records = tibble::tibble(), pages_visited = pages_visited, last_url = last_url))
+  }
+
+  df <- finalize_records(all_records, fonte_oficial = "grants_gov")
+  # If finalize filtered all (e.g., old year), return raw (US sources should be more permissive for future)
+  if (nrow(df) == 0 && nrow(all_records) > 0) {
+    .log("WARN", "Grants.gov: finalize_records filtrou todos. Retornando registros brutos com deduplicacao simples.")
+    df <- dedupe_records(all_records)
+  }
+  .log("INFO", sprintf("Grants.gov HTML: %d registros finais coletados.", nrow(df)))
+  list(records = df, pages_visited = pages_visited, last_url = last_url)
+}
+register_collector("grants_gov", collect_grants_gov, "Grants.gov: Hybrid API + HTML scraping (CFDA 19.040 Public Diplomacy)")
+
+# ---------------------------------------------------------------------------
+#  DOE ASCR - Advanced Scientific Computing Research (Favorito)
+# ---------------------------------------------------------------------------
+collect_doe_ascr <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[DOE_ASCR][%s] %s", level, msg))
+  }
+  .log("INFO", "Iniciando coleta DOE ASCR (HPC, Quantum, AI for Science).")
+  try(log_progress("Iniciando coleta DOE ASCR", "Scraping"), silent = TRUE)
+
+  base_url <- source_row$url_oportunidades[[1]] %||% "https://science.osti.gov/ascr/Funding-Opportunities"
+  if (is.na(base_url) || !nzchar(base_url)) base_url <- "https://science.osti.gov/ascr/Funding-Opportunities"
+
+  # Try DOE OSTI API first (if available)
+  osti_api_url <- "https://www.osti.gov/api/v1/records?search=ASCR+funding+opportunity&sort=publication_date%20desc&rows=20"
+  api_records <- list()
+  api_tried <- FALSE
+  api_ok <- FALSE
+  try({
+    .log("INFO", "Tentando OSTI API fallback...")
+    .scrape_rate_limiter$wait_if_needed(osti_api_url)
+    req <- httr2::request(osti_api_url) |>
+      httr2::req_user_agent(get_random_ua()) |>
+      httr2::req_timeout(15)
+    resp <- httr2::req_perform(req)
+    if (httr2::resp_status(resp) == 200) {
+      api_tried <- TRUE
+      txt <- httr2::resp_body_string(resp)
+      data <- tryCatch(jsonlite::fromJSON(txt, simplifyVector = FALSE), error = function(e) NULL)
+      if (!is.null(data) && length(data) > 0) {
+        # OSTI returns XML/JSON hybrid; if we get here, log but don't rely
+        .log("INFO", sprintf("OSTI API retornou %d itens (nao estruturado como FOA). Usando como enriquecimento apenas.", length(data)))
+      }
+    }
+  }, silent = TRUE)
+
+  # Main: HTML scraping of ASCR Funding Opportunities page
+  pg <- safe_request_page_us(base_url, log_path = log_path)
+  pages_visited <- 1L
+  last_url <- base_url
+
+  if (!isTRUE(pg$ok) || is.null(pg$html)) {
+    .log("WARN", sprintf("Falha ao carregar DOE ASCR %s. Tentando via science.energy.gov espelho.", base_url))
+    alt_url <- "https://science.energy.gov/ascr/funding-opportunities/"
+    pg2 <- safe_request_page_us(alt_url, log_path = log_path)
+    if (isTRUE(pg2$ok) && !is.null(pg2$html)) {
+      pg <- pg2
+      last_url <- alt_url
+    } else {
+      .log("WARN", "DOE ASCR: pagina inicial inacessivel. Retornando vazio.")
+      return(list(records = tibble::tibble(), pages_visited = pages_visited, last_url = last_url))
+    }
+  }
+
+  # Extract funding opportunities from page blocks
+  # ASCR page structure: headings for FY2026 etc., links to FOA PDFs or pages
+  candidates <- tryCatch({
+    blocks <- rvest::html_elements(pg$html, "article, .field--item, .view-content, .content, main, .region-content")
+    # More targeted: find all links that look like FOAs
+    links <- rvest::html_elements(pg$html, "a[href]")
+    hrefs <- rvest::html_attr(links, "href")
+    texts <- rvest::html_text(links, trim = TRUE)
+    # Filter for funding opportunity signals
+    keep_idx <- grepl("funding|opportunity|FOA|solicitation|continuation|FY2026|ASCR|HPC|quantum|computational|AI for science", texts, ignore.case = TRUE) |
+                grepl("funding|opportunity|FOA|solicitation", hrefs, ignore.case = TRUE)
+    if (any(keep_idx, na.rm = TRUE)) {
+      links <- links[keep_idx]
+      hrefs <- hrefs[keep_idx]
+      texts <- texts[keep_idx]
+    }
+    # Also include headings as candidates
+    headings <- rvest::html_elements(pg$html, "h1, h2, h3, h4")
+    heading_texts <- rvest::html_text(headings, trim = TRUE)
+    # Combine
+    tibble_list <- list()
+    for (i in seq_along(links)) {
+      href <- hrefs[[i]]
+      title <- texts[[i]]
+      if (is.na(title) || nchar(trimws(title)) < 10) next
+      # Skip nav/footer boilerplate
+      if (grepl("home|contact|privacy|accessibility|search", title, ignore.case = TRUE) && nchar(title) < 30) next
+      abs_url <- resolve_url(base_url, href)
+      # Find container text for context
+      parent <- tryCatch(rvest::html_parent(links[[i]]), error = function(e) NULL)
+      ctx <- tryCatch(safe_html_text(parent), error = function(e) "")
+      # Must have funding signal
+      if (!text_has_funding_signal(c(title, ctx))[[1]] && !grepl("funding|opportunity|FOA", title, ignore.case = TRUE)) {
+        # Allow if it's clearly a FOA link (contains .pdf or funding)
+        if (!grepl("\\.pdf|funding|solicitation", href, ignore.case = TRUE)) next
+      }
+      tibble_list[[length(tibble_list) + 1]] <- tibble::tibble(
+        title = stringr::str_squish(title),
+        summary = stringr::str_squish(paste(title, ctx, collapse = " ") |> stringr::str_sub(1, 700)),
+        detail_url = abs_url,
+        pdf_url = if (grepl("\\.pdf", href, ignore.case = TRUE)) abs_url else NA_character_,
+        source_text = ctx
+      )
+    }
+    if (length(tibble_list) > 0) dplyr::bind_rows(tibble_list) else tibble::tibble()
+  }, error = function(e) tibble::tibble())
+
+  # Fallback to generic extractor if custom found nothing
+  if (nrow(candidates) == 0) {
+    gen <- tryCatch(extract_listing_candidates(pg$html, base_url, source_row), error = function(e) tibble::tibble())
+    if (nrow(gen) > 0) {
+      candidates <- gen |>
+        dplyr::transmute(title = title, summary = summary, detail_url = detail_url, pdf_url = pdf_url, source_text = source_text) |>
+        dplyr::filter(grepl("funding|opportunity|FOA|ASCR|HPC|quantum", title, ignore.case = TRUE) | !is.na(pdf_url))
+    }
+  }
+
+  # If still empty, the page itself may BE the opportunity (single FOA - FY2026 Continuation)
+  if (nrow(candidates) == 0) {
+    page_title <- extract_meta_title(pg$html)
+    page_summary <- extract_page_summary(pg$html, max_chars = 1200)
+    full_text <- tryCatch({
+      nodes <- rvest::html_elements(pg$html, "main p, article p, .field--item p, .content p, body p")
+      txts <- vapply(nodes, safe_html_text, character(1))
+      paste(txts[!is.na(txts)], collapse = "\n")
+    }, error = function(e) page_summary %||% "")
+    # Check if page is indeed a funding opportunity
+    if (grepl("Funding Opportunity|FOA|FY2026|ASCR|Advanced Scientific Computing", paste(page_title, page_summary, full_text), ignore.case = TRUE)) {
+      candidates <- tibble::tibble(
+        title = page_title %||% "DOE ASCR Funding Opportunities - FY2026 Continuation of Solicitation",
+        summary = page_summary %||% "DOE Office of Science ASCR Funding Opportunities including FY2026 Continuation of Solicitation for HPC, quantum computing, computational science and AI for Science.",
+        detail_url = base_url,
+        pdf_url = tryCatch(extract_pdf_links(pg$html, base_url)[[1]], error = function(e) NA_character_),
+        source_text = full_text
+      )
+    }
+  }
+
+  if (nrow(candidates) == 0) {
+    .log("WARN", "DOE ASCR: nenhuma oportunidade detectada na pagina. Retornando vazio.")
+    return(list(records = tibble::tibble(), pages_visited = pages_visited, last_url = last_url))
+  }
+
+  # Deduplicate and limit
+  candidates <- candidates |>
+    dplyr::mutate(canonical = dplyr::coalesce(detail_url, pdf_url, title)) |>
+    dplyr::distinct(canonical, .keep_all = TRUE) |>
+    dplyr::select(-canonical)
+  if (nrow(candidates) > max_records) candidates <- candidates[seq_len(max_records), ]
+
+  .log("INFO", sprintf("DOE ASCR: %d candidatos extraidos.", nrow(candidates)))
+
+  records <- purrr::map_dfr(seq_len(nrow(candidates)), function(i) {
+    one <- candidates[i, ]
+    # Fetch detail if needed for deadline/value
+    bundle <- list(detail_title = one$title[[1]], detail_summary = one$summary[[1]], full_text = one$source_text[[1]], pdf_url = one$pdf_url[[1]])
+    if (!is.na(one$detail_url[[1]]) && nzchar(one$detail_url[[1]]) && !identical(one$detail_url[[1]], base_url)) {
+      # Only fetch if detail is different page and looks like FOA
+      if (grepl("energy\\.gov|science\\.osti\\.gov|osti\\.gov", one$detail_url[[1]])) {
+        b <- tryCatch(extract_detail_bundle(detail_url = one$detail_url[[1]], page_url = base_url, log_path = log_path), error = function(e) bundle)
+        if (!is.na(b$detail_title) && nzchar(b$detail_title)) bundle <- b
+      }
+    }
+    # Also try to get PDF text if present
+    if (!is.na(bundle$pdf_url) && nzchar(bundle$pdf_url)) {
+      # Already handled inside extract_detail_bundle
+    }
+
+    rec_title <- pick_first_nonempty(bundle$detail_title, one$title[[1]])
+    rec_summary <- pick_first_nonempty(bundle$detail_summary, one$summary[[1]])
+    rec_full <- pick_first_nonempty(bundle$full_text, one$source_text[[1]])
+
+    raw <- paste(rec_title, rec_summary, rec_full, collapse = " ")
+    # Extract USD dates - look for close/deadline near date
+    dates <- extract_dates_from_text(raw)
+    deadline <- NA_character_
+    if (length(dates) > 0) {
+      # Prefer date near deadline keywords
+      if (grepl("close|deadline|due date|closing date", raw, ignore.case = TRUE)) {
+        # Take the latest future date
+        future <- dates[dates >= Sys.Date() - 30]
+        if (length(future) > 0) deadline <- as.character(max(future, na.rm = TRUE))
+        else deadline <- as.character(max(dates, na.rm = TRUE))
+      } else {
+        # For FY2026 Continuation, known date is 2026-09-30
+        if (grepl("FY2026|Continuation of Solicitation", raw, ignore.case = TRUE)) {
+          deadline <- "2026-09-30"
+        } else {
+          deadline <- as.character(max(dates, na.rm = TRUE))
+        }
+      }
+    }
+    # Explicit FY2026 fallback
+    if ((is.na(deadline) || !nzchar(deadline)) && grepl("FY2026", rec_title, ignore.case = TRUE)) {
+      deadline <- "2026-09-30"
+    }
+
+    money <- parse_money_text(raw)
+    hash_dedup <- digest::digest(paste0(rec_title, one$detail_url[[1]] %||% base_url), algo = "xxhash64")
+    area <- if (grepl("quantum", raw, ignore.case = TRUE)) "Quantum Computing; HPC; Advanced Computing"
+            else if (grepl("HPC|high performance", raw, ignore.case = TRUE)) "High Performance Computing; Computational Science"
+            else if (grepl("AI for science|artificial intelligence", raw, ignore.case = TRUE)) "AI for Science; Computational Science"
+            else "Advanced Scientific Computing; HPC; Quantum"
+
+    tibble::tibble(
+      id_registro = sprintf("doe_ascr_%s", substr(hash_dedup, 1, 16)),
+      entidade = "DOE ASCR",
+      pais_origem = "Estados Unidos",
+      titulo = rec_title,
+      subtitulo = NA_character_,
+      descricao_resumida = substr(rec_summary %||% rec_full, 1, 500),
+      descricao_completa = rec_full,
+      tipo_oportunidade = "grant",
+      modalidade = NA_character_,
+      area_tematica = area,
+      palavras_chave = "HPC; quantum computing; computational science; AI for science; advanced computing",
+      elegibilidade = NA_character_,
+      publico_alvo = NA_character_,
+      nivel_academico = NA_character_,
+      instituicao_financiadora = "U.S. Department of Energy - Office of Science",
+      valor_financiado = money$value,
+      moeda = money$currency %||% "USD",
+      data_publicacao = NA_character_,
+      data_abertura = NA_character_,
+      data_limite = deadline,
+      data_encerramento = NA_character_,
+      status_oportunidade = classify_status(deadline = deadline, text = rec_title)[[1]],
+      link_origem = base_url,
+      link_detalhe = one$detail_url[[1]] %||% base_url,
+      link_documento_pdf = bundle$pdf_url,
+      idioma = "en",
+      localidade = NA_character_,
+      observacoes = "DOE ASCR Funding Opportunities. Inclui FY2026 Continuation of Solicitation (fecha 30/09/2026). Parcerias potenciais com DOE National Laboratories.",
+      texto_bruto = paste(collapse_non_empty(rec_title, rec_full), collapse = "\n\n"),
+      pagina_coletada = 1L,
+      fonte_oficial = "doe_ascr",
+      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      hash_deduplicacao = hash_dedup,
+      campos_inferidos_ia = NA_character_
+    )
+  })
+
+  df <- finalize_records(records, fonte_oficial = "doe_ascr")
+  if (nrow(df) == 0 && nrow(records) > 0) {
+    # For DOE ASCR, FY2026 items may be filtered by current year heuristic (but should pass due to 2026)
+    # Keep raw with dedupe as fallback
+    .log("WARN", "DOE ASCR: finalize filtrou todos. Retornando com deduplicacao simples.")
+    df <- dedupe_records(records)
+  }
+  .log("INFO", sprintf("DOE ASCR: %d registros finais coletados.", nrow(df)))
+  list(records = df, pages_visited = pages_visited, last_url = last_url)
+}
+register_collector("doe_ascr", collect_doe_ascr, "DOE ASCR: HTML scraping + OSTI API fallback (HPC, Quantum, AI)")
+
+# ---------------------------------------------------------------------------
+#  NSF International Collaboration (OISE)
+# ---------------------------------------------------------------------------
+collect_nsf_international <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[NSF_INT][%s] %s", level, msg))
+  }
+  .log("INFO", "Iniciando coleta NSF International Collaboration (OISE).")
+  try(log_progress("Iniciando coleta NSF International", "Scraping"), silent = TRUE)
+
+  base_url <- source_row$url_oportunidades[[1]] %||% "https://www.nsf.gov/oise/international-collaborations"
+  res <- collect_listing_with_pagination(
+    source_row = source_row,
+    first_url = base_url,
+    max_pages = max_pages,
+    max_records = max_records,
+    use_ai = FALSE,
+    log_path = log_path
+  )
+  # Post-process to ensure US metadata
+  if (!is.null(res$records) && nrow(res$records) > 0) {
+    res$records <- res$records |>
+      dplyr::mutate(
+        entidade = "NSF OISE",
+        pais_origem = "Estados Unidos",
+        instituicao_financiadora = "National Science Foundation - Office of International Science and Engineering",
+        area_tematica = dplyr::coalesce(area_tematica, "International Collaboration; Global Research"),
+        palavras_chave = dplyr::coalesce(palavras_chave, "international collaboration; global research; NSF OISE"),
+        moeda = dplyr::coalesce(moeda, "USD"),
+        idioma = "en",
+        fonte_oficial = "nsf_international",
+        id_registro = paste0("nsf_international_", substr(hash_deduplicacao, 1, 16))
+      )
+    .log("INFO", sprintf("NSF International: %d registros finais.", nrow(res$records)))
+  } else {
+    .log("WARN", "NSF International: nenhum registro via listing. Tentando generico.")
+    pg <- safe_request_page_us(base_url, log_path = log_path)
+    if (isTRUE(pg$ok) && !is.null(pg$html)) {
+      rec <- extract_core_record(
+        source_row = source_row,
+        input_title = extract_meta_title(pg$html) %||% "NSF International Collaborations - OISE",
+        input_summary = extract_page_summary(pg$html),
+        input_full_text = extract_page_summary(pg$html, max_chars = 3000),
+        page_url = base_url,
+        detail_url = NA_character_,
+        pdf_url = NA_character_,
+        page_no = 1L
+      )
+      rec$entidade <- "NSF OISE"
+      rec$pais_origem <- "Estados Unidos"
+      rec$fonte_oficial <- "nsf_international"
+      rec$idioma <- "en"
+      rec$moeda <- "USD"
+      rec$hash_deduplicacao <- digest::digest(paste0(rec$titulo, base_url), algo = "xxhash64")
+      rec$id_registro <- paste0("nsf_international_", substr(rec$hash_deduplicacao, 1, 16))
+      res <- list(records = finalize_records(rec, fonte_oficial = "nsf_international"), pages_visited = 1L, last_url = base_url)
+    }
+  }
+  res
+}
+register_collector("nsf_international", collect_nsf_international, "NSF OISE: HTML scraping International Collaborations")
+
+# ---------------------------------------------------------------------------
+#  NSF QISE International Supplements (DCL)
+# ---------------------------------------------------------------------------
+collect_nsf_qise <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[NSF_QISE][%s] %s", level, msg))
+  }
+  .log("INFO", "Iniciando coleta NSF QISE International Supplements.")
+  try(log_progress("Iniciando coleta NSF QISE", "Scraping"), silent = TRUE)
+
+  base_url <- source_row$url_oportunidades[[1]] %||% "https://www.nsf.gov/funding/opportunities/dcl-international-collaboration-supplements-quantum-information"
+  pg <- safe_request_page_us(base_url, log_path = log_path)
+  pages_visited <- 1L
+
+  if (!isTRUE(pg$ok) || is.null(pg$html)) {
+    .log("WARN", "NSF QISE: pagina inacessivel.")
+    return(list(records = tibble::tibble(), pages_visited = pages_visited, last_url = base_url))
+  }
+
+  title <- extract_meta_title(pg$html)
+  summary <- extract_page_summary(pg$html, max_chars = 1200)
+  full_text <- tryCatch({
+    nodes <- rvest::html_elements(pg$html, "main p, article p, .content p, body p")
+    txts <- vapply(nodes, safe_html_text, character(1))
+    paste(txts[!is.na(txts)], collapse = "\n")
+  }, error = function(e) summary %||% "")
+
+  raw <- paste(title, summary, full_text, collapse = "\n")
+  # DCL is supplements to active awards - no fixed deadline, "at any time"
+  dates <- extract_dates_from_text(raw)
+  deadline <- NA_character_
+  if (length(dates) > 0) {
+    # Look for supplement deadline
+    deadline <- as.character(max(dates, na.rm = TRUE))
+  }
+  # If DCL says "at any time" or "supplement requests accepted", treat as aberto sem deadline fixa
+  status <- if (grepl("at any time|accepted at any time|supplement.*request", raw, ignore.case = TRUE)) "aberto" else classify_status(deadline = deadline, text = title)[[1]]
+
+  hash_dedup <- digest::digest(paste0(title %||% base_url, base_url), algo = "xxhash64")
+  rec <- tibble::tibble(
+    id_registro = sprintf("nsf_qise_%s", substr(hash_dedup, 1, 16)),
+    entidade = "NSF QISE",
+    pais_origem = "Estados Unidos",
+    titulo = title %||% "NSF DCL: International Collaboration Supplements in Quantum Information Science and Engineering",
+    subtitulo = NA_character_,
+    descricao_resumida = substr(summary %||% full_text, 1, 500),
+    descricao_completa = full_text,
+    tipo_oportunidade = "grant",
+    modalidade = "supplement",
+    area_tematica = "Quantum Information Science and Engineering; QISE; Quantum Computing",
+    palavras_chave = "quantum information; QISE; quantum computing; international collaboration; NSF supplement",
+    elegibilidade = "Researchers with active NSF awards (supplement). Brazil eligible but not priority.",
+    publico_alvo = "NSF awardees",
+    nivel_academico = NA_character_,
+    instituicao_financiadora = "National Science Foundation",
+    valor_financiado = NA_real_,
+    moeda = "USD",
+    data_publicacao = NA_character_,
+    data_abertura = NA_character_,
+    data_limite = deadline,
+    data_encerramento = NA_character_,
+    status_oportunidade = status,
+    link_origem = base_url,
+    link_detalhe = base_url,
+    link_documento_pdf = tryCatch(extract_pdf_links(pg$html, base_url)[[1]], error = function(e) NA_character_),
+    idioma = "en",
+    localidade = NA_character_,
+    observacoes = "Brasil não está entre os prioritários, mas pode ser considerado. Supplements para awards NSF ativos adicionarem dimensão internacional em QISE. Ver DCL para países prioritários.",
+    texto_bruto = paste(collapse_non_empty(title, full_text), collapse = "\n\n"),
+    pagina_coletada = 1L,
+    fonte_oficial = "nsf_qise",
+    data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    hash_deduplicacao = hash_dedup,
+    campos_inferidos_ia = NA_character_
+  )
+
+  df <- finalize_records(rec, fonte_oficial = "nsf_qise")
+  if (nrow(df) == 0) df <- dedupe_records(rec)
+  .log("INFO", sprintf("NSF QISE: %d registros finais.", nrow(df)))
+  list(records = df, pages_visited = pages_visited, last_url = base_url)
+}
+register_collector("nsf_qise", collect_nsf_qise, "NSF QISE: HTML scraping DCL QISE International Supplements")
+
+# ---------------------------------------------------------------------------
+#  NSF CISE - Directorate for Computer & Information Science and Engineering
+# ---------------------------------------------------------------------------
+collect_nsf_cise <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[NSF_CISE][%s] %s", level, msg))
+  }
+  .log("INFO", "Iniciando coleta NSF CISE (Computing, AI, HPC).")
+  try(log_progress("Iniciando coleta NSF CISE", "Scraping"), silent = TRUE)
+
+  base_url <- source_row$url_oportunidades[[1]] %||% "https://www.nsf.gov/funding/find-by-directorate"
+  # NSF funding API (non-public but used by frontend)
+  api_urls <- c(
+    "https://www.nsf.gov/api/v1/funding/search?directorate=CISE&page=1&pageSize=25",
+    "https://www.nsf.gov/funding/api/search?directorate=CISE",
+    "https://api.nsf.gov/services/v1/awards.json?keyword=CISE&printFields=id,title,fundsObligatedAmt,awardTitle,date&offset=0"
+  )
+
+  api_records <- list()
+  for (api_url in api_urls) {
+    .log("INFO", sprintf("Tentando NSF API: %s", api_url))
+    .scrape_rate_limiter$wait_if_needed(api_url)
+    hdrs <- build_scrape_headers()
+    req <- httr2::request(api_url) |>
+      httr2::req_user_agent(hdrs$`User-Agent`) |>
+      httr2::req_headers(`Accept` = "application/json, text/plain, */*") |>
+      httr2::req_timeout(15)
+    resp <- tryCatch(httr2::req_perform(req), error = function(e) NULL)
+    if (is.null(resp) || httr2::resp_status(resp) >= 400) next
+    data <- tryCatch(httr2::resp_body_json(resp, simplifyVector = FALSE), error = function(e) NULL)
+    if (is.null(data) || length(data) == 0) next
+    # Check if response is funding opportunities (not awards)
+    items <- NULL
+    if (!is.null(data$fundingOpportunities)) items <- data$fundingOpportunities
+    else if (!is.null(data$opportunities)) items <- data$opportunities
+    else if (!is.null(data$response$docs)) items <- data$response$docs
+    else if (!is.null(data$results)) items <- data$results
+    if (is.null(items) || length(items) == 0) next
+    .log("INFO", sprintf("NSF API CISE retornou %d itens", length(items)))
+    for (it in items) {
+      if (length(api_records) >= max_records) break
+      ttl <- it$title %||% it$name %||% it$awardTitle %||% NA_character_
+      if (is.na(ttl) || !nzchar(ttl)) next
+      # Filter for CISE relevance
+      if (!grepl("comput|AI|software|system|HPC|cyber|information", paste(ttl, it$description %||% "", collapse = " "), ignore.case = TRUE)) next
+      desc <- it$description %||% it$ synopsis %||% ttl
+      det_url <- it$url %||% it$link %||% sprintf("https://www.nsf.gov/funding/opportunities/%s", it$id %||% "")
+      deadline <- it$deadline %||% it$dueDate %||% NA_character_
+      dates <- extract_dates_from_text(paste(ttl, desc, deadline))
+      dl <- if (length(dates) > 0) as.character(max(dates, na.rm = TRUE)) else tryCatch(as.character(parse_date_safe(deadline)), error = function(e) NA_character_)
+      hash <- digest::digest(paste0(ttl, det_url), algo = "xxhash64")
+      api_records[[length(api_records) + 1]] <- tibble::tibble(
+        id_registro = sprintf("nsf_cise_%s", substr(hash, 1, 16)),
+        entidade = "NSF CISE",
+        pais_origem = "Estados Unidos",
+        titulo = ttl,
+        subtitulo = it$directorate %||% "CISE",
+        descricao_resumida = substr(desc, 1, 500),
+        descricao_completa = desc,
+        tipo_oportunidade = "grant",
+        modalidade = NA_character_,
+        area_tematica = "Computer Science; AI; Cybersecurity; HPC; Information Science",
+        palavras_chave = "computing; AI; cybersecurity; HPC; software; systems",
+        elegibilidade = NA_character_,
+        publico_alvo = NA_character_,
+        nivel_academico = NA_character_,
+        instituicao_financiadora = "National Science Foundation - CISE",
+        valor_financiado = suppressWarnings(as.numeric(it$fundsObligatedAmt %||% NA_character_)),
+        moeda = "USD",
+        data_publicacao = NA_character_,
+        data_abertura = NA_character_,
+        data_limite = dl,
+        data_encerramento = NA_character_,
+        status_oportunidade = classify_status(deadline = dl, text = ttl)[[1]],
+        link_origem = base_url,
+        link_detalhe = det_url,
+        link_documento_pdf = NA_character_,
+        idioma = "en",
+        localidade = NA_character_,
+        observacoes = "NSF CISE: computação, AI, cybersecurity, software, systems, HPC. Oportunidade para identificar PIs/universidades americanas para projetos conjuntos com QuIIN.",
+        texto_bruto = paste(collapse_non_empty(ttl, desc), collapse = "\n\n"),
+        pagina_coletada = 1L,
+        fonte_oficial = "nsf_cise",
+        data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+        hash_deduplicacao = hash,
+        campos_inferidos_ia = NA_character_
+      )
+    }
+    if (length(api_records) > 0) break
+  }
+
+  if (length(api_records) > 0) {
+    df <- dplyr::bind_rows(api_records) |> finalize_records(fonte_oficial = "nsf_cise")
+    if (nrow(df) == 0) df <- dedupe_records(dplyr::bind_rows(api_records))
+    .log("INFO", sprintf("NSF CISE API: %d registros finais.", nrow(df)))
+    return(list(records = df, pages_visited = 1L, last_url = base_url))
+  }
+
+  # Fallback: HTML scraping find-by-directorate filtered for CISE
+  .log("INFO", "NSF CISE API falhou. Tentando HTML scraping diretorate CISE.")
+  pg <- safe_request_page_us(base_url, log_path = log_path)
+  if (!isTRUE(pg$ok) || is.null(pg$html)) {
+    .log("WARN", "NSF CISE: pagina inacessivel.")
+    return(list(records = tibble::tibble(), pages_visited = 1L, last_url = base_url))
+  }
+  # Find CISE links
+  links <- tryCatch(rvest::html_elements(pg$html, "a[href]"), error = function(e) list())
+  hrefs <- vapply(links, function(a) rvest::html_attr(a, "href") %||% "", character(1))
+  texts <- vapply(links, function(a) safe_html_text(a) %||% "", character(1))
+  # Filter for CISE or funding opportunity links
+  keep <- grepl("CISE|computer.*information|funding.*opportunit", texts, ignore.case = TRUE) |
+          grepl("cise|funding/opportunit", hrefs, ignore.case = TRUE)
+  if (!any(keep, na.rm = TRUE)) {
+    # Generic fallback to listing pagination
+    res <- collect_listing_with_pagination(source_row, base_url, max_pages, max_records, FALSE, log_path)
+    if (!is.null(res$records) && nrow(res$records) > 0) {
+      res$records <- res$records |>
+        dplyr::mutate(entidade = "NSF CISE", pais_origem = "Estados Unidos", instituicao_financiadora = "National Science Foundation - CISE", area_tematica = dplyr::coalesce(area_tematica, "CISE; Computing; AI"), moeda = dplyr::coalesce(moeda, "USD"), idioma = "en", fonte_oficial = "nsf_cise", id_registro = paste0("nsf_cise_", substr(hash_deduplicacao, 1, 16)))
+      return(res)
+    }
+    return(list(records = tibble::tibble(), pages_visited = 1L, last_url = base_url))
+  }
+  candidates <- tibble::tibble(title = texts[keep], href = hrefs[keep]) |>
+    dplyr::filter(nchar(title) > 10) |>
+    dplyr::mutate(detail_url = vapply(href, function(h) resolve_url(base_url, h), character(1))) |>
+    dplyr::distinct(detail_url, .keep_all = TRUE)
+  if (nrow(candidates) > max_records) candidates <- candidates[seq_len(max_records), ]
+
+  records <- purrr::map_dfr(seq_len(nrow(candidates)), function(i) {
+    one <- candidates[i, ]
+    bundle <- tryCatch(extract_detail_bundle(detail_url = one$detail_url[[1]], page_url = base_url, log_path = log_path), error = function(e) list(detail_title = one$title[[1]], detail_summary = NA_character_, full_text = NA_character_, pdf_url = NA_character_))
+    ttl <- pick_first_nonempty(bundle$detail_title, one$title[[1]])
+    raw <- paste(ttl, bundle$full_text %||% "", collapse = " ")
+    dates <- extract_dates_from_text(raw)
+    dl <- if (length(dates) > 0) as.character(max(dates, na.rm = TRUE)) else NA_character_
+    hash <- digest::digest(paste0(ttl, one$detail_url[[1]]), algo = "xxhash64")
+    tibble::tibble(
+      id_registro = sprintf("nsf_cise_%s", substr(hash, 1, 16)),
+      entidade = "NSF CISE",
+      pais_origem = "Estados Unidos",
+      titulo = ttl,
+      subtitulo = NA_character_,
+      descricao_resumida = substr(bundle$detail_summary %||% raw, 1, 500),
+      descricao_completa = bundle$full_text %||% raw,
+      tipo_oportunidade = "grant",
+      modalidade = NA_character_,
+      area_tematica = "CISE; Computing; AI; Cybersecurity; HPC",
+      palavras_chave = "computing; AI; cybersecurity; HPC; software",
+      elegibilidade = NA_character_,
+      publico_alvo = NA_character_,
+      nivel_academico = NA_character_,
+      instituicao_financiadora = "National Science Foundation - CISE",
+      valor_financiado = NA_real_,
+      moeda = "USD",
+      data_publicacao = NA_character_,
+      data_abertura = NA_character_,
+      data_limite = dl,
+      data_encerramento = NA_character_,
+      status_oportunidade = classify_status(deadline = dl, text = ttl)[[1]],
+      link_origem = base_url,
+      link_detalhe = one$detail_url[[1]],
+      link_documento_pdf = bundle$pdf_url,
+      idioma = "en",
+      localidade = NA_character_,
+      observacoes = "NSF CISE funding via directorate page. Para identificar PIs/universidades para projetos conjuntos.",
+      texto_bruto = paste(collapse_non_empty(ttl, bundle$full_text), collapse = "\n\n"),
+      pagina_coletada = 1L,
+      fonte_oficial = "nsf_cise",
+      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      hash_deduplicacao = hash,
+      campos_inferidos_ia = NA_character_
+    )
+  })
+  df <- finalize_records(records, fonte_oficial = "nsf_cise")
+  if (nrow(df) == 0 && nrow(records) > 0) df <- dedupe_records(records)
+  .log("INFO", sprintf("NSF CISE: %d registros finais.", nrow(df)))
+  list(records = df, pages_visited = 1L, last_url = base_url)
+}
+register_collector("nsf_cise", collect_nsf_cise, "NSF CISE: Hybrid API + HTML directorate filtering")
+
+# ---------------------------------------------------------------------------
+#  DOE Quantum Genesis Initiative (single-page monitor - no fake if no FOA)
+# ---------------------------------------------------------------------------
+collect_doe_quantum_genesis <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[DOE_QGENESIS][%s] %s", level, msg))
+  }
+  .log("INFO", "Iniciando coleta DOE Quantum Genesis Initiative.")
+  try(log_progress("Iniciando coleta DOE Quantum Genesis", "Scraping"), silent = TRUE)
+
+  base_url <- source_row$url_oportunidades[[1]] %||% "https://www.energy.gov/science/articles/energy-department-announces-initiative-create-and-deploy-worlds-first"
+  pg <- safe_request_page_us(base_url, log_path = log_path)
+  if (!isTRUE(pg$ok) || is.null(pg$html)) {
+    .log("WARN", "DOE Quantum Genesis: pagina inacessivel. Retornando vazio (monitorar futuras FOAs).")
+    return(list(records = tibble::tibble(), pages_visited = 1L, last_url = base_url))
+  }
+  # Check if page contains actual funding opportunity listing
+  links <- tryCatch(rvest::html_elements(pg$html, "a[href*='funding'], a[href*='opportunity'], a[href*='FOA']"), error = function(e) list())
+  has_foa <- length(links) > 0 && any(grepl("funding|opportunity|FOA", vapply(links, function(a) safe_html_text(a) %||% "", character(1)), ignore.case = TRUE), na.rm = TRUE)
+  # Also check text for solicitation signals
+  page_text <- tryCatch(paste(vapply(rvest::html_elements(pg$html, "p"), safe_html_text, character(1)), collapse = " "), error = function(e) "")
+  has_foa <- has_foa || grepl("Funding Opportunity Announcement|FOA|solicitation|apply now|deadline.*202", page_text, ignore.case = TRUE)
+
+  if (!has_foa) {
+    .log("INFO", "DOE Quantum Genesis: pagina institucional sem FOA ativa detectada. Retornando vazio conforme regra (nao criar registro informativo).")
+    return(list(records = tibble::tibble(), pages_visited = 1L, last_url = base_url))
+  }
+  # If FOA found, extract as opportunity
+  candidates <- tryCatch(extract_listing_candidates(pg$html, base_url, source_row), error = function(e) tibble::tibble())
+  if (nrow(candidates) == 0) {
+    title <- extract_meta_title(pg$html)
+    candidates <- tibble::tibble(title = title, summary = extract_page_summary(pg$html), detail_url = base_url, pdf_url = NA_character_, source_text = page_text)
+  }
+  if (nrow(candidates) > max_records) candidates <- candidates[seq_len(max_records), ]
+  records <- purrr::map_dfr(seq_len(nrow(candidates)), function(i) {
+    one <- candidates[i, ]
+    bundle <- tryCatch(extract_detail_bundle(detail_url = one$detail_url[[1]], page_url = base_url, log_path = log_path), error = function(e) list(detail_title = one$title[[1]], detail_summary = one$summary[[1]], full_text = one$source_text[[1]], pdf_url = one$pdf_url[[1]]))
+    ttl <- pick_first_nonempty(bundle$detail_title, one$title[[1]])
+    hash <- digest::digest(paste0(ttl, one$detail_url[[1]]), algo = "xxhash64")
+    raw <- paste(ttl, bundle$full_text %||% "", collapse = " ")
+    dates <- extract_dates_from_text(raw)
+    dl <- if (length(dates) > 0) as.character(max(dates, na.rm = TRUE)) else NA_character_
+    tibble::tibble(
+      id_registro = sprintf("doe_quantum_genesis_%s", substr(hash, 1, 16)),
+      entidade = "DOE Quantum Genesis",
+      pais_origem = "Estados Unidos",
+      titulo = ttl,
+      subtitulo = NA_character_,
+      descricao_resumida = substr(bundle$detail_summary %||% one$summary[[1]], 1, 500),
+      descricao_completa = bundle$full_text %||% one$source_text[[1]],
+      tipo_oportunidade = "grant",
+      modalidade = NA_character_,
+      area_tematica = "Quantum Computing; Fault-Tolerant Quantum",
+      palavras_chave = "quantum genesis; fault-tolerant quantum; quantum computing; DOE",
+      elegibilidade = NA_character_,
+      publico_alvo = NA_character_,
+      nivel_academico = NA_character_,
+      instituicao_financiadora = "U.S. Department of Energy",
+      valor_financiado = NA_real_,
+      moeda = "USD",
+      data_publicacao = NA_character_,
+      data_abertura = NA_character_,
+      data_limite = dl,
+      data_encerramento = NA_character_,
+      status_oportunidade = classify_status(deadline = dl, text = ttl)[[1]],
+      link_origem = base_url,
+      link_detalhe = one$detail_url[[1]],
+      link_documento_pdf = bundle$pdf_url,
+      idioma = "en",
+      localidade = NA_character_,
+      observacoes = "DOE Quantum Genesis Initiative - fault-tolerant quantum computer até 2028. Anunciada jun/2026.",
+      texto_bruto = paste(collapse_non_empty(ttl, bundle$full_text), collapse = "\n\n"),
+      pagina_coletada = 1L,
+      fonte_oficial = "doe_quantum_genesis",
+      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      hash_deduplicacao = hash,
+      campos_inferidos_ia = NA_character_
+    )
+  })
+  df <- finalize_records(records, fonte_oficial = "doe_quantum_genesis")
+  if (nrow(df) == 0 && nrow(records) > 0) df <- dedupe_records(records)
+  .log("INFO", sprintf("DOE Quantum Genesis: %d registros finais.", nrow(df)))
+  list(records = df, pages_visited = 1L, last_url = base_url)
+}
+register_collector("doe_quantum_genesis", collect_doe_quantum_genesis, "DOE Quantum Genesis: single-page monitor (no fake if no FOA)")
+
+# ---------------------------------------------------------------------------
+#  DOE Genesis Mission (single-page monitor - no fake if no FOA)
+# ---------------------------------------------------------------------------
+collect_doe_genesis <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[DOE_GENESIS][%s] %s", level, msg))
+  }
+  .log("INFO", "Iniciando coleta DOE Genesis Mission.")
+  try(log_progress("Iniciando coleta DOE Genesis", "Scraping"), silent = TRUE)
+
+  base_url <- source_row$url_oportunidades[[1]] %||% "https://www.energy.gov/genesis"
+  pg <- safe_request_page_us(base_url, log_path = log_path)
+  if (!isTRUE(pg$ok) || is.null(pg$html)) {
+    .log("WARN", "DOE Genesis: pagina inacessivel. Retornando vazio.")
+    return(list(records = tibble::tibble(), pages_visited = 1L, last_url = base_url))
+  }
+  links <- tryCatch(rvest::html_elements(pg$html, "a[href*='funding'], a[href*='opportunity'], a[href*='FOA'], a[href*='genesis']"), error = function(e) list())
+  hrefs <- tryCatch(vapply(links, function(a) rvest::html_attr(a, "href") %||% "", character(1)), error = function(e) character())
+  has_foa <- any(grepl("funding|opportunity|FOA|solicitation", hrefs, ignore.case = TRUE), na.rm = TRUE)
+  page_text <- tryCatch(paste(vapply(rvest::html_elements(pg$html, "p"), safe_html_text, character(1)), collapse = " "), error = function(e) "")
+  has_foa <- has_foa || grepl("Funding Opportunity|FOA|Precedente.*Japão|US\\$1B|Japan.*partnership", page_text, ignore.case = TRUE)
+
+  if (!has_foa) {
+    # Check for sub-links that might contain opportunities
+    sub_links <- hrefs[grepl("genesis", hrefs, ignore.case = TRUE)]
+    sub_links <- unique(vapply(sub_links, function(h) resolve_url(base_url, h), character(1)))
+    sub_links <- sub_links[!is.na(sub_links) & nzchar(sub_links) & sub_links != base_url]
+    found_foa_sub <- FALSE
+    if (length(sub_links) > 0) {
+      for (sl in head(sub_links, 3)) {
+        spg <- safe_request_page_us(sl, log_path = log_path)
+        if (isTRUE(spg$ok) && !is.null(spg$html)) {
+          stxt <- tryCatch(paste(vapply(rvest::html_elements(spg$html, "p"), safe_html_text, character(1)), collapse = " "), error = function(e) "")
+          if (grepl("funding|opportunity|FOA", stxt, ignore.case = TRUE)) { found_foa_sub <- TRUE; break }
+        }
+      }
+    }
+    if (!found_foa_sub) {
+      .log("INFO", "DOE Genesis: pagina institucional sem FOA ativa. Retornando vazio conforme regra.")
+      return(list(records = tibble::tibble(), pages_visited = 1L, last_url = base_url))
+    }
+  }
+  candidates <- tryCatch(extract_listing_candidates(pg$html, base_url, source_row), error = function(e) tibble::tibble())
+  if (nrow(candidates) == 0) {
+    title <- extract_meta_title(pg$html)
+    candidates <- tibble::tibble(title = title, summary = extract_page_summary(pg$html), detail_url = base_url, pdf_url = NA_character_, source_text = page_text)
+  }
+  if (nrow(candidates) > max_records) candidates <- candidates[seq_len(max_records), ]
+  records <- purrr::map_dfr(seq_len(nrow(candidates)), function(i) {
+    one <- candidates[i, ]
+    bundle <- tryCatch(extract_detail_bundle(detail_url = one$detail_url[[1]], page_url = base_url, log_path = log_path), error = function(e) list(detail_title = one$title[[1]], detail_summary = one$summary[[1]], full_text = one$source_text[[1]], pdf_url = one$pdf_url[[1]]))
+    ttl <- pick_first_nonempty(bundle$detail_title, one$title[[1]])
+    hash <- digest::digest(paste0(ttl, one$detail_url[[1]]), algo = "xxhash64")
+    raw <- paste(ttl, bundle$full_text %||% "", collapse = " ")
+    dates <- extract_dates_from_text(raw)
+    dl <- if (length(dates) > 0) as.character(max(dates, na.rm = TRUE)) else NA_character_
+    tibble::tibble(
+      id_registro = sprintf("doe_genesis_%s", substr(hash, 1, 16)),
+      entidade = "DOE Genesis",
+      pais_origem = "Estados Unidos",
+      titulo = ttl,
+      subtitulo = NA_character_,
+      descricao_resumida = substr(bundle$detail_summary %||% one$summary[[1]], 1, 500),
+      descricao_completa = bundle$full_text %||% one$source_text[[1]],
+      tipo_oportunidade = "grant",
+      modalidade = NA_character_,
+      area_tematica = "AI; Advanced Computing; Quantum; Scientific Discovery",
+      palavras_chave = "genesis mission; AI; advanced computing; quantum; DOE",
+      elegibilidade = NA_character_,
+      publico_alvo = NA_character_,
+      nivel_academico = NA_character_,
+      instituicao_financiadora = "U.S. Department of Energy",
+      valor_financiado = NA_real_,
+      moeda = "USD",
+      data_publicacao = NA_character_,
+      data_abertura = NA_character_,
+      data_limite = dl,
+      data_encerramento = NA_character_,
+      status_oportunidade = classify_status(deadline = dl, text = ttl)[[1]],
+      link_origem = base_url,
+      link_detalhe = one$detail_url[[1]],
+      link_documento_pdf = bundle$pdf_url,
+      idioma = "en",
+      localidade = NA_character_,
+      observacoes = "DOE Genesis Mission: AI + advanced computing + quantum. Precedente parceria EUA-Japão US$1B.",
+      texto_bruto = paste(collapse_non_empty(ttl, bundle$full_text), collapse = "\n\n"),
+      pagina_coletada = 1L,
+      fonte_oficial = "doe_genesis",
+      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      hash_deduplicacao = hash,
+      campos_inferidos_ia = NA_character_
+    )
+  })
+  df <- finalize_records(records, fonte_oficial = "doe_genesis")
+  if (nrow(df) == 0 && nrow(records) > 0) df <- dedupe_records(records)
+  .log("INFO", sprintf("DOE Genesis: %d registros finais.", nrow(df)))
+  list(records = df, pages_visited = 1L, last_url = base_url)
+}
+register_collector("doe_genesis", collect_doe_genesis, "DOE Genesis: single-page monitor (no fake if no FOA)")
+
+# ---------------------------------------------------------------------------
+#  NSF NQNI - National Quantum Nanotechnology Infrastructure (nsf26-505)
+# ---------------------------------------------------------------------------
+collect_nsf_nqni <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[NSF_NQNI][%s] %s", level, msg))
+  }
+  .log("INFO", "Iniciando coleta NSF NQNI (nsf26-505).")
+  try(log_progress("Iniciando coleta NSF NQNI", "Scraping"), silent = TRUE)
+
+  base_url <- source_row$url_oportunidades[[1]] %||% "https://www.nsf.gov/funding/opportunities/nqni-national-quantum-nanotechnology-infrastructure/nsf26-505/solicitation"
+  pg <- safe_request_page_us(base_url, log_path = log_path)
+  if (!isTRUE(pg$ok) || is.null(pg$html)) {
+    .log("WARN", "NSF NQNI: pagina inacessivel.")
+    return(list(records = tibble::tibble(), pages_visited = 1L, last_url = base_url))
+  }
+  title <- extract_meta_title(pg$html) %||% "NSF NQNI - National Quantum Nanotechnology Infrastructure (nsf26-505)"
+  summary <- extract_page_summary(pg$html, max_chars = 1200)
+  full_text <- tryCatch({
+    nodes <- rvest::html_elements(pg$html, "main p, article p, .content p, .field--item p, body p")
+    txts <- vapply(nodes, safe_html_text, character(1))
+    paste(txts[!is.na(txts)], collapse = "\n")
+  }, error = function(e) summary %||% "")
+
+  # Try to extract budget and deadline from text
+  # Look for US$100M and deadline patterns
+  raw <- paste(title, summary, full_text, collapse = "\n")
+  # Try PDF link for nsf26-505
+  pdf_links <- tryCatch(extract_pdf_links(pg$html, base_url), error = function(e) character())
+  nqni_pdf <- pdf_links[grepl("nsf26-505|nqni", pdf_links, ignore.case = TRUE)]
+  if (length(nqni_pdf) == 0) nqni_pdf <- pdf_links[1]
+  pdf_text <- NA_character_
+  if (length(nqni_pdf) > 0 && !is.na(nqni_pdf[[1]])) {
+    pdf_text <- tryCatch(extract_text_from_pdf(nqni_pdf[[1]], log_path = log_path), error = function(e) NA_character_)
+    if (!is.na(pdf_text) && nzchar(pdf_text)) {
+      full_text <- paste(full_text, pdf_text, sep = "\n\n")
+      raw <- paste(raw, pdf_text, collapse = "\n")
+    }
+  }
+  dates <- extract_dates_from_text(raw)
+  deadline <- NA_character_
+  if (length(dates) > 0) {
+    # Prefer dates near deadline/due date keywords
+    # Find date closest to deadline language
+    lines <- strsplit(raw, "\n")[[1]]
+    for (ln in lines) {
+      if (grepl("deadline|due date|closing date|full proposal|letter of intent", ln, ignore.case = TRUE)) {
+        d2 <- extract_dates_from_text(ln)
+        if (length(d2) > 0 && any(!is.na(d2))) {
+          deadline <- as.character(max(d2, na.rm = TRUE))
+          break
+        }
+      }
+    }
+    if (is.na(deadline)) deadline <- as.character(max(dates, na.rm = TRUE))
+  }
+  money <- parse_money_text(raw)
+  # Override if not found but known budget is 100M
+  if (is.na(money$value) || money$value < 1e6) {
+    if (grepl("100M|100 million|\\$100,000,000", raw, ignore.case = TRUE)) {
+      money$value <- 100000000
+      money$currency <- "USD"
+    }
+  }
+
+  hash_dedup <- digest::digest(paste0(title, base_url), algo = "xxhash64")
+  rec <- tibble::tibble(
+    id_registro = sprintf("nsf_nqni_%s", substr(hash_dedup, 1, 16)),
+    entidade = "NSF NQNI",
+    pais_origem = "Estados Unidos",
+    titulo = title,
+    subtitulo = "nsf26-505",
+    descricao_resumida = substr(summary %||% full_text, 1, 500),
+    descricao_completa = full_text,
+    tipo_oportunidade = "grant",
+    modalidade = "infrastructure",
+    area_tematica = "Quantum Nanotechnology Infrastructure; Quantum; Nanotechnology",
+    palavras_chave = "quantum nanotechnology; NQNI; infrastructure; quantum; nsf26-505",
+    elegibilidade = "US universities and institutions (infrastructure). Identificar universidades receptoras como parceiros potenciais.",
+    publico_alvo = "US universities",
+    nivel_academico = NA_character_,
+    instituicao_financiadora = "National Science Foundation",
+    valor_financiado = money$value,
+    moeda = money$currency %||% "USD",
+    data_publicacao = NA_character_,
+    data_abertura = NA_character_,
+    data_limite = deadline,
+    data_encerramento = NA_character_,
+    status_oportunidade = classify_status(deadline = deadline, text = title)[[1]],
+    link_origem = base_url,
+    link_detalhe = base_url,
+    link_documento_pdf = if (length(nqni_pdf) > 0) nqni_pdf[[1]] else NA_character_,
+    idioma = "en",
+    localidade = NA_character_,
+    observacoes = "Rede nacional de infraestrutura quântica até US$100M (nsf26-505). Identificar universidades receptoras da infraestrutura como parceiros potenciais.",
+    texto_bruto = paste(collapse_non_empty(title, full_text), collapse = "\n\n"),
+    pagina_coletada = 1L,
+    fonte_oficial = "nsf_nqni",
+    data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    hash_deduplicacao = hash_dedup,
+    campos_inferidos_ia = NA_character_
+  )
+  df <- finalize_records(rec, fonte_oficial = "nsf_nqni")
+  if (nrow(df) == 0) df <- dedupe_records(rec)
+  .log("INFO", sprintf("NSF NQNI: %d registros finais.", nrow(df)))
+  list(records = df, pages_visited = 1L, last_url = base_url)
+}
+register_collector("nsf_nqni", collect_nsf_nqni, "NSF NQNI: solicitation + PDF parsing (nsf26-505, US$100M)")
+
+# ---------------------------------------------------------------------------
+#  DARPA Quantum Benchmarking Initiative (QBI) - Playwright Stealth
+# ---------------------------------------------------------------------------
+collect_darpa_quantum_benchmarking <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[DARPA_QBI][%s] %s", level, msg))
+  }
+  .log("INFO", "Iniciando coleta DARPA Quantum Benchmarking Initiative.")
+  try(log_progress("Iniciando coleta DARPA QBI", "Scraping"), silent = TRUE)
+
+  base_url <- source_row$url_oportunidades[[1]] %||% "https://www.darpa.mil/research/programs/quantum-benchmarking-initiative"
+  pg <- safe_request_page_us(base_url, log_path = log_path)
+  pages_visited <- 1L
+  last_url <- base_url
+
+  # If blocked, try Playwright explicitly (safe_request_page already does cascade, but log)
+  if (!isTRUE(pg$ok) || is.null(pg$html)) {
+    .log("WARN", "DARPA QBI: pagina bloqueada/inacessivel via httr2. Tentando Playwright Stealth explicito.")
+    pg2 <- safe_request_page_playwright(base_url, log_path = log_path)
+    if (isTRUE(pg2$ok)) {
+      pg <- pg2
+    } else {
+      # Try alternative DARPA URL pattern
+      alt_url <- "https://www.darpa.mil/program/quantum-benchmarking-initiative"
+      pg3 <- safe_request_page_us(alt_url, log_path = log_path)
+      if (isTRUE(pg3$ok)) {
+        pg <- pg3
+        last_url <- alt_url
+      } else {
+        .log("WARN", "DARPA QBI: todas as tentativas falharam (WAF bloqueou). Retornando vazio.")
+        return(list(records = tibble::tibble(), pages_visited = pages_visited, last_url = last_url))
+      }
+    }
+  }
+
+  title <- extract_meta_title(pg$html) %||% "DARPA Quantum Benchmarking Initiative"
+  summary <- extract_page_summary(pg$html, max_chars = 1200)
+  full_text <- tryCatch({
+    nodes <- rvest::html_elements(pg$html, "main p, article p, .content p, .program-description p, body p")
+    txts <- vapply(nodes, safe_html_text, character(1))
+    paste(txts[!is.na(txts)], collapse = "\n")
+  }, error = function(e) summary %||% "")
+
+  # DARPA QBI may list performer teams or BAA links - try to extract those as separate records
+  links <- tryCatch(rvest::html_elements(pg$html, "a[href]"), error = function(e) list())
+  hrefs <- tryCatch(vapply(links, function(a) rvest::html_attr(a, "href") %||% "", character(1)), error = function(e) character())
+  texts <- tryCatch(vapply(links, function(a) safe_html_text(a) %||% "", character(1)), error = function(e) character())
+  # Filter for program-relevant links (performers, BAA, solicitation, teams)
+  keep <- grepl("quantum|benchmarking|BAA|solicitation|performer|team|university|company", texts, ignore.case = TRUE) |
+          grepl("quantum|benchmarking|BAA", hrefs, ignore.case = TRUE)
+  candidates <- tibble::tibble()
+  if (any(keep, na.rm = TRUE) && sum(keep, na.rm = TRUE) > 1) {
+    # Create candidates for performer/team links but keep main page as primary
+    # Deduplicate
+    cand_links <- unique(vapply(which(keep), function(i) resolve_url(base_url, hrefs[[i]]), character(1)))
+    cand_links <- cand_links[!is.na(cand_links) & nzchar(cand_links)]
+    # Limit to first few
+    cand_links <- head(cand_links, min(5, max_records - 1))
+    # Add main page as first candidate
+    candidates <- tibble::tibble(
+      title = c(title, texts[keep][seq_along(cand_links)]),
+      summary = c(summary, rep(page_text <- paste(full_text, collapse = " ") |> stringr::str_sub(1, 700), length(cand_links))),
+      detail_url = c(base_url, cand_links),
+      source_text = c(full_text, rep(full_text, length(cand_links)))
+    )
+  }
+
+  if (nrow(candidates) == 0) {
+    # Single record from main page
+    raw <- paste(title, summary, full_text, collapse = "\n")
+    dates <- extract_dates_from_text(raw)
+    dl <- if (length(dates) > 0) as.character(max(dates, na.rm = TRUE)) else NA_character_
+    hash <- digest::digest(paste0(title, base_url), algo = "xxhash64")
+    rec <- tibble::tibble(
+      id_registro = sprintf("darpa_qbi_%s", substr(hash, 1, 16)),
+      entidade = "DARPA QBI",
+      pais_origem = "Estados Unidos",
+      titulo = title,
+      subtitulo = NA_character_,
+      descricao_resumida = substr(summary %||% full_text, 1, 500),
+      descricao_completa = full_text,
+      tipo_oportunidade = "grant",
+      modalidade = "program",
+      area_tematica = "Quantum Benchmarking; Quantum Computing Architecture",
+      palavras_chave = "quantum benchmarking; quantum computing; DARPA; architecture evaluation",
+      elegibilidade = NA_character_,
+      publico_alvo = NA_character_,
+      nivel_academico = NA_character_,
+      instituicao_financiadora = "Defense Advanced Research Projects Agency (DARPA)",
+      valor_financiado = NA_real_,
+      moeda = "USD",
+      data_publicacao = NA_character_,
+      data_abertura = NA_character_,
+      data_limite = dl,
+      data_encerramento = NA_character_,
+      status_oportunidade = classify_status(deadline = dl, text = title)[[1]],
+      link_origem = base_url,
+      link_detalhe = base_url,
+      link_documento_pdf = tryCatch(extract_pdf_links(pg$html, base_url)[[1]], error = function(e) NA_character_),
+      idioma = "en",
+      localidade = NA_character_,
+      observacoes = "DARPA Quantum Benchmarking Initiative: frontier tech evaluation of quantum computing architectures. Para identificar empresas e pesquisadores americanos avançados.",
+      texto_bruto = paste(collapse_non_empty(title, full_text), collapse = "\n\n"),
+      pagina_coletada = 1L,
+      fonte_oficial = "darpa_quantum_benchmarking",
+      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      hash_deduplicacao = hash,
+      campos_inferidos_ia = NA_character_
+    )
+    df <- finalize_records(rec, fonte_oficial = "darpa_quantum_benchmarking")
+    if (nrow(df) == 0) df <- dedupe_records(rec)
+    .log("INFO", sprintf("DARPA QBI: %d registros finais.", nrow(df)))
+    return(list(records = df, pages_visited = pages_visited, last_url = last_url))
+  }
+
+  if (nrow(candidates) > max_records) candidates <- candidates[seq_len(max_records), ]
+  records <- purrr::map_dfr(seq_len(nrow(candidates)), function(i) {
+    one <- candidates[i, ]
+    # For main page vs sub-links, try detail fetch for sub-links
+    bundle <- list(detail_title = one$title[[1]], detail_summary = one$summary[[1]], full_text = one$source_text[[1]], pdf_url = NA_character_)
+    if (!identical(one$detail_url[[1]], base_url) && !is.na(one$detail_url[[1]])) {
+      b <- tryCatch(extract_detail_bundle(detail_url = one$detail_url[[1]], page_url = base_url, log_path = log_path), error = function(e) bundle)
+      if (!is.na(b$detail_title) && nzchar(b$detail_title)) bundle <- b
+    }
+    ttl <- pick_first_nonempty(bundle$detail_title, one$title[[1]])
+    raw2 <- paste(ttl, bundle$full_text %||% "", collapse = " ")
+    dates2 <- extract_dates_from_text(raw2)
+    dl2 <- if (length(dates2) > 0) as.character(max(dates2, na.rm = TRUE)) else NA_character_
+    hash2 <- digest::digest(paste0(ttl, one$detail_url[[1]]), algo = "xxhash64")
+    tibble::tibble(
+      id_registro = sprintf("darpa_qbi_%s", substr(hash2, 1, 16)),
+      entidade = "DARPA QBI",
+      pais_origem = "Estados Unidos",
+      titulo = ttl,
+      subtitulo = NA_character_,
+      descricao_resumida = substr(bundle$detail_summary %||% one$summary[[1]], 1, 500),
+      descricao_completa = bundle$full_text %||% one$source_text[[1]],
+      tipo_oportunidade = "grant",
+      modalidade = "program",
+      area_tematica = "Quantum Benchmarking; Quantum Computing",
+      palavras_chave = "quantum benchmarking; DARPA QBI; quantum architecture",
+      elegibilidade = NA_character_,
+      publico_alvo = NA_character_,
+      nivel_academico = NA_character_,
+      instituicao_financiadora = "DARPA",
+      valor_financiado = NA_real_,
+      moeda = "USD",
+      data_publicacao = NA_character_,
+      data_abertura = NA_character_,
+      data_limite = dl2,
+      data_encerramento = NA_character_,
+      status_oportunidade = classify_status(deadline = dl2, text = ttl)[[1]],
+      link_origem = base_url,
+      link_detalhe = one$detail_url[[1]],
+      link_documento_pdf = bundle$pdf_url,
+      idioma = "en",
+      localidade = NA_character_,
+      observacoes = "DARPA QBI program page.",
+      texto_bruto = paste(collapse_non_empty(ttl, bundle$full_text), collapse = "\n\n"),
+      pagina_coletada = 1L,
+      fonte_oficial = "darpa_quantum_benchmarking",
+      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      hash_deduplicacao = hash2,
+      campos_inferidos_ia = NA_character_
+    )
+  })
+  df <- finalize_records(records, fonte_oficial = "darpa_quantum_benchmarking")
+  if (nrow(df) == 0 && nrow(records) > 0) df <- dedupe_records(records)
+  .log("INFO", sprintf("DARPA QBI: %d registros finais.", nrow(df)))
+  list(records = df, pages_visited = pages_visited, last_url = last_url)
+}
+register_collector("darpa_quantum_benchmarking", collect_darpa_quantum_benchmarking, "DARPA QBI: HTML scraping with Playwright Stealth")
+

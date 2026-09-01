@@ -468,7 +468,7 @@ server <- function(input, output, session) {
 
   # Leitor reativo de status/logs da coleta em segundo plano (polling a cada 1.5s)
   observe({
-    req(progress_rv$status %in% c("running", "done", "error"))
+    req(progress_rv$status %in% c("running", "done", "error", "warning"))
     
     # Polling contínuo enquanto status == running
     if (progress_rv$status == "running") {
@@ -489,6 +489,8 @@ server <- function(input, output, session) {
         progress_rv$phase <- status_data$phase %||% "Scraping"
         if (identical(status_data$status, "done")) {
           progress_rv$status <- "done"
+        } else if (identical(status_data$status, "warning")) {
+          progress_rv$status <- "warning"
         } else if (identical(status_data$status, "error")) {
           progress_rv$status <- "error"
         }
@@ -519,13 +521,18 @@ server <- function(input, output, session) {
         log_progress(paste("Erro fatal:", conditionMessage(result)), "Erro")
         showNotification(paste("Falha na coleta em segundo plano:", conditionMessage(result)), type = "error", duration = 10)
       } else {
-        # Coleta finalizada com sucesso
+        # Coleta finalizada (sucesso ou warning quando 0 inseridos)
         removeNotification("bg_collect_notif")
         rv$collecting <- FALSE
         updateActionButton(session, "btn_collect_official", label = "Atualizar base")
-        progress_rv$status <- "done"
+        if (identical(result$inserted_now %||% 0L, 0L) && (result$sources_processed %||% 0L) > 0) {
+          progress_rv$status <- "warning"
+          progress_rv$detail <- "Coleta finalizada — nenhum registro novo. Verifique filtros/ano ou logs."
+        } else {
+          progress_rv$status <- "done"
+          progress_rv$detail <- "Coleta concluída! Sincronizando com o Google Drive..."
+        }
         progress_rv$percentage <- 100
-        progress_rv$detail <- "Coleta concluída! Sincronizando com o Google Drive..."
         
         # Sincroniza a base coletada com o Google Drive, se configurado
         safe_drive_upload()
@@ -558,6 +565,7 @@ server <- function(input, output, session) {
     pct <- progress_rv$percentage
     color_class <- if (progress_rv$phase == "IA") "bg-info" else "bg-primary"
     if (progress_rv$status == "done") color_class <- "bg-success"
+    if (progress_rv$status == "warning") color_class <- "bg-warning"
     if (progress_rv$status == "error") color_class <- "bg-danger"
     
     tags$div(
@@ -574,6 +582,8 @@ server <- function(input, output, session) {
       badge_style <- "background-color: #0ea5e9; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85rem;"
     } else if (phase == "Concluído") {
       badge_style <- "background-color: #22c55e; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85rem;"
+    } else if (phase == "Atenção") {
+      badge_style <- "background-color: #eab308; color: #422006; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85rem;"
     }
     tags$span(style = badge_style, sprintf("Fase Atual: %s", phase))
   })
@@ -586,6 +596,16 @@ server <- function(input, output, session) {
         tags$div(
           style = "display: flex; gap: 10px; align-items: center;",
           tags$span(style = "font-weight: 600; color: #22c55e;", "Coleta concluída!"),
+          downloadButton("btn_modal_export_xlsx", "Baixar XLSX", class = "btn-sm btn-success"),
+          downloadButton("btn_modal_export_csv", "Baixar CSV", class = "btn-sm btn-primary"),
+          actionButton("btn_close_progress_modal", "Concluir", class = "btn-outline-secondary")
+        )
+      )
+    } else if (progress_rv$status == "warning") {
+      tagList(
+        tags$div(
+          style = "display: flex; gap: 10px; align-items: center; flex-wrap: wrap;",
+          tags$span(style = "font-weight: 600; color: #a16207; background:#fef9c3; padding:4px 8px; border-radius:4px;", "Coleta finalizada — nenhum registro novo nesta rodada."),
           downloadButton("btn_modal_export_xlsx", "Baixar XLSX", class = "btn-sm btn-success"),
           downloadButton("btn_modal_export_csv", "Baixar CSV", class = "btn-sm btn-primary"),
           actionButton("btn_close_progress_modal", "Concluir", class = "btn-outline-secondary")
@@ -847,7 +867,7 @@ server <- function(input, output, session) {
     if (region == "Brasileiras") {
       available_sources <- available_sources |> dplyr::filter(pais == "Brasil")
     } else if (region == "Europeias") {
-      available_sources <- available_sources |> dplyr::filter(pais %in% c("União Europeia"))
+      available_sources <- available_sources |> dplyr::filter(pais %in% c("União Europeia", "Alemanha"))
     } else if (region == "Internacionais") {
       available_sources <- available_sources |> dplyr::filter(pais != "Brasil")
     } else {
@@ -1017,17 +1037,17 @@ server <- function(input, output, session) {
     df <- base_results()
     if (nrow(df) == 0) return(df)
     
-    # Filtro regional
+    # Filtro regional — Ambas = literalmente todas (sem filtro), Internacionais = todas não-brasileiras
     region <- input$region_filter
     if (region == "Brasileiras") {
       df <- df |> dplyr::filter(pais_origem == "Brasil")
     } else if (region == "Europeias") {
-      df <- df |> dplyr::filter(pais_origem %in% c("União Europeia"))
+      df <- df |> dplyr::filter(pais_origem %in% c("União Europeia", "Alemanha"))
     } else if (region == "Internacionais") {
-      df <- df |> dplyr::filter(!pais_origem %in% c("Brasil"))
+      df <- df |> dplyr::filter(pais_origem != "Brasil")
     } else {
-      # Ambas (Mantém brasileiras, europeias e internacionais)
-      df <- df |> dplyr::filter(pais_origem == "Brasil" | pais_origem %in% c("União Europeia", "Alemanha"))
+      # Ambas — literalmente todas as origens, inclusivo a futuras (EUA, Canadá, etc.)
+      df <- df
     }
 
     # Filtros Rápidos do Sidebar
@@ -1145,7 +1165,16 @@ server <- function(input, output, session) {
   })
 
   output$collection_status_ui <- renderUI({
-    tags$div(class = "mini-kpi", h5("Coleta"), p(rv$last_collect_summary$msg %||% "Base pronta."))
+    summary <- rv$last_collect_summary
+    msg <- summary$msg %||% "Base pronta."
+    inserted <- summary$inserted_now %||% NULL
+    total <- summary$n_records %||% NULL
+    detail <- if (!is.null(inserted) && !is.null(total)) {
+      sprintf("%s — %s novos nesta rodada | %s totais na base", msg, inserted, total)
+    } else {
+      msg
+    }
+    tags$div(class = "mini-kpi", h5("Coleta"), p(detail))
   })
   output$source_counter_ui <- renderUI({
     tags$div(class = "mini-kpi", h5("Fontes"), p(sprintf("%s fontes configuradas", nrow(rv$sources))))

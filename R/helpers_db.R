@@ -605,6 +605,16 @@ upsert_opportunities <- function(conn, opportunities_df) {
         DBI::dbExecute(conn, sql_upsert, params = row)
       },
       error = function(e) {
+        # Loga colisão de hash_deduplicacao UNIQUE sem abortar transação (observabilidade)
+        try(
+          {
+            msg <- conditionMessage(e)
+            if (grepl("UNIQUE constraint failed.*hash_deduplicacao|hash_deduplicacao.*UNIQUE", msg, ignore.case = TRUE)) {
+              warning(sprintf("[upsert] hash colisão ignorada id=%s titulo='%s' hash=%s", row$id_registro %||% "NA", substr(row$titulo %||% "", 1, 60), row$hash_deduplicacao %||% "NA"), call. = FALSE)
+            }
+          },
+          silent = TRUE
+        )
         0L
       }
     )

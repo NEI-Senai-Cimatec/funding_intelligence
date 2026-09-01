@@ -3358,17 +3358,32 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
   if (isTRUE(do_export)) exports <- save_collection_exports(final_df, export_dir, prefix = "funding_intelligence_base", log_path = log_path)
   log_write(log_path, "INFO", sprintf("Fim da coleta oficial. %s fontes processadas. %s registros adicionados nesta rodada. %s registros na base.", processed, inserted_total, nrow(final_df)))
 
-  status_data <- list(
-    step = total,
-    total = total,
-    percentage = 100,
-    detail = "Coleta finalizada com sucesso!",
-    phase = "Concluído",
-    timestamp = as.character(Sys.time()),
-    status = "done"
-  )
-  try(jsonlite::write_json(status_data, status_file, auto_unbox = TRUE), silent = TRUE)
-  log_progress("Processamento concluído com sucesso.", "Concluído")
+  if (inserted_total == 0L && processed > 0L) {
+    status_data <- list(
+      step = total,
+      total = total,
+      percentage = 100,
+      detail = "Coleta finalizada — nenhum registro novo nesta rodada. Verifique filtros/ano ou logs.",
+      phase = "Atenção",
+      timestamp = as.character(Sys.time()),
+      status = "warning"
+    )
+    try(jsonlite::write_json(status_data, status_file, auto_unbox = TRUE), silent = TRUE)
+    log_progress("Coleta finalizada — nenhum registro novo nesta rodada.", "Atenção")
+    log_write(log_path, "WARN", sprintf("Coleta finalizada sem novos registros: %s fonte(s) processadas, %s registros na base.", processed, nrow(final_df)))
+  } else {
+    status_data <- list(
+      step = total,
+      total = total,
+      percentage = 100,
+      detail = "Coleta finalizada com sucesso!",
+      phase = "Concluído",
+      timestamp = as.character(Sys.time()),
+      status = "done"
+    )
+    try(jsonlite::write_json(status_data, status_file, auto_unbox = TRUE), silent = TRUE)
+    log_progress("Processamento concluído com sucesso.", "Concluído")
+  }
 
   list(
     msg = sprintf("Coleta finalizada com %s fonte(s) processadas.", processed),

@@ -788,9 +788,17 @@ apply_ai_fields_to_df <- function(ai, target_df, row_idx, inferred_fields) {
   fill_ai_field("data_abertura", ai$data_abertura, overwrite = TRUE, target_df, row_idx, inferred_fields)
   fill_ai_field("data_encerramento", ai$data_encerramento, overwrite = TRUE, target_df, row_idx, inferred_fields)
 
-  # valor_financiado e moeda (tipos especiais)
-  ai_val <- if (!is.null(ai$valor_financiado) && !is.na(ai$valor_financiado)) as.numeric(ai$valor_financiado[[1]]) else NA_real_
-  ai_curr <- if (!is.null(ai$moeda) && !is.na(ai$moeda) && nzchar(trimws(ai$moeda[[1]]))) as.character(ai$moeda[[1]]) else NA_character_
+  # valor_financiado e moeda (tipos especiais) — blindado contra vetores (IA retorna array)
+  ai_val_raw <- ai$valor_financiado
+  ai_val <- if (!is.null(ai_val_raw) && length(ai_val_raw) > 0) {
+    v1 <- ai_val_raw[[1]]
+    if (!is.na(v1)) suppressWarnings(as.numeric(v1)) else NA_real_
+  } else NA_real_
+  ai_curr_raw <- ai$moeda
+  ai_curr <- if (!is.null(ai_curr_raw) && length(ai_curr_raw) > 0) {
+    c1 <- trimws(as.character(ai_curr_raw[[1]]))
+    if (!is.na(c1) && nzchar(c1)) c1 else NA_character_
+  } else NA_character_
 
   if (!identical(target_df$valor_financiado[[row_idx]], ai_val)) {
     target_df$valor_financiado[[row_idx]] <<- ai_val

@@ -6,7 +6,7 @@ get_ai_config <- function() {
   model <- Sys.getenv("AI_MODEL")
   api_key <- Sys.getenv("AI_API_KEY")
   api_url <- Sys.getenv("AI_API_URL")
-  
+
   # Autodetectar provedor se não estiver configurado explicitamente
   if (!nzchar(provider)) {
     if (nzchar(Sys.getenv("BLUESMINDS_API_KEY"))) {
@@ -29,7 +29,7 @@ get_ai_config <- function() {
       provider <- "bluesminds"
     }
   }
-  
+
   # Fallback para as chaves específicas do provedor se AI_API_KEY não estiver setada
   if (!nzchar(api_key)) {
     if (provider == "bluesminds") {
@@ -50,7 +50,7 @@ get_ai_config <- function() {
       api_key <- Sys.getenv("DEEPSEEK_API_KEY")
     }
   }
-  
+
   if (!nzchar(api_url)) {
     if (provider == "bluesminds") {
       api_url <- "https://api.bluesminds.com/v1/chat/completions"
@@ -68,7 +68,7 @@ get_ai_config <- function() {
       api_url <- "https://api.deepseek.com/v1/chat/completions"
     }
   }
-  
+
   if (!nzchar(model)) {
     if (provider == "bluesminds") {
       model <- "moonshotai/kimi-k2.6"
@@ -77,18 +77,18 @@ get_ai_config <- function() {
     } else if (provider == "openai") {
       model <- "gpt-4o-mini"
     } else if (provider == "nvidia") {
-      model <- "meta/llama-3.3-70b-instruct"
+      model <- "google/diffusiongemma-26b-a4b-it"
     } else if (provider == "anthropic") {
       model <- "claude-3-5-haiku-latest"
     } else if (provider == "groq") {
       model <- "llama-3.3-70b-versatile"
     } else if (provider == "openrouter") {
-      model <- "deepseek/deepseek-v4-flash"
+      model <- "liquid/lfm-2.5-2.6b:free"
     } else if (provider == "deepseek") {
       model <- "deepseek-chat"
     }
   }
-  
+
   list(
     provider = provider,
     model = model,
@@ -120,8 +120,10 @@ get_ai_batch_config <- function() {
 
 # --- Fallback entre Provedores IA ---
 
-.FALLBACK_ORDER <- c("groq", "openai", "gemini", "anthropic", "nvidia", 
-                      "deepseek", "openrouter", "bluesminds")
+.FALLBACK_ORDER <- c(
+  "groq", "openai", "gemini", "anthropic", "nvidia",
+  "deepseek", "openrouter", "bluesminds"
+)
 .KEY_ENV_MAP <- c(
   groq = "GROQ_API_KEY", openai = "OPENAI_API_KEY", gemini = "GEMINI_API_KEY",
   anthropic = "ANTHROPIC_API_KEY", nvidia = "NVIDIA_API_KEY", deepseek = "DEEPSEEK_API_KEY",
@@ -170,7 +172,9 @@ record_ai_failure <- function(provider) {
 
 is_ai_provider_available <- function(provider) {
   cooldown <- get0(paste0(provider, "_cooldown"), envir = .ai_failures, inherits = FALSE)
-  if (!is.null(cooldown) && Sys.time() < cooldown) return(FALSE)
+  if (!is.null(cooldown) && Sys.time() < cooldown) {
+    return(FALSE)
+  }
   TRUE
 }
 
@@ -182,7 +186,7 @@ reset_ai_provider <- function(provider) {
 ai_request_with_fallback <- function(prompt, timeout_sec = 45, retries = 2, log_path = NULL, conn = NULL) {
   chain <- build_ai_fallback_chain()
   chain <- chain[vapply(chain, is_ai_provider_available, logical(1))]
-  
+
   for (provider in chain) {
     cfg <- get_ai_config_for(provider)
     result <- ai_request(prompt, cfg = cfg, timeout_sec = timeout_sec, retries = retries, log_path = log_path, conn = conn)
@@ -191,8 +195,12 @@ ai_request_with_fallback <- function(prompt, timeout_sec = 45, retries = 2, log_
       return(result)
     }
     record_ai_failure(provider)
-    if (!is.null(log_path)) log_write(log_path, "WARN", 
-      sprintf("Fallback: provedor %s falhou, tentando próximo", provider))
+    if (!is.null(log_path)) {
+      log_write(
+        log_path, "WARN",
+        sprintf("Fallback: provedor %s falhou, tentando próximo", provider)
+      )
+    }
   }
   NULL
 }
@@ -248,7 +256,9 @@ trim_for_ai <- function(text, max_chars = NULL) {
     if (is.na(max_chars) || max_chars <= 0) max_chars <- 20000
   }
   text <- normalize_ws(text %||% "")
-  if (nchar(text) <= max_chars) return(text)
+  if (nchar(text) <= max_chars) {
+    return(text)
+  }
   substr(text, 1, max_chars)
 }
 
@@ -331,8 +341,8 @@ ai_make_request <- function(prompt, system_prompt = .AI_SYSTEM_PROMPT, cfg = NUL
 
 # Chamada de IA com suporte a imagens (multimodal/vision)
 ai_request_vision <- function(prompt, image_b64, mime = "image/png",
-                               timeout_sec = 60, retries = 1,
-                               log_path = NULL, conn = NULL) {
+                              timeout_sec = 60, retries = 1,
+                              log_path = NULL, conn = NULL) {
   cfg <- get_ai_config()
   if (!nzchar(cfg$provider) || !nzchar(cfg$api_key)) {
     if (!is.null(log_path)) log_write(log_path, "WARN", "ai_request_vision: configuracao de IA ausente.")
@@ -341,8 +351,12 @@ ai_request_vision <- function(prompt, image_b64, mime = "image/png",
 
   # Gemini nao suporta images via generateContent com data URI nestes provedores
   if (cfg$provider == "gemini") {
-    if (!is.null(log_path)) log_write(log_path, "WARN",
-      sprintf("ai_request_vision: provedor %s nao suporta vision neste contexto. Ignorando.", cfg$provider))
+    if (!is.null(log_path)) {
+      log_write(
+        log_path, "WARN",
+        sprintf("ai_request_vision: provedor %s nao suporta vision neste contexto. Ignorando.", cfg$provider)
+      )
+    }
     return(NULL)
   }
 
@@ -396,16 +410,24 @@ ai_request_vision <- function(prompt, image_b64, mime = "image/png",
   }
 
   if (is.null(req)) {
-    if (!is.null(log_path)) log_write(log_path, "WARN",
-      sprintf("ai_request_vision: provedor %s nao suportado para vision.", cfg$provider))
+    if (!is.null(log_path)) {
+      log_write(
+        log_path, "WARN",
+        sprintf("ai_request_vision: provedor %s nao suportado para vision.", cfg$provider)
+      )
+    }
     return(NULL)
   }
 
   start_time <- Sys.time()
   for (attempt in seq_len(retries + 1)) {
     resp <- tryCatch(httr2::req_perform(req), error = function(e) {
-      if (!is.null(log_path)) log_write(log_path, "WARN",
-        sprintf("ai_request_vision: erro de rede (tentativa %d/%d): %s", attempt, retries + 1, e$message))
+      if (!is.null(log_path)) {
+        log_write(
+          log_path, "WARN",
+          sprintf("ai_request_vision: erro de rede (tentativa %d/%d): %s", attempt, retries + 1, e$message)
+        )
+      }
       NULL
     })
 
@@ -421,9 +443,15 @@ ai_request_vision <- function(prompt, image_b64, mime = "image/png",
       delay <- if (!is.null(retry_after)) {
         val <- suppressWarnings(as.numeric(retry_after))
         if (!is.na(val) && val > 0) val else 2^attempt
-      } else 2^attempt + stats::runif(1, 0, 1)
-      if (!is.null(log_path)) log_write(log_path, "WARN",
-        sprintf("ai_request_vision: 429 — aguardando %.1fs (tentativa %d/%d)", delay, attempt, retries + 1))
+      } else {
+        2^attempt + stats::runif(1, 0, 1)
+      }
+      if (!is.null(log_path)) {
+        log_write(
+          log_path, "WARN",
+          sprintf("ai_request_vision: 429 — aguardando %.1fs (tentativa %d/%d)", delay, attempt, retries + 1)
+        )
+      }
       Sys.sleep(delay)
       next
     }
@@ -436,7 +464,9 @@ ai_request_vision <- function(prompt, image_b64, mime = "image/png",
     txt <- try(httr2::resp_body_string(resp), silent = TRUE)
     if (!inherits(txt, "try-error") && nzchar(txt)) {
       parsed_res <- try(jsonlite::fromJSON(txt, simplifyVector = FALSE), silent = TRUE)
-      if (inherits(parsed_res, "try-error")) return(NULL)
+      if (inherits(parsed_res, "try-error")) {
+        return(NULL)
+      }
 
       extracted <- NULL
       if (cfg$provider %in% c("openai", "groq", "openrouter", "deepseek", "bluesminds", "nvidia")) {
@@ -447,16 +477,24 @@ ai_request_vision <- function(prompt, image_b64, mime = "image/png",
 
       if (!is.null(extracted) && nzchar(extracted)) {
         elapsed <- as.numeric(Sys.time() - start_time, units = "secs")
-        if (!is.null(conn)) log_metric(conn, cfg$provider, "ai_request_vision", elapsed,
-          list(provider = cfg$provider, model = cfg$model, status = status))
+        if (!is.null(conn)) {
+          log_metric(
+            conn, cfg$provider, "ai_request_vision", elapsed,
+            list(provider = cfg$provider, model = cfg$model, status = status)
+          )
+        }
         return(extracted)
       }
     }
   }
 
   elapsed <- as.numeric(Sys.time() - start_time, units = "secs")
-  if (!is.null(conn)) log_metric(conn, cfg$provider, "ai_request_vision", elapsed,
-    list(provider = cfg$provider, model = cfg$model, status = "failed"))
+  if (!is.null(conn)) {
+    log_metric(
+      conn, cfg$provider, "ai_request_vision", elapsed,
+      list(provider = cfg$provider, model = cfg$model, status = "failed")
+    )
+  }
   NULL
 }
 
@@ -476,12 +514,15 @@ ai_request <- function(prompt, timeout_sec = 45, retries = 2, log_path = NULL, c
 
   # Retry manual com suporte a Retry-After header
   for (attempt in seq_len(retries + 1)) {
-    resp <- tryCatch({
-      httr2::req_perform(req)
-    }, error = function(e) {
-      if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Erro de rede/timeout na chamada de IA (tentativa %d/%d): %s", attempt, retries + 1, e$message))
-      NULL
-    })
+    resp <- tryCatch(
+      {
+        httr2::req_perform(req)
+      },
+      error = function(e) {
+        if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Erro de rede/timeout na chamada de IA (tentativa %d/%d): %s", attempt, retries + 1, e$message))
+        NULL
+      }
+    )
 
     if (is.null(resp)) {
       if (attempt <= retries) Sys.sleep(2^attempt + stats::runif(1, 0, 1))
@@ -511,8 +552,10 @@ ai_request <- function(prompt, timeout_sec = 45, retries = 2, log_path = NULL, c
     txt <- try(httr2::resp_body_string(resp), silent = TRUE)
     if (!inherits(txt, "try-error") && nzchar(txt)) {
       parsed_res <- try(jsonlite::fromJSON(txt, simplifyVector = FALSE), silent = TRUE)
-      if (inherits(parsed_res, "try-error")) return(NULL)
-      
+      if (inherits(parsed_res, "try-error")) {
+        return(NULL)
+      }
+
       extracted_text <- NULL
       if (cfg$provider == "gemini") {
         extracted_text <- tryCatch(parsed_res$candidates[[1]]$content$parts[[1]]$text %||% txt, error = function(e) txt)
@@ -521,7 +564,7 @@ ai_request <- function(prompt, timeout_sec = 45, retries = 2, log_path = NULL, c
       } else if (cfg$provider == "anthropic") {
         extracted_text <- tryCatch(parsed_res$content[[1]]$text %||% txt, error = function(e) txt)
       }
-      
+
       if (!is.null(extracted_text) && nzchar(extracted_text)) {
         elapsed <- as.numeric(Sys.time() - start_time, units = "secs")
         if (!is.null(conn)) log_metric(conn, cfg$provider, "ai_request", elapsed, list(provider = cfg$provider, model = cfg$model, status = status))
@@ -535,7 +578,9 @@ ai_request <- function(prompt, timeout_sec = 45, retries = 2, log_path = NULL, c
 }
 
 ai_request_parallel <- function(prompts, timeout_sec = 45, log_path = NULL) {
-  if (length(prompts) == 0) return(list())
+  if (length(prompts) == 0) {
+    return(list())
+  }
   cfg <- get_ai_config()
   if (!nzchar(cfg$provider) || !nzchar(cfg$api_key)) {
     if (!is.null(log_path)) log_write(log_path, "WARN", "Configuração de IA incompleta ou ausente. IA paralela desabilitada.")
@@ -546,19 +591,22 @@ ai_request_parallel <- function(prompts, timeout_sec = 45, log_path = NULL) {
     ai_make_request(p, cfg = cfg, timeout_sec = timeout_sec)
   })
   valid_indices <- which(!vapply(reqs, is.null, logical(1)))
-  
+
   if (length(valid_indices) == 0) {
     return(replicate(length(prompts), NULL, simplify = FALSE))
   }
 
   valid_reqs <- reqs[valid_indices]
 
-  resps <- tryCatch({
-    httr2::req_perform_parallel(valid_reqs, on_error = "continue")
-  }, error = function(e) {
-    if (!is.null(log_path)) log_write(log_path, "ERROR", sprintf("Erro crítico no processamento paralelo do httr2: %s", e$message))
-    replicate(length(valid_reqs), structure(list(message = e$message), class = "error"))
-  })
+  resps <- tryCatch(
+    {
+      httr2::req_perform_parallel(valid_reqs, on_error = "continue")
+    },
+    error = function(e) {
+      if (!is.null(log_path)) log_write(log_path, "ERROR", sprintf("Erro crítico no processamento paralelo do httr2: %s", e$message))
+      replicate(length(valid_reqs), structure(list(message = e$message), class = "error"))
+    }
+  )
 
   results <- replicate(length(prompts), NULL, simplify = FALSE)
   retry_indices <- integer()
@@ -574,7 +622,9 @@ ai_request_parallel <- function(prompts, timeout_sec = 45, log_path = NULL) {
         delay <- if (!is.null(retry_after)) {
           val <- suppressWarnings(as.numeric(retry_after))
           if (!is.na(val) && val > 0) val else 5
-        } else 5
+        } else {
+          5
+        }
         if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("429 paralelo em %s — retry individual após %.1fs (edital %d)", cfg$provider, delay, orig_idx))
         Sys.sleep(delay)
         retry_indices <- c(retry_indices, orig_idx)
@@ -704,10 +754,14 @@ skill_extract_metadata <- function(text, current_info = list(), log_path = NULL,
   prompt <- build_extraction_prompt(text, current_info)
 
   raw <- ai_request_with_fallback(prompt, log_path = log_path, conn = conn)
-  if (is.null(raw)) return(list())
+  if (is.null(raw)) {
+    return(list())
+  }
 
   parsed <- tryCatch(jsonlite::fromJSON(raw, simplifyVector = TRUE), error = function(e) NULL)
-  if (is.null(parsed)) return(list())
+  if (is.null(parsed)) {
+    return(list())
+  }
 
   result <- validate_ai_output(as.list(parsed))
   if (!is.null(log_path) && length(result$warnings) > 0) {
@@ -720,7 +774,9 @@ skill_extract_metadata <- function(text, current_info = list(), log_path = NULL,
 
 # Skill do Agente: Auditoria de Controle de Qualidade (Evasão de Alucinações)
 skill_verify_metadata <- function(metadata, raw_text, log_path = NULL, conn = NULL) {
-  if (length(metadata) == 0) return(metadata)
+  if (length(metadata) == 0) {
+    return(metadata)
+  }
 
   prompt <- paste(
     "Você é um auditor de qualidade de dados de editais de fomento.",
@@ -753,21 +809,29 @@ skill_verify_metadata <- function(metadata, raw_text, log_path = NULL, conn = NU
   )
 
   raw <- ai_request_with_fallback(prompt, log_path = log_path, conn = conn)
-  if (is.null(raw)) return(metadata)
+  if (is.null(raw)) {
+    return(metadata)
+  }
 
   parsed <- tryCatch(jsonlite::fromJSON(raw, simplifyVector = TRUE), error = function(e) NULL)
-  if (is.null(parsed)) return(metadata)
+  if (is.null(parsed)) {
+    return(metadata)
+  }
   result <- validate_ai_output(as.list(parsed))
   result$output
 }
 
 # Pipeline do Agente: Executa as skills sequencialmente
 ai_extract_fields <- function(text, current = list(), log_path = NULL, conn = NULL) {
-  if (!ai_available()) return(list())
+  if (!ai_available()) {
+    return(list())
+  }
 
   # Passo 1: Skill de Extração de Metadados
   extracted <- skill_extract_metadata(text, current, log_path, conn = conn)
-  if (length(extracted) == 0) return(list())
+  if (length(extracted) == 0) {
+    return(list())
+  }
 
   # Passo 2: Skill de Auditoria e Auto-Correção (opcional via AI_VERIFY_METADATA)
   verify_enabled <- !identical(tolower(Sys.getenv("AI_VERIFY_METADATA", "true")), "false")
@@ -782,28 +846,45 @@ ai_extract_fields <- function(text, current = list(), log_path = NULL, conn = NU
 # --- Validação de Schema IA ---
 
 .AI_ENUMS <- list(
-  tipo_oportunidade = c("edital", "grant", "fellowship", "bolsa", "licitação", "licitacao",
-                        "convocatória", "convocatoria", "chamada", "projeto", "programa",
-                        "auxílio", "auxilio", "financiamento", "apoio", "incentivo"),
-  status_oportunidade = c("aberto", "encerrado", "futuro", "encerrando", "em andamento",
-                          "em breve", "suspenso", "cancelado"),
+  tipo_oportunidade = c(
+    "edital", "grant", "fellowship", "bolsa", "licitação", "licitacao",
+    "convocatória", "convocatoria", "chamada", "projeto", "programa",
+    "auxílio", "auxilio", "financiamento", "apoio", "incentivo"
+  ),
+  status_oportunidade = c(
+    "aberto", "encerrado", "futuro", "encerrando", "em andamento",
+    "em breve", "suspenso", "cancelado"
+  ),
   idioma = c("pt", "en", "es", "fr", "de", "it", "zh", "ja"),
   moeda = c("BRL", "USD", "EUR", "GBP", "CAD", "ARS", "CLP", "COP")
 )
 
 normalize_ai_date <- function(value) {
-  if (is.null(value) || is.na(value)) return(NA_character_)
-  val <- as.character(value)
+  if (is.null(value) || length(value) == 0) {
+    return(NA_character_)
+  }
+  # Blindagem: IA pode retornar array (length 6-8) — pega apenas primeiro elemento
+  v1 <- value[[1]]
+  if (is.na(v1)) {
+    return(NA_character_)
+  }
+  val <- as.character(v1)
   if (!nzchar(val) || val %in% c("null", "NULL", "N/A", "n/a", "a definir", "A definir", "a Definir")) {
     return(NA_character_)
   }
   val <- trimws(val)
   d <- tryCatch(lubridate::ymd(val, quiet = TRUE), error = function(e) NA)
-  if (!is.na(d)) return(as.character(d))
+  if (!is.na(d)) {
+    return(as.character(d))
+  }
   d <- tryCatch(lubridate::dmy(val, quiet = TRUE), error = function(e) NA)
-  if (!is.na(d)) return(as.character(d))
+  if (!is.na(d)) {
+    return(as.character(d))
+  }
   d <- tryCatch(lubridate::mdy(val, quiet = TRUE), error = function(e) NA)
-  if (!is.na(d)) return(as.character(d))
+  if (!is.na(d)) {
+    return(as.character(d))
+  }
   NA_character_
 }
 
@@ -813,8 +894,14 @@ validate_date_field <- function(value) {
 }
 
 validate_numeric_field <- function(value) {
-  if (is.null(value) || is.na(value)) return(list(valid = TRUE, normalized = NA_real_))
-  val <- as.character(value)
+  if (is.null(value) || length(value) == 0) {
+    return(list(valid = TRUE, normalized = NA_real_))
+  }
+  v1 <- value[[1]]
+  if (is.na(v1)) {
+    return(list(valid = TRUE, normalized = NA_real_))
+  }
+  val <- as.character(v1)
   val <- gsub("[^0-9.,]", "", val)
   val <- gsub(",", ".", val)
   num <- suppressWarnings(as.numeric(val))
@@ -822,9 +909,17 @@ validate_numeric_field <- function(value) {
 }
 
 validate_enum_field <- function(value, allowed) {
-  if (is.null(value) || is.na(value)) return(list(valid = TRUE, normalized = NA_character_))
-  val <- tolower(trimws(as.character(value)))
-  if (!nzchar(val)) return(list(valid = TRUE, normalized = NA_character_))
+  if (is.null(value) || length(value) == 0) {
+    return(list(valid = TRUE, normalized = NA_character_))
+  }
+  v1 <- value[[1]]
+  if (is.na(v1)) {
+    return(list(valid = TRUE, normalized = NA_character_))
+  }
+  val <- tolower(trimws(as.character(v1)))
+  if (!nzchar(val)) {
+    return(list(valid = TRUE, normalized = NA_character_))
+  }
   # Mapeamento de sinônimos
   synonyms <- list(
     "bolsa" = "bolsa", "scholarship" = "bolsa", "fellowship" = "fellowship",
@@ -844,27 +939,39 @@ validate_language_code <- function(value) {
 }
 
 validate_keyword_count <- function(value, min_kw = 5, max_kw = 8) {
-  if (is.null(value) || is.na(value)) return(list(valid = FALSE, count = 0L))
-  kws <- safe_split(as.character(value))
+  if (is.null(value) || length(value) == 0) {
+    return(list(valid = FALSE, count = 0L))
+  }
+  # Se IA retornou array, colapsa em string antes de contar
+  v_str <- if (length(value) > 1) paste(as.character(value), collapse = ", ") else as.character(value[[1]])
+  if (is.na(v_str)) {
+    return(list(valid = FALSE, count = 0L))
+  }
+  kws <- safe_split(v_str)
   count <- length(kws)
   list(valid = count >= min_kw && count <= max_kw, count = count, keywords = kws)
 }
 
 validate_ai_output <- function(ai_list) {
-  if (is.null(ai_list) || length(ai_list) == 0) return(list(valid = TRUE, errors = character(), warnings = character()))
+  if (is.null(ai_list) || length(ai_list) == 0) {
+    return(list(valid = TRUE, errors = character(), warnings = character()))
+  }
 
   errors <- character()
   warnings <- character()
 
-  # Validar datas
+  # Validar datas — blindado contra array (usa [[1]])
   for (date_field in c("data_limite", "data_publicacao", "data_abertura", "data_encerramento")) {
-    if (!is.null(ai_list[[date_field]])) {
-      v <- validate_date_field(ai_list[[date_field]])
+    if (!is.null(ai_list[[date_field]]) && length(ai_list[[date_field]]) > 0) {
+      val1 <- ai_list[[date_field]][[1]]
+      v <- validate_date_field(val1)
       if (!v$valid) {
-        warnings <- c(warnings, sprintf("Campo '%s': formato de data inválido ('%s') — aceito como está", date_field, ai_list[[date_field]]))
-      } else if (!is.na(v$normalized) && !identical(as.character(ai_list[[date_field]]), v$normalized)) {
+        warnings <- c(warnings, sprintf("Campo '%s': formato de data inválido ('%s') — aceito como está", date_field, val1))
+      } else if (!is.na(v$normalized) && !identical(as.character(val1), v$normalized)) {
         ai_list[[date_field]] <- v$normalized
-        warnings <- c(warnings, sprintf("Campo '%s': normalizado de '%s' para '%s'", date_field, ai_list[[date_field]], v$normalized))
+        warnings <- c(warnings, sprintf("Campo '%s': normalizado de '%s' para '%s'", date_field, val1, v$normalized))
+      } else {
+        ai_list[[date_field]] <- v$normalized
       }
     }
   }
@@ -877,28 +984,34 @@ validate_ai_output <- function(ai_list) {
     moeda = .AI_ENUMS$moeda
   )
   for (enum_field in names(enum_validations)) {
-    if (!is.null(ai_list[[enum_field]])) {
-      v <- validate_enum_field(ai_list[[enum_field]], enum_validations[[enum_field]])
+    if (!is.null(ai_list[[enum_field]]) && length(ai_list[[enum_field]]) > 0) {
+      val1 <- ai_list[[enum_field]][[1]]
+      v <- validate_enum_field(val1, enum_validations[[enum_field]])
       if (!v$valid) {
-        warnings <- c(warnings, sprintf("Campo '%s': valor '%s' fora do enum permitido — aceito como está", enum_field, ai_list[[enum_field]]))
-      } else if (!is.na(v$normalized) && !identical(tolower(as.character(ai_list[[enum_field]])), v$normalized)) {
+        warnings <- c(warnings, sprintf("Campo '%s': valor '%s' fora do enum permitido — aceito como está", enum_field, val1))
+      } else if (!is.na(v$normalized) && !identical(tolower(as.character(val1)), v$normalized)) {
+        ai_list[[enum_field]] <- v$normalized
+      } else {
         ai_list[[enum_field]] <- v$normalized
       }
     }
   }
 
-  # Validar numérico
-  if (!is.null(ai_list$valor_financiado)) {
-    v <- validate_numeric_field(ai_list$valor_financiado)
-    if (!v$valid) {
-      warnings <- c(warnings, sprintf("Campo 'valor_financiado': valor não numérico ('%s') — aceito como está", ai_list$valor_financiado))
+  # Validar numérico — usa [[1]] blindado (array de IA)
+  if (!is.null(ai_list$valor_financiado) && length(ai_list$valor_financiado) > 0) {
+    vf1 <- ai_list$valor_financiado[[1]]
+    if (!is.na(vf1)) {
+      v <- validate_numeric_field(vf1)
+      if (!v$valid) {
+        warnings <- c(warnings, sprintf("Campo 'valor_financiado': valor não numérico ('%s') — aceito como está", vf1))
+      }
     }
   }
 
   # Validar palavras-chave
-  if (!is.null(ai_list$palavras_chave)) {
+  if (!is.null(ai_list$palavras_chave) && length(ai_list$palavras_chave) > 0) {
     v <- validate_keyword_count(ai_list$palavras_chave)
-    if (!v$count == 0) {
+    if (v$count != 0) {
       warnings <- c(warnings, sprintf("Campo 'palavras_chave': %d termos (esperado 5-8) — aceito como está", v$count))
     }
   }
@@ -909,15 +1022,26 @@ validate_ai_output <- function(ai_list) {
 fix_polyglotr_encoding <- function(s) {
   # Corrige double-encoding causado pelo polyglotr no Windows
   # No Linux (UTF-8 nativo), polyglotr retorna strings corretas — apenas garante encoding
-  if (is.null(s) || !is.character(s) || length(s) == 0) return(enc2utf8(s))
-  if (.Platform$OS.type != "windows") return(enc2utf8(s))
+  if (is.null(s) || !is.character(s) || length(s) == 0) {
+    return(enc2utf8(s))
+  }
+  if (.Platform$OS.type != "windows") {
+    return(enc2utf8(s))
+  }
   vapply(s, function(x) {
-    if (is.na(x) || !nzchar(x)) return(x)
-    tryCatch({
-      bytes <- iconv(x, from = "UTF-8", to = "latin1", toRaw = TRUE)[[1]]
-      if (is.null(bytes)) return(enc2utf8(x))
-      enc2utf8(rawToChar(bytes))
-    }, error = function(e) enc2utf8(x))
+    if (is.na(x) || !nzchar(x)) {
+      return(x)
+    }
+    tryCatch(
+      {
+        bytes <- iconv(x, from = "UTF-8", to = "latin1", toRaw = TRUE)[[1]]
+        if (is.null(bytes)) {
+          return(enc2utf8(x))
+        }
+        enc2utf8(rawToChar(bytes))
+      },
+      error = function(e) enc2utf8(x)
+    )
   }, character(1), USE.NAMES = FALSE)
 }
 
@@ -928,37 +1052,39 @@ translate_to_pt_br <- function(records, log_path = NULL) {
   #   log_path: caminho para log opcional
   # Returns:
   #   tibble com titulos e descricoes traduzidos
-  
-  if (is.null(records) || nrow(records) == 0) return(records)
-  
+
+  if (is.null(records) || nrow(records) == 0) {
+    return(records)
+  }
+
   # Verificar se polyglotr esta disponivel
   if (!requireNamespace("polyglotr", quietly = TRUE)) {
     if (!is.null(log_path)) log_write(log_path, "WARN", "Pacote polyglotr nao instalado. Traducao ignorada. Instale com: install.packages('polyglotr')")
     return(records)
   }
-  
+
   # Identificar registros que precisam de traducao (nao sao pt)
   needs_translation <- which(records$idioma != "pt" | is.na(records$idioma))
-  
+
   if (length(needs_translation) == 0) {
     if (!is.null(log_path)) log_write(log_path, "INFO", "Todos os registros ja estao em pt-br. Traducao ignorada.")
     return(records)
   }
-  
+
   if (!is.null(log_path)) log_write(log_path, "INFO", sprintf("Traduzindo %d registros para pt-br via Google Translate...", length(needs_translation)))
-  
+
   translated_count <- 0L
   failed_count <- 0L
-  
+
   for (i in needs_translation) {
     titulo <- records$titulo[[i]]
-    
+
     # Pular se titulo ja esta vazio ou e NA
     if (is.null(titulo) || !nzchar(titulo) || is.na(titulo)) next
-    
+
     # Detectar idioma de origem: polaco se tem caracteres especiais, senao ingles
     source_lang <- if (grepl("[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]", titulo)) "pl" else "en"
-    
+
     # Traduzir titulo com polyglotr (Google Translate, sem API key)
     translated <- tryCatch(
       polyglotr::google_translate(titulo, target_language = "pt", source_language = source_lang),
@@ -967,12 +1093,12 @@ translate_to_pt_br <- function(records, log_path = NULL) {
         NA_character_
       }
     )
-    
+
     if (is.character(translated) && length(translated) == 1 && !is.na(translated) && nzchar(translated)) {
       records$titulo[[i]] <- fix_polyglotr_encoding(translated)
       records$idioma[[i]] <- "pt"
       translated_count <- translated_count + 1L
-      
+
       # Traduzir descricao se existir e for substancial
       descricao <- records$descricao_resumida[[i]]
       if (!is.null(descricao) && !is.na(descricao) && nzchar(descricao) && nchar(descricao) > 50) {
@@ -987,12 +1113,12 @@ translate_to_pt_br <- function(records, log_path = NULL) {
     } else {
       failed_count <- failed_count + 1L
     }
-    
+
     # Rate limiting: pausa entre chamadas para nao sobrecarregar a API
     Sys.sleep(0.3)
   }
-  
+
   if (!is.null(log_path)) log_write(log_path, "INFO", sprintf("Traducao concluida. %d/%d registros traduzidos com sucesso (%d falhas).", translated_count, length(needs_translation), failed_count))
-  
+
   records
 }

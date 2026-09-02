@@ -525,7 +525,7 @@ server <- function(input, output, session) {
         removeNotification("bg_collect_notif")
         rv$collecting <- FALSE
         updateActionButton(session, "btn_collect_official", label = "Atualizar base")
-        if (identical(result$inserted_now %||% 0L, 0L) && (result$sources_processed %||% 0L) > 0) {
+        if (identical(result$inserted_now %||% 0L, 0L)) {
           progress_rv$status <- "warning"
           progress_rv$detail <- "Coleta finalizada — nenhum registro novo. Verifique filtros/ano ou logs."
         } else {

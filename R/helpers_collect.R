@@ -1197,6 +1197,26 @@ enrich_records_parallel <- function(df, log_path = NULL, conn = NULL) {
     parsed <- tryCatch(jsonlite::fromJSON(raw, simplifyVector = TRUE), error = function(e) NULL)
 
     if (!is.null(parsed)) {
+      # Blindagem: IA pode retornar array de 6-8 objetos (simplifyVector=TRUE -> data.frame) — normaliza para primeiro registro
+      if (is.data.frame(parsed) && nrow(parsed) > 0) {
+        if (nrow(parsed) > 1 && !is.null(log_path)) {
+          log_write(log_path, "WARN", sprintf("IA retornou array de %d registros para '%s' — usando apenas o primeiro.", nrow(parsed), substr(df$titulo[[i]], 1, 50)))
+        }
+        parsed <- as.list(parsed[1, , drop = FALSE])
+        # Desembrulha colunas data.frame que viraram vetores de 1
+        parsed <- lapply(parsed, function(v) if (length(v) == 1) v[[1]] else v)
+      } else if (is.list(parsed) && !is.data.frame(parsed)) {
+        # Se algum campo é vetor/array (ex: palavras_chave com 6-8 termos como array), colapsa em string
+        # (fill_ai_field já colapsa, mas valor_financiado/moeda precisam escalar — já blindados em apply_ai_fields_to_df)
+        # Apenas loga para observabilidade
+        array_fields <- names(parsed)[vapply(parsed, function(v) length(v) > 1 && is.character(v), logical(1))]
+        if (length(array_fields) > 0 && !is.null(log_path)) {
+          # Não loga a cada edital para não poluir; apenas quando array suspeito de resposta múltipla
+          if (any(vapply(parsed[array_fields], length, integer(1)) >= 6)) {
+            log_write(log_path, "WARN", sprintf("IA retornou campos array %s para '%s' — campos serão normalizados.", paste(array_fields, collapse=","), substr(df$titulo[[i]], 1, 40)))
+          }
+        }
+      }
       ai <- as.list(parsed)
       verify_enabled <- !identical(tolower(Sys.getenv("AI_VERIFY_METADATA", "true")), "false")
       if (verify_enabled) {
@@ -3358,7 +3378,7 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
   if (isTRUE(do_export)) exports <- save_collection_exports(final_df, export_dir, prefix = "funding_intelligence_base", log_path = log_path)
   log_write(log_path, "INFO", sprintf("Fim da coleta oficial. %s fontes processadas. %s registros adicionados nesta rodada. %s registros na base.", processed, inserted_total, nrow(final_df)))
 
-  if (inserted_total == 0L && processed > 0L) {
+  if (inserted_total == 0L) {
     status_data <- list(
       step = total,
       total = total,

@@ -92,7 +92,17 @@ create_tables <- function(conn) {
       fonte_oficial TEXT,
       data_hora_coleta TEXT,
       hash_deduplicacao TEXT UNIQUE,
-      campos_inferidos_ia TEXT
+      campos_inferidos_ia TEXT,
+      enrichment_status TEXT DEFAULT 'pendente',
+      enrichment_model TEXT,
+      enrichment_at TEXT,
+      enrichment_error TEXT
+    )")
+
+  DBI::dbExecute(conn, "
+    CREATE TABLE IF NOT EXISTS migration_flags (
+      flag TEXT PRIMARY KEY,
+      applied_at TEXT
     )")
 
   DBI::dbExecute(conn, "
@@ -325,7 +335,7 @@ seed_demo_opportunities <- function(conn) {
     "Horizon Europe", "União Europeia", "Grant Demo for Energy Transition", "Seed", "Support for collaborative R&D in low-carbon industry.", "Seed record for initial dashboard rendering.", "grant", "rede", "Transição Energética", "energy transition; hydrogen; biomethane", "universities; companies; research organisations", "instituições; empresas", "instituição", "Horizon Europe", 2500000, "EUR", as.character(today - 40), as.character(today - 35), as.character(today + 60), NA_character_, "aberto", "https://research-and-innovation.ec.europa.eu/", "https://research-and-innovation.ec.europa.eu/", NA_character_, "en", "União Europeia", "Seed demo.", "Seed demo.", 1L, "horizon_europe", as.character(Sys.time())
   )
   demo$hash_deduplicacao <- vapply(seq_len(nrow(demo)), function(i) {
-    make_hash(demo$entidade[i], demo$titulo[i], demo$link_detalhe[i], demo$data_limite[i])
+    make_hash(demo$entidade[i], normalize_text(demo$titulo[i]), demo$link_detalhe[i])
   }, character(1))
   demo <- demo |>
     dplyr::mutate(
@@ -334,6 +344,85 @@ seed_demo_opportunities <- function(conn) {
     ) |>
     dplyr::select(id_registro, dplyr::everything())
   DBI::dbWriteTable(conn, "oportunidades", demo, append = TRUE)
+}
+
+# ─── Migrações idempotentes (BUG-02/12) ───────────────────────────────────────
+# Adiciona as colunas de proveniência de enriquecimento em bancos existentes e
+# recalcula hash_deduplicacao (que nunca mais inclui data_limite).
+
+.enrichment_columns <- list(
+  enrichment_status = "TEXT DEFAULT 'pendente'",
+  enrichment_model = "TEXT",
+  enrichment_at = "TEXT",
+  enrichment_error = "TEXT"
+)
+
+migration_marker <- function(conn, flag) {
+  tryCatch(
+    {
+      res <- DBI::dbGetQuery(conn, "SELECT 1 AS ok FROM migration_flags WHERE flag = ?", params = list(flag))
+      nrow(res) > 0L
+    },
+    error = function(e) TRUE
+  )
+}
+
+set_migration_marker <- function(conn, flag) {
+  try(
+    {
+      DBI::dbExecute(
+        conn,
+        "INSERT OR REPLACE INTO migration_flags (flag, applied_at) VALUES (?, ?)",
+        params = list(flag, as.character(Sys.time()))
+      )
+    },
+    silent = TRUE
+  )
+}
+
+migrate_enrichment_columns <- function(conn) {
+  cols <- tryCatch(DBI::dbListFields(conn, "oportunidades"), error = function(e) character())
+  for (nm in names(.enrichment_columns)) {
+    if (!nm %in% cols) {
+      DBI::dbExecute(conn, sprintf("ALTER TABLE oportunidades ADD COLUMN %s %s", nm, .enrichment_columns[[nm]]))
+      message(sprintf("[Migration] Coluna '%s' adicionada a oportunidades.", nm))
+    }
+  }
+  invisible(TRUE)
+}
+
+migrate_dedup_hashes <- function(conn) {
+  if (!isTRUE(migration_marker(conn, "dedup_hash_v2"))) {
+    res <- tryCatch(
+      {
+        DBI::dbGetQuery(conn, "SELECT id_registro, entidade, titulo, link_detalhe, link_documento_pdf, link_origem, hash_deduplicacao FROM oportunidades")
+      },
+      error = function(e) NULL
+    )
+    if (!is.null(res) && nrow(res) > 0L) {
+      updated <- 0L
+      for (i in seq_len(nrow(res))) {
+        primary_link <- dplyr::coalesce(res$link_detalhe[[i]], res$link_documento_pdf[[i]], res$link_origem[[i]], "")
+        new_hash <- make_hash(res$entidade[[i]], normalize_text(res$titulo[[i]]), primary_link)
+        if (!identical(res$hash_deduplicacao[[i]], new_hash)) {
+          tryCatch(
+            {
+              DBI::dbExecute(
+                conn,
+                "UPDATE oportunidades SET hash_deduplicacao = ?, id_registro = CASE WHEN id_registro IS NULL OR id_registro = '' THEN ? ELSE id_registro END WHERE id_registro = ?",
+                params = list(new_hash, paste0("auto_", substr(new_hash, 1, 16)), res$id_registro[[i]])
+              )
+              updated <- updated + 1L
+            },
+            error = function(e) NULL
+          )
+        }
+      }
+      message(sprintf("[Migration] Recalculados %d hash(s) de deduplicacao (sem data_limite).", updated))
+    }
+    set_migration_marker(conn, "dedup_hash_v2")
+  }
+  invisible(TRUE)
 }
 
 migrate_existing_keywords <- function(conn) {
@@ -500,6 +589,8 @@ init_database <- function(db_path) {
   seed_projetos_aprovados(conn)
   try(cleanup_database_opportunities(conn), silent = TRUE)
   try(migrate_existing_keywords(conn), silent = TRUE)
+  try(migrate_enrichment_columns(conn), silent = TRUE)
+  try(migrate_dedup_hashes(conn), silent = TRUE)
   invisible(TRUE)
 }
 
@@ -590,9 +681,13 @@ upsert_opportunities <- function(conn, opportunities_df) {
       }
     }
 
-    # Gera o hash de deduplicação via MD5 de Título + Agência (entidade)
+    # Gera o hash de deduplicação — sem data_limite (BUG-12): o mesmo edital
+    # coletado em dias diferentes deve colapsar em um único registro.
     if (is.null(row$hash_deduplicacao) || is.na(row$hash_deduplicacao) || !nzchar(row$hash_deduplicacao)) {
-      hash_input <- paste(row$entidade, row$titulo, sep = "||")
+      primary_link <- paste(row$link_detalhe, row$link_documento_pdf, row$link_origem, sep = "||")
+      primary_link <- sub("^(NA\\|\\|)+", "", primary_link)
+      primary_link <- sub("(\\|\\|NA)+$", "", primary_link)
+      hash_input <- paste(row$entidade, normalize_text(row$titulo), primary_link, sep = "||")
       row$hash_deduplicacao <- digest::digest(hash_input, algo = "md5")
     }
 

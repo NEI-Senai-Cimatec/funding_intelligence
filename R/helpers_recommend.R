@@ -45,9 +45,36 @@ keyword_overlap_score <- function(text, keywords) {
   100 * mean(hits)
 }
 
-compute_adherence_score <- function(df, conn, current_query = "") {
+# Tokens proibidos nos chips/score (BUG-04/MH-01): anos, números, siglas sem semântica
+.banned_match_tokens <- c(
+  "2022", "2023", "2024", "2025", "2026", "2027", "2028", "2029", "2030",
+  "cnpq", "capes", "finep", "fapesb", "fapes", "confap", "daad", "embrapii",
+  "erc", "undp", "petrobras", "sigitec", "humboldt", "nsf", "doe", "horizon"
+)
+
+is_semantic_token <- function(term) {
+  t <- normalize_text(term)
+  nzchar(t) && !(t %in% .banned_match_tokens) && !grepl("^\\d+$", t)
+}
+
+# Termos da assinatura presentes no texto do registro (para chips explicáveis)
+matched_keywords <- function(signature, text, keywords_extra = NULL) {
+  if (is.null(signature) || length(signature) == 0) {
+    return(character())
+  }
+  terms <- unique(normalize_text(c(signature$keywords %||% character(), keywords_extra %||% character())))
+  terms <- terms[nzchar(terms) & vapply(terms, is_semantic_token, logical(1))]
+  if (length(terms) == 0) return(character())
+  norm_txt <- normalize_text(text)
+  terms[vapply(terms, function(k) {
+    pat <- tryCatch(term_to_pattern(k), error = function(e) "")
+    nzchar(pat) && grepl(pat, norm_txt, ignore.case = TRUE, perl = TRUE)
+  }, logical(1))]
+}
+
+compute_adherence_score <- function(df, conn, current_query = "", signature = NULL) {
   if (nrow(df) == 0) return(df)
-  signature <- collect_interest_signature(conn, current_query = current_query)
+  if (is.null(signature)) signature <- collect_interest_signature(conn, current_query = current_query)
   current_terms <- extract_query_terms(current_query)
   active_keywords <- unique(c(normalize_text(current_terms), signature$keywords))
   text_index <- build_search_text(df, text_cols = c("titulo", "subtitulo", "descricao_resumida", "descricao_completa", "palavras_chave", "area_tematica", "elegibilidade"))
@@ -61,12 +88,15 @@ compute_adherence_score <- function(df, conn, current_query = "") {
   df
 }
 
-recommend_opportunities <- function(conn, opportunities_df, current_query = "", top_n = 10) {
+recommend_opportunities <- function(conn, opportunities_df, current_query = "", top_n = 10, signature = NULL) {
   if (nrow(opportunities_df) == 0) return(opportunities_df)
-  scored <- compute_adherence_score(opportunities_df, conn, current_query)
+  scored <- compute_adherence_score(opportunities_df, conn, current_query, signature = signature)
   tracked_ids <- if (is.null(conn)) character() else DBI::dbGetQuery(conn, "SELECT id_oportunidade FROM editais_rastreados")$id_oportunidade
+  # BUG-01/11: recomendações usam status DERIVADO (nunca o campo congelado)
+  scored$derived_status <- derive_status_vec(scored$data_limite, scored$data_abertura, scored$texto_bruto)
   scored |>
-    dplyr::filter(!(id_registro %in% tracked_ids), status_oportunidade != "encerrado") |>
+    dplyr::filter(!(id_registro %in% tracked_ids), derived_status != "encerrado") |>
+    dplyr::select(-derived_status) |>
     dplyr::arrange(dplyr::desc(score_aderencia), parse_date_safe(data_limite)) |>
     dplyr::slice_head(n = top_n)
 }

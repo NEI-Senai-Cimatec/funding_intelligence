@@ -32,9 +32,12 @@ gdrive_credentials.json
 # OpenSpec
 .openspec_cache/
 *.openspec.log
+/openspec/
+
 
 # Opencode
 *.opencode
+.opencode/
 # Arquivos ENV
 *.env
 
@@ -46,9 +49,13 @@ node_modules/
 
 # Agent
 *.agent
+.agent/
 
 # Github agent
 *.github
+
+#Testes
+/tests/
 
 PRODUCT.md
 node_modules

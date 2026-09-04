@@ -532,10 +532,11 @@ Deve retornar JSON com `"totalResults"` > 0.
 | `AI_PROVIDER` | Força provedor específico | auto-detect |
 | `AI_MODEL` | Força modelo específico | provedor-dependent |
 | `AI_API_URL` | Endpoint customizado | provedor-dependent |
-| `AI_MAX_CHARS` | Contexto máximo por edital | `20000` |
+| `AI_MAX_CHARS` | Contexto máximo por edital | `12000` (trim inteligente preserva prazos) |
 | `AI_VERIFY_METADATA` | Habilita auditoria de qualidade | `true` |
 | `AI_BATCH_SIZE` | Lote de requisições paralelas | `3` |
 | `AI_DELAY_BETWEEN_BATCHES` | Atraso entre lotes de IA (seg) | `2` |
+| `SCRAPE_WORKERS` | Workers da coleta paralela por fonte | `4` |
 
 ### Google Drive (opcional)
 
@@ -583,6 +584,10 @@ Deve retornar JSON com `"totalResults"` > 0.
 ```bash
 # Testar utilitários
 Rscript -e "testthat::test_file('tests/testthat/test-utils.R')"
+Rscript -e "testthat::test_dir('tests/testthat')"
+
+# Suite E2E Playwright (app rodando em http://localhost:3838)
+Rscript tests/playwright/e2e-suite.R
 
 # Testar concorrência SQLite
 Rscript scratch/test_db_concurrency.R
@@ -593,6 +598,59 @@ Rscript scratch/test_stealth_request.R
 # Testar retries da IA
 Rscript scratch/test_ai_backoff.R
 ```
+
+---
+
+## Correções v2.0 (funding-hub-v2-hardening)
+
+Correção dos 14 bugs do catálogo v2.0 + 5 melhorias de backlog (change OpenSpec `funding-hub-v2-hardening`):
+
+| ID | Correção | Onde |
+|---|---|---|
+| BUG-01/05/11 | Status derivado em render (`derive_status`), nunca o campo congelado — tabela, modal, KPI, filtros e recomendações | `R/helpers_status.R`, `app.R`, `R/helpers_recommend.R`, `R/helpers_collect.R` |
+| BUG-02 | Pipeline de enriquecimento resiliente: 3 tentativas com backoff → validação de schema → fallback heurístico obrigatório, com proveniência persistida | `R/helpers_ai.R`, `R/helpers_collect.R`, `R/helpers_db.R` |
+| BUG-03/13 | Extração contextual de prazos (janelas ±120 chars), filtro de plausibilidade, consistência ano do título vs ano do prazo e flag de ambiguidade de data | `R/helpers_utils.R`, `R/helpers_collect.R` |
+| BUG-04 | Score único (assinatura de interesses por sessão) para lista e modal + chips de termos casados | `R/helpers_recommend.R`, `app.R` |
+| BUG-06 | Fontes UE com JS/CDN: cascata prioriza render headless + fallback CORDIS API para prazos ausentes | `R/helpers_collect.R` |
+| BUG-07 | Contrato de IA v2 (`AI_ENRICHMENT_PROMPT`): sem status, com valor_estimado/moeda, 5 keywords, confiança e R1-R5; `validate_ai_schema` rejeita e anula campos inválidos | `R/helpers_ai.R` |
+| BUG-08 | Proveniência por campo + trilha de auditoria no log de coleta | `R/helpers_ai.R`, `R/helpers_db.R` |
+| BUG-09 | `trim_for_ai` preserva prazos/orçamentos no fim de textos longos | `R/helpers_text.R` |
+| BUG-10 | Chaves de API apenas em headers (`x-goog-api-key`) + `redact_keys_in_text` | `R/helpers_ai.R` |
+| BUG-12 | `hash_deduplicacao` sem `data_limite` (+ migração retroativa idempotente) | `R/helpers_db.R`, `R/helpers_collect.R` |
+| BUG-14 | Testes de regressão (testthat TC-01..10 + Playwright E2E-01..07) | `tests/testthat/`, `tests/playwright/` |
+| MH-02 | `compute_data_quality_score` + badge de qualidade na tabela e modal | `R/helpers_utils.R`, `app.R` |
+| MH-03 | Observabilidade: colunas de enriquecimento + logs WARN de ambiguity/consistency | `R/helpers_db.R`, `R/helpers_utils.R` |
+| MH-04 | Banner de proveniência, retry de enriquecimento e deep-link `?id=` | `app.R` |
+| MH-05 | Coleta paralela por fonte (`SCRAPE_WORKERS`) + token-bucket por provedor | `R/helpers_collect.R`, `R/helpers_ai.R` |
+
+### Testes (BUG-14)
+
+- **Unitários:** `tests/testthat/test-status-engine.R` (15 casos), `test-date-extraction.R` (TC-06), `test-enrichment-fallback.R` (TC-04/05), `test-ai-schema-validation.R` (TC-09), `test-trim-ai.R` (TC-10), `test-adherence-consistency.R` (TC-08), `test-data-quality.R`, `test-dedup-hash.R` (TC-07 + migrações)
+- **E2E Playwright:** `tests/playwright/e2e-suite.R` (E2E-01..07)
+- A data de referência usa o fuso `America/Sao_Paulo`; funções de status/data aceitam `today` injetável para testes determinísticos
+
+### `.Renviron` — modelo (chaves SEMPRE em headers, nunca em URL)
+
+```
+# Escolha ao menos uma chave de IA (uma por linha):
+# GROQ_API_KEY=gsk_...
+# GEMINI_API_KEY=AIza...
+# OPENAI_API_KEY=sk-...
+# ANTHROPIC_API_KEY=sk-ant-...
+
+AI_PROVIDER=groq
+AI_MAX_CHARS=12000
+AI_VERIFY_METADATA=true
+AI_BATCH_SIZE=8
+AI_DELAY_BETWEEN_BATCHES=6
+SCRAPE_WORKERS=4
+
+# Google Drive (opcional)
+# GDRIVE_SERVICE_ACCOUNT_JSON=gdrive_credentials.json
+# GDRIVE_FILE_ID=...
+```
+
+- **Migração:** ao subir, o app adiciona idempotentemente as colunas `enrichment_status/model/at/error` e recalcula os hashes de deduplicação (sem `data_limite`). Não há perda de dados.
 
 ---
 

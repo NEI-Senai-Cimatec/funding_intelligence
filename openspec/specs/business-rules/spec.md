@@ -37,7 +37,7 @@ The system SHALL filter records by relevance to the current year via `is_current
 - **THEN** the record passes the year filter (plurianual treatment)
 
 ### Requirement: Status classification from deadline and text
-The system SHALL classify opportunity status via `classify_status()` which: (1) computes `diff_days = deadline - today`, (2) returns "encerrado" if diff < 0, "encerrando" if diff ≤ 14, "em breve" if start > today, "aberto" otherwise. Text-based fallback: patterns for "encerrad/closed", "open/abert", "coming soon".
+The system SHALL classify status via a pure classification function which: (1) computes `diff_days = deadline - today`, (2) returns "encerrado" if diff < 0, "encerrando" if diff ≤ 14, "em breve" if start > today, "aberto" otherwise. Text-based fallback: patterns for "encerrad/closed", "open/abert", "coming soon". The result is stored at collection time but SHALL be re-derived on every display (`derive_status()`); the stored value is never authoritative for rendering.
 
 #### Scenario: Open opportunity
 - **WHEN** a record has `data_limite` 30 days in the future
@@ -50,6 +50,10 @@ The system SHALL classify opportunity status via `classify_status()` which: (1) 
 #### Scenario: Expired opportunity
 - **WHEN** a record has `data_limite` in the past
 - **THEN** status is classified as "encerrado"
+
+#### Scenario: Stored status superseded at render
+- **WHEN** a record has stored status "encerrado" but `data_limite` in the future
+- **THEN** the rendered status is derived as "aberto" and the stored value is ignored by the UI
 
 ### Requirement: Language inference from text content
 The system SHALL infer language via `infer_language_simple()` which matches keyword patterns: Portuguese patterns ("edital", "chamada", "bolsa", "inscrições"), English patterns ("call", "grant", "funding", "deadline"), Spanish patterns ("convocatoria", "subvención", "beca").
@@ -107,7 +111,7 @@ The system SHALL extract keywords via `extract_keywords_simple()` which: tokeniz
 - **THEN** "edital", "para", "pesquisa", "desenvolvimento" are filtered as stopwords
 
 ### Requirement: Date extraction from multiple formats
-The system SHALL extract dates from text via `extract_dates_from_text()` which recognizes: `DD/MM/YYYY`, `YYYY-MM-DD`, `DD de mês de YYYY` (Portuguese month names). All formats are normalized to `YYYY-MM-DD`.
+The system SHALL extract dates from text via `extract_dates_from_text()` which recognizes: `DD/MM/YYYY`, `YYYY-MM-DD`, `DD de mês de YYYY` (Portuguese month names). All formats are normalized to `YYYY-MM-DD`. When multiple parseable interpretations exist for the same textual date (ambiguity), the function SHALL flag the result with low confidence and emit a WARN audit record naming the source text.
 
 #### Scenario: Brazilian date format
 - **WHEN** text contains "15/03/2026"
@@ -116,6 +120,10 @@ The system SHALL extract dates from text via `extract_dates_from_text()` which r
 #### Scenario: Portuguese text date
 - **WHEN** text contains "15 de março de 2026"
 - **THEN** the date is extracted as "2026-03-15"
+
+#### Scenario: Ambiguous date flagged
+- **WHEN** a date string can be parsed in more than one supported format
+- **THEN** the result carries low confidence and a WARN audit record is written
 
 ### Requirement: Money value parsing
 The system SHALL parse monetary values via `parse_money_text()` which detects currency symbols (R$, US$, EUR, GBP, CAD) and extracts numeric values. Currency is inferred from text patterns; values are parsed with thousand separators handled.
@@ -127,3 +135,25 @@ The system SHALL parse monetary values via `parse_money_text()` which detects cu
 #### Scenario: Euro currency
 - **WHEN** text contains "€2.500.000"
 - **THEN** value is 2500000 and currency is "EUR"
+
+### Requirement: Contextual deadline extraction
+The system SHALL extract deadlines from text via contextual window extraction: for each deadline keyword ("prazo", "deadline", "submiss", "inscri", "until", "due date", "até"), the system scans ±120-character windows around keyword matches, extracts dates ONLY from those windows, and filters results to a plausible window of (today − 2 years) .. (today + 2 years). Dates from footers, "última atualização", results lists, and events SHALL NOT be used as the deadline when a contextual window date exists.
+
+#### Scenario: Footer date ignored, contextual deadline kept
+- **WHEN** text contains a footer date 27/10/2023 and a real deadline "até 15/10/2026"
+- **THEN** the extracted deadline is 2026-10-15 and the footer date is not used
+
+#### Scenario: Out-of-window dates discarded
+- **WHEN** the only found dates are more than 2 years in the past or future
+- **THEN** no deadline is extracted from those dates
+
+### Requirement: Deadline-year consistency validation
+The system SHALL validate extracted deadlines against the year in the title (e.g., "Nº 24/2026" implies 2026) via a consistency check that permits a difference of at most 1 year. Inconsistent records SHALL keep the extracted date but be flagged (quality/audit), never silently corrected.
+
+#### Scenario: Consistent year passes
+- **WHEN** a title contains "2026" and the deadline is 2026-10-15
+- **THEN** the record passes year consistency
+
+#### Scenario: Inconsistent year flagged
+- **WHEN** a title contains "2026" but the deadline is 2023-10-27
+- **THEN** the check reports inconsistency (diff > 1 year) and the record is flagged

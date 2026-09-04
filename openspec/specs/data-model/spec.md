@@ -18,15 +18,19 @@ The system SHALL maintain a SQLite database with 11 tables: `fontes_financiament
 - **THEN** tables are created only if missing; existing data is preserved
 
 ### Requirement: Opportunidades table schema
-The system SHALL maintain the `oportunidades` table with 35 columns: `id_registro` (TEXT PK), `entidade`, `pais_origem`, `titulo`, `subtitulo`, `descricao_resumida`, `descricao_completa`, `tipo_oportunidade`, `modalidade`, `area_tematica`, `palavras_chave`, `elegibilidade`, `publico_alvo`, `nivel_academico`, `instituicao_financiadora`, `valor_financiado` (REAL), `moeda`, `data_publicacao`, `data_abertura`, `data_limite`, `data_encerramento`, `status_oportunidade`, `link_origem`, `link_detalhe`, `link_documento_pdf`, `idioma`, `localidade`, `observacoes`, `texto_bruto`, `pagina_coletada` (INTEGER), `fonte_oficial`, `data_hora_coleta`, `hash_deduplicacao` (TEXT UNIQUE), `campos_inferidos_ia`.
+The system SHALL maintain the `oportunidades` table with 38 columns: `id_registro` (TEXT PK), `entidade`, `pais_origem`, `titulo`, `subtitulo`, `descricao_resumida`, `descricao_completa`, `tipo_oportunidade`, `modalidade`, `area_tematica`, `palavras_chave`, `elegibilidade`, `publico_alvo`, `nivel_academico`, `instituicao_financiadora`, `valor_financiado` (REAL), `moeda`, `data_publicacao`, `data_abertura`, `data_limite`, `data_encerramento`, `status_oportunidade`, `link_origem`, `link_detalhe`, `link_documento_pdf`, `idioma`, `localidade`, `observacoes`, `texto_bruto`, `pagina_coletada` (INTEGER), `fonte_oficial`, `data_hora_coleta`, `hash_deduplicacao` (TEXT UNIQUE), `campos_inferidos_ia`, `enrichment_status` (TEXT DEFAULT 'pendente'), `enrichment_model`, `enrichment_at`, `enrichment_error`. The enhancement columns capture provenance: pipeline outcome (pendente/ok/falha), used model, timestamp, and failure detail.
 
 #### Scenario: Record insertion with all fields
-- **WHEN** a record with all 35 fields is inserted via `upsert_opportunities()`
+- **WHEN** a record with all 38 fields is inserted via `upsert_opportunities()`
 - **THEN** the record is stored with all fields preserved
 
 #### Scenario: Upsert on conflict
 - **WHEN** a record with an existing `id_registro` is inserted
 - **THEN** the existing record is updated with the new values (all fields except PK)
+
+#### Scenario: Provenance persisted on enrichment
+- **WHEN** a record is enriched with model "gemini" at a given timestamp
+- **THEN** `enrichment_status = "ok"`, `enrichment_model` and `enrichment_at` are stored
 
 ### Requirement: Source catalog with 12 funding sources
 The system SHALL maintain a source catalog in `fontes_financiamento` with 12 entries: cnpq, capes, finep, fapesb, horizon_europe, erc, sigitec, undp, embrapii, daad, quantum, humboldt. Each entry includes: id_fonte, nome_fonte, sigla, pais, categoria, tipo_financiador, url_principal, url_oportunidades, metodo_coleta, idioma, periodicidade_atualizacao, observacoes.
@@ -82,3 +86,25 @@ The system SHALL seed initial data on fresh database creation: 2 demo opportunit
 #### Scenario: Seed idempotency
 - **WHEN** `seed_demo_opportunities()` is called on a database with existing opportunities
 - **THEN** no demo records are inserted
+
+### Requirement: Idempotent schema migration for enrichment columns
+The system SHALL migrate existing non-fresh databases idempotently: for each enrichment column (`enrichment_status`, `enrichment_model`, `enrichment_at`, `enrichment_error`), if the column is missing from `oportunidades`, an `ALTER TABLE ... ADD COLUMN` SHALL be executed. Migration SHALL only add columns — never drop or reorder — and SHALL run on every startup and be re-runnable without side effects.
+
+#### Scenario: Fresh database upgrade path
+- **WHEN** `init_database()` runs on an existing database created before this change
+- **THEN** the 4 enrichment columns are added once and existing records get `enrichment_status = "pendente"` by default
+
+#### Scenario: Re-run idempotency
+- **WHEN** migration runs a second time on the same database
+- **THEN** no error occurs and no column is duplicated
+
+### Requirement: Enrichment audit trail in collection logs
+The system SHALL append enrichment entries to the collection audit log (via the log writer) with INFO/WARN severity for: field-by-field provenance ("Campo X preenchido por fonte Y"), schema validation failures, heuristic fallback activations, and date ambiguity findings. RECOVERABLE/WARN/ERROR level entries SHALL be queryable and exportable.
+
+#### Scenario: Field provenance logged
+- **WHEN** the pipeline fills `data_limite` heuristically
+- **THEN** an audit entry records the field, the source ("heuristica"), and a WARN severity
+
+#### Scenario: Validation failure logged
+- **WHEN** `validate_ai_schema()` rejects a response
+- **THEN** the rejected field and reason are logged as WARN

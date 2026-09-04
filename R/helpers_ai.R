@@ -179,8 +179,14 @@ is_ai_provider_available <- function(provider) {
 }
 
 reset_ai_provider <- function(provider) {
-  try(rm(list = paste0(provider, "_failures"), envir = .ai_failures, inherits = FALSE), silent = TRUE)
-  try(rm(list = paste0(provider, "_cooldown"), envir = .ai_failures, inherits = FALSE), silent = TRUE)
+  # exists-guard: rm() em binding ausente emitia warning "object '..._failures' not found"
+  if (exists(paste0(provider, "_failures"), envir = .ai_failures, inherits = FALSE)) {
+    rm(list = paste0(provider, "_failures"), envir = .ai_failures, inherits = FALSE)
+  }
+  if (exists(paste0(provider, "_cooldown"), envir = .ai_failures, inherits = FALSE)) {
+    rm(list = paste0(provider, "_cooldown"), envir = .ai_failures, inherits = FALSE)
+  }
+  invisible(NULL)
 }
 
 ai_request_with_fallback <- function(prompt, timeout_sec = 45, retries = 2, log_path = NULL, conn = NULL) {
@@ -250,17 +256,7 @@ validate_ai_config <- function() {
   is_ok
 }
 
-trim_for_ai <- function(text, max_chars = NULL) {
-  if (is.null(max_chars)) {
-    max_chars <- as.numeric(Sys.getenv("AI_MAX_CHARS", "20000"))
-    if (is.na(max_chars) || max_chars <= 0) max_chars <- 20000
-  }
-  text <- normalize_ws(text %||% "")
-  if (nchar(text) <= max_chars) {
-    return(text)
-  }
-  substr(text, 1, max_chars)
-}
+# trim_for_ai agora vive em helpers_text.R (corrige BUG-09: preserva prazos no fim)
 
 # Prompt de sistema fixo — define a persona e os padrões de qualidade da IA
 .AI_SYSTEM_PROMPT <- paste(
@@ -280,8 +276,8 @@ ai_make_request <- function(prompt, system_prompt = .AI_SYSTEM_PROMPT, cfg = NUL
 
   req <- NULL
   if (cfg$provider == "gemini") {
-    # Gemini: system instruction separada
-    url <- sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", cfg$model, cfg$api_key)
+    # Gemini: system instruction separada — chave SEMPRE em header (BUG-10)
+    url <- sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent", cfg$model)
     body <- list(
       contents = list(list(parts = list(list(text = prompt)))),
       generationConfig = list(temperature = 0.1, responseMimeType = "application/json")
@@ -292,7 +288,10 @@ ai_make_request <- function(prompt, system_prompt = .AI_SYSTEM_PROMPT, cfg = NUL
     req <- httr2::request(url) |>
       httr2::req_method("POST") |>
       httr2::req_timeout(timeout_sec) |>
-      httr2::req_headers(`Content-Type` = "application/json") |>
+      httr2::req_headers(
+        `Content-Type` = "application/json",
+        `x-goog-api-key` = cfg$api_key
+      ) |>
       httr2::req_body_json(body, auto_unbox = TRUE)
   } else if (cfg$provider %in% c("openai", "groq", "openrouter", "deepseek", "bluesminds", "nvidia")) {
     # OpenAI-compatível: system message separada
@@ -678,68 +677,79 @@ ai_request_parallel <- function(prompts, timeout_sec = 45, log_path = NULL) {
 
 # ── Prompt unificado de extração de metadados (fonte única da verdade) ────────
 
+# Contrato v2 (BUG-07): sem status_oportunidade (status é derivado por regra
+# temporal), com valor_estimado/moeda, exatamente 5 palavras-chave, objeto de
+# confiança e auto-auditoria. Regras R1-R5 obrigatórias.
+# Raw string r"(...)" — R 4.0+: permite newlines sem sequências de escape.
+AI_ENRICHMENT_PROMPT <- r"(PAPEL: Você é um auditor extrator de metadados de editais de fomento. Extraia SOMENTE o que o texto evidencia.
+
+TAREFA: Analise o TEXTO DO EDITAL e retorne APENAS um JSON válido, sem markdown, com este schema exato:
+
+{
+  "titulo_limpo": "string ou null",
+  "resumo": "string (máximo 3 frases) ou null",
+  "elegibilidade": "string ou null",
+  "area_tematica": "string ou null",
+  "tipo_oportunidade": "enum [edital, chamada, grant, fellowship, bolsa, subvencao, premio, licitacao] ou null",
+  "idioma": "enum [pt, en, es] ou null",
+  "data_limite": "AAAA-MM-DD ou null",
+  "data_publicacao": "AAAA-MM-DD ou null",
+  "valor_estimado": "number ou null",
+  "moeda": "enum [BRL, USD, EUR, GBP, CAD] ou null",
+  "palavras_chave": "array de exatamente 5 strings ou null",
+  "observacoes": "string ou null",
+  "confianca": {
+    "titulo_limpo": "0.0 a 1.0",
+    "data_limite": "0.0 a 1.0",
+    "valor_estimado": "0.0 a 1.0",
+    "palavras_chave": "0.0 a 1.0"
+  }
+}
+
+REGRAS ESTRITAS:
+R1. NUNCA INVENTE. Sem evidência clara no texto -> null (e confiança 0.0).
+R2. data_limite = data EXPLICITAMENTE ligada a "submissão", "proposta", "inscrição", "prazo final". IGNORE datas de rodapé, "última atualização", "resultados", "eventos", "divulgação". Se houver prazos por lote/fase, retorne o MAIS TARDIO.
+R3. status_oportunidade NÃO é campo seu: o sistema deriva status por regra temporal. NÃO retorne status.
+R4. palavras_chave: exatamente 5 termos específicos do domínio (ex: "inteligência artificial", "biotecnologia"). PROIBIDO: anos (2022, 2026), números, siglas de agência (CNPq, FAPESB), tokens genéricos do título sem semântica.
+R5. Cite evidência: para cada campo não-nulo, guarde internamente o trecho do texto que o sustenta. Use essa evidência na auto-auditoria.
+
+AUTO-AUDITORIA (antes de emitir o JSON):
+A1. Verifique R1-R5.
+A2. Se violação encontrada, corrija ANTES de emitir.
+A3. O JSON final deve ser parseável por jsonlite::fromJSON.
+
+FEW-SHOT EXEMPLO:
+Entrada: "... As propostas deverão ser submetidas até 15 de outubro de 2026. O orçamento global é de R$ 2.000.000,00. Podem participar ICTs e empresas brasileiras ..."
+Saída: {
+  "titulo_limpo": "Edital de Fomento à Inovação 2026",
+  "resumo": "Edital para financiamento de projetos de inovação em ICTs e empresas brasileiras. Orçamento de R$ 2 milhões. Prazo de submissão: 15 de outubro de 2026.",
+  "elegibilidade": "ICTs e empresas brasileiras",
+  "area_tematica": "Inovação tecnológica",
+  "tipo_oportunidade": "edital",
+  "idioma": "pt",
+  "data_limite": "2026-10-15",
+  "data_publicacao": null,
+  "valor_estimado": 2000000,
+  "moeda": "BRL",
+  "palavras_chave": ["inovação", "ict", "empresa", "financiamento", "tecnologia"],
+  "observacoes": null,
+  "confianca": {
+    "titulo_limpo": 0.95,
+    "data_limite": 0.98,
+    "valor_estimado": 0.99,
+    "palavras_chave": 0.90
+  }
+}
+)"
+
+# Indicador legado (e_edital_fomento) mantido para retorno de descarte:
 build_extraction_prompt <- function(text, current_info = list()) {
   paste(
-    "Analise o texto bruto do edital fornecido e extraia as informações estruturadas abaixo.",
-    "Retorne OBRIGATORIAMENTE um JSON válido com os campos listados.",
-    "",
-    "CAMPOS OBRIGATÓRIOS:",
-    "",
-    "e_edital_fomento: Valor booleano (true ou false). Deve ser true apenas se o texto for de fato uma oportunidade principal de fomento, edital, chamada pública, grant, fellowship, bolsa ou convocatória ativa, futura ou mesmo encerrada recentemente. Deve ser false se o texto for apenas uma retificação, alteração, prorrogação de prazo, termo aditivo, errata, resultado de edital existente, ou se for um manual administrativo, notícias gerais, procedimentos de relatórios, membros de comitê, planos estratégicos gerais, relatórios institucionais ou páginas descrevendo linhas de crédito permanentes e serviços de financiamento contínuos (não-editais).",
-    "",
-    "motivo_descarte: Texto curto descrevendo a razão do descarte se e_edital_fomento for false (ex: 'Manual de cartão de pesquisa', 'Instruções para relatórios', 'Notícia institucional', 'Retificação de edital', 'Guia de linha de crédito permanente'). Se e_edital_fomento for true, este campo deve ser null.",
-    "",
-    "titulo_limpo: Título do edital limpo, sem caracteres especiais, numerações de seção, ruídos HTML ou abreviações inexplicadas.",
-    "",
-    "resumo: Síntese informativa do OBJETO CENTRAL de financiamento em 2 a 3 frases.",
-    "  REGRAS OBRIGATÓRIAS:",
-    "  - Responda implicitamente: O que financia? Para quem? Em quais áreas/temas? Qual o valor/prazo?",
-    "  - Escreva como se estivesse descrevendo a oportunidade para um pesquisador que nunca viu o edital.",
-    "  - NÃO copie frases do texto bruto.",
-    "  - NÃO mencione: menus do site, links, cabeçalhos, siglas não explicadas, linguagem de seção (ex: '1. FINALIDADE 1.1...').",
-    "  - EXEMPLO BOM: 'Financia projetos colaborativos de pesquisa entre instituições brasileiras e africanas nas áreas de ciência, tecnologia e inovação. Destinado a ICTs públicas e privadas em parceria formal com instituições africanas. Projetos de até R$ 150.000, com submissão até julho de 2025.'",
-    "  - EXEMPLO RUIM: 'DIRETRIZES ESPECÍFICAS DA FAPES CONFAP – 1. FINALIDADE 1.1. Apoio para a manutenção da bolsa Fapes de doutorado...'",
-    "",
-    "elegibilidade: Quem pode se candidatar. Seja específico (ex: 'Pesquisadores doutores vinculados a ICTs públicas ou privadas', 'Doutorandos com bolsa DAAD aprovada').",
-    "",
-    "area_tematica: Áreas temáticas ou de conhecimento cobertas pelo edital (ex: 'Ciência e Tecnologia, Cooperação Internacional, Saúde').",
-    "",
-    "tipo_oportunidade: Categoria do fomento — escolha um: edital, grant, fellowship, bolsa, licitação, convocatória.",
-    "",
-    "status_oportunidade: aberto, encerrado ou futuro — com base no texto e nas datas encontradas.",
-    "",
-    "idioma: Código de 2 letras do idioma principal do edital (pt, en, es, fr, de).",
-    "",
-    "data_limite: Data máxima de submissão no formato AAAA-MM-DD (ou null se não encontrada no texto).",
-    "",
-    "data_publicacao: Data de publicação/lançamento no formato AAAA-MM-DD (ou null se não encontrada).",
-    "",
-    "valor_financiado: Valor numérico máximo ou global do financiamento (ex: 150000.00), ou null.",
-    "  - IGNORE: números de leis, portarias, CPF, telefone, anos isolados, quantidades de vagas ou itens.",
-    "  - Aceite apenas valores monetários explícitos de financiamento, bolsa ou auxílio.",
-    "",
-    "moeda: Código ISO de 3 letras da moeda (BRL, USD, EUR, GBP), ou null se valor_financiado for null.",
-    "",
-    "modalidade: Tipo de modalidade de fomento (ex: 'Bolsa de Fixação de Doutores', 'Auxílio Individual à Pesquisa', 'Subvenção Econômica', 'Cooperação Internacional', ou null).",
-    "",
-    "publico_alvo: Público-alvo da oportunidade (ex: 'Pesquisadores', 'ICTs públicas ou privadas', 'Startups', 'Empresas de grande porte', ou null).",
-    "",
-    "nivel_academico: Nível acadêmico exigido (ex: 'Pós-Doutorado', 'Doutorado', 'Mestrado', 'Graduação', 'Técnico', ou 'Não aplicável' se não houver exigência acadêmica específica, ou null).",
-    "",
-    "data_abertura: Data de início das submissões ou abertura das inscrições no formato AAAA-MM-DD (ou null se não encontrada).",
-    "",
-    "data_encerramento: Data de encerramento do projeto, vigência final das bolsas ou fim absoluto das atividades no formato AAAA-MM-DD (ou null se não encontrada).",
-    "",
-    "palavras_chave: Entre 5 e 8 termos separados por vírgula que descrevam o TEMA CIENTÍFICO/TECNOLÓGICO central do edital.",
-    "  REGRAS ABSOLUTAS:",
-    "  - PREFIRA termos compostos e específicos do domínio de pesquisa.",
-    "  - PROIBIDO: nomes de instituições (CNPq, FAPES, CAPES, DAAD, Confap, Embrapii), qualquer variação de 'edital', 'chamada pública', 'seleção', 'submissão', 'proposta', 'fomento', 'projeto', 'pesquisa', 'bolsa', 'prazo', 'período', 'processo', 'programa', 'recurso', 'custeio', 'apoio', 'acordo', 'convênio'.",
-    "  - PROIBIDO: palavras funcionais e genéricas como 'estar', 'cada', 'através', 'para', 'durante', 'sendo', 'deverá', 'conforme', anos isolados (2024, 2025).",
-    "  - CORRETO (exemplos): 'cooperação científica internacional, mobilidade acadêmica, tecnologia da informação, inteligência artificial, saúde pública, transição energética, biotecnologia, desenvolvimento sustentável'",
-    "  - INCORRETO (exemplos): 'daad, confap, 2025, doutorado, estar, período, seleção, através, pesquisa, fomento'",
-    "",
-    "observacoes: Restrições, contrapartidas, exigências específicas ou informações críticas para o pesquisador.",
-    "  Exemplos: 'Exige parceria formal com instituição alemã aprovada pelo DAAD', 'Somente para bolsistas já aprovados em seleção prévia'.",
+    AI_ENRICHMENT_PROMPT,
+    "COMO CLASSIFICAR DESCARTE: retorne um JSON adicional com os campos",
+    "e_edital_fomento (boolean) e motivo_descarte (string ou null) apenas quando o texto",
+    "NÃO for um edital/grant/chamada/fellowship/bolsa principal",
+    "(ex: retificação, errata, prorrogação, resultado, manual administrativo, notícia)",
     "",
     "Contexto já extraído (use como ponto de partida, corrija se necessário):",
     jsonlite::toJSON(current_info, auto_unbox = TRUE, null = "null"),
@@ -920,14 +930,21 @@ validate_enum_field <- function(value, allowed) {
   if (!nzchar(val)) {
     return(list(valid = TRUE, normalized = NA_character_))
   }
-  # Mapeamento de sinônimos
+  # Mapeamento de sinônimos (inclui nacionalidades por extenso)
   synonyms <- list(
     "bolsa" = "bolsa", "scholarship" = "bolsa", "fellowship" = "fellowship",
     "edital" = "edital", "call" = "chamada", "chamada" = "chamada",
     "open" = "aberto", "aberto" = "aberto", "closed" = "encerrado",
     "encerrado" = "encerrado", "upcoming" = "futuro", "futuro" = "futuro",
     "ongoing" = "em andamento", "em andamento" = "em andamento",
-    "pt-br" = "pt", "portuguese" = "pt", "english" = "en", "spanish" = "es"
+    "pt-br" = "pt", "portuguese" = "pt", "português" = "pt", "portugues" = "pt", "pt_bR" = "pt",
+    "english" = "en", "inglês" = "en", "ingles" = "en", "en-us" = "en",
+    "spanish" = "es", "espanhol" = "es", "espanh" = "es",
+    "french" = "fr", "francês" = "fr", "français" = "fr",
+    "german" = "de", "alemão" = "de", "alemao" = "de",
+    "italian" = "it", "italiano" = "it",
+    "chinese" = "zh", "chinês" = "zh", "chines" = "zh",
+    "japanese" = "ja", "japonês" = "ja", "japones" = "ja"
   )
   resolved <- synonyms[[val]] %||% val
   valid <- resolved %in% allowed
@@ -1008,15 +1025,229 @@ validate_ai_output <- function(ai_list) {
     }
   }
 
-  # Validar palavras-chave
+  # Validar palavras-chave — só alerta se FORA da faixa esperada (5-8)
   if (!is.null(ai_list$palavras_chave) && length(ai_list$palavras_chave) > 0) {
     v <- validate_keyword_count(ai_list$palavras_chave)
-    if (v$count != 0) {
+    if (!isTRUE(v$valid) && v$count != 0) {
       warnings <- c(warnings, sprintf("Campo 'palavras_chave': %d termos (esperado 5-8) — aceito como está", v$count))
     }
   }
 
   list(valid = length(errors) == 0, errors = errors, warnings = warnings, output = ai_list)
+}
+
+# ─── Validação estrita de schema da IA (BUG-07) ────────────────────────────────
+# Retorna list(valid, errors, data): campos inválidos são NULADOS (forçando
+# fallback heurístico) e o erro concreto é auditado pelo chamador.
+
+.ascii_kw <- function(x) normalize_text(x %||% "")
+
+validate_ai_schema <- function(parsed_json) {
+  if (is.null(parsed_json) || length(parsed_json) == 0L) {
+    return(list(valid = FALSE, errors = c("resposta vazia"), data = list()))
+  }
+  if (is.data.frame(parsed_json)) {
+    parsed_json <- as.list(parsed_json[1, , drop = FALSE])
+    parsed_json <- lapply(parsed_json, function(v) if (length(v) == 1L) v[[1]] else v)
+  }
+  if (!is.list(parsed_json)) {
+    parsed_json <- as.list(parsed_json)
+  }
+  errors <- character()
+  data <- parsed_json
+
+  # R3: status_oportunidade nunca é campo da IA
+  data$status_oportunidade <- NULL
+
+  enums <- list(
+    tipo_oportunidade = c("edital", "chamada", "grant", "fellowship", "bolsa", "subvencao", "premio", "licitacao", "subvenção", "prêmio", "licitação"),
+    idioma = c("pt", "en", "es"),
+    moeda = c("BRL", "USD", "EUR", "GBP", "CAD")
+  )
+  for (f in names(enums)) {
+    v <- data[[f]]
+    if (!is.null(v) && length(v) > 0L && !is.na(v[[1L]]) && nzchar(trimws(as.character(v[[1L]])))) {
+      val_raw <- trimws(as.character(v[[1L]]))
+      # Case-insensitive: moeda pode chegar "eur"/"Usd" e idiom "PT"
+      if (!(tolower(val_raw) %in% tolower(enums[[f]]))) {
+        errors <- c(errors, sprintf("campo '%s' fora do enum: %s", f, val_raw))
+        data[[f]] <- NULL
+      } else {
+        data[[f]] <- val_raw
+      }
+    }
+  }
+
+  # Palavras-chave: exatamente 5; token years/números/agências são removidos
+  agency_tokens <- tolower(c(
+    "cnpq", "capes", "finep", "fapesb", "fapes", "confap", "daad", "embrapii",
+    "horizon europe", "erc", "undp", "petrobras", "sigitec", "world bank",
+    "banco mundial", "humboldt", "nsf", "doe", "economia", "mdic"
+  ))
+  if (!is.null(data$palavras_chave) && length(data$palavras_chave) > 0L) {
+    v_str <- if (length(data$palavras_chave) > 1L) {
+      paste(as.character(data$palavras_chave), collapse = ", ")
+    } else {
+      as.character(data$palavras_chave[[1L]])
+    }
+    kws <- safe_split(v_str)
+    kws <- kws[!grepl("^\\d{1,4}$|^\\d{4}$", .ascii_kw(kws))]
+    kws <- kws[!(.ascii_kw(kws) %in% agency_tokens)]
+    if (length(kws) != 5L) {
+      errors <- c(errors, "palavras_chave deve ter 5 itens")
+    }
+    if (length(kws) == 0L) kws <- c(kws, "não inferido")
+    data$palavras_chave <- paste(kws, collapse = "; ")
+  } else {
+    errors <- c(errors, "palavras_chave ausente")
+    data$palavras_chave <- NULL
+  }
+
+  # Datas: formato ISO verificável
+  for (f in c("data_limite", "data_publicacao")) {
+    v <- data[[f]]
+    if (!is.null(v) && length(v) > 0L && !is.na(v[[1L]]) && nzchar(trimws(as.character(v[[1L]])))) {
+      d <- parse_date_safe(as.character(v[[1L]]))
+      if (is.na(d[[1L]])) {
+        errors <- c(errors, sprintf("campo '%s' em formato inválido", f))
+        data[[f]] <- NULL
+      } else {
+        data[[f]] <- as.character(d[[1L]])
+      }
+    }
+  }
+
+  list(valid = length(errors) == 0L, errors = errors, data = data)
+}
+
+# ─── Fallback heurístico obrigatório (corrige BUG-02) ─────────────────────────
+# Preenche APENAS campos vazios com as inferências locais já testadas.
+
+apply_heuristic_fallback <- function(record) {
+  if (is.null(record)) {
+    return(record)
+  }
+  if (!is.list(record) && !is.data.frame(record)) {
+    record <- as.list(record)
+  }
+  txt <- paste(
+    as.character(record$titulo %||% ""),
+    as.character(record$descricao_resumida %||% ""),
+    as.character(record$descricao_completa %||% ""),
+    as.character(record$texto_bruto %||% ""),
+    collapse = " "
+  )
+  txt <- normalize_ws(txt)
+
+  field_empty <- function(field) {
+    v <- record[[field]]
+    is.null(v) || length(v) == 0L || any(is.na(v)) || !nzchar(trimws(as.character(v[[1L]] %||% "")))
+  }
+
+  inferred <- character()
+  remember <- function(field, value) {
+    if (!is.na(value) && nzchar(trimws(as.character(value)))) {
+      record[[field]] <<- as.character(value)
+      inferred <<- unique(c(inferred, field))
+    }
+  }
+
+  if (field_empty("tipo_oportunidade")) remember("tipo_oportunidade", infer_type_from_text(txt))
+  if (field_empty("idioma")) remember("idioma", infer_language_simple(txt)[[1L]])
+  if (field_empty("area_tematica")) remember("area_tematica", infer_area_from_text_one(txt))
+  if (field_empty("palavras_chave")) remember("palavras_chave", extract_keywords_simple(txt))
+  if (field_empty("data_limite")) {
+    ctx <- extract_dates_contextual(txt)
+    if (length(ctx) > 0L) remember("data_limite", as.character(max(ctx)))
+  }
+  if (field_empty("valor_financiado")) {
+    money <- parse_money_text(txt)
+    if (!is.null(money) && !is.na(money$value)) {
+      record$valor_financiado[[1L]] <- money$value
+      inferred <- unique(c(inferred, "valor_financiado"))
+      if (field_empty("moeda") && !is.na(money$currency)) remember("moeda", money$currency)
+    }
+  }
+
+  if (length(inferred) > 0L) {
+    prev <- record$campos_inferidos_ia %||% ""
+    record$campos_inferidos_ia <- paste(c(safe_split(prev), inferred), collapse = "; ")
+  }
+  record
+}
+
+# ─── Redação de chaves para logs (segurança, BUG-10) ──────────────────────────
+
+redact_keys_in_text <- function(x) {
+  if (is.null(x) || length(x) == 0L) {
+    return(x)
+  }
+  vapply(as.character(x), function(one) {
+    if (is.na(one) || !nzchar(one)) {
+      return(one)
+    }
+    # Cobre "?key=ABCD", "x-goog-api-key: ABC", "Authorization: Bearer x", "api_key":"..." etc
+    one <- gsub("(?i)(\\?|&)key=[^&\\s\"']+", "\\1key=<REDACTED>", one, perl = TRUE)
+    one <- gsub("(?i)(x-goog-api-key\\s*[:=]\\s*)[^\\s\"']+", "\\1<REDACTED>", one, perl = TRUE)
+    one <- gsub("(?i)(authorization\\s*[:=]\\s*bearer\\s+)[^\\s\"',]+", "\\1<REDACTED>", one, perl = TRUE)
+    one <- gsub("(?i)(api[_\\-]?key\\s*[:=]\\s*)[^\\s\"',]+", "\\1<REDACTED>", one, perl = TRUE)
+    one
+  }, character(1), USE.NAMES = FALSE)
+}
+
+# ─── Token-bucket rate limiter por provedor (MELHORIA-05) ─────────────────────
+
+TokenBucketRateLimiter <- R6::R6Class("TokenBucketRateLimiter",
+  public = list(
+    capacity = 60,
+    refill_rate = 1,
+    tokens = 60,
+    last_refill = NULL,
+    initialize = function(capacity = 60L, refill_rate = 1.0) {
+      self$capacity <- capacity
+      self$refill_rate <- refill_rate
+      self$tokens <- capacity
+      self$last_refill <- Sys.time()
+    },
+    acquire = function(units = 1L, max_wait = 120) {
+      started <- Sys.time()
+      repeat {
+        now <- Sys.time()
+        self$tokens <- min(self$capacity, self$tokens + as.numeric(now - self$last_refill, units = "secs") * self$refill_rate)
+        self$last_refill <- now
+        if (self$tokens >= units) {
+          self$tokens <- self$tokens - units
+          return(TRUE)
+        }
+        if (as.numeric(Sys.time() - started, units = "secs") >= max_wait) {
+          return(FALSE)
+        }
+        # aguarda tempo suficiente até a próxima unidade
+        need <- units - self$tokens
+        Sys.sleep(max(0.05, need / self$refill_rate))
+      }
+    }
+  )
+)
+
+.ai_provider_limiters <- new.env(parent = emptyenv())
+
+ai_rate_limiter_for <- function(provider = NULL) {
+  if (is.null(provider) || !nzchar(provider)) {
+    provider <- tryCatch(get_ai_config()$provider, error = function(e) "unknown")
+  }
+  lim <- get0(provider, envir = .ai_provider_limiters, inherits = FALSE)
+  if (is.null(lim)) {
+    cfg <- switch(provider,
+      gemini = list(capacity = 60L, refill = 1.0),
+      groq = list(capacity = 120L, refill = 2.0),
+      deepseek = list(capacity = 60L, refill = 1.0),
+      list(capacity = 30L, refill = 0.5)
+    )
+    lim <- TokenBucketRateLimiter$new(capacity = cfg$capacity, refill_rate = cfg$refill)
+    assign(provider, lim, envir = .ai_provider_limiters)
+  }
+  lim
 }
 
 fix_polyglotr_encoding <- function(s) {

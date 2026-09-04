@@ -107,6 +107,7 @@ safe_source <- function(path) {
 safe_source("R/helpers_utils.R")
 safe_source("R/helpers_db.R")
 safe_source("R/helpers_text.R")
+safe_source("R/helpers_status.R")
 safe_source("R/helpers_ai.R")
 safe_source("R/helpers_recommend.R")
 safe_source("R/helpers_collect.R")
@@ -415,6 +416,10 @@ server <- function(input, output, session) {
     collecting = FALSE,
     drive_status = "idle"
   )
+
+  # Cache da assinatura de interesses por sessão (MH-01/BUG-04): lista e modal
+  # consomem a MESMA assinatura, gerando scores sempre consistentes.
+  interest_sig <- reactiveVal(NULL)
 
   # Wrapper para upload seguro no Google Drive com atualização de status visual
   safe_drive_upload <- function() {
@@ -776,6 +781,7 @@ server <- function(input, output, session) {
     refresh_data()
     
     rv$current_query <- query_text
+    interest_sig(tryCatch(collect_interest_signature(conn, query_text), error = function(e) NULL))
     if (save_history && !is.null(conn)) save_search_record(conn, rv$current_query, build_filters_json())
     invisible(TRUE)
   }
@@ -1030,13 +1036,16 @@ server <- function(input, output, session) {
       df <- tryCatch(apply_boolean_search(df, query, text_cols = c("titulo", "subtitulo", "descricao_resumida", "descricao_completa", "palavras_chave", "area_tematica", "elegibilidade")), error = function(e) df)
     }
     df <- apply_structured_filters(df, rv$advanced_filters)
-    compute_adherence_score(df, conn, query)
+    compute_adherence_score(df, conn, query, signature = interest_sig())
   })
 
   filtered_results <- reactive({
     df <- base_results()
     if (nrow(df) == 0) return(df)
     
+    # Status derivado em renderização (BUG-01): nunca ler status_oportunidade congelado
+    df$derived_status <- derive_status_vec(df$data_limite, df$data_abertura, df$texto_bruto)
+
     # Filtro regional — Ambas = literalmente todas (sem filtro), Internacionais = todas não-brasileiras
     region <- input$region_filter
     if (region == "Brasileiras") {
@@ -1058,7 +1067,7 @@ server <- function(input, output, session) {
       df <- df |> dplyr::filter(area_tematica %in% input$filter_area)
     }
     if (length(input$filter_status) > 0) {
-      df <- df |> dplyr::filter(status_oportunidade %in% input$filter_status)
+      df <- df |> dplyr::filter(derived_status %in% tolower(gsub(" ", "_", input$filter_status)))
     }
     if (length(input$filter_type) > 0) {
       df <- df |> dplyr::filter(tipo_oportunidade %in% input$filter_type)
@@ -1083,9 +1092,10 @@ server <- function(input, output, session) {
     area_choices <- sort(unique(opps$area_tematica[!is.na(opps$area_tematica) & opps$area_tematica != ""]))
     updateSelectizeInput(session, "filter_area", choices = area_choices, selected = input$filter_area)
     
-    # Status
-    status_choices <- sort(unique(opps$status_oportunidade[!is.na(opps$status_oportunidade) & opps$status_oportunidade != ""]))
-    status_display <- setNames(status_choices, tools::toTitleCase(status_choices))
+    # Status (derivado em render — BUG-01)
+    status_choices <- unique(derive_status_vec(opps$data_limite, opps$data_abertura, opps$texto_bruto))
+    status_choices <- status_choices[status_choices != "" & !is.na(status_choices) & status_choices != "desconhecido"]
+    status_display <- setNames(status_choices, status_display_label(status_choices))
     updateSelectizeInput(session, "filter_status", choices = status_display, selected = input$filter_status)
     
     # Tipo de Oportunidade
@@ -1156,7 +1166,10 @@ server <- function(input, output, session) {
 
   output$total_editais <- renderText(nrow(filtered_results()))
   output$total_fontes <- renderText(if (nrow(filtered_results()) == 0) 0 else dplyr::n_distinct(filtered_results()$entidade))
-  output$total_urgentes <- renderText(sum(days_to_deadline(filtered_results()$data_limite) <= 14 & days_to_deadline(filtered_results()$data_limite) >= 0, na.rm = TRUE))
+  output$total_urgentes <- renderText({
+    df <- filtered_results()
+    count_urgent_status(df$data_limite, df$data_abertura, df$texto_bruto)
+  })
   output$ultima_coleta <- renderText({
     if (nrow(rv$logs) == 0) return("-")
     latest <- max(parse_datetime_safe(rv$logs$data_execucao), na.rm = TRUE)
@@ -1196,6 +1209,7 @@ server <- function(input, output, session) {
         `Aderência <i class='fa fa-info-circle text-info' title='Afinidade semântica calculada dinamicamente com base nos termos de busca.'></i>` = character(),
         Prazo = character(),
         Status = factor(),
+        `Qualidade <i class='fa fa-shield-halved text-info' title='Score de qualidade dos metadados extraídos.'></i>` = character(),
         Ações = character()
       )
     } else {
@@ -1203,7 +1217,15 @@ server <- function(input, output, session) {
         dplyr::mutate(
           Aderência = vapply(score_aderencia, score_bar_html, character(1)),
           Prazo = format_date_br(data_limite),
-          Status = as.factor(tools::toTitleCase(tolower(status_oportunidade))),
+          `Qualidade <i class='fa fa-shield-halved text-info' title='Score de qualidade dos metadados extraídos.'></i>` = vapply(seq_len(nrow(df)), function(i) {
+            q <- compute_data_quality_score(list(
+              data_limite = if (length(df$data_limite) >= i) df$data_limite[[i]] else NA,
+              data_publicacao = if (length(df$data_publicacao) >= i) df$data_publicacao[[i]] else NA,
+              titulo = if (length(df$titulo) >= i) df$titulo[[i]] else NA
+            ))
+            quality_badge_html(q)
+          }, character(1)),
+          Status = as.factor(status_display_label(derived_status)),
           Financiador = as.factor(entidade),
           Título = stringr::str_trunc(titulo, 90),
           Ações = vapply(id_registro, make_actions_html, character(1))
@@ -1215,6 +1237,7 @@ server <- function(input, output, session) {
           `Aderência <i class='fa fa-info-circle text-info' title='Afinidade semântica calculada dinamicamente com base nos termos de busca.'></i>` = Aderência,
           Prazo,
           Status,
+          `Qualidade <i class='fa fa-shield-halved text-info' title='Score de qualidade dos metadados extraídos.'></i>`,
           Ações
         )
     }
@@ -1235,7 +1258,7 @@ server <- function(input, output, session) {
             render = DT::JS("
               function(data, type, row, meta) {
                 if (type === 'display') {
-                  var status = (data || 'Indefinido').toLowerCase();
+                  var status = (data || 'Desconhecido').toLowerCase();
                   var cls = 'badge-soft-neutral';
                   if (status === 'aberto') cls = 'badge-soft-open';
                   else if (status === 'encerrando') cls = 'badge-soft-warning';
@@ -1247,7 +1270,7 @@ server <- function(input, output, session) {
               }
             ")
           ),
-          list(targets = c(0, 6), searchable = FALSE, orderable = FALSE)
+          list(targets = c(0, 7), searchable = FALSE, orderable = FALSE)
         )
       )
     )
@@ -1284,21 +1307,49 @@ server <- function(input, output, session) {
     safe_drive_upload()
   })
 
-  observeEvent(input$row_view, {
-    req(input$row_view$id)
-    opp <- rv$opportunities |> dplyr::filter(id_registro == input$row_view$id)
+  # Modal de detalhes — função única usada por clique, deep-link e retry (MH-04)
+  show_opportunity_modal <- function(id) {
+    req(id)
+    opp <- rv$opportunities |> dplyr::filter(id_registro == id)
     if (nrow(opp) == 0) return()
-    
-    # Calcular aderência dinâmica com base no termo buscado
-    dynamic_score <- calculate_dynamic_adherence(
-      query = rv$current_query,
-      keywords = opp$palavras_chave[[1]],
-      summary = opp$descricao_resumida[[1]],
-      title = opp$titulo[[1]],
-      subtitle = opp$subtitulo[[1]],
-      default_score = opp$score_aderencia[[1]] %||% 0
+
+    # Score derivado da MESMA assinatura usada na lista (MH-01/BUG-04)
+    opp_scored <- tryCatch(
+      compute_adherence_score(opp, conn, rv$current_query, signature = interest_sig()),
+      error = function(e) opp
     )
-    
+    dynamic_score <- if ("score_aderencia" %in% names(opp_scored)) opp_scored$score_aderencia[[1]] %||% 0 else 0
+
+    # Status derivado em render (BUG-01/11)
+    derived_status <- derive_status_vec(opp$data_limite, opp$data_abertura, opp$texto_bruto)[[1]]
+
+    # Proveniência de enriquecimento (blindada para bancos pré-migração)
+    enrich_status <- tryCatch(opp$enrichment_status[[1]] %||% NA_character_, error = function(e) NA_character_)
+    enrich_model <- tryCatch(opp$enrichment_model[[1]] %||% NA_character_, error = function(e) NA_character_)
+    enrich_at <- tryCatch(opp$enrichment_at[[1]] %||% NA_character_, error = function(e) NA_character_)
+    enrich_error <- tryCatch(opp$enrichment_error[[1]] %||% NA_character_, error = function(e) NA_character_)
+
+    # Qualidade de dados (MH-02)
+    quality_score <- compute_data_quality_score(
+      list(
+        titulo = if ("titulo" %in% names(opp)) opp$titulo[[1]] else NA,
+        data_limite = if ("data_limite" %in% names(opp)) opp$data_limite[[1]] else NA,
+        data_publicacao = if ("data_publicacao" %in% names(opp)) opp$data_publicacao[[1]] else NA
+      )
+    )
+
+    # Termos casados entre assinatura e registro (BUG-04)
+    matched_terms <- tryCatch(
+      {
+        matched_keywords(
+          interest_sig(),
+          paste(opp$titulo[[1]], opp$subtitulo[[1]] %||% "", opp$palavras_chave[[1]] %||% "", opp$descricao_resumida[[1]] %||% "", collapse = " "),
+          keywords_extra = extract_query_terms(rv$current_query)
+        )
+      },
+      error = function(e) character()
+    )
+
     # Exibir Modal Dialog com detalhes estruturados
     showModal(modalDialog(
       title = tags$div(
@@ -1319,6 +1370,28 @@ server <- function(input, output, session) {
       # Modal Body
       tags$div(
         style = "padding: 15px 0; font-family: 'Inter', sans-serif;",
+
+        # Banner de proveniência de enriquecimento (BUG-02/08, MH-04)
+        if (!is.na(enrich_status) && enrich_status == "falha") {
+          tags$div(
+            class = "alert alert-warning",
+            style = "margin-bottom: 20px;",
+            tags$strong("Enriquecimento IA falhou"),
+            tags$p("Exibindo dados extraídos heuristicamente.", style = "margin: 4px 0;"),
+            tags$small(sprintf("Erro: %s", enrich_error %||% "IA indisponível")),
+            tags$div(
+              style = "margin-top: 8px;",
+              actionButton("btn_retry_enrichment", "Tentar novamente", class = "btn-sm btn-outline-warning")
+            )
+          )
+        } else if (!is.na(enrich_status) && nzchar(enrich_status)) {
+          tags$div(
+            class = "alert alert-success",
+            style = "margin-bottom: 20px; padding: 10px 14px;",
+            tags$strong("Enriquecido por IA"),
+            tags$small(sprintf(" Modelo: %s | %s", enrich_model %||% "-", enrich_at %||% "-"))
+          )
+        },
         
         # Financiador e Subtítulo
         tags$div(
@@ -1345,6 +1418,27 @@ server <- function(input, output, session) {
                 tags$strong("Aderência Geral:"),
                 HTML(score_bar_html(dynamic_score))
               ),
+              if (nzchar(quality_badge_html(quality_score))) {
+                tags$div(
+                  style = "margin-bottom: 10px;",
+                  HTML(quality_badge_html(quality_score))
+                )
+              },
+              if (length(matched_terms) > 0L) {
+                tags$div(
+                  style = "margin-bottom: 10px;",
+                  tags$strong("Termos casados:"),
+                  tags$div(
+                    style = "margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px;",
+                    HTML(paste0(
+                      vapply(matched_terms, function(mt) {
+                        sprintf("<span class='status-badge badge-soft-open' style='text-transform: none; font-size: 0.7rem;'>%s</span>", htmltools::htmlEscape(mt))
+                      }, character(1)),
+                      collapse = ""
+                    ))
+                  )
+                )
+              },
               tags$div(
                 style = "margin-bottom: 10px;",
                 tags$strong("Palavras-chave Identificadas:"),
@@ -1413,6 +1507,10 @@ server <- function(input, output, session) {
               tags$h5(style = "color: #475569; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; font-weight: 700; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 15px; margin-top: 0;", "Ficha Rápida"),
               tags$div(
                 style = "display: flex; flex-direction: column; gap: 15px;",
+                tags$div(
+                  tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Status"),
+                  tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", HTML(badge_status_html(derived_status)))
+                ),
                 tags$div(
                   tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Prazo Limite"),
                   tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", format_date_br(opp$data_limite[[1]]))
@@ -1497,6 +1595,50 @@ server <- function(input, output, session) {
         )
       )
     ))
+  }
+
+  observeEvent(input$row_view, {
+    req(input$row_view$id)
+    rv$selected_tracked_id <- input$row_view$id
+    show_opportunity_modal(input$row_view$id)
+  })
+
+  # Retry de enriquecimento do modal (E2E-06)
+  observeEvent(input$btn_retry_enrichment, {
+    req(rv$selected_tracked_id)
+    view_id <- rv$selected_tracked_id
+    opp <- tryCatch(rv$opportunities |> dplyr::filter(id_registro == view_id), error = function(e) tibble::tibble())
+    if (nrow(opp) == 0) return()
+    updated <- tryCatch(
+      {
+        withProgress(message = "Reenriquecendo com IA...", value = 0.8, {
+          enrich_record_with_ai(opp, log_path = log_path)
+        })
+      },
+      error = function(e) opp
+    )
+    if (nrow(updated) > 0L && !is.null(conn)) {
+      try(upsert_opportunities(conn, updated), silent = TRUE)
+    }
+    refresh_data()
+    showNotification(sprintf("Enriquecimento atualizado (status: %s). Reabra o modal para ver o banner.", updated$enrichment_status[[1]] %||% "?"), type = "message")
+  })
+
+  # Deep-link por ?id=<id_registro> (MH-04/E2E-05)
+  observeEvent(session$clientData$url_search, {
+    qs <- session$clientData$url_search
+    req(nzchar(qs))
+    m <- regmatches(qs, regexec("[?&]id=([^&#]+)", qs))[[1]]
+    if (length(m) == 2L && !isTRUE(rv$deep_link_opened)) {
+      rv$deep_link_opened <- TRUE
+      id_dec <- utils::URLdecode(m[2])
+      if (id_dec %in% rv$opportunities$id_registro) {
+        rv$selected_tracked_id <- id_dec
+        show_opportunity_modal(id_dec)
+      } else {
+        showNotification("Oportunidade do deep-link não encontrada na base.", type = "warning", duration = 6)
+      }
+    }
   })
 
   output$funders_plot <- renderPlotly({
@@ -1709,7 +1851,7 @@ server <- function(input, output, session) {
   })
 
   output$recommended_table <- renderDT({
-    df <- recommend_opportunities(conn, filtered_results(), rv$current_query, top_n = 15)
+    df <- recommend_opportunities(conn, filtered_results(), rv$current_query, top_n = 15, signature = interest_sig())
     if (nrow(df) == 0) {
       shown <- tibble::tibble(Título = character(), Financiador = factor(), Score = numeric(), Prazo = character(), Tipo = factor(), Link = character(), Visualizar = character())
     } else {

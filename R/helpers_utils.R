@@ -123,16 +123,41 @@ parse_date_safe <- function(x) {
   }
   x <- as.character(x)
   x[!nzchar(trimws(x))] <- NA_character_
-  out <- suppressWarnings(lubridate::ymd(x, quiet = TRUE))
+  cand_ymd <- suppressWarnings(lubridate::ymd(x, quiet = TRUE))
+  cand_dmy <- suppressWarnings(lubridate::dmy(x, quiet = TRUE))
+  cand_mdy <- suppressWarnings(lubridate::mdy(x, quiet = TRUE))
+  out <- cand_ymd
   idx <- is.na(out)
-  if (any(idx)) out[idx] <- suppressWarnings(lubridate::dmy(x[idx], quiet = TRUE))
+  if (any(idx)) out[idx] <- cand_dmy[idx]
   idx <- is.na(out)
-  if (any(idx)) out[idx] <- suppressWarnings(lubridate::mdy(x[idx], quiet = TRUE))
+  if (any(idx)) out[idx] <- cand_mdy[idx]
   idx <- is.na(out)
   if (any(idx)) out[idx] <- as.Date(suppressWarnings(lubridate::ymd_hms(x[idx], quiet = TRUE)))
   idx <- is.na(out)
   if (any(idx)) out[idx] <- as.Date(suppressWarnings(lubridate::dmy_hms(x[idx], quiet = TRUE)))
-  as.Date(out)
+  out <- as.Date(out)
+  # Ambiguidade de formato (BUG-13): mais de um formato (DD/MM vs MM/DD vs YYYY/MM/DD)
+  # produz uma data válida e distinta -> marcamos confiança baixa e auditamos.
+  ambiguous <- vapply(seq_along(out), function(i) {
+    if (is.na(out[[i]])) {
+      return(FALSE)
+    }
+    vals <- unique(c(
+      if (!is.na(cand_ymd[[i]])) cand_ymd[[i]],
+      if (!is.na(cand_dmy[[i]])) cand_dmy[[i]],
+      if (!is.na(cand_mdy[[i]])) cand_mdy[[i]],
+      if (!is.na(out[[i]])) out[[i]]
+    ))
+    length(vals) >= 2L
+  }, logical(1))
+  if (any(ambiguous)) {
+    attr(out, "confidence") <- "low"
+    log_path_def <- file.path(getwd(), "logs", "funding_collection.log")
+    for (i in which(ambiguous)) {
+      try(log_write(log_path_def, "WARN", sprintf("Ambiguidade de data: '%s'", x[[i]])), silent = TRUE)
+    }
+  }
+  out
 }
 
 parse_datetime_safe <- function(x) {
@@ -165,6 +190,14 @@ days_to_deadline <- function(x) {
 }
 
 classify_status <- function(deadline = NA, start = NA, end = NA, text = NULL) {
+  # Regra temporal única (BUG-01): delega ao motor de status derivado quando
+  # disponível, garantindo que coleta e render compartilham as MESMAS regras.
+  if (exists("derive_status", mode = "function", inherits = FALSE)) {
+    stored <- derive_status(data_limite = deadline, data_abertura = start, texto_bruto = text %||% "")
+    if (length(stored) == 1L && length(deadline) <= 1L && length(start) <= 1L) {
+      return(stored)
+    }
+  }
   dl <- parse_date_safe(deadline)
   st <- parse_date_safe(start)
   en <- parse_date_safe(end)
@@ -491,15 +524,21 @@ log_write <- function(log_path, level = "INFO", message = "") {
 }
 
 badge_status_html <- function(status) {
-  status <- tolower(status %||% "indefinido")
+  status <- tolower(status %||% "desconhecido")
   class_name <- switch(status,
     "aberto" = "badge-soft-open",
     "encerrando" = "badge-soft-warning",
     "em breve" = "badge-soft-info",
+    "em_breve" = "badge-soft-info",
     "encerrado" = "badge-soft-closed",
     "badge-soft-neutral"
   )
-  sprintf("<span class='status-badge %s'>%s</span>", class_name, tools::toTitleCase(status))
+  label <- switch(status,
+    "em_breve" = "Em breve",
+    "desconhecido" = "Desconhecido",
+    tools::toTitleCase(status)
+  )
+  sprintf("<span class='status-badge %s'>%s</span>", class_name, label)
 }
 
 score_bar_html <- function(score) {
@@ -721,20 +760,16 @@ build_scrape_headers <- function(ua = NULL) {
 }
 
 # ── Função unificada de preenchimento de campos via IA ────────────────────────
+# NOTA (BUG-02): o antigo contrato com `<<-` gerava "object 'target_df' not found"
+# e o enriquecimento falhava silenciosamente. Agora as funções são puras:
+# recebem df + campos inferidos e DEVOLVEM list(df, inferred).
 
-#' Preenche um campo de um dataframe com valor extraído pela IA.
-#' Modifica `target_df` e `inferred_fields` no escopo pai via `<<-`.
-#'
-#' @param field Nome do campo a preencher.
-#' @param value Valor extraído pela IA.
-#' @param overwrite Se TRUE, sobrescreve valor existente.
-#' @param target_df Dataframe alvo (será modificado via <<-).
-#' @param row_idx Índice da linha a modificar (para dataframes multi-linha).
-#' @param inferred_fields Vetor de campos já inferidos (será modificado via <<-).
+# Preenche um campo com valor extraído pela IA.
+# @return list(df, inferred) — data.frame atualizado + campos inferidos.
 fill_ai_field <- function(field, value, overwrite = FALSE,
                           target_df, row_idx = 1L, inferred_fields) {
   if (is.null(value) || length(value) == 0) {
-    return(invisible(NULL))
+    return(list(df = target_df, inferred = inferred_fields))
   }
   if (length(value) > 1) {
     value <- paste(vapply(value, as.character, character(1)), collapse = "; ")
@@ -742,7 +777,7 @@ fill_ai_field <- function(field, value, overwrite = FALSE,
     value <- as.character(value[[1]])
   }
   if (is.na(value) || !nzchar(trimws(value))) {
-    return(invisible(NULL))
+    return(list(df = target_df, inferred = inferred_fields))
   }
 
   if (field == "palavras_chave") {
@@ -751,65 +786,77 @@ fill_ai_field <- function(field, value, overwrite = FALSE,
   }
 
   if (!field %in% names(target_df)) {
-    target_df[[field]] <<- NA_character_
+    target_df[[field]] <- NA_character_
   }
 
   current <- target_df[[field]][[row_idx]]
   if (overwrite || is.null(current) || length(current) == 0 ||
     is.na(current) || !nzchar(trimws(as.character(current)))) {
-    target_df[[field]][[row_idx]] <<- value
-    inferred_fields <<- unique(c(inferred_fields, field))
+    col <- target_df[[field]]
+    col[[row_idx]] <- value
+    target_df[[field]] <- col
+    inferred_fields <- unique(c(inferred_fields, field))
   }
-  invisible(NULL)
+  list(df = target_df, inferred = inferred_fields)
 }
 
-#' Aplica todos os campos de IA extraídos a um dataframe.
-#' Modifica `target_df` e retorna o vetor de campos inferidos.
-#'
-#' @param ai Lista de campos extraídos pela IA.
-#' @param target_df Dataframe alvo.
-#' @param row_idx Índice da linha.
-#' @param inferred_fields Vetor de campos inferidos (pass-by-reference via <<-).
+# Aplica todos os campos de IA extraídos a um dataframe.
+# @return list(df, inferred) — use o retorno (nunca confie em <<-).
 apply_ai_fields_to_df <- function(ai, target_df, row_idx, inferred_fields) {
-  fill_ai_field("titulo", ai$titulo_limpo, overwrite = TRUE, target_df, row_idx, inferred_fields)
-  fill_ai_field("descricao_resumida", ai$resumo, overwrite = TRUE, target_df, row_idx, inferred_fields)
-  fill_ai_field("palavras_chave", ai$palavras_chave, overwrite = TRUE, target_df, row_idx, inferred_fields)
-  fill_ai_field("elegibilidade", ai$elegibilidade, target_df, row_idx, inferred_fields)
-  fill_ai_field("area_tematica", ai$area_tematica, target_df, row_idx, inferred_fields)
-  fill_ai_field("tipo_oportunidade", ai$tipo_oportunidade, overwrite = TRUE, target_df, row_idx, inferred_fields)
-  fill_ai_field("status_oportunidade", ai$status_oportunidade, overwrite = TRUE, target_df, row_idx, inferred_fields)
-  fill_ai_field("idioma", ai$idioma, overwrite = TRUE, target_df, row_idx, inferred_fields)
-  fill_ai_field("data_limite", ai$data_limite, overwrite = TRUE, target_df, row_idx, inferred_fields)
-  fill_ai_field("data_publicacao", ai$data_publicacao, overwrite = TRUE, target_df, row_idx, inferred_fields)
-  fill_ai_field("observacoes", ai$observacoes, target_df, row_idx, inferred_fields)
-  fill_ai_field("modalidade", ai$modalidade, overwrite = TRUE, target_df, row_idx, inferred_fields)
-  fill_ai_field("publico_alvo", ai$publico_alvo, overwrite = TRUE, target_df, row_idx, inferred_fields)
-  fill_ai_field("nivel_academico", ai$nivel_academico, overwrite = TRUE, target_df, row_idx, inferred_fields)
-  fill_ai_field("data_abertura", ai$data_abertura, overwrite = TRUE, target_df, row_idx, inferred_fields)
-  fill_ai_field("data_encerramento", ai$data_encerramento, overwrite = TRUE, target_df, row_idx, inferred_fields)
+  st <- list(df = target_df, inferred = inferred_fields)
+  step <- function(field, value, overwrite = FALSE) {
+    st <<- fill_ai_field(field, value, overwrite = overwrite,
+      target_df = st$df, row_idx = row_idx, inferred_fields = st$inferred)
+  }
+
+  step("titulo", ai$titulo_limpo, TRUE)
+  step("descricao_resumida", ai$resumo, TRUE)
+  step("palavras_chave", ai$palavras_chave, TRUE)
+  step("elegibilidade", ai$elegibilidade, FALSE)
+  step("area_tematica", ai$area_tematica, FALSE)
+  step("tipo_oportunidade", ai$tipo_oportunidade, TRUE)
+  # BUG-07: status_oportunidade NUNCA é preenchido por IA — o sistema deriva
+  # por regra temporal (derive_status). O prompt v2 nem retorna esse campo.
+  step("idioma", ai$idioma, TRUE)
+  step("data_limite", ai$data_limite, TRUE)
+  step("data_publicacao", ai$data_publicacao, TRUE)
+  step("observacoes", ai$observacoes, FALSE)
+  step("modalidade", ai$modalidade, TRUE)
+  step("publico_alvo", ai$publico_alvo, TRUE)
+  step("nivel_academico", ai$nivel_academico, TRUE)
+  step("data_abertura", ai$data_abertura, TRUE)
+  step("data_encerramento", ai$data_encerramento, TRUE)
 
   # valor_financiado e moeda (tipos especiais) — blindado contra vetores (IA retorna array)
   ai_val_raw <- ai$valor_financiado
-  ai_val <- if (!is.null(ai_val_raw) && length(ai_val_raw) > 0) {
+  if (!is.null(ai_val_raw) && length(ai_val_raw) > 0) {
     v1 <- ai_val_raw[[1]]
-    if (!is.na(v1)) suppressWarnings(as.numeric(v1)) else NA_real_
-  } else NA_real_
+    if (!is.na(v1)) {
+      num <- suppressWarnings(as.numeric(v1))
+      if (!is.na(num)) {
+        if (!identical(st$df$valor_financiado[[row_idx]], num)) {
+          vcol <- st$df$valor_financiado
+          vcol[[row_idx]] <- num
+          st$df$valor_financiado <- vcol
+          st$inferred <- unique(c(st$inferred, "valor_financiado"))
+        }
+      }
+    }
+  }
   ai_curr_raw <- ai$moeda
-  ai_curr <- if (!is.null(ai_curr_raw) && length(ai_curr_raw) > 0) {
+  if (!is.null(ai_curr_raw) && length(ai_curr_raw) > 0) {
     c1 <- trimws(as.character(ai_curr_raw[[1]]))
-    if (!is.na(c1) && nzchar(c1)) c1 else NA_character_
-  } else NA_character_
-
-  if (!identical(target_df$valor_financiado[[row_idx]], ai_val)) {
-    target_df$valor_financiado[[row_idx]] <<- ai_val
-    inferred_fields <<- unique(c(inferred_fields, "valor_financiado"))
-  }
-  if (!identical(target_df$moeda[[row_idx]], ai_curr)) {
-    target_df$moeda[[row_idx]] <<- ai_curr
-    inferred_fields <<- unique(c(inferred_fields, "moeda"))
+    if (!is.na(c1) && nzchar(c1)) {
+      if (!identical(st$df$moeda[[row_idx]], c1)) {
+        mcol <- st$df$moeda
+        mcol[[row_idx]] <- c1
+        st$df$moeda <- mcol
+        st$inferred <- unique(c(st$inferred, "moeda"))
+      }
+    }
   }
 
-  invisible(NULL)
+  invisible(st)
 }
 
 
@@ -891,4 +938,119 @@ extract_inscricoes_dates <- function(text) {
   } else {
     list(data_abertura = NA_character_, data_limite = NA_character_)
   }
+}
+
+# ─── Extração contextual de datas (corrige BUG-03) ─────────────────────────────
+# Datas de rodapé / "última atualização" / resultados não podem virar o prazo.
+# Procuramos datas apenas em janelas de ±window chars em torno de keywords de prazo
+# e filtramos por plausibilidade (hoje-2a .. hoje+2a).
+
+extract_dates_contextual <- function(text, window = 120L, log_path = NULL) {
+  txt <- normalize_ws(text %||% "")
+  if (!nzchar(txt)) {
+    return(as.Date(character()))
+  }
+  keywords <- c("prazo", "deadline", "submiss", "inscri", "until", "due date", "até", "ate", "final")
+  windows <- character()
+  for (kw in keywords) {
+    matches <- gregexpr(paste0("\\b", kw, ".{0,", window, "}"), txt, ignore.case = TRUE, perl = TRUE)[[1]]
+    if (length(matches) == 0L || is.na(matches[[1]])) next
+    for (pos in matches) {
+      start <- max(1L, pos - window)
+      end <- min(nchar(txt), pos + window)
+      windows <- c(windows, substr(txt, start, end))
+    }
+  }
+  if (length(windows) == 0L) {
+    return(as.Date(character()))
+  }
+  all_dates <- unique(extract_dates_from_text(paste(windows, collapse = "\n")))
+  all_dates <- all_dates[!is.na(all_dates)]
+  hoje <- status_today()
+  all_dates <- all_dates[all_dates >= (hoje - 730) & all_dates <= (hoje + 730)]
+  sort(all_dates)
+}
+
+assert_date_plausibility <- function(dates, log_path = NULL) {
+  # Semântica do spec: datas fora de hoje-2a..hoje+2a são descartadas.
+  if (length(dates) == 0L) {
+    return(as.Date(character()))
+  }
+  hoje <- status_today()
+  keep <- dates >= (hoje - 730) & dates <= (hoje + 730)
+  out <- dates[!is.na(keep) & keep]
+  if (!is.null(log_path) && any(!keep | is.na(keep))) {
+    log_write(log_path, "WARN", sprintf("%d data(s) rejeitada(s) por janela de plausibilidade (hoje-2a..hoje+2a).", sum(!keep | is.na(keep))))
+  }
+  out
+}
+
+# Sanity check: ano do título (ex: "Nº 24/2026" -> 2026) vs ano do prazo (±1 ano).
+validate_date_consistency <- function(titulo, data_limite) {
+  if (is.null(titulo) || is.na(titulo) || !nzchar(as.character(titulo))) {
+    return(TRUE)
+  }
+  dl <- parse_date_safe(data_limite)
+  if (length(dl) > 1L) dl <- dl[[1L]]
+  if (is.na(dl)) {
+    return(TRUE)
+  }
+  ano_titulo <- suppressWarnings(as.numeric(stringr::str_extract(as.character(titulo), "\\b20[0-9]{2}\\b")))
+  if (length(ano_titulo) == 0L || is.na(ano_titulo[[1]])) {
+    return(TRUE)
+  }
+  ano_prazo <- as.integer(format(dl, "%Y"))
+  if (is.na(ano_prazo)) {
+    return(TRUE)
+  }
+  abs(ano_titulo[[1]] - ano_prazo) <= 1L
+}
+
+# ─── Camada de Qualidade de Dados (MELHORIA-02) ───────────────────────────────
+
+compute_data_quality_score <- function(record) {
+  score <- 100L
+  flags <- character()
+  titulo <- record$titulo %||% NA_character_
+  dl <- parse_date_safe(record$data_limite %||% NA)
+  if (length(dl) > 1L) dl <- dl[[1L]]
+  dp <- parse_date_safe(record$data_publicacao %||% NA)
+  if (length(dp) > 1L) dp <- dp[[1L]]
+
+  if (is.na(dl)) {
+    score <- max(0L, score - 30L)
+    flags <- c(flags, "sem_data_limite")
+  }
+  if (!is.na(dl) && !isTRUE(validate_date_consistency(titulo, dl))) {
+    score <- max(0L, score - 20L)
+    flags <- c(flags, "data_inconsistente")
+  }
+  if (!is.na(dp) && !is.na(dl) && dp > dl) {
+    score <- max(0L, score - 25L)
+    flags <- c(flags, "pub_depois_prazo")
+  }
+  if (!is.na(dl)) {
+    diff_days <- as.integer(dl - status_today())
+    if (!is.na(diff_days) && (diff_days < -365L || diff_days > 730L)) {
+      score <- max(0L, score - 15L)
+      flags <- c(flags, "prazo_fora_janela")
+    }
+  }
+  list(score = score, flags = unique(flags))
+}
+
+quality_badge_html <- function(quality) {
+  if (is.null(quality)) {
+    return("")
+  }
+  sc <- as.integer(quality$score %||% 100L)
+  if (!is.na(sc) && sc >= 70L) {
+    return("")
+  }
+  flags <- paste(quality$flags %||% character(), collapse = ", ")
+  sprintf(
+    "<span class='badge badge-warning' style='background:#f59e0b; color:#1c1917; border-radius:9999px; padding:2px 8px; font-size:0.7rem;' title='Flags: %s'>Qualidade: %d%%</span>",
+    htmltools::htmlEscape(flags %||% ""),
+    ifelse(is.na(sc), 0L, sc)
+  )
 }

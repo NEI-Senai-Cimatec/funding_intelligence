@@ -349,12 +349,149 @@ chromote_wait_for_content <- function(session, max_wait = 15, min_wait = 2, chec
   invisible(TRUE)
 }
 
+# BUG-06: detecção de fontes UE com conteúdo renderizado via JS/CDN
+needs_headless <- function(url) {
+  if (is.null(url) || is.na(url) || !nzchar(url)) {
+    return(FALSE)
+  }
+  grepl("cordis|ec\\.europa|eurekanetwork|research-and-innovation", url, ignore.case = TRUE)
+}
+
+# Fallback oficial CORDIS/EC para prazos ausentes em fontes UE (BUG-06)
+parse_cordis_payload <- function(payload) {
+  empty <- tibble::tibble(
+    titulo = character(), topic = character(), deadline = character(), url = character(), resumo = character()
+  )
+  projects <- payload$projects %||% payload$data %||% payload$results %||% NULL
+  if (is.data.frame(projects)) {
+    projects <- lapply(seq_len(nrow(projects)), function(i) as.list(projects[i, , drop = FALSE]))
+  }
+  if (!is.list(projects) || length(projects) == 0L) {
+    return(empty)
+  }
+  pick <- function(p, names) {
+    for (n in names) {
+      v <- p[[n]]
+      if (!is.null(v) && length(v) > 0L && !is.na(v[[1L]]) && nzchar(trimws(as.character(v[[1L]])))) {
+        return(as.character(v[[1L]]))
+      }
+    }
+    NA_character_
+  }
+  rows <- lapply(projects, function(p) {
+    tibble::tibble(
+      titulo = pick(p, c("title", "shortTitle", "name")),
+      topic = pick(p, c("callIdentifier", "callId", "identifier", "topic")),
+      deadline = pick(p, c("endDate", "callDeadline", "deadline", "closingDate", "submissionDeadlineDate")),
+      url = pick(p, c("callUrl", "url", "link")),
+      resumo = pick(p, c("summary", "description", "subtitle"))
+    )
+  })
+  dplyr::bind_rows(rows)
+}
+
+fetch_cordis_api <- function(query, max_results = 50L, log_path = NULL) {
+  if (!nzchar(query %||% "")) {
+    return(tibble::tibble(titulo = character(), topic = character(), deadline = character(), url = character(), resumo = character()))
+  }
+  url <- "https://cordis.europa.eu/api/v1/projects"
+  req <- tryCatch(
+    {
+      httr2::request(url) |>
+        httr2::req_url_query(q = query, max = as.character(max_results)) |>
+        httr2::req_user_agent(get_random_ua()) |>
+        httr2::req_headers(`Accept` = "application/json") |>
+        httr2::req_timeout(25)
+    },
+    error = function(e) NULL
+  )
+  if (is.null(req)) {
+    return(tibble::tibble(titulo = character(), topic = character(), deadline = character(), url = character(), resumo = character()))
+  }
+  resp <- tryCatch(httr2::req_perform(req), error = function(e) {
+    if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("CORDIS API indisponível para query '%s': %s", query, e$message))
+    NULL
+  })
+  if (is.null(resp) || httr2::resp_status(resp) != 200L) {
+    return(tibble::tibble(titulo = character(), topic = character(), deadline = character(), url = character(), resumo = character()))
+  }
+  payload <- tryCatch(httr2::resp_body_json(resp), error = function(e) NULL)
+  if (is.null(payload)) {
+    return(tibble::tibble(titulo = character(), topic = character(), deadline = character(), url = character(), resumo = character()))
+  }
+  parse_cordis_payload(payload)
+}
+
+# MELHORIA-05: coleta paralela por fonte (future/furrr), com isolamento de erros.
+collect_sources_parallel <- function(sources_df, max_pages = 5L, max_records_per_source = 15L, use_ai = FALSE, log_path = NULL, workers = NULL) {
+  n <- if (is.null(sources_df) || nrow(sources_df) == 0L) 0L else nrow(sources_df)
+  results <- vector("list", n)
+  if (n == 0L) {
+    return(results)
+  }
+  if (is.null(workers)) {
+    workers <- as.integer(Sys.getenv("SCRAPE_WORKERS", "4"))
+    if (is.na(workers) || workers < 1L) workers <- 1L
+  }
+
+  run_one <- function(i) {
+    src <- sources_df[i, , drop = FALSE]
+    sid <- src$id_fonte[[1]]
+    effective_max <- if (sid %in% c("horizon_europe", "erc", "quantum")) 100L else max_records_per_source
+    tryCatch(
+      source_dispatch(
+        source_row = src,
+        max_pages = max_pages,
+        max_records = effective_max,
+        use_ai = use_ai,
+        log_path = log_path,
+        conn = NULL
+      ),
+      error = function(e) list(error = conditionMessage(e), source_id = sid, records = NULL, pages_visited = 0L, last_url = "")
+    )
+  }
+
+  if (workers <= 1L || !requireNamespace("future", quietly = TRUE)) {
+    for (i in seq_len(n)) results[[i]] <- run_one(i)
+    return(results)
+  }
+
+  old_plan <- future::plan()
+  on.exit(try(future::plan(old_plan), silent = TRUE), add = TRUE)
+  future::plan(future::multisession, workers = workers)
+  futs <- lapply(seq_len(n), function(i) {
+    future::future({ run_one(i) }, globals = list(run_one = run_one, i = i, sources_df = sources_df, max_pages = max_pages, max_records_per_source = max_records_per_source, use_ai = use_ai, log_path = log_path))
+  })
+  for (i in seq_len(n)) {
+    val <- tryCatch(future::value(futs[[i]]), error = function(e) {
+      message(sprintf("[parallel] fonte %d falhou: %s", i, conditionMessage(e)))
+      list(error = conditionMessage(e), source_id = sources_df[i, "id_fonte"][[1]], records = NULL, pages_visited = 0L, last_url = "")
+    })
+    results[[i]] <- val
+  }
+  results
+}
+
 safe_request_page <- function(url, log_path = NULL, use_browser_fallback = TRUE, conn = NULL) {
   start_time <- Sys.time()
   .scrape_rate_limiter$wait_if_needed(url)
   if (!is_host_alive(url)) {
     if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Host offline ou inacessivel: %s. Pulando requisicoes antecipadamente.", url))
     return(list(url = url, html = NULL, text = NA_character_, ok = FALSE, method = "ping_failed"))
+  }
+
+  # BUG-06: portais EU renderizam conteúdo via JS/CDN — headless vira a via preferencial
+  if (isTRUE(needs_headless(url))) {
+    if (!is.null(log_path)) log_write(log_path, "INFO", sprintf("Fonte JS-heavy detectada (%s). Priorizando render headless.", extract_domain(url)))
+    if (isTRUE(use_browser_fallback)) {
+      pw_res <- safe_request_page_playwright(url, log_path = log_path)
+      if (isTRUE(pw_res$ok)) {
+        elapsed <- as.numeric(Sys.time() - start_time, units = "secs")
+        if (!is.null(conn)) log_metric(conn, extract_domain(url), "http_latency", elapsed, list(url = url, status = 200, method = "playwright_js_priority", blocked = FALSE))
+        return(pw_res)
+      }
+    }
+    # fallback de qualquer forma para a rota normal abaixo (httr2 de referência)
   }
 
   # 1. Tentar httr2 (metodo rapido)
@@ -930,7 +1067,15 @@ extract_core_record <- function(source_row, input_title = NA_character_, input_s
 
   raw_text <- collapse_non_empty(v_title, v_subtitle, v_summary, v_full_text, sep = "\n")
   dates <- extract_dates_from_text(raw_text)
-  deadline <- if (length(dates) > 0 && any(!is.na(dates))) suppressWarnings(max(dates, na.rm = TRUE)) else as.Date(NA)
+  # BUG-03: prazo vem de janelas contextuais (nunca de rodapé/"última atualização")
+  ctx_dates <- extract_dates_contextual(raw_text)
+  deadline <- if (length(ctx_dates) > 0 && any(!is.na(ctx_dates))) {
+    suppressWarnings(max(ctx_dates, na.rm = TRUE))
+  } else if (length(dates) > 0 && any(!is.na(dates))) {
+    suppressWarnings(max(dates, na.rm = TRUE))
+  } else {
+    as.Date(NA)
+  }
   pub_date <- if (length(dates) > 0 && any(!is.na(dates))) suppressWarnings(min(dates, na.rm = TRUE)) else as.Date(NA)
   money <- parse_money_text(raw_text)
   main_url <- pick_first_nonempty(detail_url, pdf_url, page_url, source_row$url_oportunidades[[1]])
@@ -983,7 +1128,7 @@ extract_core_record <- function(source_row, input_title = NA_character_, input_s
 }
 
 
-enrich_record_with_ai <- function(record, log_path = NULL) {
+enrich_record_with_ai <- function(record, log_path = NULL, retries = 3L) {
   log_progress(sprintf("Enriquecendo edital '%s' com IA...", record$titulo[[1]]), "IA")
   status_file <- Sys.getenv("COLLECTION_STATUS_FILE")
   if (!nzchar(status_file)) {
@@ -1000,35 +1145,87 @@ enrich_record_with_ai <- function(record, log_path = NULL) {
       silent = TRUE
     )
   }
-  text <- collapse_non_empty(record$titulo, record$descricao_resumida, record$descricao_completa, record$texto_bruto, sep = "\n")
-  ai <- ai_extract_fields(
-    text,
-    current = as.list(record[1, c("titulo", "tipo_oportunidade", "status_oportunidade", "idioma")]),
-    log_path = log_path
-  )
-  if (length(ai) == 0) {
-    return(record)
-  }
 
-  # Verifica se a IA classificou como nao-edital
-  is_edital <- TRUE
-  if (!is.null(ai$e_edital_fomento)) {
-    val <- ai$e_edital_fomento[[1]]
-    if (is.logical(val)) {
-      is_edital <- val
-    } else if (is.character(val)) {
-      is_edital <- !tolower(val) %in% c("false", "f")
+  # Proveniência (BUG-02/08): pipeline resiliente com retry + fallback obrigatório.
+  # [{[]}] evita o warning "Unknown or uninitialised column" de tibble em $ escalar.
+  record$enrichment_status <- tryCatch(record[["enrichment_status"]], error = function(e) NULL) %||% "pendente"
+  record$enrichment_at <- as.character(Sys.time())
+  cfg_info <- tryCatch(get_ai_config(), error = function(e) NULL)
+
+  text <- collapse_non_empty(record$titulo, record$descricao_resumida, record$descricao_completa, record$texto_bruto, sep = "\n")
+  ai <- list()
+  failure_detail <- ""
+  for (attempt in seq_len(retries)) {
+    ai <- tryCatch(
+      ai_extract_fields(
+        text,
+        current = as.list(record[1, c("titulo", "tipo_oportunidade", "idioma"), drop = FALSE]),
+        log_path = log_path
+      ),
+      error = function(e) {
+        failure_detail <<- paste0("erro: ", conditionMessage(e))
+        list()
+      }
+    )
+    if (length(ai) > 0) break
+    if (attempt < retries) {
+      if (!is.null(log_path)) {
+        log_write(
+          log_path, "WARN",
+          sprintf("Tentativa de IA %d/%d falhou para '%s' (%s). Backoff 2^%ds...",
+            attempt, retries, substr(record$titulo[[1]] %||% "", 1, 50),
+            failure_detail %||% "resposta vazia", attempt)
+        )
+      }
+      Sys.sleep(2^attempt)
     }
   }
 
-  if (!is_edital) {
-    log_progress(sprintf("Descartando edital '%s' via classificação de IA (Motivo: %s)", record$titulo[[1]], ai$motivo_descarte[[1]] %||% "não especificado"), "IA")
-    return(tibble::tibble())
-  }
+  if (length(ai) > 0) {
+    validated <- validate_ai_schema(ai)
+    if (!isTRUE(validated$valid)) {
+      if (!is.null(log_path)) {
+        for (e in validated$errors) log_write(log_path, "WARN", sprintf("Validação de schema IA: %s", e))
+      }
+      ai <- validated$data
+    }
 
-  inferred <- character()
-  apply_ai_fields_to_df(ai, record, 1L, inferred)
-  record$campos_inferidos_ia <- paste(unique(inferred), collapse = "; ")
+    # Verifica se a IA classificou como nao-edital
+    is_edital <- TRUE
+    if (!is.null(ai$e_edital_fomento)) {
+      val <- ai$e_edital_fomento[[1]]
+      if (is.logical(val)) {
+        is_edital <- val
+      } else if (is.character(val)) {
+        is_edital <- !tolower(val) %in% c("false", "f")
+      }
+    }
+
+    if (!is_edital) {
+      log_progress(sprintf("Descartando edital '%s' via classificação de IA (Motivo: %s)", record$titulo[[1]], ai$motivo_descarte[[1]] %||% "não especificado"), "IA")
+      return(tibble::tibble())
+    }
+
+    inferred <- character()
+    res_ai <- apply_ai_fields_to_df(ai, record, 1L, inferred)
+    record <- res_ai$df
+    inferred <- res_ai$inferred
+    record$campos_inferidos_ia <- paste(unique(inferred), collapse = "; ")
+    record$enrichment_status <- "ok"
+    record$enrichment_model <- (cfg_info$model %||% "n/a")
+    record$enrichment_error <- NA_character_
+  } else {
+    record$enrichment_status <- "falha"
+    record$enrichment_error <- failure_detail %||% "IA indisponível ou retornou vazio"
+    record <- apply_heuristic_fallback(record)
+    if (!is.null(log_path)) {
+      log_write(
+        log_path, "WARN",
+        sprintf("Falha de IA para '%s'. Fallback heurístico aplicado. Erro: %s",
+          substr(record$titulo[[1]] %||% "", 1, 60), record$enrichment_error %||% "—")
+      )
+    }
+  }
   record
 }
 
@@ -1178,6 +1375,8 @@ enrich_records_parallel <- function(df, log_path = NULL, conn = NULL) {
     }
 
     batch_res <- lapply(prompts[batch_idx], function(p) {
+      # Token-bucket por provedor (MELHORIA-05)
+      try(ai_rate_limiter_for()$acquire(1), silent = TRUE)
       ai_request_with_fallback(p, log_path = log_path, conn = conn)
     })
     raw_results[batch_idx] <- batch_res
@@ -1242,7 +1441,9 @@ enrich_records_parallel <- function(df, log_path = NULL, conn = NULL) {
       }
 
       inferred <- character()
-      apply_ai_fields_to_df(ai, df, i, inferred)
+      res_ai <- apply_ai_fields_to_df(ai, df, i, inferred)
+      df <- res_ai$df
+      inferred <- res_ai$inferred
       df$campos_inferidos_ia[[i]] <- paste(unique(inferred), collapse = "; ")
     }
   }
@@ -1299,7 +1500,8 @@ ensure_record_schema <- function(df) {
     "valor_financiado", "moeda", "data_publicacao", "data_abertura", "data_limite",
     "data_encerramento", "status_oportunidade", "link_origem", "link_detalhe",
     "link_documento_pdf", "idioma", "localidade", "observacoes", "texto_bruto",
-    "pagina_coletada", "fonte_oficial", "data_hora_coleta", "hash_deduplicacao", "campos_inferidos_ia"
+    "pagina_coletada", "fonte_oficial", "data_hora_coleta", "hash_deduplicacao", "campos_inferidos_ia",
+    "enrichment_status", "enrichment_model", "enrichment_at", "enrichment_error"
   )
   if (is.null(df) || nrow(df) == 0) {
     out <- as.list(rep(NA_character_, length(schema_cols)))
@@ -1315,7 +1517,7 @@ ensure_record_schema <- function(df) {
   tibble::as_tibble(df)[, schema_cols]
 }
 
-finalize_records <- function(df, fonte_oficial = NULL) {
+finalize_records <- function(df, fonte_oficial = NULL, log_path = NULL) {
   if (is.null(df) || nrow(df) == 0) {
     return(ensure_record_schema(tibble::tibble()))
   }
@@ -1355,6 +1557,23 @@ finalize_records <- function(df, fonte_oficial = NULL) {
     return(ensure_record_schema(tibble::tibble()))
   }
 
+  # Deadline contextual (BUG-03): se ausente, rederiva de janelas de prazo;
+  # consistência ano-edital vs ano-prazo é auditada, nunca corrigida em silêncio.
+  for (i in seq_len(nrow(df))) {
+    dl_i <- parse_date_safe(df$data_limite[[i]])
+    if (!is.na(dl_i) && !isTRUE(validate_date_consistency(df$titulo[[i]], dl_i))) {
+      if (!is.null(log_path)) {
+        log_write(
+          log_path, "WARN",
+          sprintf("data_inconsistente: titulo '%s' | data_limite %s | fonte %s",
+            substr(df$titulo[[i]] %||% "", 1, 80) %||% "(sem titulo)",
+            format(dl_i, "%Y-%m-%d"),
+            dplyr::coalesce(df$fonte_oficial[[i]], fonte_oficial %||% "", "(sem fonte)"))
+        )
+      }
+    }
+  }
+
   lang_guess <- infer_language_simple(df$texto_bruto)
   status_guess <- classify_status(df$data_limite, df$data_abertura, df$data_encerramento, df$texto_bruto)
   area_guess <- vapply(df$texto_bruto, infer_area_from_text_one, character(1))
@@ -1367,7 +1586,7 @@ finalize_records <- function(df, fonte_oficial = NULL) {
       area_tematica = dplyr::coalesce(area_tematica, area_guess),
       valor_financiado = suppressWarnings(as.numeric(valor_financiado)),
       pais_origem = vapply(pais_origem, normalize_country, character(1)),
-      hash_deduplicacao = dplyr::coalesce(hash_deduplicacao, make_hash(entidade, titulo, dplyr::coalesce(link_detalhe, link_documento_pdf, link_origem), data_limite)),
+      hash_deduplicacao = dplyr::coalesce(hash_deduplicacao, make_hash(entidade, normalize_text(titulo), dplyr::coalesce(link_detalhe, link_documento_pdf, link_origem, ""))),
       id_registro = dplyr::coalesce(id_registro, paste0(fonte_oficial, "_", substr(hash_deduplicacao, 1, 16)))
     ) |>
     dedupe_records()
@@ -2371,6 +2590,27 @@ collect_horizon_europe <- function(source_row, max_pages, max_records, use_ai, l
 
   records <- dplyr::bind_rows(record_list)
 
+  # BUG-06: fallback CORDIS API para prazos ausentes (portais JS/CDN)
+  missing_idx <- which(is.na(records$data_limite) | !nzchar(dplyr::coalesce(records$data_limite, "")))
+  if (length(missing_idx) > 0L) {
+    .log("WARN", sprintf("%d registro(s) HEU sem data_limite. Tentando fallback CORDIS API...", length(missing_idx)))
+    for (i in utils::head(missing_idx, 10L)) {
+      q <- dplyr::coalesce(records$subtitulo[[i]], records$titulo[[i]], "")
+      if (!nzchar(q)) next
+      cordis <- tryCatch(
+        fetch_cordis_api(q),
+        error = function(e) tibble::tibble(titulo = character(), topic = character(), deadline = character(), url = character(), resumo = character())
+      )
+      if (nrow(cordis) > 0L) {
+        dl <- parse_date_safe(cordis$deadline[[1L]])
+        if (!is.na(dl[[1L]])) {
+          records$data_limite[[i]] <- as.character(dl[[1L]])
+          .log("INFO", sprintf("CORDIS preencheu prazo '%s' para '%s'", as.character(dl[[1L]]), substr(q, 1, 45)))
+        }
+      }
+    }
+  }
+
   .log("INFO", sprintf("HEU: %d registros finais coletados", nrow(records)))
 
   result <- list(records = records, pages_visited = length(search_terms), last_url = api_url)
@@ -2660,6 +2900,27 @@ collect_erc <- function(source_row, max_pages, max_records, use_ai, log_path) {
 
   .log("INFO", sprintf("ERC: %d registros finais coletados", nrow(records)))
 
+  # BUG-06: fallback CORDIS API para prazos ausentes (portais JS/CDN)
+  missing_idx <- which(is.na(records$data_limite) | !nzchar(dplyr::coalesce(records$data_limite, "")))
+  if (length(missing_idx) > 0L) {
+    .log("WARN", sprintf("%d registro(s) ERC sem data_limite. Tentando fallback CORDIS API...", length(missing_idx)))
+    for (i in utils::head(missing_idx, 10L)) {
+      q <- dplyr::coalesce(records$subtitulo[[i]], records$titulo[[i]], "")
+      if (!nzchar(q)) next
+      cordis <- tryCatch(
+        fetch_cordis_api(q),
+        error = function(e) tibble::tibble(titulo = character(), topic = character(), deadline = character(), url = character(), resumo = character())
+      )
+      if (nrow(cordis) > 0L) {
+        dl <- parse_date_safe(cordis$deadline[[1L]])
+        if (!is.na(dl[[1L]])) {
+          records$data_limite[[i]] <- as.character(dl[[1L]])
+          .log("INFO", sprintf("CORDIS preencheu prazo '%s' para '%s'", as.character(dl[[1L]]), substr(q, 1, 45)))
+        }
+      }
+    }
+  }
+
   return(list(records = records, pages_visited = length(search_terms), last_url = api_url))
 }
 # ---------------------------------------------------------------------------
@@ -2691,7 +2952,8 @@ collect_erc <- function(source_row, max_pages, max_records, use_ai, log_path) {
       line_window <- window_lines[h]
       dates <- extract_dates_from_text(line_window)
       dates <- dates[!is.na(dates)]
-      dates <- dates[as.numeric(dates - Sys.Date()) >= -30]
+      # A linha que casa com keyword de submissão é AUTORITATIVA:
+      # não aplicar filtro temporal de -30d (testes/corridas antigas dependem disso)
       if (length(dates) > 0) {
         return(format(max(dates), "%Y-%m-%d"))
       }
@@ -3291,6 +3553,26 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
   processed <- 0L
   inserted_total <- 0L
 
+  # MELHORIA-05: scraping por fonte em paralelo (future/furrr), erros isolados
+  scrape_results <- tryCatch(
+    {
+      collect_sources_parallel(
+        sources_df = sources,
+        max_pages = max_pages,
+        max_records_per_source = max_records_per_source,
+        use_ai = use_ai,
+        log_path = log_path
+      )
+    },
+    error = function(e) {
+      log_write(log_path, "WARN", sprintf("Coleta paralela falhou (%s). Reexecutando sequencial.", e$message))
+      collect_sources_parallel(sources_df = sources, max_pages = max_pages, max_records_per_source = max_records_per_source, use_ai = use_ai, log_path = log_path, workers = 1L)
+    }
+  )
+  if (length(scrape_results) < total) {
+    scrape_results <- c(scrape_results, vector("list", total - length(scrape_results)))
+  }
+
   for (i in seq_len(total)) {
     src <- sources[i, , drop = FALSE]
     sid <- src$id_fonte[[1]]
@@ -3310,30 +3592,19 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
     if (!is.null(progress_cb)) progress_cb(i - 1L, total, sprintf("Coletando %s", sid))
     log_write(log_path, "INFO", sprintf("Fonte em processamento: %s | %s", sid, src$url_oportunidades[[1]]))
 
-    # Override: fontes EU (HEU/ERC) usam mais registros por serem programas plurianuais
-    effective_max <- if (sid %in% c("horizon_europe", "erc", "quantum")) 100L else max_records_per_source
+    result <- scrape_results[[i]]
+    if (is.null(result)) {
+      log_write(log_path, "ERROR", sprintf("Falha na fonte %s: resultado vazio.", sid))
+      log_collection(conn, sid, src$metodo_coleta[[1]], "erro", "Resultado vazio na coleta paralela", n_paginas = 0L, n_registros = 0L, url = src$url_oportunidades[[1]])
+      next
+    }
+    if (!is.null(result$error)) {
+      log_write(log_path, "ERROR", sprintf("Falha na fonte %s: %s", sid, result$error))
+      log_collection(conn, sid, src$metodo_coleta[[1]], "erro", result$error, n_paginas = 0L, n_registros = 0L, url = src$url_oportunidades[[1]])
+      next
+    }
 
-    result <- tryCatch(
-      {
-        source_dispatch(
-          source_row = src,
-          max_pages = max_pages,
-          max_records = effective_max,
-          use_ai = use_ai,
-          log_path = log_path,
-          conn = conn
-        )
-      },
-      error = function(e) {
-        log_write(log_path, "ERROR", sprintf("Falha na fonte %s: %s", sid, e$message))
-        log_collection(conn, sid, src$metodo_coleta[[1]], "erro", e$message, n_paginas = 0L, n_registros = 0L, url = src$url_oportunidades[[1]])
-        NULL
-      }
-    )
-
-    if (is.null(result)) next
-
-    recs <- tryCatch(finalize_records(result$records, fonte_oficial = result$source_id %||% sid), error = function(e) {
+    recs <- tryCatch(finalize_records(result$records, fonte_oficial = result$source_id %||% sid, log_path = log_path), error = function(e) {
       log_write(log_path, "ERROR", sprintf("Falha ao finalizar registros da fonte %s: %s", sid, e$message))
       ensure_record_schema(tibble::tibble())
     })

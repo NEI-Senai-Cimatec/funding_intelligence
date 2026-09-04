@@ -22,7 +22,7 @@ The system SHALL initialize by loading packages from a local `R_libs/` directory
 - **THEN** the application stops with an error listing the missing packages
 
 ### Requirement: Helper module loading order
-The system SHALL load helper modules in a fixed sequence via `safe_source()`: `helpers_utils.R` → `helpers_db.R` → `helpers_text.R` → `helpers_ai.R` → `helpers_recommend.R` → `helpers_collect.R` → `helpers_drive.R`. Each module load is wrapped in `try()` — a failed load emits a warning but does not prevent the app from starting.
+The system SHALL load helper modules in a fixed sequence via `safe_source()`: `helpers_utils.R` → `helpers_db.R` → `helpers_text.R` → `helpers_status.R` → `helpers_ai.R` → `helpers_recommend.R` → `helpers_collect.R` → `helpers_drive.R`. Each module load is wrapped in `try()` — a failed load emits a warning but does not prevent the app from starting.
 
 #### Scenario: All modules load successfully
 - **WHEN** all helper files exist and parse without error
@@ -98,3 +98,40 @@ The system SHALL display a modal dialog during collection with: a progress bar (
 #### Scenario: Collection fails
 - **WHEN** the background process exits with an error
 - **THEN** the progress bar turns red, the detail shows the error message, and a notification is displayed
+
+### Requirement: Render-time derived status in every display surface
+The system SHALL render the results table Status column, the detail modal status row, the "Urgentes (14 dias)" KPI, the "somente urgentes" filter, and the recommendations tab using the runtime-derived status. No display surface SHALL read the stored `status_oportunidade` for rendering.
+
+#### Scenario: Table shows derived status
+- **WHEN** a record has future `data_limite` but stored status "encerrado"
+- **THEN** the table shows an "aberto"/"encerrando" badge and never "encerrado"
+
+#### Scenario: Urgency filter and KPI agree
+- **WHEN** user enables "somente urgentes"
+- **THEN** the table shows only derived-"encerrando" records and the KPI matches
+
+### Requirement: Detail modal resilience and provenance display
+The system SHALL display in the detail modal: derived status (never the stale stored value), an enrichment status banner (success: model + timestamp; failure: explicit warning, heuristic advisory and retry button), and the same adherence score + matched keyword chips shown in the list, plus a data-quality badge for low-quality records. A retry action SHALL re-attempt enrichment for the modal record with a visible loading state and update the banner on completion.
+
+#### Scenario: AI failure visible in modal
+- **WHEN** a record's `enrichment_status = "falha"`
+- **THEN** the modal shows the warning banner with heuristic advisory and a retry action; type/deadline fields still show heuristic values
+
+#### Scenario: Retry updates banner
+- **WHEN** user clicks the retry action and enrichment subsequently succeeds
+- **THEN** the banner switches to the success state with model and timestamp
+
+#### Scenario: Modal score equals list score
+- **WHEN** the list shows adherence 32 for a record
+- **THEN** the modal shows 32 and the same matched-term chips
+
+#### Scenario: Low quality record flagged
+- **WHEN** a record's quality score is below 70
+- **THEN** the badge "Qualidade: <score>%" with flags is visible in table and modal
+
+### Requirement: Deep-link into opportunity detail
+The system SHALL accept an `id` URL parameter (`?id=<id_registro>`); on load, the app SHALL locate that record and open its detail modal automatically.
+
+#### Scenario: Deep-link opens modal
+- **WHEN** the app loads with `?id=opportunity_123`
+- **THEN** the detail modal for opportunity_123 opens automatically

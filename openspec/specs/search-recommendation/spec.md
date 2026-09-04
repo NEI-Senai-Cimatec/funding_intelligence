@@ -44,7 +44,7 @@ The system SHALL apply structured filters via `apply_structured_filters()` which
 - **THEN** only records with `data_limite` within the range are returned
 
 ### Requirement: Dynamic adherence scoring
-The system SHALL compute adherence scores via `compute_adherence_score()` using a weighted formula: keywords (40%), area themes (20%), funder (15%), country (10%), eligibility (15%). The signature is built from: user profile, search history, tracked opportunities, and current query terms. Scores are recalculated dynamically when the query changes.
+The system SHALL compute adherence scores via `compute_adherence_score()` using a weighted formula: keywords (40%), area themes (20%), funder (15%), country (10%), eligibility (15%). The signature is built once per session from: user profile, search history, tracked opportunities, and current query terms, and cached for reuse. Scores are recalculated dynamically when the query changes. Table and detail modal SHALL both consume the SAME cached signature, and matched keyword terms SHALL be exposed for display as explainable chips; titles' year tokens and agency acronyms are never treated as matching terms.
 
 #### Scenario: High adherence match
 - **WHEN** a record's keywords overlap 80% with the user's interest signature
@@ -54,12 +54,24 @@ The system SHALL compute adherence scores via `compute_adherence_score()` using 
 - **WHEN** the search query is empty
 - **THEN** adherence is based solely on the user profile signature
 
+#### Scenario: Same score in list and modal
+- **WHEN** the list renders score X for a record
+- **THEN** the modal for the same record renders X and the same matched chips
+
+#### Scenario: Year tokens ignored as keywords
+- **WHEN** a title contains "2026" and the signature contains "2026"
+- **THEN** no match is credited for that token
+
 ### Requirement: Recommendation of opportunities
-The system SHALL recommend opportunities via `recommend_opportunities()` which: computes adherence scores, excludes already-tracked records and encerrado records, sorts by score DESC then deadline, and returns the top N results.
+The system SHALL recommend opportunities via `recommend_opportunities()` which: computes adherence scores, excludes already-tracked records and records whose derived status is "encerrado" (status derived at render time, never read from the stored column), sorts by score DESC then deadline, and returns the top N results.
 
 #### Scenario: Top recommendations
 - **WHEN** there are 50 non-tracked open opportunities
 - **THEN** the top 10 by adherence score are returned
+
+#### Scenario: Stale-stored but future-deadline record is recommended
+- **WHEN** a record has stored status "encerrado" but a future deadline
+- **THEN** the record IS eligible (derived status is not "encerrado")
 
 ### Requirement: Partner recommendation for tracked opportunities
 The system SHALL recommend CIMATEC partners via `recommend_partners_for_opportunity()` which: matches the opportunity text against `pesquisadores_vencedores` expertise and `projetos_aprovados` keywords, computes keyword overlap scores, and returns top N researchers sorted by affinity.

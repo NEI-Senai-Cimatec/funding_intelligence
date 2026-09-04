@@ -143,7 +143,7 @@ The system SHALL collect DAAD Brasil scholarships via a hybrid approach: (1) fet
 - **THEN** the IDs are resolved to human-readable names via reference tables (status.js, intentions.js, subjectgroups.js)
 
 ### Requirement: Record finalization and schema enforcement
-The system SHALL finalize collected records via `finalize_records()` which: (1) enforces the 35-column schema via `ensure_record_schema()`, (2) filters through `is_funding_opportunity_heuristics()`, (3) filters through `is_current_year_record()`, (4) infers language, status, and area from text, (5) deduplicates via `dedupe_records()`. EU sources (horizon_europe, erc) receive special year-filtering treatment for plurianual programs.
+The system SHALL finalize collected records via `finalize_records()` which: (1) enforces the 35-column schema via `ensure_record_schema()`, (2) filters through `is_funding_opportunity_heuristics()`, (3) filters through `is_current_year_record()`, (4) infers language, status, and area from text, (5) deduplicates via `dedupe_records()`, (6) derives the deadline via contextual date extraction, (7) validates deadline-year consistency and flags violations, (8) writes `date_confidence` audit warnings for inconsistent or ambiguous dates, and (9) generates the deduplication hash from `(entidade, normalized title, primary link)` — explicitly NOT from `data_limite`, so that the same notice collected on different dates still collapses to one record. EU sources (horizon_europe, erc) receive special year-filtering treatment for plurianual programs.
 
 #### Scenario: Record passes all filters
 - **WHEN** a record has a valid funding title, current-year dates, and unique entity+title
@@ -156,6 +156,14 @@ The system SHALL finalize collected records via `finalize_records()` which: (1) 
 #### Scenario: EU record with future deadline
 - **WHEN** a Horizon Europe record has `data_limite` in a future year
 - **THEN** the record is accepted (plurianual program treatment)
+
+#### Scenario: Same notice collected twice with different deadlines
+- **WHEN** two collections of the same notice produce different `data_limite` values
+- **THEN** records share the same deduplication hash and only one record is kept
+
+#### Scenario: Inconsistent deadline-year flagged
+- **WHEN** a finalized record has a 2026 title year but a 2023 deadline
+- **THEN** the record is kept with the date retained and a `date_confidence` WARN audit entry is written
 
 ### Requirement: Deduplication by entity and normalized title
 The system SHALL deduplicate records via `dedupe_records()` which: normalizes titles (remove accents, lowercase), prioritizes status (aberto > futuro > encerrado), breaks ties by latest deadline then longest content, and keeps one record per `(entidade, title_norm)` pair.
@@ -238,3 +246,29 @@ The system SHALL map World Bank data (from API) to the 35-column opportunity sch
 #### Scenario: Missing optional fields
 - **WHEN** a World Bank record has missing optional fields
 - **THEN** the field is set to NA and the record is still processed
+
+### Requirement: JS-rendered source fallback for EU portals
+The system SHALL detect EU funding portals with JavaScript/CDN-rendered content (Horizon Europe/CORDIS, EC, eureka network domains) and, when static HTML scraping yields no candidates or missing deadlines, fall back to (1) the headless rendering cascade (Playwright/Chromote) and (2) the official EU F&T / CORDIS API endpoints. A successful fallback SHALL yield records whose `data_limite` is populated instead of "-".
+
+#### Scenario: Static scrape misses JS-rendered deadlines
+- **WHEN** an EU source page renders its deadline via JavaScript and static HTML has none
+- **THEN** the source is re-fetched with the headless cascade and the deadline is extracted
+
+#### Scenario: CORDIS API fallback for research topics
+- **WHEN** the EU portal is inaccessible and the CORDIS API is reachable
+- **THEN** records are built from the API response with deadlines populated
+
+### Requirement: Parallel source collection with rate limiting
+The system SHALL run per-source collection jobs in parallel (future/furrr multisession, default 4 workers) while enforcing, per provider/domain, rate limits: a token-bucket limiter for AI providers (Gemini 60 RPM, Groq token budget) and existing per-domain 2s/0.5s delays on HTTP paths. Failures SHALL be isolated per source: one source error logs an ERROR entry and returns an empty result without aborting the batch.
+
+#### Scenario: Parallel collection completes
+- **WHEN** 4 independent sources are collected with 4 workers
+- **THEN** all 4 are scraped concurrently and results are merged into one record set
+
+#### Scenario: Single source failure isolation
+- **WHEN** one source errors during parallel collection
+- **THEN** an ERROR audit entry is written and the remaining sources still produce records
+
+#### Scenario: Rate limit enforces per-provider budget
+- **WHEN** AI calls for Gemini exceed 60 requests per minute
+- **THEN** subsequent calls are queued by the token bucket until the budget replenishes

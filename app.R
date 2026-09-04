@@ -104,6 +104,19 @@ safe_source <- function(path) {
   invisible(out)
 }
 
+# Fonte única de verdade dos módulos exigidos pelo pipeline de coleta.
+# O job background (callr::r_bg) DEVE carregar exatamente esta lista —
+# omitir módulos aqui faz coletores quebrarem com "could not find function"
+# (ex.: status_today de helpers_status.R), mascarado como "Resultado vazio".
+COLLECTOR_HELPER_FILES <- c(
+  "R/helpers_utils.R",
+  "R/helpers_db.R",
+  "R/helpers_status.R",
+  "R/helpers_text.R",
+  "R/helpers_ai.R",
+  "R/helpers_collect.R"
+)
+
 safe_source("R/helpers_utils.R")
 safe_source("R/helpers_db.R")
 safe_source("R/helpers_text.R")
@@ -945,6 +958,7 @@ server <- function(input, output, session) {
       log_path_bg     = log_path,
       do_export_bg    = isTRUE(input$collect_export),
       db_path_bg      = db_path,
+      helper_files_bg = COLLECTOR_HELPER_FILES,
       status_file_bg  = normalizePath(status_file, winslash = "/", mustWork = FALSE),
       log_file_bg     = normalizePath(log_file, winslash = "/", mustWork = FALSE),
       ai_env_vars     = list(
@@ -970,7 +984,7 @@ server <- function(input, output, session) {
     rv$bg_process <- callr::r_bg(
       func = function(app_dir_bg, source_ids_bg, max_pages_bg, max_records_bg,
                       use_ai_bg, export_dir_bg, log_path_bg, do_export_bg,
-                      db_path_bg, status_file_bg, log_file_bg, ai_env_vars) {
+                      db_path_bg, helper_files_bg, status_file_bg, log_file_bg, ai_env_vars) {
         
         # Configura biblioteca local no processo filho
         local_libs_bg <- file.path(app_dir_bg, "R_libs")
@@ -995,12 +1009,15 @@ server <- function(input, output, session) {
           }
         }
 
-        # Carrega os helpers do app
-        source(file.path(app_dir_bg, "R", "helpers_utils.R"), local = TRUE, encoding = "UTF-8")
-        source(file.path(app_dir_bg, "R", "helpers_db.R"),    local = TRUE, encoding = "UTF-8")
-        source(file.path(app_dir_bg, "R", "helpers_text.R"),  local = TRUE, encoding = "UTF-8")
-        source(file.path(app_dir_bg, "R", "helpers_ai.R"),    local = TRUE, encoding = "UTF-8")
-        source(file.path(app_dir_bg, "R", "helpers_collect.R"),local = TRUE, encoding = "UTF-8")
+        # Carrega os helpers do app — lista única de módulos do pipeline de coleta
+        # (inclui helpers_status.R: coletores dependem de status_today via helpers de datas)
+        for (helper_file_bg in helper_files_bg) {
+          helper_path_bg <- file.path(app_dir_bg, helper_file_bg)
+          if (!file.exists(helper_path_bg)) {
+            stop(sprintf("Helper do pipeline de coleta ausente no bg-job: %s", helper_path_bg), call. = FALSE)
+          }
+          source(helper_path_bg, local = TRUE, encoding = "UTF-8")
+        }
 
         # Conexão SQLite própria do processo filho
         bg_conn <- DBI::dbConnect(RSQLite::SQLite(), db_path_bg)

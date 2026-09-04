@@ -272,3 +272,25 @@ The system SHALL run per-source collection jobs in parallel (future/furrr multis
 #### Scenario: Rate limit enforces per-provider budget
 - **WHEN** AI calls for Gemini exceed 60 requests per minute
 - **THEN** subsequent calls are queued by the token bucket until the budget replenishes
+
+### Requirement: Background collector process loads complete helper module set
+The system SHALL define a single source of truth for the helper modules required by the collection pipeline (`COLLECTOR_HELPER_FILES` in `app.R`, including `helpers_status.R`, `helpers_utils.R`, `helpers_db.R`, `helpers_text.R`, `helpers_ai.R`, `helpers_collect.R`). The background collection process (`callr::r_bg`) SHALL source exactly this list before running `collect_all_sources()`, because collectors depend on cross-module functions (e.g., `status_today()` from `helpers_status.R` used by date-extraction helpers). A missing module file SHALL abort the background job with an explicit error instead of failing collectors at runtime.
+
+#### Scenario: Background job loads all pipeline helpers
+- **WHEN** a background collection is launched via `callr::r_bg`
+- **THEN** every file in `COLLECTOR_HELPER_FILES` is sourced before `collect_all_sources()` runs, including `helpers_status.R`
+
+#### Scenario: Collector date helpers work in background process
+- **WHEN** `collect_cnpq()` or `collect_capes()` runs inside the background process and reaches date extraction (e.g., `extract_dates_contextual()`, `compute_data_quality_score()`)
+- **THEN** `status_today()` resolves successfully and no "could not find function" error occurs
+
+### Requirement: Collector error transparency in dispatch
+The system SHALL propagate collector errors with their real cause: `source_dispatch()` SHALL return `list(error = conditionMessage(e), source_id, records = NULL, pages_visited = 0, last_url = "")` when a collector throws, instead of returning `NULL`. `collect_all_sources()` SHALL log this message to `logs_coleta` so failures are diagnosable. Log messages SHALL collapse multi-line error text (rlang bullets like "In index: 1. Caused by error in ...") into a single line so no cause is truncated. A collector failure SHALL never be recorded with the generic message "Resultado vazio na coleta paralela" when an error message is available.
+
+#### Scenario: Collector throws, error reaches logs_coleta
+- **WHEN** a collector raises an error during parallel collection
+- **THEN** the `logs_coleta` row for that source has `status_execucao = "erro"` and `mensagem` containing the actual `conditionMessage`, not "Resultado vazio na coleta paralela"
+
+#### Scenario: Multi-line error not truncated in logs
+- **WHEN** an rlang error with cause chains is written via `log_write()`
+- **THEN** the log line contains the full message with newlines collapsed to " | "

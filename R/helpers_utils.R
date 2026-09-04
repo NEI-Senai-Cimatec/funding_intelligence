@@ -517,7 +517,10 @@ nearest_block_text <- function(node, max_levels = 4) {
 
 log_write <- function(log_path, level = "INFO", message = "") {
   ensure_dir(dirname(log_path))
-  line <- sprintf("[%s] [%s] %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), level, message)
+  # Colapsa quebras de linha: erros rlang multi-linha (ex.: "In index: 1. /
+  # Caused by error in ...") não devem ser truncados no log de uma linha.
+  message_flat <- gsub("[\r\n]+", " | ", as.character(message %||% ""))
+  line <- sprintf("[%s] [%s] %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), level, message_flat)
   cat(line, file = log_path, append = TRUE, sep = "\n")
   message(line)
   invisible(line)

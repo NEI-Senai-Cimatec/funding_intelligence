@@ -68,11 +68,14 @@ source_dispatch <- function(source_row, max_pages = 5, max_records = 15, use_ai 
   result <- tryCatch(
     collector$fn(source_row, max_pages, max_records, FALSE, log_path),
     error = function(e) {
-      log_write(log_path, "ERROR", sprintf(
-        "Falha no collector '%s' para %s: %s",
-        collector$description, sid, e$message
-      ))
-      NULL
+      # Loop Engineering: propaga a mensagem real (não silencia como NULL) para
+      # que logs_coleta registre a causa — evita diagnósticos errados tipo
+      # "Resultado vazio na coleta paralela" para falhas de código/ambiente.
+      err_msg <- sprintf("Collector '%s' falhou para %s: %s",
+        collector$description, sid, gsub("[\r\n]+", " | ", conditionMessage(e)))
+      log_write(log_path, "ERROR", err_msg)
+      list(error = conditionMessage(e), source_id = sid, records = NULL,
+           pages_visited = 0L, last_url = "")
     }
   )
 

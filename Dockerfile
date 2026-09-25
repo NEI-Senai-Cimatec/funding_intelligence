@@ -2,12 +2,14 @@
 FROM rocker/r-ver:4.4.0 AS builder
 
 # Instala dependências de sistema necessárias para compilação/instalação no builder
-# libuv1-dev é necessário para compilação e carregamento do pacote 'fs' (dependência do googledrive e polite)
+# libuv1-dev é necessário para compilação e carregamento do pacote 'fs' (dependência do polite)
+# libpq-dev é necessário para compilar/carregar o RPostgres (PostgreSQL via DATABASE_URL)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libcurl4-openssl-dev \
     libssl-dev \
     libxml2-dev \
     libpoppler-cpp-dev \
+    libpq-dev \
     sqlite3 \
     libsqlite3-dev \
     libpng-dev \
@@ -37,7 +39,7 @@ RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux
     'rvest', 'xml2', 'httr2', 'tibble', 'readr', 'writexl', \
     'janitor', 'glue', 'progress', 'pdftools', 'polite', \
     'callr', 'shinycssloaders', 'reticulate', 'chromote', \
-    'googledrive', 'httr', 'memoise', 'ratelimitr', 'uuid', \
+    'RPostgres', 'httr', 'memoise', 'ratelimitr', 'uuid', \
     'readxl', 'base64enc', 'tesseract' \
   ); \
   suppressMessages(install.packages(pkgs, dependencies = TRUE)); \
@@ -66,6 +68,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     openssl \
     libxml2 \
     libpoppler-cpp9v5 \
+    libpq5 \
     sqlite3 \
     libsqlite3-0 \
     libpng16-16 \

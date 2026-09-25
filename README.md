@@ -23,7 +23,7 @@ Centraliza **21 fontes de fomento** (CNPq, CAPES, FINEP, FAPESB, Horizon Europe,
 | Busca booleana avançada (AST parser) | ✅ Produção |
 | Aderência dinâmica por query | ✅ Produção |
 | Recomendação de parceiros CIMATEC | ✅ Produção |
-| Sincronização Google Drive | ✅ Produção |
+| Banco PostgreSQL gerenciado (Neon.tech) | ✅ Produção |
 | Containerização Docker | ✅ Produção |
 
 ---
@@ -38,9 +38,12 @@ install.packages(c(
   "lubridate", "ggplot2", "plotly", "DBI", "RSQLite", "jsonlite", "digest",
   "htmltools", "rvest", "xml2", "httr2", "tibble", "readr", "writexl",
   "janitor", "glue", "progress", "pdftools", "polite", "callr",
-  "shinycssloaders", "reticulate", "chromote", "googledrive", "httr",
+  "shinycssloaders", "reticulate", "chromote", "httr",
   "memoise", "uuid"
 ))
+
+# Apenas quando usar PostgreSQL (DATABASE_URL configurada):
+install.packages("RPostgres")
 ```
 
 ### 2. Configurar variáveis de ambiente
@@ -51,9 +54,8 @@ Crie o arquivo `.Renviron` na raiz do projeto:
 # Pelo menos uma chave de IA é obrigatória
 GROQ_API_KEY=sua_chave_aqui
 
-# Google Drive (opcional)
-GDRIVE_SERVICE_ACCOUNT_JSON=gdrive_credentials.json
-GDRIVE_FILE_ID=id_do_arquivo_no_drive
+# PostgreSQL/Neon (opcional — sem esta variável o app usa SQLite local)
+DATABASE_URL=postgresql://usuario:senha@host/banco?sslmode=require
 ```
 
 ### 3. Executar
@@ -89,12 +91,11 @@ flowchart TD
         Collect[helpers_collect.R]
         DB[helpers_db.R]
         AI[helpers_ai.R]
-        Drive[helpers_drive.R]
     end
 
     subgraph Storage [Persistência]
-        SQLite[(funding_intelligence.sqlite)]
-        GDrive[(Google Drive)]
+        Neon[(PostgreSQL — Neon.tech)]
+        SQLite[(SQLite local — fallback)]
         Exports[(data_exports/)]
     end
 
@@ -107,11 +108,10 @@ flowchart TD
     Core <--> Data
     Collect --> Fontes
     AI --> LLMAPIs
+    DB --> Neon
     DB --> SQLite
-    Drive --> GDrive
     Collect --> DB
     DB --> Exports
-    SQLite --> Drive
 ```
 
 ---
@@ -195,11 +195,10 @@ As seguintes fontes foram removidas na versão atual do sistema (commit `fbaa74c
 
 Interface Shiny com `bslib` e Bootstrap 5. Responsável por:
 
-- Inicializar o banco SQLite (baixando do Google Drive se configurado)
+- Inicializar o banco (PostgreSQL via `DATABASE_URL` na nuvem, SQLite local como fallback)
 - Definir UI reativa com sidebar de filtros rápidos
 - Gerenciar coleta em background via `callr` com prevenção de processos zumbis
 - Streaming de logs em tempo real via `collection_status.json`
-- Sincronização automática com Google Drive
 
 ### `R/helpers_collect.R` — Motor de Coleta (~4.100 linhas)
 
@@ -226,12 +225,14 @@ Pipeline de extração em 2 estágios:
 
 **Função de tradução:** `translate_to_pt_br()` — traduz título e resumo de registros europeus para pt-br using IA.
 
-### `R/helpers_db.R` — Persistência (~722 linhas)
+### `R/helpers_db.R` — Persistência (~1.100 linhas)
 
-- SQLite em modo WAL com busy timeout
-- Schema idempotente com `IF NOT EXISTS`
-- Catálogo de 11 fontes com UPSERT
-- Migrações automáticas de schema
+- `conectar_banco()` — roteia por `DATABASE_URL`: PostgreSQL (Neon) ou SQLite local
+- `prepare_sql()`/`db_exec()`/`db_qry()` — traduz placeholders (`?`, `:nome`) para o dialect ativo (`$1..$n` no Postgres)
+- Sessão Postgres fixada em `TimeZone=UTC` (semântica de datas idêntica à do SQLite)
+- SQLite em modo WAL com busy timeout (fallback local)
+- Schema Postgres versionado externamente em `schema.sql` (verificado no startup)
+- Catálogo de fontes com UPSERT idempotente e migrações automáticas (SQLite)
 
 ### `R/helpers_text.R` — Busca Booleana (247 linhas)
 
@@ -244,11 +245,6 @@ Pipeline de extração em 2 estágios:
 - Score de aderência: keywords (40%) + áreas (20%) + financiador (15%) + elegibilidade (15%) + país (10%)
 - Recomendação de parceiros CIMATEC por afinidade temática
 
-### `R/helpers_drive.R` — Google Drive Sync (90 linhas)
-
-- Autenticação via Service Account
-- Download na inicialização, upload após coleta e no `onStop`
-
 ### `R/helpers_utils.R` — Utilitários (633 linhas)
 
 - Parsing de datas, valores monetários, normalização de texto
@@ -258,8 +254,11 @@ Pipeline de extração em 2 estágios:
 
 ## Modelo de Dados
 
+Schema versionado em `schema.sql` (PostgreSQL/Neon). Sem `DATABASE_URL`, o mesmo
+modelo é criado em SQLite local (`funding_intelligence.sqlite`).
+
 ```
-funding_intelligence.sqlite
+schema.sql (PostgreSQL) / funding_intelligence.sqlite (fallback local)
 ├── fontes_financiamento      — Catálogo de 11 agências ativas
 ├── oportunidades             — Editais coletados e enriquecidos pela IA
 ├── editais_rastreados        — Funil de candidaturas do usuário
@@ -380,12 +379,37 @@ if (length(missing) > 0) warning("Pacotes faltando: ", paste(missing, collapse =
 source("R/helpers_ai.R")
 ai_available()  # deve retornar TRUE se chave configurada
 
-# Verificar banco
+# Verificar banco (roteia por DATABASE_URL; sem ela, SQLite local)
+source("R/helpers_utils.R")
 source("R/helpers_db.R")
-conn <- DBI::dbConnect(RSQLite::SQLite(), "funding_intelligence.sqlite")
-DBI::dbListTables(conn)  # deve listar 11 tabelas
+conn <- conectar_banco("funding_intelligence.sqlite")
+DBI::dbListTables(conn)  # deve listar as 12 tabelas da aplicação
 DBI::dbDisconnect(conn)
 ```
+
+---
+
+## Migração SQLite → Neon (PostgreSQL)
+
+1. **Schema:** `schema.sql` contém o DDL PostgreSQL (12 tabelas, PKs, FKs e índices).
+   Aplique-o no Neon (`psql -f schema.sql` ou `neonctl apply`) — o app apenas verifica a presença das tabelas.
+2. **Dados:** `migrate_to_neon.R` copia o SQLite local para o Neon com conversão de tipos
+   (DATE, TIMESTAMPTZ/UTC, BOOLEAN, JSONB), preservando IDs e realinhando as sequências:
+
+   ```bash
+   export DATABASE_URL="postgresql://...?sslmode=require"
+   Rscript migrate_to_neon.R --dry-run   # valida conexão, schema e contagens
+   Rscript migrate_to_neon.R             # migra (idempotente: UPSERT por chave primária)
+   ```
+
+3. **App:** com `DATABASE_URL` configurada, `app.R` conecta ao Neon; sem ela, usa o SQLite local.
+   A coleta do botão "Atualizar base" grava direto no Postgres (o processo `callr` recebe a `DATABASE_URL`).
+
+> **Conectividade:** a aplicação usa a porta **5432/tcp** (protocolo Postgres). Redes institucionais
+> com inspeção de tráfego que bloqueiam payloads fora de 443/80 impedem a conexão local — nessas
+> redes, aplique schema/dados por caminhos HTTPS (`neon deploy`, Console SQL editor ou o MCP da Neon
+> com `run_sql`/`run_sql_transaction`) e execute o app a partir de uma rede sem esse bloqueio
+> (ex.: hotspot) ou do ambiente de produção (Posit Connect).
 
 ---
 
@@ -409,7 +433,7 @@ Cloudflare Worker (IP neutro)
 api.tech.ec.europa.eu/search?apiKey=SEDIA
         │
         ▼ JSON
-Cloudflare Worker → Connect → Grava no SQLite
+Cloudflare Worker → Connect → Grava no banco de dados
 ```
 
 ### Passo 1 — Criar conta Cloudflare
@@ -538,13 +562,11 @@ Deve retornar JSON com `"totalResults"` > 0.
 | `AI_DELAY_BETWEEN_BATCHES` | Atraso entre lotes de IA (seg) | `2` |
 | `SCRAPE_WORKERS` | Workers da coleta paralela por fonte | `4` |
 
-### Google Drive (opcional)
+### Banco de dados (Neon/PostgreSQL)
 
 | Variável | Descrição |
 |---|---|
-| `GDRIVE_SERVICE_ACCOUNT_JSON` | Caminho para arquivo JSON de Service Account |
-| `GDRIVE_SERVICE_ACCOUNT_CONTENT` | Conteúdo JSON inline da Service Account |
-| `GDRIVE_FILE_ID` | ID do arquivo SQLite no Google Drive |
+| `DATABASE_URL` | URL de conexão do PostgreSQL. Se definida, o app usa o Neon; se ausente, usa SQLite local. Ex.: `postgresql://user:senha@host/db?sslmode=require` |
 
 ### API Europeia (necessário para Posit Connect)
 
@@ -570,7 +592,8 @@ Deve retornar JSON com `"totalResults"` > 0.
 ## Segurança e DevSecOps
 
 - **Docker Non-Root** — Container não executa como `root`
-- **SQLite WAL** — Leituras simultâneas durante escritas
+- **PostgreSQL com SSL** — Neon exige `sslmode=require`; sessão fixada em UTC
+- **SQLite WAL (fallback local)** — Leituras simultâneas durante escritas
 - **Transações ACID** — UPSERT atômico com `dbBegin`/`dbCommit`
 - **Prevenção de Zumbis** — `session$onSessionEnded` elimina processos filhos
 - **Playwright Stealth** — Camuflagem de fingerprints contra WAFs
@@ -645,9 +668,8 @@ AI_BATCH_SIZE=8
 AI_DELAY_BETWEEN_BATCHES=6
 SCRAPE_WORKERS=4
 
-# Google Drive (opcional)
-# GDRIVE_SERVICE_ACCOUNT_JSON=gdrive_credentials.json
-# GDRIVE_FILE_ID=...
+# Banco de dados em nuvem (opcional — sem ela o app usa SQLite local)
+# DATABASE_URL=postgresql://user:senha@host/db?sslmode=require
 ```
 
 - **Migração:** ao subir, o app adiciona idempotentemente as colunas `enrichment_status/model/at/error` e recalcula os hashes de deduplicação (sem `data_limite`). Não há perda de dados.

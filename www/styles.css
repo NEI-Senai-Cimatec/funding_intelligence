@@ -395,10 +395,17 @@ main {
 }
 
 /* Garante rolagem horizontal apenas nas tabelas de dados quando necessario */
-.dataTables_wrapper,
+.dataTables_wrapper {
+  clear: both !important;
+  width: 100% !important;
+  position: relative !important;
+  margin-bottom: 2rem !important;
+}
+
 .dataTables_scrollBody {
   overflow-x: auto !important;
-  overflow-y: visible !important;
+  overflow-y: auto !important;
+  max-height: none !important;
 }
 
 /* Customização do Modal */
@@ -438,10 +445,15 @@ main {
 
 /* Footer Styles */
 .app-footer-centered {
+  clear: both !important;
+  position: relative !important;
+  display: block !important;
+  width: 100% !important;
   background-color: #E9E9E9;
   color: #64748b;
   padding: 2.5rem 2rem 2rem 2rem;
-  margin-top: 3rem;
+  margin-top: 4rem !important;
+  margin-bottom: 0 !important;
   text-align: center;
   border-top: 4px solid #004691;
   border-radius: 12px 12px 0 0;

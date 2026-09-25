@@ -77,7 +77,7 @@ get_ai_config <- function() {
     } else if (provider == "openai") {
       model <- "gpt-4o-mini"
     } else if (provider == "nvidia") {
-      model <- "google/diffusiongemma-26b-a4b-it"
+      model <- "poolside/laguna-xs-2.1"
     } else if (provider == "anthropic") {
       model <- "claude-3-5-haiku-latest"
     } else if (provider == "groq") {

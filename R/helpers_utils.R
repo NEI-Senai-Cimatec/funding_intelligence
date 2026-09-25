@@ -352,6 +352,7 @@ extract_dates_from_text <- function(text) {
     "\\b\\d{4}-\\d{2}-\\d{2}\\b",
     "\\b\\d{1,2}\\.\\d{1,2}\\.\\d{4}\\b",
     "\\b\\d{1,2}º?\\s+de\\s+[A-Za-zçãéíóúâêô]+(?:\\s+de)?\\s+\\d{4}\\b",
+    "\\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\s+\\d{1,2},\\s*\\d{4}\\b",
     "\\b[A-Za-zçãéíóúâêô]+\\s*/\\s*\\d{4}\\b"
   )
   hits <- unique(unlist(lapply(pats, function(p) stringr::str_extract_all(txt, stringr::regex(p, ignore_case = TRUE))[[1]]), use.names = FALSE))
@@ -364,10 +365,20 @@ extract_dates_from_text <- function(text) {
     julho = "07", agosto = "08", setembro = "09", outubro = "10", novembro = "11", dezembro = "12",
     jan = "01", fev = "02", mar = "03", abr = "04", mai = "05", jun = "06",
     jul = "07", ago = "08", set = "09", out = "10", nov = "11", dez = "12",
-    sept = "09", oct = "10", nov = "11", dec = "12"
+    sept = "09", oct = "10", dec = "12",
+    january = "01", february = "02", march = "03", april = "04", may = "05", june = "06",
+    july = "07", august = "08", september = "09", october = "10", november = "11", december = "12"
   )
   normalize_pt_date <- function(x) {
     x <- trimws(x)
+    # Formato longo EN: "September 17, 2026" ou "October 19, 2026"
+    en_m <- regmatches(x, regexec("([A-Za-z]+)\\s+(\\d{1,2}),\\s*(\\d{4})", x))[[1]]
+    if (length(en_m) == 4) {
+      mo_key <- tolower(en_m[2])
+      if (mo_key %in% names(month_map)) {
+        return(sprintf("%s-%s-%02d", en_m[4], month_map[[mo_key]], as.integer(en_m[3])))
+      }
+    }
     key <- normalize_text(x)
     # Formato ordinal: "1º de setembro de 2026" -> normalizar para "1 de setembro de 2026"
     key <- gsub("º", "", key, fixed = TRUE)
@@ -375,18 +386,18 @@ extract_dates_from_text <- function(text) {
     # Formato "Mes/YYYY" -> dia 15
     month_year_match <- regmatches(key, regexec("^([a-zçãéíóúâêô]+)\\s*/?\\s*(\\d{4})$", key))[[1]]
     if (length(month_year_match) == 3) {
-      mo <- month_map[[month_year_match[2]]]
-      if (!is.null(mo)) {
-        return(sprintf("%s-%s-15", month_year_match[3], mo))
+      mo_key <- month_year_match[2]
+      if (mo_key %in% names(month_map)) {
+        return(sprintf("%s-%s-15", month_year_match[3], month_map[[mo_key]]))
       }
     }
-    # Formato longo: "1 de setembro de 2026"
+    # Formato longo PT: "1 de setembro de 2026"
     if (grepl(" de ", key, fixed = TRUE)) {
       m <- regmatches(key, regexec("(\\d{1,2})\\s+de\\s+([a-zçãéíóúâêô]+)\\s+de\\s*(\\d{4})", key))[[1]]
       if (length(m) == 4) {
-        mo <- month_map[[m[3]]]
-        if (!is.null(mo)) {
-          return(sprintf("%s-%s-%02d", m[4], mo, as.integer(m[2])))
+        mo_key <- m[3]
+        if (mo_key %in% names(month_map)) {
+          return(sprintf("%s-%s-%02d", m[4], month_map[[mo_key]], as.integer(m[2])))
         }
       }
     }
@@ -516,9 +527,13 @@ nearest_block_text <- function(node, max_levels = 4) {
 }
 
 log_write <- function(log_path, level = "INFO", message = "") {
+  if (is.null(log_path) || !nzchar(as.character(log_path %||% ""))) {
+    message_flat <- gsub("[\r\n]+", " | ", as.character(message %||% ""))
+    line <- sprintf("[%s] [%s] %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), level, message_flat)
+    message(line)
+    return(invisible(line))
+  }
   ensure_dir(dirname(log_path))
-  # Colapsa quebras de linha: erros rlang multi-linha (ex.: "In index: 1. /
-  # Caused by error in ...") não devem ser truncados no log de uma linha.
   message_flat <- gsub("[\r\n]+", " | ", as.character(message %||% ""))
   line <- sprintf("[%s] [%s] %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), level, message_flat)
   cat(line, file = log_path, append = TRUE, sep = "\n")
@@ -1056,4 +1071,68 @@ quality_badge_html <- function(quality) {
     htmltools::htmlEscape(flags %||% ""),
     ifelse(is.na(sc), 0L, sc)
   )
+}
+
+# ─── Categorização e Inferência por Campi (Sertão, Aeroespacial, Mar, Digital, Park) ──
+
+infer_campus_from_record <- function(titulo = "", descricao = "", area_tematica = "", palavras_chave = "", fonte_oficial = "", entidade = "") {
+  txt_norm <- normalize_text(paste(titulo %||% "", descricao %||% "", area_tematica %||% "", palavras_chave %||% "", fonte_oficial %||% "", entidade %||% "", collapse = " "))
+  fonte_norm <- tolower(trimws(fonte_oficial %||% entidade %||% ""))
+  
+  campi <- character()
+  
+  # 1. Aeroespacial (🚀)
+  is_aero <- fonte_norm %in% c("aeb", "finep_aero", "fab_dcta", "afosr", "darpa", "darpa_quantum_benchmarking") ||
+    grepl("aeroespacial|aeronautica|aeronautico|espacial|satelite|satelites|vant|vants|drone|drones|defesa|propulsao|avionica|radar|radares|evtol|lancador|foguete|orbita|space|aerospace|cta|iae|dcta|forca aerea", txt_norm)
+  if (is_aero) campi <- c(campi, "Aeroespacial")
+  
+  # 2. Sertão (🌾)
+  is_sertao <- fonte_norm %in% c("bnb_fundeci", "codevasf", "embrapa", "sudene") ||
+    grepl("agro|agricultura|agrotech|precisao|semiarido|caatinga|hidrogenio verde|solar|eolica|biomassa|irrigacao|recursos hidricos|bioeconomia|pecuaria|safra|solo|bacia|sao francisco|oeste baiano|desenvolvimento regional|fundeci|codevasf|sudene|embrapa|mapa", txt_norm)
+  if (is_sertao) campi <- c(campi, "Sertão")
+  
+  # 3. Mar (🌊)
+  is_mar <- fonte_norm %in% c("sigitec") ||
+    grepl("mar|maritimo|maritima|naval|oceanica|subaquatica|offshore|submarino|portos|oceano|economia azul|petrobras|sigitec", txt_norm)
+  if (is_mar) campi <- c(campi, "Mar")
+  
+  # 4. Digital (💻)
+  is_digital <- fonte_norm %in% c("nsf_cise", "doe_ascr") ||
+    grepl("inteligencia artificial|ia|ai|ciberseguranca|iot|software|dados|computacao|cidades inteligentes|digital|hpc|supercomputacao|hardware", txt_norm)
+  if (is_digital) campi <- c(campi, "Digital")
+  
+  # 5. Park (🏭)
+  is_park <- fonte_norm %in% c("embrapii") ||
+    grepl("manufatura|industria 4\\.0|materiais|nanotecnologia|quimica|petroquimica|automotivo|eletromobilidade|processos industriais|embrapii", txt_norm)
+  if (is_park) campi <- c(campi, "Sede e Park")
+  
+  if (length(campi) == 0) {
+    return("Sede e Park")
+  }
+  paste(campi, collapse = "; ")
+}
+
+campus_badge_html <- function(campus_str) {
+  if (is.null(campus_str) || is.na(campus_str) || !nzchar(trimws(campus_str))) {
+    return("<span class='badge bg-secondary' style='font-size:0.75rem;'><img src='logos/logo.png' alt='CIMATEC' style='height:12px; margin-right:4px; vertical-align:middle; filter: brightness(0) invert(1);'>Sede e Park</span>")
+  }
+  parts <- safe_split(campus_str, pattern = "[;,]+")
+  badges <- vapply(parts, function(c_name) {
+    c_clean <- trimws(c_name)
+    if (c_clean == "Aeroespacial") {
+      "<span class='badge' style='background-color:#0284c7; color:white; font-size:0.75rem; margin-right:3px;'>🚀 Aeroespacial</span>"
+    } else if (c_clean == "Sertão") {
+      "<span class='badge' style='background-color:#15803d; color:white; font-size:0.75rem; margin-right:3px;'>🌾 Sertão</span>"
+    } else if (c_clean == "Mar") {
+      "<span class='badge' style='background-color:#0d9488; color:white; font-size:0.75rem; margin-right:3px;'>🌊 Mar</span>"
+    } else if (c_clean == "Digital") {
+      "<span class='badge' style='background-color:#4f46e5; color:white; font-size:0.75rem; margin-right:3px;'>💻 Digital</span>"
+    } else if (c_clean %in% c("Park", "Sede e Park")) {
+      "<span class='badge' style='background-color:#d97706; color:white; font-size:0.75rem; margin-right:3px;'><img src='logos/logo.png' alt='CIMATEC' style='height:12px; margin-right:4px; vertical-align:middle; filter: brightness(0) invert(1);'>Sede e Park</span>"
+    } else {
+      cimatec_icon <- "<img src='logos/logo.png' alt='CIMATEC' style='height:12px; margin-right:4px; vertical-align:middle; filter: brightness(0) invert(1);'>"
+      sprintf("<span class='badge bg-secondary' style='font-size:0.75rem; margin-right:3px;'>%s%s</span>", cimatec_icon, htmltools::htmlEscape(c_clean))
+    }
+  }, character(1))
+  paste(badges, collapse = " ")
 }

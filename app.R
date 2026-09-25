@@ -174,6 +174,29 @@ build_sidebar <- function() {
     open = "desktop",
     width = 320,
     selectizeInput(
+      "filter_campus", 
+      label = tags$span(tags$i(class = "fa fa-map-marked-alt"), " Campi SENAI CIMATEC"),
+      choices = c(
+        "🚀 Aeroespacial" = "Aeroespacial",
+        "🌾 Sertão" = "Sertão",
+        "🌊 Mar" = "Mar",
+        "💻 Digital" = "Digital",
+        "<img src='logos/logo.png' height='14px' style='vertical-align: middle; margin-right: 4px;'> Sede e Park" = "Sede e Park"
+      ), 
+      multiple = TRUE, 
+      options = list(
+        placeholder = "Todos os campi",
+        render = I("{
+          option: function(item, escape) {
+            return '<div>' + item.label + '</div>';
+          },
+          item: function(item, escape) {
+            return '<div>' + item.label + '</div>';
+          }
+        }")
+      )
+    ),
+    selectizeInput(
       "filter_funder", 
       label = tags$span(tags$i(class = "fa fa-university"), " Financiador"),
       choices = NULL, 
@@ -230,8 +253,8 @@ ui <- bslib::page_sidebar(
       ),
       tags$div(
         class = "app-title-main",
-        h2("QuIIN QFunding Intelligence Hub"),
-        p("Plataforma de inteligência de financiamento à pesquisa, desenvolvimento e inovação com cobertura global de oportunidades")
+        h2("Radar da Inovação"),
+        p("Plataforma de inteligência de fomento à P&D+I para os Campi Sertão, Aeroespacial, Mar, Digital e Park")
       )
     ),
     uiOutput("header_status")
@@ -267,7 +290,7 @@ ui <- bslib::page_sidebar(
           )
         ),
         value = "", 
-        placeholder = "Ex.: (health OR medical devices) AND innovation NOT veterinary"
+        placeholder = "Ex.: (aeroespacial OR satélite) OR (agro OR semiárido OR hidrogênio verde)"
       ),
       selectInput("region_filter", "Região das fontes", choices = c("Ambas", "Brasileiras", "Europeias", "Internacionais"), selected = "Ambas")
     ),
@@ -323,7 +346,15 @@ ui <- bslib::page_sidebar(
     ),
     bslib::nav_panel(
       "Buscas salvas",
-      DTOutput("saved_searches_table")
+      tags$div(
+        style = "min-height: 480px; padding: 0.75rem 0; clear: both;",
+        tags$div(
+          style = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;",
+          tags$h5(style = "margin: 0; color: #004691; font-weight: 700;", "Buscas Salvas por Campus"),
+          actionButton("btn_run_all_saved_searches", "Executar todas as buscas salvas", class = "btn-primary", icon = icon("play"))
+        ),
+        DTOutput("saved_searches_table")
+      )
     ),
     bslib::nav_panel(
       "Editais rastreados",
@@ -357,23 +388,19 @@ ui <- bslib::page_sidebar(
     # ),
     bslib::nav_panel(
       "Logs",
-      DTOutput("logs_table")
+      tags$div(
+        style = "min-height: 420px; padding: 0.75rem 0; clear: both;",
+        DTOutput("logs_table")
+      )
     )
   ),
   
   tags$footer(
     class = "app-footer-centered",
     tags$div(
-      style = "text-align: center; margin-bottom: 15px; display: flex; align-items: center; justify-content: center; gap: 1.5rem;",
-      tags$img(src = "logos/logos.png", style = "height: 120px; width: auto;", alt = "Logos")
-    ),
-    tags$div(
       class = "footer-top-centered",
       tags$p(
         tags$i(class = "fa-solid fa-person-chalkboard", style = "color: #004691;"), " SENAI CIMATEC – Educação, Ciência, Tecnologia, Inovação e Negócios para Indústria e a Sociedade"
-      ),
-      tags$p(
-        tags$i(class = "fa-solid fa-atom", style = "color: #004691;"), " Centro de Competência EMBRAPII CIMATEC em Tecnologias Quânticas"
       )
     ),
     tags$div(
@@ -385,7 +412,7 @@ ui <- bslib::page_sidebar(
         "Responsável técnico: Mabel Diz Marques Mota"
       ),
       tags$p(
-        "Curador: David Franco Regalado, Ítalo Ferreira da Silva, Yuri Conrado Dantas, Raphael de Oliveira Silva e João Carlos Passos"
+        "Curador: Felipe Dourado Figueiroa, Mabel Diz Marques Mota, Raphael de Oliveira Silva e Yuri Conrado Dantas"
       ),
       tags$p(
         sprintf("© %s Núcleo de Economia Industrial – SENAI CIMATEC. Transformando conhecimento econômico em vantagem competitiva.", format(Sys.Date(), "%Y"))
@@ -857,9 +884,11 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$btn_save_search, {
+    current_campus <- if (length(input$filter_campus) > 0) input$filter_campus[[1]] else "Sede e Park"
     showModal(modalDialog(
       title = "Salvar busca atual",
       textInput("save_search_name", "Nome da busca", value = paste0("Busca ", format(Sys.time(), "%d/%m %H:%M"))),
+      selectInput("save_search_campus", "Campus associado", choices = c("Aeroespacial", "Sertão", "Mar", "Digital", "Sede e Park"), selected = current_campus),
       checkboxInput("save_search_alert", "Preparar alerta semanal", value = TRUE),
       footer = tagList(modalButton("Cancelar"), actionButton("confirm_save_search", "Salvar", class = "btn-primary"))
     ))
@@ -868,7 +897,14 @@ server <- function(input, output, session) {
   observeEvent(input$confirm_save_search, {
     req(conn)
     payload <- jsonlite::toJSON(rv$advanced_filters, auto_unbox = TRUE, null = "null")
-    save_named_search(conn, input$save_search_name %||% "Busca sem nome", input$search_query %||% "", payload, as.integer(isTRUE(input$save_search_alert)))
+    save_named_search(
+      conn,
+      input$save_search_name %||% "Busca sem nome",
+      input$search_query %||% "",
+      payload,
+      as.integer(isTRUE(input$save_search_alert)),
+      campus = input$save_search_campus %||% "Todos"
+    )
     removeModal()
     refresh_data()
     showNotification("Busca salva com sucesso.", type = "message")
@@ -886,7 +922,7 @@ server <- function(input, output, session) {
     if (region == "Brasileiras") {
       available_sources <- available_sources |> dplyr::filter(pais == "Brasil")
     } else if (region == "Europeias") {
-      available_sources <- available_sources |> dplyr::filter(pais %in% c("União Europeia", "Alemanha"))
+      available_sources <- available_sources |> dplyr::filter(pais %in% c("União Europeia", "Alemanha", "Europa"))
     } else if (region == "Internacionais") {
       available_sources <- available_sources |> dplyr::filter(pais != "Brasil")
     } else {
@@ -1068,7 +1104,7 @@ server <- function(input, output, session) {
     if (region == "Brasileiras") {
       df <- df |> dplyr::filter(pais_origem == "Brasil")
     } else if (region == "Europeias") {
-      df <- df |> dplyr::filter(pais_origem %in% c("União Europeia", "Alemanha"))
+      df <- df |> dplyr::filter(pais_origem %in% c("União Europeia", "Alemanha", "Europa"))
     } else if (region == "Internacionais") {
       df <- df |> dplyr::filter(pais_origem != "Brasil")
     } else {
@@ -1077,6 +1113,19 @@ server <- function(input, output, session) {
     }
 
     # Filtros Rápidos do Sidebar
+    if (length(input$filter_campus) > 0 && !"Todos" %in% input$filter_campus) {
+      sel_campi <- input$filter_campus
+      df <- df |> dplyr::filter(vapply(seq_len(dplyr::n()), function(i) {
+        rec_c <- df$campus[[i]] %||% ""
+        ttl_i <- df$titulo[[i]] %||% ""
+        area_i <- df$area_tematica[[i]] %||% ""
+        kw_i <- df$palavras_chave[[i]] %||% ""
+        comb_text <- paste(rec_c, ttl_i, area_i, kw_i)
+        any(vapply(sel_campi, function(sc) {
+          grepl(sc, comb_text, ignore.case = TRUE)
+        }, logical(1)))
+      }, logical(1)))
+    }
     if (length(input$filter_funder) > 0) {
       df <- df |> dplyr::filter(entidade %in% input$filter_funder)
     }
@@ -1096,37 +1145,48 @@ server <- function(input, output, session) {
     dplyr::arrange(df, dplyr::desc(score_aderencia), parse_date_safe(data_limite))
   })
 
-  # Atualizador dinâmico de escolhas dos filtros no sidebar
-  observe({
+  # Atualizador dinâmico de escolhas dos filtros no sidebar (blindado contra loops de reatividade)
+  observeEvent(rv$opportunities, {
     opps <- rv$opportunities
     req(nrow(opps) > 0)
     
+    # Campi
+    campus_choices <- c(
+      "🚀 Aeroespacial" = "Aeroespacial",
+      "🌾 Sertão" = "Sertão",
+      "🌊 Mar" = "Mar",
+      "💻 Digital" = "Digital",
+      "<img src='logos/logo.png' height='14px' style='vertical-align: middle; margin-right: 4px;'> Sede e Park" = "Sede e Park"
+    )
+    updateSelectizeInput(session, "filter_campus", choices = campus_choices, selected = isolate(input$filter_campus))
+
     # Financiador
     funder_choices <- sort(unique(opps$entidade))
-    updateSelectizeInput(session, "filter_funder", choices = funder_choices, selected = input$filter_funder)
+    updateSelectizeInput(session, "filter_funder", choices = funder_choices, selected = isolate(input$filter_funder))
     
     # Área Temática
     area_choices <- sort(unique(opps$area_tematica[!is.na(opps$area_tematica) & opps$area_tematica != ""]))
-    updateSelectizeInput(session, "filter_area", choices = area_choices, selected = input$filter_area)
+    updateSelectizeInput(session, "filter_area", choices = area_choices, selected = isolate(input$filter_area))
     
     # Status (derivado em render — BUG-01)
     status_choices <- unique(derive_status_vec(opps$data_limite, opps$data_abertura, opps$texto_bruto))
     status_choices <- status_choices[status_choices != "" & !is.na(status_choices) & status_choices != "desconhecido"]
     status_display <- setNames(status_choices, status_display_label(status_choices))
-    updateSelectizeInput(session, "filter_status", choices = status_display, selected = input$filter_status)
+    updateSelectizeInput(session, "filter_status", choices = status_display, selected = isolate(input$filter_status))
     
     # Tipo de Oportunidade
     type_choices <- sort(unique(opps$tipo_oportunidade[!is.na(opps$tipo_oportunidade) & opps$tipo_oportunidade != ""]))
-    updateSelectizeInput(session, "filter_type", choices = type_choices, selected = input$filter_type)
+    updateSelectizeInput(session, "filter_type", choices = type_choices, selected = isolate(input$filter_type))
     
     # Idioma
     lang_choices <- sort(unique(opps$idioma[!is.na(opps$idioma) & opps$idioma != ""]))
     lang_display <- setNames(lang_choices, toupper(lang_choices))
-    updateSelectizeInput(session, "filter_language", choices = lang_display, selected = input$filter_language)
-  })
+    updateSelectizeInput(session, "filter_language", choices = lang_display, selected = isolate(input$filter_language))
+  }, ignoreNULL = TRUE)
 
   # Evento para limpar todos os filtros rápidos do sidebar
   observeEvent(input$btn_clear_filters, {
+    updateSelectizeInput(session, "filter_campus", selected = character(0))
     updateSelectizeInput(session, "filter_funder", selected = character(0))
     updateSelectizeInput(session, "filter_area", selected = character(0))
     updateSelectizeInput(session, "filter_status", selected = character(0))
@@ -1222,6 +1282,7 @@ server <- function(input, output, session) {
       shown <- tibble::tibble(
         ID = character(),
         Título = character(),
+        Campus = character(),
         Financiador = factor(),
         `Aderência <i class='fa fa-info-circle text-info' title='Afinidade semântica calculada dinamicamente com base nos termos de busca.'></i>` = character(),
         Prazo = character(),
@@ -1232,6 +1293,7 @@ server <- function(input, output, session) {
     } else {
       shown <- df |>
         dplyr::mutate(
+          Campus = vapply(campus, campus_badge_html, character(1)),
           Aderência = vapply(score_aderencia, score_bar_html, character(1)),
           Prazo = format_date_br(data_limite),
           `Qualidade <i class='fa fa-shield-halved text-info' title='Score de qualidade dos metadados extraídos.'></i>` = vapply(seq_len(nrow(df)), function(i) {
@@ -1250,6 +1312,7 @@ server <- function(input, output, session) {
         dplyr::transmute(
           ID = id_registro,
           Título,
+          Campus,
           Financiador,
           `Aderência <i class='fa fa-info-circle text-info' title='Afinidade semântica calculada dinamicamente com base nos termos de busca.'></i>` = Aderência,
           Prazo,
@@ -1271,7 +1334,7 @@ server <- function(input, output, session) {
         columnDefs = list(
           list(targets = 0, visible = FALSE),
           list(
-            targets = 5,
+            targets = 6,
             render = DT::JS("
               function(data, type, row, meta) {
                 if (type === 'display') {
@@ -1287,7 +1350,7 @@ server <- function(input, output, session) {
               }
             ")
           ),
-          list(targets = c(0, 7), searchable = FALSE, orderable = FALSE)
+          list(targets = c(0, 8), searchable = FALSE, orderable = FALSE)
         )
       )
     )
@@ -1525,6 +1588,10 @@ server <- function(input, output, session) {
               tags$div(
                 style = "display: flex; flex-direction: column; gap: 15px;",
                 tags$div(
+                  tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Campus SENAI CIMATEC"),
+                  tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", HTML(campus_badge_html(opp$campus[[1]] %||% "Geral / Multicampi")))
+                ),
+                tags$div(
                   tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Status"),
                   tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", HTML(badge_status_html(derived_status)))
                 ),
@@ -1716,32 +1783,98 @@ server <- function(input, output, session) {
     DT::datatable(simple_keyword_frequency(filtered_results(), top_n = 50), options = list(pageLength = 10))
   })
 
-  output$saved_searches_table <- renderDT({
+  filtered_saved_searches <- reactive({
     df <- rv$saved_searches
+    if (nrow(df) == 0) return(df)
+    sel_campi <- input$filter_campus
+    if (length(sel_campi) == 0) {
+      return(df)
+    }
+    df |> dplyr::filter(vapply(seq_len(dplyr::n()), function(i) {
+      c_val <- if ("campus" %in% names(df)) df$campus[[i]] %||% "Todos" else "Todos"
+      any(vapply(sel_campi, function(sc) {
+        grepl(sc, c_val, ignore.case = TRUE)
+      }, logical(1)))
+    }, logical(1)))
+  })
+
+  observeEvent(input$query_copied_notify, {
+    showNotification("Consulta copiada para a área de transferência!", type = "message", duration = 3)
+  })
+
+  output$saved_searches_table <- renderDT({
+    df <- filtered_saved_searches()
     if (nrow(df) == 0) {
-      shown <- tibble::tibble(ID = integer(), Nome = character(), Consulta = character(), Alerta = character(), `Criada em` = character(), `Última execução` = character())
+      shown <- tibble::tibble(
+        ID = integer(),
+        Nome = character(),
+        Campus = character(),
+        Consulta = character(),
+        Alerta = character(),
+        `Criada em` = character(),
+        `Última execução` = character()
+      )
     } else {
+      campus_vec <- if ("campus" %in% names(df)) df$campus else rep("Todos", nrow(df))
       shown <- df |>
+        dplyr::mutate(
+          Campus = vapply(campus_vec %||% "Todos", campus_badge_html, character(1)),
+          Consulta = vapply(query_text, function(q) {
+            q_esc <- htmltools::htmlEscape(q)
+            sprintf(
+              '<div style="display: flex; align-items: center; gap: 8px;">
+                <div style="max-height: 55px; width: 440px; min-width: 220px; overflow-y: auto; font-size: 0.78rem; font-family: monospace; white-space: pre-wrap; word-break: break-word; background: #f8f9fa; padding: 4px 8px; border-radius: 4px; border: 1px solid #dee2e6; flex-grow: 1;">
+                  %s
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" style="padding: 2px 8px; font-size: 0.75rem; white-space: nowrap; height: 30px;" onclick="navigator.clipboard.writeText(this.getAttribute(\'data-query\')); Shiny.setInputValue(\'query_copied_notify\', Math.random());" data-query="%s" title="Copiar consulta">
+                  <i class="fa-regular fa-copy"></i> Copiar
+                </button>
+              </div>',
+              q_esc,
+              q_esc
+            )
+          }, character(1))
+        ) |>
         dplyr::transmute(
           ID = id,
           Nome = nome_busca,
-          Consulta = query_text,
+          Campus,
+          Consulta,
           Alerta = dplyr::if_else(as.integer(alerta_ativo) == 1L, "Sim", "Não", missing = "Não"),
           `Criada em` = created_at,
           `Última execução` = last_run_at
         )
     }
-    DT::datatable(shown, escape = FALSE, options = list(pageLength = 10, scrollX = TRUE, language = list(emptyTable = "Nenhuma busca salva.")), selection = "single")
+    DT::datatable(
+      shown,
+      escape = FALSE,
+      options = list(
+        pageLength = 10,
+        autoWidth = FALSE,
+        columnDefs = list(
+          list(orderable = FALSE, targets = 3)
+        ),
+        language = list(emptyTable = "Nenhuma busca salva encontrada para o campus selecionado.")
+      ),
+      selection = "none"
+    )
   }, server = FALSE)
 
-  observeEvent(input$saved_searches_table_rows_selected, {
-    idx <- input$saved_searches_table_rows_selected
-    if (length(idx) == 1) {
-      row <- rv$saved_searches[idx, , drop = FALSE]
+  observeEvent(input$run_saved_search_id, {
+    id_to_run <- as.integer(input$run_saved_search_id)
+    req(!is.na(id_to_run))
+    row <- rv$saved_searches |> dplyr::filter(id == id_to_run)
+    if (nrow(row) > 0) {
       updateTextInput(session, "search_query", value = row$query_text[[1]])
       execute_search(row$query_text[[1]], save_history = FALSE)
       if (!is.null(conn)) mark_saved_search_run(conn, row$id[[1]])
-      refresh_data()
+      now_str <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+      idx_match <- which(rv$saved_searches$id == id_to_run)
+      if (length(idx_match) > 0) {
+        rv$saved_searches$last_run_at[idx_match] <- now_str
+      }
+      bslib::nav_select(id = "main_tabs", selected = "Resultados", session = session)
+      showNotification(paste0("Busca '", row$nome_busca[[1]], "' executada com sucesso!"), type = "message", duration = 4)
     }
   })
 

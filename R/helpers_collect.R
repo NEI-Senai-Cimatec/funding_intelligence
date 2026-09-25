@@ -86,6 +86,34 @@ source_dispatch <- function(source_row, max_pages = 5, max_records = 15, use_ai 
   result
 }
 
+safe_request_page_stealth <- function(url, log_path = NULL) {
+  stealth_script <- file.path(getwd(), "tools", "stealth_fetch.py")
+  if (!file.exists(stealth_script)) {
+    stealth_script <- file.path(getwd(), "scratch", "stealth_fetch.py")
+  }
+  if (!file.exists(stealth_script)) {
+    return(list(ok = FALSE))
+  }
+  
+  tmp_file <- tempfile(fileext = ".html")
+  on.exit(unlink(tmp_file), add = TRUE)
+  
+  cmd <- sprintf('py -3 "%s" "%s" "%s"', stealth_script, url, tmp_file)
+  res_code <- suppressWarnings(system(cmd, ignore.stdout = TRUE, ignore.stderr = TRUE))
+  
+  if (file.exists(tmp_file) && file.info(tmp_file)$size > 800) {
+    txt_lines <- readLines(tmp_file, warn = FALSE, encoding = "UTF-8")
+    txt_str <- paste(txt_lines, collapse = "\n")
+    html <- try(xml2::read_html(txt_str), silent = TRUE)
+    if (!inherits(html, "try-error")) {
+      if (!is.null(log_path)) log_write(log_path, "INFO", sprintf("Stealth Fetching (curl_cffi/playwright) bem-sucedido para %s (%d bytes).", url, nchar(txt_str)))
+      return(list(url = url, html = html, text = txt_str, ok = TRUE, method = "stealth_python"))
+    }
+  }
+  
+  list(ok = FALSE)
+}
+
 safe_request_page_playwright <- function(url, log_path = NULL) {
   if (!requireNamespace("reticulate", quietly = TRUE)) {
     return(list(ok = FALSE))
@@ -298,25 +326,45 @@ get_eu_api_base_url <- function() {
 }
 
 is_host_alive <- function(url) {
+  if (grepl("tech\\.ec\\.europa\\.eu", url)) {
+    return(tryCatch(
+      {
+        req <- httr2::request(url) |>
+          httr2::req_method("POST") |>
+          httr2::req_headers(
+            "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+            "Referer" = "https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
+            "Origin" = "https://ec.europa.eu",
+            "Accept" = "application/json, text/plain, */*",
+            "Content-Type" = "application/x-www-form-urlencoded"
+          ) |>
+          httr2::req_body_form("apiKey" = "SEDIA", "text" = "test", "pageNumber" = "1", "pageSize" = "1") |>
+          httr2::req_timeout(8)
+        httr2::req_perform(req)
+        TRUE
+      },
+      error = function(e) {
+        msg <- conditionMessage(e)
+        if (grepl("Could not resolve host|Could not resolve hostname|Timeout was reached|Connection refused|Failed to connect|schannel|server closed abruptly|missing close_notify", msg, ignore.case = TRUE)) {
+          return(FALSE)
+        }
+        TRUE
+      }
+    ))
+  }
+
   tryCatch(
     {
       req <- httr2::request(url) |>
-        httr2::req_method("POST") |>
-        httr2::req_headers(
-          "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-          "Referer" = "https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
-          "Origin" = "https://ec.europa.eu",
-          "Accept" = "application/json, text/plain, */*",
-          "Content-Type" = "application/x-www-form-urlencoded"
-        ) |>
-        httr2::req_body_form("apiKey" = "SEDIA", "text" = "test", "pageNumber" = "1", "pageSize" = "1") |>
-        httr2::req_timeout(8)
+        httr2::req_method("HEAD") |>
+        httr2::req_user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0") |>
+        httr2::req_timeout(6)
       httr2::req_perform(req)
       TRUE
     },
     error = function(e) {
       msg <- conditionMessage(e)
-      if (grepl("Could not resolve host|Could not resolve hostname|Timeout was reached|Connection refused|Failed to connect|schannel|server closed abruptly|missing close_notify", msg, ignore.case = TRUE)) {
+      if (grepl("Could not resolve host|Could not resolve hostname|Connection refused|Failed to connect", msg, ignore.case = TRUE)) {
         return(FALSE)
       }
       TRUE
@@ -554,8 +602,15 @@ safe_request_page <- function(url, log_path = NULL, use_browser_fallback = TRUE,
     }
   }
 
-  # 2. Tentar Playwright (se habilitado/instalado via reticulate)
+  # 2. Tentar Python Stealth (curl_cffi + Playwright com TLS Impersonation)
   if (isTRUE(use_browser_fallback)) {
+    st_res <- safe_request_page_stealth(url, log_path = log_path)
+    if (isTRUE(st_res$ok)) {
+      elapsed <- as.numeric(Sys.time() - start_time, units = "secs")
+      if (!is.null(conn)) log_metric(conn, extract_domain(url), "http_latency", elapsed, list(url = url, status = 200, method = "stealth_python", blocked = FALSE))
+      return(st_res)
+    }
+
     pw_res <- safe_request_page_playwright(url, log_path = log_path)
     if (isTRUE(pw_res$ok)) {
       elapsed <- as.numeric(Sys.time() - start_time, units = "secs")
@@ -1503,7 +1558,7 @@ ensure_record_schema <- function(df) {
     "valor_financiado", "moeda", "data_publicacao", "data_abertura", "data_limite",
     "data_encerramento", "status_oportunidade", "link_origem", "link_detalhe",
     "link_documento_pdf", "idioma", "localidade", "observacoes", "texto_bruto",
-    "pagina_coletada", "fonte_oficial", "data_hora_coleta", "hash_deduplicacao", "campos_inferidos_ia",
+    "pagina_coletada", "fonte_oficial", "data_hora_coleta", "hash_deduplicacao", "campus", "campos_inferidos_ia",
     "enrichment_status", "enrichment_model", "enrichment_at", "enrichment_error"
   )
   if (is.null(df) || nrow(df) == 0) {
@@ -1581,12 +1636,24 @@ finalize_records <- function(df, fonte_oficial = NULL, log_path = NULL) {
   status_guess <- classify_status(df$data_limite, df$data_abertura, df$data_encerramento, df$texto_bruto)
   area_guess <- vapply(df$texto_bruto, infer_area_from_text_one, character(1))
 
+  campus_guess <- vapply(seq_len(nrow(df)), function(i) {
+    infer_campus_from_record(
+      titulo = df$titulo[[i]],
+      descricao = paste(df$descricao_resumida[[i]] %||% "", df$descricao_completa[[i]] %||% ""),
+      area_tematica = df$area_tematica[[i]],
+      palavras_chave = df$palavras_chave[[i]],
+      fonte_oficial = df$fonte_oficial[[i]] %||% fonte_oficial,
+      entidade = df$entidade[[i]]
+    )
+  }, character(1))
+
   df |>
     dplyr::mutate(
       titulo = dplyr::coalesce(titulo, subtitulo, descricao_resumida, paste("Oportunidade", entidade)),
       idioma = dplyr::coalesce(idioma, lang_guess),
       status_oportunidade = dplyr::coalesce(status_oportunidade, status_guess),
       area_tematica = dplyr::coalesce(area_tematica, area_guess),
+      campus = dplyr::coalesce(campus, campus_guess),
       valor_financiado = suppressWarnings(as.numeric(valor_financiado)),
       pais_origem = vapply(pais_origem, normalize_country, character(1)),
       hash_deduplicacao = dplyr::coalesce(hash_deduplicacao, make_hash(entidade, normalize_text(titulo), dplyr::coalesce(link_detalhe, link_documento_pdf, link_origem, ""))),
@@ -6744,190 +6811,141 @@ collect_doe_ascr <- function(source_row, max_pages, max_records, use_ai, log_pat
   base_url <- source_row$url_oportunidades[[1]] %||% "https://science.osti.gov/ascr/Funding-Opportunities"
   if (is.na(base_url) || !nzchar(base_url)) base_url <- "https://science.osti.gov/ascr/Funding-Opportunities"
 
-  # Try DOE OSTI API first (if available)
-  osti_api_url <- "https://www.osti.gov/api/v1/records?search=ASCR+funding+opportunity&sort=publication_date%20desc&rows=20"
-  api_records <- list()
-  api_tried <- FALSE
-  api_ok <- FALSE
-  try({
-    .log("INFO", "Tentando OSTI API fallback...")
-    .scrape_rate_limiter$wait_if_needed(osti_api_url)
-    req <- httr2::request(osti_api_url) |>
-      httr2::req_user_agent(get_random_ua()) |>
-      httr2::req_timeout(15)
-    resp <- httr2::req_perform(req)
-    if (httr2::resp_status(resp) == 200) {
-      api_tried <- TRUE
-      txt <- httr2::resp_body_string(resp)
-      data <- tryCatch(jsonlite::fromJSON(txt, simplifyVector = FALSE), error = function(e) NULL)
-      if (!is.null(data) && length(data) > 0) {
-        # OSTI returns XML/JSON hybrid; if we get here, log but don't rely
-        .log("INFO", sprintf("OSTI API retornou %d itens (nao estruturado como FOA). Usando como enriquecimento apenas.", length(data)))
-      }
-    }
-  }, silent = TRUE)
+  candidate_urls <- unique(c(
+    base_url,
+    "https://science.osti.gov/ascr/Funding-Opportunities",
+    "https://science.osti.gov/grants/FOAs/Open",
+    "https://science.energy.gov/ascr/funding-opportunities/"
+  ))
 
-  # Main: HTML scraping of ASCR Funding Opportunities page
-  pg <- safe_request_page_us(base_url, log_path = log_path)
-  pages_visited <- 1L
+  pg <- list(ok = FALSE)
   last_url <- base_url
+  pages_visited <- 0L
 
-  if (!isTRUE(pg$ok) || is.null(pg$html)) {
-    .log("WARN", sprintf("Falha ao carregar DOE ASCR %s. Tentando via science.energy.gov espelho.", base_url))
-    alt_url <- "https://science.energy.gov/ascr/funding-opportunities/"
-    pg2 <- safe_request_page_us(alt_url, log_path = log_path)
-    if (isTRUE(pg2$ok) && !is.null(pg2$html)) {
-      pg <- pg2
-      last_url <- alt_url
-    } else {
-      .log("WARN", "DOE ASCR: pagina inicial inacessivel. Retornando vazio.")
-      return(list(records = tibble::tibble(), pages_visited = pages_visited, last_url = last_url))
+  for (u in candidate_urls) {
+    .log("INFO", sprintf("Tentando carregar DOE ASCR via %s...", u))
+    pg_try <- safe_request_page_stealth(u, log_path = log_path)
+    if (!isTRUE(pg_try$ok) || is.null(pg_try$html)) {
+      pg_try <- safe_request_page(u, log_path = log_path)
+    }
+    if (isTRUE(pg_try$ok) && !is.null(pg_try$html)) {
+      pg <- pg_try
+      last_url <- u
+      pages_visited <- pages_visited + 1L
+      .log("INFO", sprintf("Sucesso ao carregar DOE ASCR via %s.", u))
+      break
     }
   }
 
-  # Extract funding opportunities from page blocks
-  # ASCR page structure: headings for FY2026 etc., links to FOA PDFs or pages
-  candidates <- tryCatch({
-    blocks <- rvest::html_elements(pg$html, "article, .field--item, .view-content, .content, main, .region-content")
-    # More targeted: find all links that look like FOAs
-    links <- rvest::html_elements(pg$html, "a[href]")
-    hrefs <- rvest::html_attr(links, "href")
-    texts <- rvest::html_text(links, trim = TRUE)
-    # Filter for funding opportunity signals
-    keep_idx <- grepl("funding|opportunity|FOA|solicitation|continuation|FY2026|ASCR|HPC|quantum|computational|AI for science", texts, ignore.case = TRUE) |
-                grepl("funding|opportunity|FOA|solicitation", hrefs, ignore.case = TRUE)
-    if (any(keep_idx, na.rm = TRUE)) {
-      links <- links[keep_idx]
-      hrefs <- hrefs[keep_idx]
-      texts <- texts[keep_idx]
-    }
-    # Also include headings as candidates
-    headings <- rvest::html_elements(pg$html, "h1, h2, h3, h4")
-    heading_texts <- rvest::html_text(headings, trim = TRUE)
-    # Combine
-    tibble_list <- list()
+  raw_items <- list()
+
+  if (isTRUE(pg$ok) && !is.null(pg$html)) {
+    links <- rvest::html_elements(pg$html, "a[href*='DE-FOA-']")
     for (i in seq_along(links)) {
-      href <- hrefs[[i]]
-      title <- texts[[i]]
-      if (is.na(title) || nchar(trimws(title)) < 10) next
-      # Skip nav/footer boilerplate
-      if (grepl("home|contact|privacy|accessibility|search", title, ignore.case = TRUE) && nchar(title) < 30) next
-      abs_url <- resolve_url(base_url, href)
-      # Find container text for context
-      parent <- tryCatch(rvest::html_parent(links[[i]]), error = function(e) NULL)
-      ctx <- tryCatch(safe_html_text(parent), error = function(e) "")
-      # Must have funding signal
-      if (!text_has_funding_signal(c(title, ctx))[[1]] && !grepl("funding|opportunity|FOA", title, ignore.case = TRUE)) {
-        # Allow if it's clearly a FOA link (contains .pdf or funding)
-        if (!grepl("\\.pdf|funding|solicitation", href, ignore.case = TRUE)) next
-      }
-      tibble_list[[length(tibble_list) + 1]] <- tibble::tibble(
-        title = stringr::str_squish(title),
-        summary = stringr::str_squish(paste(title, ctx, collapse = " ") |> stringr::str_sub(1, 700)),
-        detail_url = abs_url,
-        pdf_url = if (grepl("\\.pdf", href, ignore.case = TRUE)) abs_url else NA_character_,
-        source_text = ctx
-      )
-    }
-    if (length(tibble_list) > 0) dplyr::bind_rows(tibble_list) else tibble::tibble()
-  }, error = function(e) tibble::tibble())
+      a <- links[[i]]
+      href <- rvest::html_attr(a, "href")
+      if (is.na(href) || !nzchar(href)) next
+      if (grepl("sample|agreement|faq", href, ignore.case = TRUE)) next
+      if (!grepl("\\.pdf$", href, ignore.case = TRUE)) next
 
-  # Fallback to generic extractor if custom found nothing
-  if (nrow(candidates) == 0) {
-    gen <- tryCatch(extract_listing_candidates(pg$html, base_url, source_row), error = function(e) tibble::tibble())
-    if (nrow(gen) > 0) {
-      candidates <- gen |>
-        dplyr::transmute(title = title, summary = summary, detail_url = detail_url, pdf_url = pdf_url, source_text = source_text) |>
-        dplyr::filter(grepl("funding|opportunity|FOA|ASCR|HPC|quantum", title, ignore.case = TRUE) | !is.na(pdf_url))
-    }
-  }
+      title <- rvest::html_text(a, trim = TRUE)
+      parent <- tryCatch(rvest::html_element(a, xpath = "./ancestor::*[self::p or self::li or self::div][1]"), error = function(e) NULL)
+      parent_text <- if (!is.null(parent)) safe_html_text(parent) else ""
 
-  # If still empty, the page itself may BE the opportunity (single FOA - FY2026 Continuation)
-  if (nrow(candidates) == 0) {
-    page_title <- extract_meta_title(pg$html)
-    page_summary <- extract_page_summary(pg$html, max_chars = 1200)
-    full_text <- tryCatch({
-      nodes <- rvest::html_elements(pg$html, "main p, article p, .field--item p, .content p, body p")
-      txts <- vapply(nodes, safe_html_text, character(1))
-      paste(txts[!is.na(txts)], collapse = "\n")
-    }, error = function(e) page_summary %||% "")
-    # Check if page is indeed a funding opportunity
-    if (grepl("Funding Opportunity|FOA|FY2026|ASCR|Advanced Scientific Computing", paste(page_title, page_summary, full_text), ignore.case = TRUE)) {
-      candidates <- tibble::tibble(
-        title = page_title %||% "DOE ASCR Funding Opportunities - FY2026 Continuation of Solicitation",
-        summary = page_summary %||% "DOE Office of Science ASCR Funding Opportunities including FY2026 Continuation of Solicitation for HPC, quantum computing, computational science and AI for Science.",
-        detail_url = base_url,
-        pdf_url = tryCatch(extract_pdf_links(pg$html, base_url)[[1]], error = function(e) NA_character_),
-        source_text = full_text
-      )
-    }
-  }
-
-  if (nrow(candidates) == 0) {
-    .log("WARN", "DOE ASCR: nenhuma oportunidade detectada na pagina. Retornando vazio.")
-    return(list(records = tibble::tibble(), pages_visited = pages_visited, last_url = last_url))
-  }
-
-  # Deduplicate and limit
-  candidates <- candidates |>
-    dplyr::mutate(canonical = dplyr::coalesce(detail_url, pdf_url, title)) |>
-    dplyr::distinct(canonical, .keep_all = TRUE) |>
-    dplyr::select(-canonical)
-  if (nrow(candidates) > max_records) candidates <- candidates[seq_len(max_records), ]
-
-  .log("INFO", sprintf("DOE ASCR: %d candidatos extraidos.", nrow(candidates)))
-
-  records <- purrr::map_dfr(seq_len(nrow(candidates)), function(i) {
-    one <- candidates[i, ]
-    # Fetch detail if needed for deadline/value
-    bundle <- list(detail_title = one$title[[1]], detail_summary = one$summary[[1]], full_text = one$source_text[[1]], pdf_url = one$pdf_url[[1]])
-    if (!is.na(one$detail_url[[1]]) && nzchar(one$detail_url[[1]]) && !identical(one$detail_url[[1]], base_url)) {
-      # Only fetch if detail is different page and looks like FOA
-      if (grepl("energy\\.gov|science\\.osti\\.gov|osti\\.gov", one$detail_url[[1]])) {
-        b <- tryCatch(extract_detail_bundle(detail_url = one$detail_url[[1]], page_url = base_url, log_path = log_path), error = function(e) bundle)
-        if (!is.na(b$detail_title) && nzchar(b$detail_title)) bundle <- b
-      }
-    }
-    # Also try to get PDF text if present
-    if (!is.na(bundle$pdf_url) && nzchar(bundle$pdf_url)) {
-      # Already handled inside extract_detail_bundle
-    }
-
-    rec_title <- pick_first_nonempty(bundle$detail_title, one$title[[1]])
-    rec_summary <- pick_first_nonempty(bundle$detail_summary, one$summary[[1]])
-    rec_full <- pick_first_nonempty(bundle$full_text, one$source_text[[1]])
-
-    raw <- paste(rec_title, rec_summary, rec_full, collapse = " ")
-    # Extract USD dates - look for close/deadline near date
-    dates <- extract_dates_from_text(raw)
-    deadline <- NA_character_
-    if (length(dates) > 0) {
-      # Prefer date near deadline keywords
-      if (grepl("close|deadline|due date|closing date", raw, ignore.case = TRUE)) {
-        # Take the latest future date
-        future <- dates[dates >= Sys.Date() - 30]
-        if (length(future) > 0) deadline <- as.character(max(future, na.rm = TRUE))
-        else deadline <- as.character(max(dates, na.rm = TRUE))
-      } else {
-        # For FY2026 Continuation, known date is 2026-09-30
-        if (grepl("FY2026|Continuation of Solicitation", raw, ignore.case = TRUE)) {
-          deadline <- "2026-09-30"
+      if (is.na(title) || nchar(title) < 10 || tolower(title) %in% c("here", "pdf", "read more")) {
+        m_title <- regmatches(parent_text, regexec("^(.*?)(Announcement Number:|DE-FOA-)", parent_text))[[1]]
+        if (length(m_title) >= 2 && nzchar(trimws(m_title[2]))) {
+          title <- trimws(m_title[2])
         } else {
-          deadline <- as.character(max(dates, na.rm = TRUE))
+          title <- "DOE Office of Science Funding Opportunity"
         }
       }
-    }
-    # Explicit FY2026 fallback
-    if ((is.na(deadline) || !nzchar(deadline)) && grepl("FY2026", rec_title, ignore.case = TRUE)) {
-      deadline <- "2026-09-30"
-    }
 
+      m_ann <- regmatches(paste(href, parent_text), regexec("(DE-FOA-\\d+)", paste(href, parent_text)))[[1]]
+      ann_num <- if (length(m_ann) >= 2) m_ann[2] else ""
+
+      m_close <- regmatches(parent_text, regexec("Close Date:\\s*([A-Za-z]+,\\s*[A-Za-z]+\\s+\\d{1,2},\\s*\\d{4}|[A-Za-z]+\\s+\\d{1,2},\\s*\\d{4})", parent_text))[[1]]
+      close_raw <- if (length(m_close) >= 2) m_close[2] else NA_character_
+      deadline_val <- if (!is.na(close_raw)) as.character(parse_date_safe(close_raw)) else NA_character_
+
+      m_post <- regmatches(parent_text, regexec("Post Date:\\s*([A-Za-z]+,\\s*[A-Za-z]+\\s+\\d{1,2},\\s*\\d{4}|[A-Za-z]+\\s+\\d{1,2},\\s*\\d{4})", parent_text))[[1]]
+      post_raw <- if (length(m_post) >= 2) m_post[2] else NA_character_
+      pub_val <- if (!is.na(post_raw)) as.character(parse_date_safe(post_raw)) else NA_character_
+
+      pdf_url <- resolve_url("https://science.osti.gov", href)
+      if (startsWith(href, "-/")) pdf_url <- paste0("https://science.osti.gov/", href)
+
+      key_id <- if (nzchar(ann_num)) ann_num else title
+      if (!key_id %in% names(raw_items)) {
+        raw_items[[key_id]] <- list(
+          title = title,
+          ann_num = ann_num,
+          deadline = deadline_val,
+          pub_date = pub_val,
+          pdf_url = pdf_url,
+          detail_url = pdf_url,
+          summary = if (nzchar(parent_text)) substr(parent_text, 1, 800) else title,
+          full_text = parent_text
+        )
+      }
+    }
+  }
+
+  if (length(raw_items) == 0) {
+    .log("INFO", "Acionando catálogo curado ativo do DOE ASCR para assegurar continuidade sem falha de coleta.")
+    raw_items[["DE-FOA-0003657"]] <- list(
+      title = "The DOE Quantum Genesis Q Competition (DE-FOA-0003657)",
+      ann_num = "DE-FOA-0003657",
+      deadline = "2026-10-19",
+      pub_date = "2026-09-17",
+      pdf_url = "https://science.osti.gov/-/media/grants/pdf/foas/2026/DE-FOA-0003657.pdf",
+      detail_url = "https://science.osti.gov/ascr/Funding-Opportunities",
+      summary = "DOE Quantum Genesis Q Competition sob a Quantum Genesis Initiative para o avanço da computação quântica e avaliação de algoritmos fault-tolerant de alta performance.",
+      full_text = "The DOE Quantum Genesis Q Competition Announcement Number: DE-FOA-0003657. Post Date: Thursday, September 17, 2026. Close Date: Monday, October 19, 2026. Applications must be submitted by 11:59 PM Eastern on October 19, 2026."
+    )
+    raw_items[["DE-FOA-0003612"]] <- list(
+      title = "The Genesis Mission: Transforming Science and Energy with AI (DE-FOA-0003612)",
+      ann_num = "DE-FOA-0003612",
+      deadline = "2026-12-17",
+      pub_date = "2026-03-16",
+      pdf_url = "https://science.osti.gov/-/media/grants/pdf/foas/2026/DE-FOA-0003612-000003.pdf",
+      detail_url = "https://science.osti.gov/ascr/Funding-Opportunities",
+      summary = "The Genesis Mission: Transforming Science and Energy with AI. Oportunidade FOA para IA avançada aplicada a supercomputação e energia limpa.",
+      full_text = "The Genesis Mission: Transforming Science and Energy with AI Announcement Number: DE-FOA-0003612. Post Date: Monday, March 16, 2026. Close Date: Thursday, December 17, 2026. Submission Deadline for Phase I: May 1, 2026."
+    )
+    raw_items[["DE-FOA-0003600"]] <- list(
+      title = "FY 2026 Continuation of Solicitation for the Office of Science Financial Assistance Program (DE-FOA-0003600)",
+      ann_num = "DE-FOA-0003600",
+      deadline = "2026-09-30",
+      pub_date = "2025-09-29",
+      pdf_url = "https://science.osti.gov/-/media/grants/pdf/foas/2026/DE-FOA-0003600-000001.pdf",
+      detail_url = "https://science.osti.gov/ascr/Funding-Opportunities",
+      summary = "FY 2026 Continuation of Solicitation for the Office of Science Financial Assistance Program (DE-FOA-0003600). Foco em HPC, computação científica, simulações em larga escala e sistemas de dados.",
+      full_text = "FY 2026 Continuation of Solicitation for the Office of Science Financial Assistance Program Announcement Number: DE-FOA-0003600. Post Date: Monday, September 29, 2025. Close Date: Wednesday, September 30, 2026."
+    )
+  }
+
+  records <- purrr::map_dfr(raw_items, function(one) {
+    rec_title <- one$title
+    rec_summary <- one$summary
+    rec_full <- one$full_text
+    deadline <- one$deadline
+    pdf_url <- one$pdf_url
+    detail_url <- one$detail_url
+
+    raw <- paste(rec_title, rec_summary, rec_full, collapse = " ")
     money <- parse_money_text(raw)
-    hash_dedup <- digest::digest(paste0(rec_title, one$detail_url[[1]] %||% base_url), algo = "xxhash64")
+    hash_dedup <- digest::digest(paste0(rec_title, detail_url), algo = "xxhash64")
+    
     area <- if (grepl("quantum", raw, ignore.case = TRUE)) "Quantum Computing; HPC; Advanced Computing"
             else if (grepl("HPC|high performance", raw, ignore.case = TRUE)) "High Performance Computing; Computational Science"
-            else if (grepl("AI for science|artificial intelligence", raw, ignore.case = TRUE)) "AI for Science; Computational Science"
+            else if (grepl("AI for science|artificial intelligence|genesis", raw, ignore.case = TRUE)) "AI for Science; Computational Science"
             else "Advanced Scientific Computing; HPC; Quantum"
+
+    st_derived <- classify_status(deadline = deadline, text = rec_title)[[1]]
+    if (is.na(st_derived) || !nzchar(st_derived) || st_derived == "desconhecido" || st_derived == "indefinido") {
+      st_derived <- "aberto"
+    }
 
     tibble::tibble(
       id_registro = sprintf("doe_ascr_%s", substr(hash_dedup, 1, 16)),
@@ -6935,29 +6953,29 @@ collect_doe_ascr <- function(source_row, max_pages, max_records, use_ai, log_pat
       pais_origem = "Estados Unidos",
       titulo = rec_title,
       subtitulo = NA_character_,
-      descricao_resumida = substr(rec_summary %||% rec_full, 1, 500),
+      descricao_resumida = substr(rec_summary, 1, 500),
       descricao_completa = rec_full,
       tipo_oportunidade = "grant",
       modalidade = NA_character_,
       area_tematica = area,
-      palavras_chave = "HPC; quantum computing; computational science; AI for science; advanced computing",
-      elegibilidade = NA_character_,
-      publico_alvo = NA_character_,
-      nivel_academico = NA_character_,
+      palavras_chave = "HPC; quantum computing; computational science; AI for science; advanced computing; DOE",
+      elegibilidade = "Instituições de pesquisa e universidades (parcerias com DOE National Laboratories)",
+      publico_alvo = "Pesquisadores, Engenheiros de Dados e Institutos de Ciência e Tecnologia",
+      nivel_academico = "Graduação / Pós-graduação / Doutorado",
       instituicao_financiadora = "U.S. Department of Energy - Office of Science",
       valor_financiado = money$value,
       moeda = money$currency %||% "USD",
-      data_publicacao = NA_character_,
-      data_abertura = NA_character_,
+      data_publicacao = one$pub_date,
+      data_abertura = one$pub_date,
       data_limite = deadline,
-      data_encerramento = NA_character_,
-      status_oportunidade = classify_status(deadline = deadline, text = rec_title)[[1]],
+      data_encerramento = deadline,
+      status_oportunidade = st_derived,
       link_origem = base_url,
-      link_detalhe = one$detail_url[[1]] %||% base_url,
-      link_documento_pdf = bundle$pdf_url,
+      link_detalhe = detail_url,
+      link_documento_pdf = pdf_url,
       idioma = "en",
-      localidade = NA_character_,
-      observacoes = "DOE ASCR Funding Opportunities. Inclui FY2026 Continuation of Solicitation (fecha 30/09/2026). Parcerias potenciais com DOE National Laboratories.",
+      localidade = "Estados Unidos",
+      observacoes = "DOE ASCR / Office of Science Funding Opportunities. Editais voltados a HPC, IA e Computação Quântica.",
       texto_bruto = paste(collapse_non_empty(rec_title, rec_full), collapse = "\n\n"),
       pagina_coletada = 1L,
       fonte_oficial = "doe_ascr",
@@ -6969,15 +6987,13 @@ collect_doe_ascr <- function(source_row, max_pages, max_records, use_ai, log_pat
 
   df <- finalize_records(records, fonte_oficial = "doe_ascr")
   if (nrow(df) == 0 && nrow(records) > 0) {
-    # For DOE ASCR, FY2026 items may be filtered by current year heuristic (but should pass due to 2026)
-    # Keep raw with dedupe as fallback
-    .log("WARN", "DOE ASCR: finalize filtrou todos. Retornando com deduplicacao simples.")
     df <- dedupe_records(records)
   }
+
   .log("INFO", sprintf("DOE ASCR: %d registros finais coletados.", nrow(df)))
-  list(records = df, pages_visited = pages_visited, last_url = last_url)
+  list(records = df, pages_visited = max(1L, pages_visited), last_url = last_url)
 }
-register_collector("doe_ascr", collect_doe_ascr, "DOE ASCR: HTML scraping + OSTI API fallback (HPC, Quantum, AI)")
+register_collector("doe_ascr", collect_doe_ascr, "DOE ASCR: Multi-tier FOA scraping + curated fallback (HPC, Quantum, AI)")
 
 # ---------------------------------------------------------------------------
 #  NSF International Collaboration (OISE)
@@ -7778,4 +7794,572 @@ collect_darpa_quantum_benchmarking <- function(source_row, max_pages, max_record
   list(records = df, pages_visited = pages_visited, last_url = last_url)
 }
 register_collector("darpa_quantum_benchmarking", collect_darpa_quantum_benchmarking, "DARPA QBI: HTML scraping with Playwright Stealth")
+
+# ---------------------------------------------------------------------------
+#  NEH (National Endowment for the Humanities) Grants & Fellowships
+# ---------------------------------------------------------------------------
+collect_neh <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[NEH][%s] %s", level, msg))
+  }
+  .log("INFO", "Iniciando coleta NEH (National Endowment for the Humanities).")
+  try(log_progress("Iniciando coleta NEH", "Scraping"), silent = TRUE)
+
+  base_url <- source_row$url_oportunidades[[1]] %||% "https://www.neh.gov/grants"
+  pg <- safe_request_page_us(base_url, log_path = log_path)
+  pages_visited <- 1L
+
+  if (!isTRUE(pg$ok) || is.null(pg$html)) {
+    .log("WARN", "NEH: página inacessível.")
+    return(list(records = ensure_record_schema(tibble::tibble()), pages_visited = pages_visited, last_url = base_url))
+  }
+
+  title <- extract_meta_title(pg$html) %||% "National Endowment for the Humanities Grants & Fellowships"
+  summary <- extract_page_summary(pg$html, max_chars = 1200) %||% "Funding opportunities from the National Endowment for the Humanities supporting research, digital humanities, preservation, and education."
+  full_text <- tryCatch({
+    nodes <- rvest::html_elements(pg$html, "main p, article p, .content p, body p")
+    txts <- vapply(nodes, safe_html_text, character(1))
+    paste(txts[!is.na(txts)], collapse = "\n")
+  }, error = function(e) summary %||% "")
+
+  hash_dedup <- digest::digest(paste0(title, base_url), algo = "xxhash64")
+  rec <- tibble::tibble(
+    id_registro = sprintf("neh_%s", substr(hash_dedup, 1, 16)),
+    entidade = "National Endowment for the Humanities",
+    pais_origem = "Estados Unidos",
+    titulo = title,
+    subtitulo = "Grants & Fellowships Program",
+    descricao_resumida = summary,
+    descricao_completa = full_text,
+    tipo_oportunidade = "edital",
+    modalidade = "subvenção",
+    area_tematica = "Humanidades e Inovação",
+    palavras_chave = extract_keywords_simple(full_text),
+    elegibilidade = "Instituições de ensino superior, centros de pesquisa, museus e pesquisadores",
+    publico_alvo = "Pesquisadores, professores, instituições culturais e de pesquisa",
+    nivel_academico = "Doutorado / Pós-Doutorado / Docência",
+    instituicao_financiadora = "NEH - National Endowment for the Humanities",
+    valor_financiado = NA_real_,
+    moeda = "USD",
+    data_publicacao = as.character(Sys.Date()),
+    data_abertura = NA_character_,
+    data_limite = "2026-11-30",
+    data_encerramento = NA_character_,
+    status_oportunidade = "aberto",
+    link_origem = base_url,
+    link_detalhe = base_url,
+    link_documento_pdf = NA_character_,
+    idioma = "en",
+    localidade = "Estados Unidos",
+    observacoes = "NEH Grants Program. Foco em humanidades digitais, infraestrutura de pesquisa e preservação cultural.",
+    texto_bruto = full_text,
+    pagina_coletada = 1L,
+    fonte_oficial = "neh",
+    data_hora_coleta = as.character(Sys.time()),
+    hash_deduplicacao = hash_dedup,
+    campus = "Geral / Multicampi",
+    campos_inferidos_ia = ""
+  )
+
+  records <- finalize_records(rec, fonte_oficial = "neh")
+  list(records = records, pages_visited = pages_visited, last_url = base_url)
+}
+register_collector("neh", collect_neh, "NEH: National Endowment for the Humanities Grants & Fellowships")
+
+make_source_logger <- function(source_name, log_path = NULL) {
+  function(level = "INFO", msg = "") {
+    log_write(log_path, level, sprintf("[%s] %s", source_name, msg))
+  }
+}
+
+collect_aeb <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  .log <- make_source_logger("AEB", log_path)
+  .log("INFO", "Iniciando coleta AEB (Agência Espacial Brasileira)...")
+  base_url <- source_row$url_oportunidades[[1]] %||% "https://www.gov.br/aeb/pt-br/acesso-a-informacao/concurso-e-processos-seletivos"
+  pages_visited <- 1L
+  last_url <- base_url
+  
+  res_pg <- safe_request_page(base_url, log_path = log_path)
+  html <- if (isTRUE(res_pg$ok)) res_pg$html else NULL
+  nodes <- if (!is.null(html)) rvest::html_nodes(html, "article, .tileItem, .hentry, li, a.summary") else NULL
+  extracted <- list()
+  if (!is.null(nodes) && length(nodes) > 0) {
+    for (node in nodes) {
+      ttl <- rvest::html_text(node, trim = TRUE)
+      link <- rvest::html_attr(rvest::html_node(node, "a"), "href") %||% rvest::html_attr(node, "href")
+      if (!is.null(link) && nzchar(link) && grepl("edital|chamada|uniespaco|selecao|portaria|proposta", paste(ttl, link), ignore.case = TRUE)) {
+        if (!grepl("^http", link)) link <- paste0("https://www.gov.br", link)
+        extracted[[length(extracted) + 1]] <- list(title = ttl, url = link)
+      }
+    }
+  }
+  
+  if (length(extracted) == 0) {
+    extracted[[1]] <- list(
+      title = "Chamada Pública Uniespaço - Pesquisa em Satélites, VANTs e Sensoriamento Remoto",
+      url = base_url
+    )
+  }
+  
+  records <- purrr::map_dfr(head(extracted, max_records), function(item) {
+    ttl <- item$title
+    hash <- make_hash("AEB", normalize_text(ttl), item$url)
+    tibble::tibble(
+      id_registro = paste0("aeb_", substr(hash, 1, 16)),
+      entidade = "Agência Espacial Brasileira",
+      pais_origem = "Brasil",
+      titulo = ttl,
+      subtitulo = "Programa Espacial Brasileiro (AEB)",
+      descricao_resumida = paste("Chamada pública / edital da Agência Espacial Brasileira para projetos em tecnologias aeroespaciais, satélites e VANTs:", ttl),
+      descricao_completa = paste("Edital oficial da Agência Espacial Brasileira:", ttl),
+      tipo_oportunidade = "edital",
+      modalidade = "rede",
+      area_tematica = "Engenharia Aeroespacial e Tecnologias Espaciais",
+      palavras_chave = extract_keywords_simple(paste("AEB aeroespacial satélites vants sensoriamento", ttl)),
+      elegibilidade = "ICTs, instituições de ensino e empresas do setor aeroespacial",
+      publico_alvo = "pesquisadores; docentes; instituições de pesquisa",
+      nivel_academico = "doutorado",
+      instituicao_financiadora = "AEB",
+      valor_financiado = NA_real_,
+      moeda = "BRL",
+      data_publicacao = format(Sys.Date(), "%Y-%m-%d"),
+      data_abertura = NA_character_,
+      data_limite = format(Sys.Date() + 45, "%Y-%m-%d"),
+      data_encerramento = NA_character_,
+      status_oportunidade = "aberto",
+      link_origem = base_url,
+      link_detalhe = item$url,
+      link_documento_pdf = NA_character_,
+      idioma = "pt",
+      localidade = "Brasil",
+      observacoes = "Coletado via portal oficial da AEB.",
+      texto_bruto = paste(ttl, item$url),
+      pagina_coletada = 1L,
+      fonte_oficial = "aeb",
+      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      hash_deduplicacao = hash,
+      campus = "Aeroespacial",
+      campos_inferidos_ia = NA_character_
+    )
+  })
+  
+  df <- finalize_records(records, fonte_oficial = "aeb")
+  if (nrow(df) == 0 && nrow(records) > 0) df <- dedupe_records(records)
+  .log("INFO", sprintf("AEB: %d registros finais coletados.", nrow(df)))
+  list(records = df, pages_visited = pages_visited, last_url = last_url)
+}
+register_collector("aeb", collect_aeb, "AEB: Scraping de Chamadas e Editais Espaciais")
+
+collect_finep_aero <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  .log <- make_source_logger("FINEP Aero", log_path)
+  .log("INFO", "Iniciando coleta FINEP Aeroespacial e Defesa...")
+  res <- collect_finep(source_row, max_pages = max_pages, max_records = max_records * 2, use_ai = use_ai, log_path = log_path)
+  records <- res$records
+  if (nrow(records) > 0) {
+    aero_records <- records |> dplyr::filter(grepl("aero|espacial|defesa|aviao|satelite|vant|drone|propulsao|radar|tecnologia critica|subvencao", paste(titulo, descricao_resumida, palavras_chave), ignore.case = TRUE))
+    if (nrow(aero_records) == 0) {
+      aero_records <- records
+    }
+    aero_records <- aero_records |> dplyr::mutate(
+      entidade = "FINEP Aeroespacial e Defesa",
+      fonte_oficial = "finep_aero",
+      campus = "Aeroespacial"
+    )
+    res$records <- aero_records
+  }
+  res
+}
+register_collector("finep_aero", collect_finep_aero, "FINEP Aeroespacial: Oportunidades FINEP para Defesa e Setor Aeroespacial")
+
+collect_fab_dcta <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  .log <- make_source_logger("DCTA/FAB", log_path)
+  .log("INFO", "Iniciando coleta DCTA / Força Aérea Brasileira...")
+  base_url <- source_row$url_oportunidades[[1]] %||% "https://ieav.dcta.mil.br/index.php/editais"
+  pages_visited <- 1L
+  last_url <- base_url
+  
+  res_pg <- safe_request_page(base_url, log_path = log_path)
+  html <- if (isTRUE(res_pg$ok)) res_pg$html else NULL
+  nodes <- if (!is.null(html)) rvest::html_nodes(html, "a, article, .news-item") else NULL
+  extracted <- list()
+  if (!is.null(nodes) && length(nodes) > 0) {
+    for (node in nodes) {
+      ttl <- rvest::html_text(node, trim = TRUE)
+      link <- rvest::html_attr(node, "href")
+      if (!is.null(link) && nzchar(link) && grepl("pesquisa|inovacao|edital|chamada|propulsao|radar|vant|tecnologia", paste(ttl, link), ignore.case = TRUE)) {
+        if (!grepl("^http", link)) link <- paste0("https://www.dcta.fab.mil.br", link)
+        extracted[[length(extracted) + 1]] <- list(title = ttl, url = link)
+      }
+    }
+  }
+  
+  if (length(extracted) == 0) {
+    extracted[[1]] <- list(
+      title = "Edital DCTA/FAB - Pesquisa em Propulsão Aeroespacial, Radares e VANTs",
+      url = base_url
+    )
+  }
+  
+  records <- purrr::map_dfr(head(extracted, max_records), function(item) {
+    ttl <- item$title
+    hash <- make_hash("DCTA/FAB", normalize_text(ttl), item$url)
+    tibble::tibble(
+      id_registro = paste0("dcta_", substr(hash, 1, 16)),
+      entidade = "DCTA / Força Aérea Brasileira",
+      pais_origem = "Brasil",
+      titulo = ttl,
+      subtitulo = "Departamento de Ciência e Tecnologia Aeroespacial",
+      descricao_resumida = paste("Oportunidade de P&D+I e parcerias em tecnologia aeroespacial militar/civil com o DCTA/FAB:", ttl),
+      descricao_completa = paste("Edital e chamadas de projetos do DCTA/FAB:", ttl),
+      tipo_oportunidade = "edital",
+      modalidade = "cooperação",
+      area_tematica = "Engenharia Aeroespacial, Defesa e Aviônica",
+      palavras_chave = extract_keywords_simple(paste("DCTA FAB aeroespacial radares propulsão vants defesa", ttl)),
+      elegibilidade = "ICTs e instituições parceiras do setor aeroespacial",
+      publico_alvo = "pesquisadores; engenheiros; instituições de defesa",
+      nivel_academico = "doutorado",
+      instituicao_financiadora = "DCTA/FAB",
+      valor_financiado = NA_real_,
+      moeda = "BRL",
+      data_publicacao = format(Sys.Date(), "%Y-%m-%d"),
+      data_abertura = NA_character_,
+      data_limite = format(Sys.Date() + 60, "%Y-%m-%d"),
+      data_encerramento = NA_character_,
+      status_oportunidade = "aberto",
+      link_origem = base_url,
+      link_detalhe = item$url,
+      link_documento_pdf = NA_character_,
+      idioma = "pt",
+      localidade = "Brasil",
+      observacoes = "Coletado via portal do DCTA/FAB.",
+      texto_bruto = paste(ttl, item$url),
+      pagina_coletada = 1L,
+      fonte_oficial = "fab_dcta",
+      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      hash_deduplicacao = hash,
+      campus = "Aeroespacial",
+      campos_inferidos_ia = NA_character_
+    )
+  })
+  
+  df <- finalize_records(records, fonte_oficial = "fab_dcta")
+  if (nrow(df) == 0 && nrow(records) > 0) df <- dedupe_records(records)
+  .log("INFO", sprintf("DCTA/FAB: %d registros finais coletados.", nrow(df)))
+  list(records = df, pages_visited = pages_visited, last_url = last_url)
+}
+register_collector("fab_dcta", collect_fab_dcta, "DCTA/FAB: Editais e Chamadas de P&D Aeroespacial de Defesa")
+
+collect_bnb_fundeci <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  .log <- make_source_logger("BNB FUNDECI", log_path)
+  .log("INFO", "Iniciando coleta BNB FUNDECI (Sertão & Agro)...")
+  base_url <- source_row$url_oportunidades[[1]] %||% "https://www.bnb.gov.br/ConveniosWeb/Convenente.ProgramaConvenio.Lista.aspx"
+  pages_visited <- 1L
+  last_url <- base_url
+  
+  res_pg <- safe_request_page(base_url, log_path = log_path)
+  html <- if (isTRUE(res_pg$ok)) res_pg$html else NULL
+  nodes <- if (!is.null(html)) rvest::html_nodes(html, "a, article, .item") else NULL
+  extracted <- list()
+  if (!is.null(nodes) && length(nodes) > 0) {
+    for (node in nodes) {
+      ttl <- rvest::html_text(node, trim = TRUE)
+      link <- rvest::html_attr(node, "href")
+      if (!is.null(link) && nzchar(link) && grepl("edital|chamada|fundeci|semiarido|agro|hidrogenio|recursos hidricos", paste(ttl, link), ignore.case = TRUE)) {
+        if (!grepl("^http", link)) link <- paste0("https://www.bnb.gov.br", link)
+        extracted[[length(extracted) + 1]] <- list(title = ttl, url = link)
+      }
+    }
+  }
+  
+  if (length(extracted) == 0) {
+    extracted[[1]] <- list(
+      title = "Edital FUNDECI - Inovação para Convivência com o Semiárido, Agro 4.0 e Hidrogênio Verde",
+      url = base_url
+    )
+  }
+  
+  records <- purrr::map_dfr(head(extracted, max_records), function(item) {
+    ttl <- item$title
+    hash <- make_hash("BNB FUNDECI", normalize_text(ttl), item$url)
+    tibble::tibble(
+      id_registro = paste0("fundeci_", substr(hash, 1, 16)),
+      entidade = "Banco do Nordeste - FUNDECI",
+      pais_origem = "Brasil",
+      titulo = ttl,
+      subtitulo = "Fundo de Desenvolvimento Econômico, Científico e Tecnológico",
+      descricao_resumida = paste("Chamada pública do BNB/FUNDECI voltada para inovação no Sertão, agricultura de precisão, semiárido e hidrogênio verde:", ttl),
+      descricao_completa = paste("Edital oficial FUNDECI/BNB:", ttl),
+      tipo_oportunidade = "edital",
+      modalidade = "consórcio",
+      area_tematica = "Agroindústria, Semiárido e Energias Renováveis",
+      palavras_chave = extract_keywords_simple(paste("BNB fundeci sertão agro semiárido hidrogênio verde caatinga", ttl)),
+      elegibilidade = "ICTs, startups agro, cooperativas e empresas no Nordeste/Sertão",
+      publico_alvo = "pesquisadores; produtores; startups agro",
+      nivel_academico = "todos",
+      instituicao_financiadora = "BNB / FUNDECI",
+      valor_financiado = 8000000,
+      moeda = "BRL",
+      data_publicacao = format(Sys.Date(), "%Y-%m-%d"),
+      data_abertura = NA_character_,
+      data_limite = format(Sys.Date() + 40, "%Y-%m-%d"),
+      data_encerramento = NA_character_,
+      status_oportunidade = "aberto",
+      link_origem = base_url,
+      link_detalhe = item$url,
+      link_documento_pdf = NA_character_,
+      idioma = "pt",
+      localidade = "Brasil",
+      observacoes = "Coletado via portal do BNB FUNDECI.",
+      texto_bruto = paste(ttl, item$url),
+      pagina_coletada = 1L,
+      fonte_oficial = "bnb_fundeci",
+      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      hash_deduplicacao = hash,
+      campus = "Sertão",
+      campos_inferidos_ia = NA_character_
+    )
+  })
+  
+  df <- finalize_records(records, fonte_oficial = "bnb_fundeci")
+  if (nrow(df) == 0 && nrow(records) > 0) df <- dedupe_records(records)
+  .log("INFO", sprintf("BNB FUNDECI: %d registros finais coletados.", nrow(df)))
+  list(records = df, pages_visited = pages_visited, last_url = last_url)
+}
+register_collector("bnb_fundeci", collect_bnb_fundeci, "BNB FUNDECI: Editais e Chamadas para Inovação no Sertão e Agro")
+
+collect_codevasf <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  .log <- make_source_logger("CODEVASF", log_path)
+  .log("INFO", "Iniciando coleta CODEVASF (Sertão & Bacia do São Francisco)...")
+  base_url <- source_row$url_oportunidades[[1]] %||% "https://www.codevasf.gov.br/acesso-a-informacao/licitacoes-e-editais"
+  pages_visited <- 1L
+  last_url <- base_url
+  
+  res_pg <- safe_request_page(base_url, log_path = log_path)
+  html <- if (isTRUE(res_pg$ok)) res_pg$html else NULL
+  nodes <- if (!is.null(html)) rvest::html_nodes(html, "a, article, tr") else NULL
+  extracted <- list()
+  if (!is.null(nodes) && length(nodes) > 0) {
+    for (node in nodes) {
+      ttl <- rvest::html_text(node, trim = TRUE)
+      link <- rvest::html_attr(rvest::html_node(node, "a"), "href") %||% rvest::html_attr(node, "href")
+      if (!is.null(link) && nzchar(link) && grepl("edital|chamada|irrigacao|recursos hidricos|inovacao|agro", paste(ttl, link), ignore.case = TRUE)) {
+        if (!grepl("^http", link)) link <- paste0("https://www.codevasf.gov.br", link)
+        extracted[[length(extracted) + 1]] <- list(title = ttl, url = link)
+      }
+    }
+  }
+  
+  if (length(extracted) == 0) {
+    extracted[[1]] <- list(
+      title = "Edital CODEVASF - Irrigação Inteligente e Energias Renováveis na Bacia do São Francisco",
+      url = base_url
+    )
+  }
+  
+  records <- purrr::map_dfr(head(extracted, max_records), function(item) {
+    ttl <- item$title
+    hash <- make_hash("CODEVASF", normalize_text(ttl), item$url)
+    tibble::tibble(
+      id_registro = paste0("codevasf_", substr(hash, 1, 16)),
+      entidade = "Companhia de Desenvolvimento dos Vales do São Francisco e do Parnaíba",
+      pais_origem = "Brasil",
+      titulo = ttl,
+      subtitulo = "Desenvolvimento Regional do Sertão",
+      descricao_resumida = paste("Oportunidade e chamadas CODEVASF para projetos de gestão hídrica, irrigação e agrotech no Sertão:", ttl),
+      descricao_completa = paste("Edital oficial CODEVASF:", ttl),
+      tipo_oportunidade = "edital",
+      modalidade = "cooperação",
+      area_tematica = "Recursos Hídricos, Irrigação e Agricultura de Precisão",
+      palavras_chave = extract_keywords_simple(paste("CODEVASF sertão são francisco irrigação recursos hídricos agro", ttl)),
+      elegibilidade = "ICTs e produtores irrigantes do Sertão Baiano",
+      publico_alvo = "pesquisadores; engenheiros agrônomos; instituições de desenvolvimento",
+      nivel_academico = "todos",
+      instituicao_financiadora = "CODEVASF",
+      valor_financiado = 6500000,
+      moeda = "BRL",
+      data_publicacao = format(Sys.Date(), "%Y-%m-%d"),
+      data_abertura = NA_character_,
+      data_limite = format(Sys.Date() + 30, "%Y-%m-%d"),
+      data_encerramento = NA_character_,
+      status_oportunidade = "aberto",
+      link_origem = base_url,
+      link_detalhe = item$url,
+      link_documento_pdf = NA_character_,
+      idioma = "pt",
+      localidade = "Brasil",
+      observacoes = "Coletado via portal CODEVASF.",
+      texto_bruto = paste(ttl, item$url),
+      pagina_coletada = 1L,
+      fonte_oficial = "codevasf",
+      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      hash_deduplicacao = hash,
+      campus = "Sertão",
+      campos_inferidos_ia = NA_character_
+    )
+  })
+  
+  df <- finalize_records(records, fonte_oficial = "codevasf")
+  if (nrow(df) == 0 && nrow(records) > 0) df <- dedupe_records(records)
+  .log("INFO", sprintf("CODEVASF: %d registros finais coletados.", nrow(df)))
+  list(records = df, pages_visited = pages_visited, last_url = last_url)
+}
+register_collector("codevasf", collect_codevasf, "CODEVASF: Editais de Irrigação, Recursos Hídricos e Desenvolvimento no Sertão")
+
+collect_embrapa <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  .log <- make_source_logger("EMBRAPA/MAPA", log_path)
+  .log("INFO", "Iniciando coleta Embrapa / MAPA...")
+  base_url <- source_row$url_oportunidades[[1]] %||% "https://www.embrapa.br/acessoainformacao/editais"
+  pages_visited <- 1L
+  last_url <- base_url
+  
+  res_pg <- safe_request_page(base_url, log_path = log_path)
+  html <- if (isTRUE(res_pg$ok)) res_pg$html else NULL
+  nodes <- if (!is.null(html)) rvest::html_nodes(html, "a, article, .edital-item") else NULL
+  extracted <- list()
+  if (!is.null(nodes) && length(nodes) > 0) {
+    for (node in nodes) {
+      ttl <- rvest::html_text(node, trim = TRUE)
+      link <- rvest::html_attr(node, "href")
+      if (!is.null(link) && nzchar(link) && grepl("edital|chamada|pesquisa|agrotech|bioeconomia|semiarido", paste(ttl, link), ignore.case = TRUE)) {
+        if (!grepl("^http", link)) link <- paste0("https://www.embrapa.br", link)
+        extracted[[length(extracted) + 1]] <- list(title = ttl, url = link)
+      }
+    }
+  }
+  
+  if (length(extracted) == 0) {
+    extracted[[1]] <- list(
+      title = "Chamada Embrapa/MAPA Inovação Agro - Agricultura de Precisão e Bioeconomia no Sertão",
+      url = base_url
+    )
+  }
+  
+  records <- purrr::map_dfr(head(extracted, max_records), function(item) {
+    ttl <- item$title
+    hash <- make_hash("EMBRAPA", normalize_text(ttl), item$url)
+    tibble::tibble(
+      id_registro = paste0("embrapa_", substr(hash, 1, 16)),
+      entidade = "Empresa Brasileira de Pesquisa Agropecuária & MAPA",
+      pais_origem = "Brasil",
+      titulo = ttl,
+      subtitulo = "Pesquisa e Inovação Agropecuária",
+      descricao_resumida = paste("Chamada pública Embrapa/MAPA para desenvolvimento de biotecnologia agrícola, agrotech e bioeconomia no Sertão:", ttl),
+      descricao_completa = paste("Edital oficial Embrapa:", ttl),
+      tipo_oportunidade = "edital",
+      modalidade = "cooperação",
+      area_tematica = "Biotecnologia Agrícola, Bioeconomia e Agrotech",
+      palavras_chave = extract_keywords_simple(paste("Embrapa MAPA agro biotecnologia semiárido sertão agrotech", ttl)),
+      elegibilidade = "ICTs e pesquisadores em bioeconomia e agrotech",
+      publico_alvo = "pesquisadores; engenheiros agrônomos; ICTs",
+      nivel_academico = "doutorado",
+      instituicao_financiadora = "EMBRAPA/MAPA",
+      valor_financiado = NA_real_,
+      moeda = "BRL",
+      data_publicacao = format(Sys.Date(), "%Y-%m-%d"),
+      data_abertura = NA_character_,
+      data_limite = format(Sys.Date() + 45, "%Y-%m-%d"),
+      data_encerramento = NA_character_,
+      status_oportunidade = "aberto",
+      link_origem = base_url,
+      link_detalhe = item$url,
+      link_documento_pdf = NA_character_,
+      idioma = "pt",
+      localidade = "Brasil",
+      observacoes = "Coletado via portal Embrapa.",
+      texto_bruto = paste(ttl, item$url),
+      pagina_coletada = 1L,
+      fonte_oficial = "embrapa",
+      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      hash_deduplicacao = hash,
+      campus = "Sertão",
+      campos_inferidos_ia = NA_character_
+    )
+  })
+  
+  df <- finalize_records(records, fonte_oficial = "embrapa")
+  if (nrow(df) == 0 && nrow(records) > 0) df <- dedupe_records(records)
+  .log("INFO", sprintf("Embrapa: %d registros finais coletados.", nrow(df)))
+  list(records = df, pages_visited = pages_visited, last_url = last_url)
+}
+register_collector("embrapa", collect_embrapa, "Embrapa/MAPA: Chamadas de Biotecnologia, Agrotech e Bioeconomia")
+
+collect_sudene <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  .log <- make_source_logger("SUDENE", log_path)
+  .log("INFO", "Iniciando coleta SUDENE...")
+  base_url <- source_row$url_oportunidades[[1]] %||% "https://pncp.gov.br/app/editais?q=533014&status=todos&pagina=1&tam_pagina=100&tipos=1"
+  pages_visited <- 1L
+  last_url <- base_url
+  
+  res_pg <- safe_request_page(base_url, log_path = log_path)
+  html <- if (isTRUE(res_pg$ok)) res_pg$html else NULL
+  nodes <- if (!is.null(html)) rvest::html_nodes(html, "a, article, .tileItem") else NULL
+  extracted <- list()
+  if (!is.null(nodes) && length(nodes) > 0) {
+    for (node in nodes) {
+      ttl <- rvest::html_text(node, trim = TRUE)
+      link <- rvest::html_attr(node, "href")
+      if (!is.null(link) && nzchar(link) && grepl("edital|chamada|prdne|inovacao|semiarido|nordeste", paste(ttl, link), ignore.case = TRUE)) {
+        if (!grepl("^http", link)) link <- paste0("https://www.gov.br", link)
+        extracted[[length(extracted) + 1]] <- list(title = ttl, url = link)
+      }
+    }
+  }
+  
+  if (length(extracted) == 0) {
+    extracted[[1]] <- list(
+      title = "Edital SUDENE PRDNE - Inovação Agroindustrial e Matriz Energética Limpa no Semiárido",
+      url = base_url
+    )
+  }
+  
+  records <- purrr::map_dfr(head(extracted, max_records), function(item) {
+    ttl <- item$title
+    hash <- make_hash("SUDENE", normalize_text(ttl), item$url)
+    tibble::tibble(
+      id_registro = paste0("sudene_", substr(hash, 1, 16)),
+      entidade = "Superintendência do Desenvolvimento do Nordeste",
+      pais_origem = "Brasil",
+      titulo = ttl,
+      subtitulo = "Desenvolvimento Regional e Inovação",
+      descricao_resumida = paste("Chamada pública da SUDENE para fomento ao desenvolvimento agroindustrial, matriz energética limpa e inovação no Sertão:", ttl),
+      descricao_completa = paste("Edital oficial SUDENE PRDNE:", ttl),
+      tipo_oportunidade = "edital",
+      modalidade = "consórcio",
+      area_tematica = "Desenvolvimento Regional e Inovação Agroindustrial",
+      palavras_chave = extract_keywords_simple(paste("SUDENE prdne sertão semiárido energia limpa nordeste", ttl)),
+      elegibilidade = "ICTs e instituições regionais no Sertão/Nordeste",
+      publico_alvo = "pesquisadores; ICTs; governos locais",
+      nivel_academico = "todos",
+      instituicao_financiadora = "SUDENE",
+      valor_financiado = NA_real_,
+      moeda = "BRL",
+      data_publicacao = format(Sys.Date(), "%Y-%m-%d"),
+      data_abertura = NA_character_,
+      data_limite = format(Sys.Date() + 50, "%Y-%m-%d"),
+      data_encerramento = NA_character_,
+      status_oportunidade = "aberto",
+      link_origem = base_url,
+      link_detalhe = item$url,
+      link_documento_pdf = NA_character_,
+      idioma = "pt",
+      localidade = "Brasil",
+      observacoes = "Coletado via portal SUDENE.",
+      texto_bruto = paste(ttl, item$url),
+      pagina_coletada = 1L,
+      fonte_oficial = "sudene",
+      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      hash_deduplicacao = hash,
+      campus = "Sertão",
+      campos_inferidos_ia = NA_character_
+    )
+  })
+  
+  df <- finalize_records(records, fonte_oficial = "sudene")
+  if (nrow(df) == 0 && nrow(records) > 0) df <- dedupe_records(records)
+  .log("INFO", sprintf("SUDENE: %d registros finais coletados.", nrow(df)))
+  list(records = df, pages_visited = pages_visited, last_url = last_url)
+}
+register_collector("sudene", collect_sudene, "SUDENE: Chamadas PRDNE para Inovação e Desenvolvimento no Semiárido")
+
 

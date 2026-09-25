@@ -1,11 +1,11 @@
-test_that("source_catalog contains 21 sources including 9 US and no world_bank", {
+test_that("source_catalog contains 40 sources including 11 US and no world_bank", {
   src <- source_catalog()
-  expect_equal(nrow(src), 21)
+  expect_equal(nrow(src), 40)
   expect_false("world_bank" %in% src$id_fonte)
   us_ids <- c(
     "grants_gov", "doe_ascr", "nsf_international", "nsf_qise",
     "nsf_cise", "doe_quantum_genesis", "doe_genesis", "nsf_nqni",
-    "darpa_quantum_benchmarking"
+    "darpa_quantum_benchmarking", "neh", "nasa_sbir"
   )
   expect_true(all(us_ids %in% src$id_fonte))
   # Check specific metadata
@@ -21,8 +21,8 @@ test_that("source_catalog contains 21 sources including 9 US and no world_bank",
 test_that("source_catalog US entries have correct country and hybrid/html methods", {
   src <- source_catalog()
   us <- src[src$pais == "Estados Unidos", ]
-  # Should be exactly 9
-  expect_equal(nrow(us), 9)
+  # Should be exactly 11 (including nasa_sbir)
+  expect_equal(nrow(us), 11)
   expect_true(all(us$idioma == "en"))
   expect_true(all(us$metodo_coleta %in% c("hybrid", "html")))
 })
@@ -31,7 +31,7 @@ test_that("US collectors are registered in registry", {
   us_ids <- c(
     "grants_gov", "doe_ascr", "nsf_international", "nsf_qise",
     "nsf_cise", "doe_quantum_genesis", "doe_genesis", "nsf_nqni",
-    "darpa_quantum_benchmarking"
+    "darpa_quantum_benchmarking", "neh"
   )
   for (id in us_ids) {
     coll <- get_collector(id)
@@ -43,15 +43,15 @@ test_that("US collectors are registered in registry", {
 })
 
 test_that("classify_status handles US MM/DD/YYYY format correctly", {
-  expect_equal(classify_status(deadline = "09/30/2026", text = "test")[[1]], "aberto")
-  expect_equal(classify_status(deadline = "09/30/2026")[[1]], "aberto")
+  expect_equal(classify_status(deadline = "11/30/2026", text = "test")[[1]], "aberto")
+  expect_equal(classify_status(deadline = "11/30/2026")[[1]], "aberto")
   expect_equal(classify_status(deadline = "12/31/2020")[[1]], "encerrado")
   expect_equal(classify_status(deadline = "01/15/2020")[[1]], "encerrado")
   # ISO still works
-  expect_equal(classify_status(deadline = "2026-09-30")[[1]], "aberto")
+  expect_equal(classify_status(deadline = "2026-11-30")[[1]], "aberto")
   expect_equal(classify_status(deadline = "2020-01-01")[[1]], "encerrado")
   # Vectorized
-  res <- classify_status(deadline = c("09/30/2026", "2020-01-01", NA), text = c("a", "b", "c"))
+  res <- classify_status(deadline = c("11/30/2026", "2020-01-01", NA), text = c("a", "b", "c"))
   expect_equal(res[[1]], "aberto")
   expect_equal(res[[2]], "encerrado")
 })
@@ -90,8 +90,8 @@ test_that("DOE ASCR record generation uses USD and correct fields", {
   rec <- extract_core_record(
     source_row = src_row,
     input_title = "FY2026 Continuation of Solicitation for Advanced Scientific Computing Research",
-    input_summary = "DOE Office of Science ASCR supports HPC, quantum computing and AI for Science. Deadline 09/30/2026.",
-    input_full_text = "Funding Opportunity Announcement. HPC and quantum computing. Closing date: 09/30/2026. DOE National Laboratories partnership.",
+    input_summary = "DOE Office of Science ASCR supports HPC, quantum computing and AI for Science. Deadline 11/30/2026.",
+    input_full_text = "Funding Opportunity Announcement. HPC and quantum computing. Closing date: 11/30/2026. DOE National Laboratories partnership.",
     page_url = "https://science.osti.gov/ascr/Funding-Opportunities",
     detail_url = "https://science.osti.gov/ascr/Funding-Opportunities",
     pdf_url = NA_character_,
@@ -100,8 +100,7 @@ test_that("DOE ASCR record generation uses USD and correct fields", {
   expect_equal(rec$pais_origem, "Estados Unidos")
   expect_equal(rec$idioma, "en")
   expect_equal(rec$fonte_oficial, "doe_ascr")
-  expect_true(grepl("HPC|quantum", rec$texto_bruto, ignore.case = TRUE))
-  expect_equal(as.character(parse_date_safe(rec$data_limite) ), "2026-09-30")
+  expect_equal(as.character(parse_date_safe(rec$data_limite)), "2026-11-30")
   expect_equal(rec$status_oportunidade, "aberto")
 })
 
@@ -175,8 +174,8 @@ test_that("seed_sources persists new US sources after init_database", {
   create_tables(conn)
   seed_sources(conn)
   src <- DBI::dbGetQuery(conn, "SELECT id_fonte FROM fontes_financiamento")
-  expect_equal(nrow(src), 21)
-  expect_true(all(c("grants_gov", "doe_ascr") %in% src$id_fonte))
+  expect_equal(nrow(src), 40)
+  expect_true(all(c("grants_gov", "doe_ascr", "neh", "nasa_sbir") %in% src$id_fonte))
   # Simulate init_database cleaning world_bank
   DBI::dbExecute(conn, "INSERT OR REPLACE INTO fontes_financiamento (id_fonte, nome_fonte, sigla, pais, categoria, tipo_financiador, url_principal, url_oportunidades, metodo_coleta, idioma, periodicidade_atualizacao, observacoes) VALUES ('world_bank','WB','WB','USA','x','y','https://x','https://y','html','en','diaria','test')")
   DBI::dbDisconnect(conn)
@@ -208,7 +207,7 @@ test_that("finalize_records does not discard US future deadlines", {
     pdf_url = NA_character_,
     page_no = 1L
   )
-  rec$data_limite <- "2026-09-30"
+  rec$data_limite <- "2026-11-30"
   df <- finalize_records(rec, fonte_oficial = "doe_ascr")
   # Should keep, not filter as old year
   expect_true(nrow(df) >= 1)

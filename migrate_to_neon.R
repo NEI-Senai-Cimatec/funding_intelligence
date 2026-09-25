@@ -119,7 +119,8 @@ mig_pk_map <- c(
 )
 
 mig_count <- function(conn, table) {
-  db_qry(conn, sprintf("SELECT COUNT(*) AS n FROM %s", mig_quote_ident(table)))$n[[1]]
+  # as.numeric normaliza integer64 (RPostgres/Postgres) para double comum
+  as.numeric(db_qry(conn, sprintf("SELECT COUNT(*) AS n FROM %s", mig_quote_ident(table)))$n[[1]])
 }
 
 # ─── Main ────────────────────────────────────────────────────────────────────
@@ -191,7 +192,10 @@ migrate_main <- function(args = commandArgs(trailingOnly = TRUE)) {
     }
 
     if (dry_run || nrow(src) == 0L) {
-      message(sprintf("[%s] %d linha(s) na origem | %d no destino (pré)", t, nrow(src), mig_count(pg, t)))
+      message(sprintf(
+        "[%s] %d linha(s) na origem | %d no destino (pré)",
+        t, nrow(src), as.integer(mig_count(pg, t))
+      ))
       next
     }
 

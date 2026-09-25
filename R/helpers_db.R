@@ -200,6 +200,21 @@ db_qry <- function(conn, sql, params = NULL) {
   "logs_coleta", "pesquisadores_vencedores", "projetos_aprovados", "metrics_coleta"
 )
 
+# Colunas obrigatórias de oportunidades — se o schema do Neon estiver desatualizado
+# (ex.: coluna nova em schema.sql ainda não aplicada), o app falha com instrução clara
+# em vez de quebrar em runtime ao renderizar a tabela principal.
+.oportunidades_cols_esperadas <- c(
+  "id_registro", "entidade", "pais_origem", "titulo", "subtitulo", "descricao_resumida",
+  "descricao_completa", "tipo_oportunidade", "modalidade", "area_tematica", "palavras_chave",
+  "elegibilidade", "publico_alvo", "nivel_academico", "instituicao_financiadora",
+  "valor_financiado", "moeda", "data_publicacao", "data_abertura", "data_limite",
+  "data_encerramento", "status_oportunidade", "link_origem", "link_detalhe",
+  "link_documento_pdf", "idioma", "localidade", "observacoes", "texto_bruto",
+  "pagina_coletada", "fonte_oficial", "data_hora_coleta", "hash_deduplicacao", "campus",
+  "campos_inferidos_ia", "enrichment_status", "enrichment_model", "enrichment_at",
+  "enrichment_error"
+)
+
 verificar_schema_postgres <- function(conn) {
   existentes <- DBI::dbGetQuery(
     conn,
@@ -215,6 +230,26 @@ verificar_schema_postgres <- function(conn) {
       call. = FALSE
     )
   }
+
+  cols_oport <- DBI::dbGetQuery(
+    conn,
+    "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'oportunidades'"
+  )$column_name
+  cols_faltantes <- setdiff(.oportunidades_cols_esperadas, cols_oport)
+  if (length(cols_faltantes) > 0L) {
+    stop(
+      sprintf(
+        paste0(
+          "Colunas ausentes em 'oportunidades' no PostgreSQL: %s. ",
+          "O schema.sql local está mais atual que o banco — aplique as migrações de coluna ",
+          "(ex.: ALTER TABLE oportunidades ADD COLUMN ...) antes de iniciar a aplicação."
+        ),
+        paste(cols_faltantes, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+
   message(sprintf("[DB] Schema PostgreSQL verificado: %d tabelas presentes.", length(.app_tables)))
   invisible(TRUE)
 }
@@ -318,6 +353,7 @@ create_tables <- function(conn) {
       fonte_oficial TEXT,
       data_hora_coleta TEXT,
       hash_deduplicacao TEXT UNIQUE,
+      campus TEXT,
       campos_inferidos_ia TEXT,
       enrichment_status TEXT DEFAULT 'pendente',
       enrichment_model TEXT,
@@ -577,6 +613,7 @@ seed_demo_opportunities <- function(conn) {
 # recalcula hash_deduplicacao (que nunca mais inclui data_limite).
 
 .enrichment_columns <- list(
+  campus = "TEXT",
   enrichment_status = "TEXT DEFAULT 'pendente'",
   enrichment_model = "TEXT",
   enrichment_at = "TEXT",

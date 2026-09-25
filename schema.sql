@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS oportunidades (
         ON DELETE SET NULL,
     data_hora_coleta TIMESTAMPTZ,
     hash_deduplicacao TEXT UNIQUE,
+    campus TEXT,
     campos_inferidos_ia TEXT,
     enrichment_status TEXT DEFAULT 'pendente',
     enrichment_model TEXT,

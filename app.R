@@ -1285,9 +1285,12 @@ server <- function(input, output, session) {
         Ações = character()
       )
     } else {
+      # Defensivo: bancos antigos podem não ter a coluna campus (migração ausente);
+      # campus_badge_html trata NA/vazio com o badge padrão "Sede e Park".
+      campus_vec <- if ("campus" %in% names(df)) df$campus else rep(NA_character_, nrow(df))
       shown <- df |>
         dplyr::mutate(
-          Campus = vapply(campus, campus_badge_html, character(1)),
+          Campus = vapply(campus_vec, campus_badge_html, character(1)),
           Aderência = vapply(score_aderencia, score_bar_html, character(1)),
           Prazo = format_date_br(data_limite),
           `Qualidade <i class='fa fa-shield-halved text-info' title='Score de qualidade dos metadados extraídos.'></i>` = vapply(seq_len(nrow(df)), function(i) {

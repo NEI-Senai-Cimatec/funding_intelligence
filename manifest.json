@@ -4319,7 +4319,7 @@
       "checksum": "5f2ae8b55d3f7fb9ae15db7fc7b05cd0"
     },
     "app.R": {
-      "checksum": "4632b4c9f65cd40db70e2cfbf0ec7b0e"
+      "checksum": "504a329f9e29e4247562f6475affe6e4"
     },
     "CHANGELOG.md": {
       "checksum": "87eac34e699da65b0153d262f3c38822"
@@ -4343,7 +4343,7 @@
       "checksum": "dd43aae35d14417322fdd24fde680eaa"
     },
     "manifest.json": {
-      "checksum": "8b7ba84f00f5cf3299e205adf920eb9b"
+      "checksum": "933c38ddb9d2bfd47ea3c156701135c5"
     },
     "migrate_to_neon.R": {
       "checksum": "55182b85703b8127c94f8a3f05f76072"

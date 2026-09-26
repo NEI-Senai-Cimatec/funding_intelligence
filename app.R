@@ -8,7 +8,7 @@ required_packages <- c(
   "ggplot2", "plotly", "DBI", "RSQLite", "jsonlite", "digest", "htmltools",
   "rvest", "xml2", "httr", "httr2", "tibble", "tools", "readr", "writexl", "janitor",
   "glue", "progress", "pdftools", "polite", "callr", "shinycssloaders",
-  "readxl", "base64enc"
+  "base64enc"
 )
 
 # RPostgres só é exigido quando há banco em nuvem configurado (DATABASE_URL);

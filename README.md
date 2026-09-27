@@ -391,8 +391,14 @@ DBI::dbDisconnect(conn)
 
 ## Migração SQLite → Neon (PostgreSQL)
 
+> **Guia completo passo a passo:** [`docs/MIGRACAO_SQLITE_NEON.md`](docs/MIGRACAO_SQLITE_NEON.md)
+> — configuração do Neon do zero, migração de dados, deploy no Posit Connect,
+> nuances entre os dois backends e troubleshooting.
+
 1. **Schema:** `schema.sql` contém o DDL PostgreSQL (12 tabelas, PKs, FKs e índices).
-   Aplique-o no Neon (`psql -f schema.sql` ou `neonctl apply`) — o app apenas verifica a presença das tabelas.
+   Aplique-o no Neon **manualmente** (SQL Editor do Console, `neon psql` ou MCP `run_sql`)
+   — `neon deploy` aplica apenas o `neon.ts` (política da branch), não executa o DDL.
+   O app apenas verifica a presença das tabelas e colunas na inicialização.
 2. **Dados:** `migrate_to_neon.R` copia o SQLite local para o Neon com conversão de tipos
    (DATE, TIMESTAMPTZ/UTC, BOOLEAN, JSONB), preservando IDs e realinhando as sequências:
 

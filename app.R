@@ -126,6 +126,7 @@ safe_source("R/helpers_recommend.R")
 safe_source("R/helpers_collect.R")
 safe_source("R/helpers_drive.R")
 safe_source("R/helpers_export.R")
+safe_source("R/helpers_auth.R")
 
 # Registra a pasta logos como recurso estático do Shiny
 shiny::addResourcePath("logos", app_file("logos"))
@@ -272,7 +273,83 @@ ui <- bslib::page_sidebar(
           }
         }, 50);
       });
+      Shiny.addCustomMessageHandler('set_auth_state', function(isAuth) {
+        if (isAuth) {
+          $('body').addClass('authenticated');
+          $('#auth_overlay_root').fadeOut(180, function() {
+            $(this).remove();
+          });
+        } else {
+          $('body').removeClass('authenticated');
+        }
+      });
+      $(document).on('keypress', '#login_email, #login_password', function(e) {
+        if (e.which === 13) {
+          $('#btn_login_submit').click();
+        }
+      });
+      $(document).on('keypress', '#signup_email, #signup_password, #signup_password_confirm', function(e) {
+        if (e.which === 13) {
+          $('#btn_signup_submit').click();
+        }
+      });
+      $(document).on('click', '#btn_login_submit', function() {
+        var btn = $(this);
+        setTimeout(function() {
+          btn.prop('disabled', true);
+          btn.find('i').attr('class', 'fa fa-spinner fa-spin');
+          btn.find('span').text('Entrando...');
+        }, 10);
+        setTimeout(function() {
+          btn.prop('disabled', false);
+          btn.find('i').attr('class', 'fa fa-right-to-bracket');
+          btn.find('span').text('Entrar na Plataforma');
+        }, 12000);
+      });
+      $(document).on('click', '#btn_signup_submit', function() {
+        var btn = $(this);
+        setTimeout(function() {
+          btn.prop('disabled', true);
+          btn.find('i').attr('class', 'fa fa-spinner fa-spin');
+          btn.find('span').text('Cadastrando...');
+        }, 10);
+        setTimeout(function() {
+          btn.prop('disabled', false);
+          btn.find('i').attr('class', 'fa fa-user-check');
+          btn.find('span').text('Cadastrar e Criar Conta');
+        }, 12000);
+      });
+      $(document).on('click', '.btn-toggle-pwd', function() {
+        var targetId = $(this).data('target');
+        var input = $('#' + targetId);
+        var icon = $(this).find('i');
+        if (input.attr('type') === 'password') {
+          input.attr('type', 'text');
+          icon.removeClass('fa-eye').addClass('fa-eye-slash');
+        } else {
+          input.attr('type', 'password');
+          icon.removeClass('fa-eye-slash').addClass('fa-eye');
+        }
+      });
+      $(document).on('click', '.auth-tab-btn', function() {
+        var mode = $(this).data('mode');
+        $('.auth-tab-btn').removeClass('active');
+        $(this).addClass('active');
+        if (mode === 'signup') {
+          $('#auth_form_login').hide();
+          $('#auth_form_signup').show();
+        } else {
+          $('#auth_form_signup').hide();
+          $('#auth_form_login').show();
+        }
+      });
     ")
+  ),
+
+  tags$div(
+    id = "login_screen_modal",
+    class = "shiny-html-output",
+    render_login_overlay()
   ),
 
   bslib::card(
@@ -299,7 +376,7 @@ ui <- bslib::page_sidebar(
       actionButton("btn_search", "Buscar", class = "btn-primary", icon = icon("search")),
       actionButton("btn_advanced", "Busca avançada", class = "btn-outline-primary", icon = icon("sliders-h")),
       actionButton("btn_save_search", "Salvar busca", class = "btn-outline-secondary", icon = icon("bookmark")),
-      actionButton("btn_collect_official", "Atualizar base", class = "btn-success", icon = icon("sync"))
+      uiOutput("btn_collect_container")
     )
   ),
 
@@ -388,9 +465,69 @@ ui <- bslib::page_sidebar(
     # ),
     bslib::nav_panel(
       "Logs",
-      tags$div(
-        style = "min-height: 420px; padding: 0.75rem 0; clear: both;",
-        DTOutput("logs_table")
+      bslib::navset_card_pill(
+        id = "logs_subtabs",
+        bslib::nav_panel(
+          "Coletores & Scraping",
+          tags$div(
+            style = "min-height: 420px; padding: 0.75rem 0; clear: both;",
+            DTOutput("logs_table")
+          )
+        ),
+        bslib::nav_panel(
+          "Auditoria de Acessos",
+          tags$div(
+            style = "min-height: 420px; padding: 0.75rem 0; clear: both;",
+            tags$p(style = "color: #64748b; font-size: 0.85rem; margin-bottom: 0.75rem;",
+                   "Controle e rastreabilidade de acessos: histórico de quem visualiza a plataforma, realiza buscas, abre editais e exporta dados."),
+            DTOutput("user_access_logs_table")
+          )
+        ),
+        bslib::nav_panel(
+          "Gestão de Permissões",
+          tags$div(
+            style = "min-height: 420px; padding: 0.75rem 0; clear: both;",
+            bslib::layout_columns(
+              col_widths = c(5, 7),
+              bslib::card(
+                tags$h5(style = "color: #004691; font-weight: 700; margin-bottom: 0.75rem;", 
+                        tags$i(class = "fa fa-table-cells"), " Gestão no Supabase (Opção 3)"),
+                tags$p(style = "font-size: 0.85rem; color: #334155; margin-bottom: 0.75rem; line-height: 1.45;",
+                       "Os níveis de acesso são controlados na tabela ", tags$code("public.perfis"), " no Supabase:"),
+                tags$div(
+                  style = "background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.75rem; margin-bottom: 1rem; font-size: 0.8rem; color: #475569;",
+                  tags$ol(
+                    style = "padding-left: 1.25rem; margin-bottom: 0;",
+                    tags$li(tags$strong("Acesse o Supabase:"), " no menu lateral esquerdo, clique em ", tags$strong("Table Editor"), " (ícone de planilha)."),
+                    tags$li(tags$strong("Abra a tabela 'perfis':"), " você verá todos os usuários cadastrados."),
+                    tags$li(tags$strong("Altere o cargo:"), " dê dois cliques na célula da coluna ", tags$strong("cargo"), " e digite ", tags$code("diretoria"), " ou ", tags$code("leitor"), "."),
+                    tags$li(tags$strong("Pronto!"), " O usuário terá o novo nível aplicado imediatamente no próximo login.")
+                  )
+                ),
+                actionButton("btn_refresh_perm_table", "Recarregar Usuários do Supabase", class = "btn-outline-primary w-100 mb-3", icon = icon("arrows-rotate")),
+                tags$hr(style = "margin: 0.5rem 0 1rem 0;"),
+                tags$h6(style = "color: #475569; font-weight: 600; font-size: 0.85rem;", 
+                        tags$i(class = "fa fa-user-plus"), " Atribuição Local / Emergência"),
+                textInput("perm_user_email", "E-mail institucional", placeholder = "exemplo@fieb.org.br"),
+                selectInput("perm_user_role", "Nível de acesso atribuído", 
+                            choices = c("Diretoria" = "diretoria", "Leitor / Pesquisador" = "usuario"),
+                            selected = "diretoria"),
+                actionButton("btn_save_permission", "Salvar Permissão Local", class = "btn-sm btn-secondary w-100 mb-2", icon = icon("check"))
+              ),
+              bslib::card(
+                tags$div(
+                  style = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;",
+                  tags$h5(style = "color: #004691; font-weight: 700; margin: 0;", 
+                          tags$i(class = "fa fa-users-gear"), " Usuários e Níveis de Acesso"),
+                  tags$span(class = "badge bg-primary", "Sincronizado Supabase")
+                ),
+                tags$p(style = "font-size: 0.8rem; color: #64748b; margin-bottom: 0.75rem;",
+                       "Usuários sincronizados via Supabase Table Editor ou base local:"),
+                DTOutput("user_permissions_table")
+              )
+            )
+          )
+        )
       )
     )
   ),
@@ -449,12 +586,18 @@ server <- function(input, output, session) {
     profile = tibble::tibble(),
     collaborators = tibble::tibble(),
     logs = tibble::tibble(),
+    user_access_logs = tibble::tibble(),
     current_query = "",
     advanced_filters = list(),
     last_collect_summary = list(msg = "Base pronta.", n = 0L, exports = NULL),
     selected_tracked_id = NULL,
     collecting = FALSE,
-    drive_status = "idle"
+    drive_status = "idle",
+    user = NULL,
+    access_token = NULL,
+    is_dev_diretoria = FALSE,
+    login_error = NULL,
+    signup_success = NULL
   )
 
   # Cache da assinatura de interesses por sessão (MH-01/BUG-04): lista e modal
@@ -477,6 +620,7 @@ server <- function(input, output, session) {
   }
 
   refresh_data <- function(notify = FALSE) {
+    if (!is.null(conn)) ensure_auth_db_table(conn)
     data <- tryCatch(
       {
         if (is.null(conn)) stop("Conexão SQLite indisponível.", call. = FALSE)
@@ -495,10 +639,147 @@ server <- function(input, output, session) {
     rv$profile <- tibble::as_tibble(data$profile)
     rv$collaborators <- tibble::as_tibble(data$collaborators)
     rv$logs <- tibble::as_tibble(data$logs)
+    rv$user_access_logs <- tibble::as_tibble(data$user_access_logs %||% tibble::tibble())
     invisible(TRUE)
   }
 
   refresh_data()
+
+  # Observador de controle de abas (RBAC):
+  # Abas 'Buscas salvas', 'Editais rastreados' e 'Logs' são exclusivas de Desenvolvedores / Diretoria
+  observe({
+    if (!isTRUE(rv$is_dev_diretoria)) {
+      bslib::nav_hide(id = "main_tabs", target = "Buscas salvas")
+      bslib::nav_hide(id = "main_tabs", target = "Editais rastreados")
+      bslib::nav_hide(id = "main_tabs", target = "Logs")
+    } else {
+      bslib::nav_show(id = "main_tabs", target = "Buscas salvas")
+      bslib::nav_show(id = "main_tabs", target = "Editais rastreados")
+      bslib::nav_show(id = "main_tabs", target = "Logs")
+    }
+  })
+
+  # Renderiza a tela de login em overlay tela cheia enquanto não autenticado
+  output$login_screen_modal <- renderUI({
+    if (is.null(rv$user)) {
+      render_login_overlay(error_msg = rv$login_error, success_msg = rv$signup_success)
+    } else {
+      NULL
+    }
+  })
+
+  # Evento de autenticação no Supabase (Login)
+  observeEvent(input$btn_login_submit, {
+    email <- input$login_email
+    pwd <- input$login_password
+
+    if (is.null(email) || !nzchar(trimws(email)) || is.null(pwd) || !nzchar(pwd)) {
+      rv$login_error <- "Por favor, preencha seu e-mail institucional e senha."
+      return()
+    }
+
+    shiny::withProgress(message = "Autenticando no Supabase...", {
+      auth_res <- supabase_authenticate(email, pwd, conn = conn)
+    })
+
+    if (isTRUE(auth_res$success)) {
+      rv$user <- auth_res$user
+      rv$access_token <- auth_res$access_token
+      rv$is_dev_diretoria <- isTRUE(auth_res$is_dev)
+      rv$login_error <- NULL
+      rv$signup_success <- NULL
+
+      # Revela a interface do Radar para o usuário autenticado
+      session$sendCustomMessage("set_auth_state", TRUE)
+
+      # Registra login de auditoria no SQLite
+      log_user_access(
+        conn, 
+        rv$user, 
+        action = "LOGIN", 
+        details = sprintf("Login autenticado como %s", get_user_role_label(rv$user, rv$is_dev_diretoria, conn = conn))
+      )
+
+      showNotification(sprintf("Bem-vindo(a), %s!", rv$user$email %||% "Usuário"), type = "message")
+      bslib::nav_select(id = "main_tabs", selected = "Resultados")
+    } else {
+      rv$login_error <- auth_res$message
+      showNotification(auth_res$message, type = "error", duration = 6)
+    }
+  })
+
+  # Evento de cadastro de novo usuário no Supabase (Criar Conta)
+  observeEvent(input$btn_signup_submit, {
+    email <- input$signup_email
+    pwd <- input$signup_password
+    pwd_conf <- input$signup_password_confirm
+
+    if (is.null(email) || !nzchar(trimws(email)) || is.null(pwd) || !nzchar(pwd)) {
+      rv$login_error <- "Por favor, preencha o e-mail institucional e defina uma senha."
+      rv$signup_success <- NULL
+      return()
+    }
+
+    if (!identical(pwd, pwd_conf)) {
+      rv$login_error <- "As senhas digitadas não coincidem. Por favor, verifique."
+      rv$signup_success <- NULL
+      return()
+    }
+
+    if (nchar(pwd) < 6) {
+      rv$login_error <- "A senha deve conter no mínimo 6 caracteres."
+      rv$signup_success <- NULL
+      return()
+    }
+
+    shiny::withProgress(message = "Cadastrando usuário no Supabase...", {
+      signup_res <- supabase_sign_up(email, pwd)
+    })
+
+    if (isTRUE(signup_res$success)) {
+      rv$login_error <- NULL
+      
+      # Registra evento de auditoria no SQLite
+      log_user_access(
+        conn, 
+        signup_res$user %||% list(email = email), 
+        action = "CADASTRO", 
+        details = "Novo usuário registrado na plataforma via Supabase Auth"
+      )
+
+      if (isTRUE(signup_res$auto_login) && !is.null(signup_res$access_token)) {
+        rv$user <- signup_res$user
+        rv$access_token <- signup_res$access_token
+        rv$is_dev_diretoria <- supabase_is_dev_or_diretoria(rv$user, access_token = rv$access_token, conn = conn)
+        rv$signup_success <- NULL
+        session$sendCustomMessage("set_auth_state", TRUE)
+        showNotification(sprintf("Conta criada com sucesso! Bem-vindo(a), %s!", email), type = "message")
+        bslib::nav_select(id = "main_tabs", selected = "Resultados")
+      } else {
+        rv$signup_success <- signup_res$message
+        showNotification(signup_res$message, type = "message", duration = 8)
+      }
+    } else {
+      rv$login_error <- signup_res$message
+      rv$signup_success <- NULL
+      showNotification(signup_res$message, type = "error", duration = 6)
+    }
+  })
+
+  # Evento de logout
+  observeEvent(input$btn_header_logout, {
+    if (!is.null(rv$user)) {
+      log_user_access(conn, rv$user, action = "LOGOUT", details = "Sessão encerrada pelo usuário")
+      try(supabase_sign_out(rv$access_token), silent = TRUE)
+    }
+    rv$user <- NULL
+    rv$access_token <- NULL
+    rv$is_dev_diretoria <- FALSE
+    rv$login_error <- NULL
+    rv$signup_success <- NULL
+    session$sendCustomMessage("set_auth_state", FALSE)
+    showNotification("Você encerrou sua sessão com sucesso.", type = "message")
+  })
 
   # Reactive values para rastreamento de progresso de coleta
   progress_rv <- reactiveValues(
@@ -728,8 +1009,9 @@ server <- function(input, output, session) {
     }
   )
 
-  # Validação de API Key no startup do Shiny
+  # Validação de API Key no startup do Shiny (somente após login)
   observe({
+    req(rv$user)
     key_ok <- validate_ai_config()
     if (!key_ok) {
       showNotification(
@@ -827,7 +1109,9 @@ server <- function(input, output, session) {
   }
 
   observeEvent(input$btn_search, {
+    req(rv$user)
     execute_search(input$search_query)
+    log_user_access(conn, rv$user, action = "BUSCA", details = sprintf("Consulta: '%s'", input$search_query %||% ""))
   })
 
   observeEvent(input$btn_advanced, {
@@ -912,6 +1196,11 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$btn_collect_official, {
+    req(rv$user)
+    if (!isTRUE(rv$is_dev_diretoria)) {
+      showNotification("Acesso negado: apenas a Diretoria pode atualizar a base.", type = "error")
+      return()
+    }
     if (isTRUE(rv$collecting)) {
       show_progress_modal()
       return()
@@ -950,8 +1239,15 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$confirm_collect_official, {
+    req(rv$user)
+    if (!isTRUE(rv$is_dev_diretoria)) {
+      showNotification("Acesso negado: apenas a Diretoria pode atualizar a base.", type = "error")
+      return()
+    }
     req(conn)
     removeModal()
+
+    log_user_access(conn, rv$user, action = "ATUALIZAR_BASE", details = sprintf("Coleta iniciada para %d fontes", length(input$collect_sources)))
 
     if (isTRUE(rv$collecting) || isTRUE(.GlobalEnv$.global_scraping_active)) {
       showNotification("A coleta de dados já está em andamento em segundo plano por outro processo.", type = "warning")
@@ -1082,6 +1378,7 @@ server <- function(input, output, session) {
   })
 
   base_results <- reactive({
+    req(rv$user)
     df <- rv$opportunities
     if (nrow(df) == 0) return(df)
     query <- rv$current_query
@@ -1194,23 +1491,24 @@ server <- function(input, output, session) {
     updateSelectizeInput(session, "filter_language", selected = character(0))
   })
 
-  # Renderizador de status persistente no header da aplicação
+  # Renderizador de status persistente no header da aplicação (inclui autenticação e perfil)
   output$header_status <- renderUI({
-    status_info <- if (isTRUE(rv$drive_status == "uploading")) {
-      list(icon = "sync fa-spin status-syncing", label = "Sincronizando GDrive...", class = "status-syncing")
-    } else if (isTRUE(progress_rv$status == "running")) {
-      list(icon = "robot fa-spin status-active", label = "Coleta Ativa (Background)", class = "status-active")
-    } else {
-      list(icon = "check-circle status-success", label = "Base Sincronizada", class = "status-success")
-    }
-    
-    tags$button(
-      id = "btn_header_status",
-      class = sprintf("btn header-status-widget %s", status_info$class),
-      onclick = "Shiny.setInputValue('click_header_status', Math.random(), {priority: 'event'})",
-      tags$i(class = sprintf("fa fa-%s", status_info$icon)),
-      tags$span(class = "status-label", style = "margin-left: 6px;", status_info$label)
+    req(rv$user)
+    render_header_user_bar(
+      user = rv$user,
+      is_dev = rv$is_dev_diretoria,
+      drive_status = rv$drive_status,
+      scraping_status = progress_rv$status
     )
+  })
+
+  # Botão Atualizar Base (exclusivo para desenvolvedores / diretoria)
+  output$btn_collect_container <- renderUI({
+    if (isTRUE(rv$is_dev_diretoria)) {
+      actionButton("btn_collect_official", "Atualizar base", class = "btn-success", icon = icon("sync"))
+    } else {
+      NULL
+    }
   })
 
   # Clique no status do header abre o modal se houver coleta rodando
@@ -1362,6 +1660,8 @@ server <- function(input, output, session) {
       generate_export_filename("quiiin_export", "xlsx")
     },
     content = function(file) {
+      req(rv$user)
+      log_user_access(conn, rv$user, action = "EXPORTAR", details = "Exportação de dados em XLSX")
       data <- filtered_results()
       export_data <- prepare_export_data(data)
       writexl::write_xlsx(export_data, file)
@@ -1373,6 +1673,8 @@ server <- function(input, output, session) {
       generate_export_filename("quiiin_export", "csv")
     },
     content = function(file) {
+      req(rv$user)
+      log_user_access(conn, rv$user, action = "EXPORTAR", details = "Exportação de dados em CSV")
       data <- filtered_results()
       export_data <- prepare_export_data(data)
       write.csv(export_data, file, row.names = FALSE, fileEncoding = "UTF-8")
@@ -1803,6 +2105,8 @@ server <- function(input, output, session) {
   })
 
   output$saved_searches_table <- renderDT({
+    req(rv$user)
+    req(isTRUE(rv$is_dev_diretoria))
     df <- filtered_saved_searches()
     if (nrow(df) == 0) {
       shown <- tibble::tibble(
@@ -1879,6 +2183,8 @@ server <- function(input, output, session) {
   })
 
   output$tracked_table <- renderDT({
+    req(rv$user)
+    req(isTRUE(rv$is_dev_diretoria))
     if (nrow(rv$tracked) == 0) {
       df <- tibble::tibble(id = character(), Título = character(), Financiador = character(), Prazo = character(), Status = character(), Observações = character())
     } else {
@@ -2068,8 +2374,149 @@ server <- function(input, output, session) {
   }, server = FALSE)
 
   output$logs_table <- renderDT({
+    req(rv$user)
+    req(isTRUE(rv$is_dev_diretoria))
     DT::datatable(rv$logs |> dplyr::arrange(dplyr::desc(parse_datetime_safe(data_execucao))), options = list(pageLength = 15, scrollX = TRUE, language = list(emptyTable = "Nenhum log registrado.")))
   }, server = FALSE)
+
+  output$user_access_logs_table <- renderDT({
+    req(rv$user)
+    req(isTRUE(rv$is_dev_diretoria))
+    logs_df <- get_user_access_logs(conn, limit = 500)
+    if (nrow(logs_df) == 0) {
+      shown <- tibble::tibble(
+        `Data/Hora` = character(),
+        `E-mail` = character(),
+        Perfil = character(),
+        Ação = character(),
+        Detalhes = character()
+      )
+    } else {
+      shown <- logs_df |>
+        dplyr::transmute(
+          `Data/Hora` = timestamp,
+          `E-mail` = email,
+          Perfil = dplyr::if_else(role == "diretoria/dev", "Diretoria", "Usuário"),
+          Ação = action,
+          Detalhes = details
+        )
+    }
+    DT::datatable(
+      shown, 
+      options = list(pageLength = 15, scrollX = TRUE, language = list(emptyTable = "Nenhum registro de acesso encontrado.")), 
+      rownames = FALSE
+    )
+  }, server = FALSE)
+
+  perm_trigger <- reactiveVal(Sys.time())
+
+  observeEvent(input$btn_refresh_perm_table, {
+    perm_trigger(Sys.time())
+    showNotification("Lista de usuários atualizada com sucesso.", type = "message")
+  })
+
+  output$user_permissions_table <- renderDT({
+    req(rv$user)
+    req(isTRUE(rv$is_dev_diretoria))
+    perm_trigger()
+    
+    # 1. Tenta buscar em tempo real os perfis cadastrados no Supabase (Opção 3)
+    sb_profiles <- tryCatch({
+      supabase_get_all_profiles(access_token = rv$access_token)
+    }, error = function(e) tibble::tibble())
+    
+    if (nrow(sb_profiles) > 0) {
+      shown <- sb_profiles |>
+        dplyr::transmute(
+          `E-mail` = email,
+          `Cargo (Supabase)` = cargo,
+          `Acesso no Radar` = dplyr::if_else(
+            tolower(cargo) %in% c("diretoria", "dev", "developer", "desenvolvedor", "admin", "administrador", "curador"),
+            "Diretoria (Acesso Total)",
+            "Leitor (Editais apenas)"
+          ),
+          `Origem` = "Supabase (Table Editor)",
+          `Cadastrado em` = format(parse_datetime_safe(criado_em), "%d/%m/%Y %H:%M")
+        )
+      return(DT::datatable(
+        shown,
+        rownames = FALSE,
+        options = list(pageLength = 10, scrollX = TRUE, language = list(emptyTable = "Nenhum usuário cadastrado no Supabase."))
+      ))
+    }
+    
+    # Fallback: banco SQLite local
+    df <- get_user_permissions(conn)
+    if (nrow(df) == 0) {
+      shown <- tibble::tibble(
+        `E-mail` = character(),
+        `Nível` = character(),
+        `Atualizado em` = character(),
+        `Ação` = character()
+      )
+    } else {
+      shown <- df |>
+        dplyr::mutate(
+          `Ação` = vapply(email, function(em) {
+            sprintf("<button class='btn btn-sm btn-outline-danger' style='padding: 2px 8px; font-size: 0.72rem;' onclick=\"Shiny.setInputValue('btn_remove_perm_email', '%s', {priority: 'event'})\"><i class='fa fa-trash'></i> Remover</button>", em)
+          }, character(1))
+        ) |>
+        dplyr::transmute(
+          `E-mail` = email,
+          `Nível` = dplyr::if_else(role %in% c("diretoria", "dev", "admin"), "Diretoria", "Leitor"),
+          `Atualizado em` = updated_at,
+          `Ação`
+        )
+    }
+    DT::datatable(
+      shown, 
+      escape = FALSE, 
+      rownames = FALSE, 
+      options = list(pageLength = 8, scrollX = TRUE, language = list(emptyTable = "Nenhuma permissão configurada."))
+    )
+  }, server = FALSE)
+
+  observeEvent(input$btn_save_permission, {
+    req(rv$user)
+    if (!isTRUE(rv$is_dev_diretoria)) return()
+    em <- trimws(input$perm_user_email %||% "")
+    role <- input$perm_user_role %||% "usuario"
+    if (!nzchar(em)) {
+      showNotification("Por favor, informe o e-mail do usuário.", type = "warning")
+      return()
+    }
+    set_user_permission(conn, em, role)
+    log_user_access(conn, rv$user, action = "ALTERAR_PERMISSAO", details = sprintf("Definiu '%s' como '%s'", em, role))
+    showNotification(sprintf("Permissão de '%s' atualizada para '%s' com sucesso.", em, role), type = "message")
+    updateTextInput(session, "perm_user_email", value = "")
+    perm_trigger(Sys.time())
+  })
+
+  observeEvent(input$btn_remove_perm_email, {
+    req(rv$user)
+    if (!isTRUE(rv$is_dev_diretoria)) return()
+    em <- input$btn_remove_perm_email
+    req(em)
+    remove_user_permission(conn, em)
+    log_user_access(conn, rv$user, action = "REMOVER_PERMISSAO", details = sprintf("Removeu permissão de '%s'", em))
+    showNotification(sprintf("Permissão específica de '%s' removida.", em), type = "message")
+    perm_trigger(Sys.time())
+  })
+
+  # Otimização de performance: suspende saídas pesadas em abas ocultas até serem ativadas pelo usuário
+  try({
+    outputOptions(output, "login_screen_modal", suspendWhenHidden = FALSE)
+    outputOptions(output, "user_permissions_table", suspendWhenHidden = TRUE)
+    outputOptions(output, "user_access_logs_table", suspendWhenHidden = TRUE)
+    outputOptions(output, "logs_table", suspendWhenHidden = TRUE)
+    outputOptions(output, "saved_searches_table", suspendWhenHidden = TRUE)
+    outputOptions(output, "tracked_table", suspendWhenHidden = TRUE)
+    outputOptions(output, "funders_plot", suspendWhenHidden = TRUE)
+    outputOptions(output, "funders_table", suspendWhenHidden = TRUE)
+    outputOptions(output, "themes_plot", suspendWhenHidden = TRUE)
+    outputOptions(output, "theme_funder_plot", suspendWhenHidden = TRUE)
+    outputOptions(output, "keywords_table", suspendWhenHidden = TRUE)
+  }, silent = TRUE)
 }
 
 shiny::shinyApp(ui, server)

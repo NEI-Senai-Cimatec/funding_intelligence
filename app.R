@@ -7,9 +7,15 @@ required_packages <- c(
   "shiny", "bslib", "DT", "dplyr", "tidyr", "purrr", "stringr", "stringi", "lubridate",
   "ggplot2", "plotly", "DBI", "RSQLite", "jsonlite", "digest", "htmltools",
   "rvest", "xml2", "httr", "httr2", "tibble", "tools", "readr", "writexl", "janitor",
-  "glue", "progress", "pdftools", "polite", "callr", "shinycssloaders", "googledrive",
-  "readxl", "base64enc"
+  "glue", "progress", "pdftools", "polite", "callr", "shinycssloaders",
+  "base64enc"
 )
+
+# RPostgres só é exigido quando há banco em nuvem configurado (DATABASE_URL);
+# no ambiente local sem a variável, o app segue no SQLite sem depender de libpq.
+if (nzchar(Sys.getenv("DATABASE_URL"))) {
+  required_packages <- c(required_packages, "RPostgres")
+}
 
 install_missing_packages <- function(pkgs) {
   if (length(pkgs) == 0) return(invisible(TRUE))
@@ -124,7 +130,6 @@ safe_source("R/helpers_status.R")
 safe_source("R/helpers_ai.R")
 safe_source("R/helpers_recommend.R")
 safe_source("R/helpers_collect.R")
-safe_source("R/helpers_drive.R")
 safe_source("R/helpers_export.R")
 safe_source("R/helpers_auth.R")
 
@@ -137,15 +142,17 @@ log_path <- app_file("logs", "funding_collection.log")
 ensure_dir(export_dir)
 ensure_dir(dirname(log_path))
 
-# Baixa a base de dados atualizada do Google Drive, se configurado
-try(drive_download_db(db_path), silent = TRUE)
-
+# Inicializa o banco: PostgreSQL via DATABASE_URL (nuvem) ou SQLite local
 try(init_database(db_path), silent = TRUE)
-conn <- tryCatch(get_db_connection(db_path), error = function(e) NULL)
+conn <- tryCatch(
+  conectar_banco(db_path),
+  error = function(e) {
+    message("[DB] Falha ao conectar: ", conditionMessage(e))
+    NULL
+  }
+)
 onStop(function() {
   if (!is.null(conn) && DBI::dbIsValid(conn)) DBI::dbDisconnect(conn)
-  # Sincroniza a base local com o Google Drive ao fechar a aplicação
-  try(drive_upload_db(db_path), silent = TRUE)
 })
 
 # Rodar testes automaticamente no startup (se configurado)
@@ -598,32 +605,18 @@ server <- function(input, output, session) {
     is_dev_diretoria = FALSE,
     login_error = NULL,
     signup_success = NULL
+    collecting = FALSE
   )
 
   # Cache da assinatura de interesses por sessão (MH-01/BUG-04): lista e modal
   # consomem a MESMA assinatura, gerando scores sempre consistentes.
   interest_sig <- reactiveVal(NULL)
 
-  # Wrapper para upload seguro no Google Drive com atualização de status visual
-  safe_drive_upload <- function() {
-    rv$drive_status <- "uploading"
-    shiny::withProgress(message = "Sincronizando com Google Drive...", {
-      tryCatch({
-        drive_upload_db(db_path)
-        rv$drive_status <- "idle"
-      }, error = function(e) {
-        rv$drive_status <- "error"
-        showNotification(paste("Erro ao sincronizar com Google Drive:", e$message), type = "error")
-        rv$drive_status <- "idle"
-      })
-    })
-  }
-
   refresh_data <- function(notify = FALSE) {
     if (!is.null(conn)) ensure_auth_db_table(conn)
     data <- tryCatch(
       {
-        if (is.null(conn)) stop("Conexão SQLite indisponível.", call. = FALSE)
+        if (is.null(conn)) stop("Conexão com o banco indisponível.", call. = FALSE)
         read_app_data(conn)
       },
       error = function(e) {
@@ -856,14 +849,12 @@ server <- function(input, output, session) {
           progress_rv$detail <- "Coleta finalizada — nenhum registro novo. Verifique filtros/ano ou logs."
         } else {
           progress_rv$status <- "done"
-          progress_rv$detail <- "Coleta concluída! Sincronizando com o Google Drive..."
+          progress_rv$detail <- "Coleta concluída! Gravando no banco de dados..."
         }
         progress_rv$percentage <- 100
         
-        # Sincroniza a base coletada com o Google Drive, se configurado
-        safe_drive_upload()
-        
-        progress_rv$detail <- "Sincronização com Google Drive concluída!"
+        # Os dados já foram gravados diretamente no banco pelo processo filho
+        progress_rv$detail <- "Base atualizada no banco de dados!"
         rv$last_collect_summary <- result
         refresh_data(notify = TRUE)
         
@@ -1064,7 +1055,7 @@ server <- function(input, output, session) {
     req(conn)
     query <- "SELECT DISTINCT fonte FROM logs_coleta WHERE status_execucao = 'erro' AND data_execucao >= ?"
     failed_sids <- tryCatch({
-      DBI::dbGetQuery(conn, query, params = list(as.character(since_time)))$fonte
+      db_qry(conn, query, params = list(as.character(since_time)))$fonte
     }, error = function(e) character())
     
     if (length(failed_sids) > 0) {
@@ -1192,7 +1183,6 @@ server <- function(input, output, session) {
     removeModal()
     refresh_data()
     showNotification("Busca salva com sucesso.", type = "message")
-    safe_drive_upload()
   })
 
   observeEvent(input$btn_collect_official, {
@@ -1293,6 +1283,7 @@ server <- function(input, output, session) {
       helper_files_bg = COLLECTOR_HELPER_FILES,
       status_file_bg  = normalizePath(status_file, winslash = "/", mustWork = FALSE),
       log_file_bg     = normalizePath(log_file, winslash = "/", mustWork = FALSE),
+      database_url_bg = Sys.getenv("DATABASE_URL"),
       ai_env_vars     = list(
         BLUESMINDS_API_KEY= Sys.getenv("BLUESMINDS_API_KEY"),
         GEMINI_API_KEY    = Sys.getenv("GEMINI_API_KEY"),
@@ -1316,7 +1307,8 @@ server <- function(input, output, session) {
     rv$bg_process <- callr::r_bg(
       func = function(app_dir_bg, source_ids_bg, max_pages_bg, max_records_bg,
                       use_ai_bg, export_dir_bg, log_path_bg, do_export_bg,
-                      db_path_bg, helper_files_bg, status_file_bg, log_file_bg, ai_env_vars) {
+                      db_path_bg, helper_files_bg, status_file_bg, log_file_bg,
+                      database_url_bg, ai_env_vars) {
         
         # Configura biblioteca local no processo filho
         local_libs_bg <- file.path(app_dir_bg, "R_libs")
@@ -1341,6 +1333,12 @@ server <- function(input, output, session) {
           }
         }
 
+        # Propaga DATABASE_URL para o processo filho (garantia explícita do
+        # contrato com o callr, mesmo que o ambiente do processo pai mude)
+        if (nzchar(database_url_bg)) {
+          Sys.setenv(DATABASE_URL = database_url_bg)
+        }
+
         # Carrega os helpers do app — lista única de módulos do pipeline de coleta
         # (inclui helpers_status.R: coletores dependem de status_today via helpers de datas)
         for (helper_file_bg in helper_files_bg) {
@@ -1351,8 +1349,8 @@ server <- function(input, output, session) {
           source(helper_path_bg, local = TRUE, encoding = "UTF-8")
         }
 
-        # Conexão SQLite própria do processo filho
-        bg_conn <- DBI::dbConnect(RSQLite::SQLite(), db_path_bg)
+        # Conexão própria do processo filho: Postgres (DATABASE_URL) ou SQLite local
+        bg_conn <- conectar_banco(db_path_bg)
         on.exit(DBI::dbDisconnect(bg_conn), add = TRUE)
 
         collect_all_sources(
@@ -1508,6 +1506,10 @@ server <- function(input, output, session) {
       actionButton("btn_collect_official", "Atualizar base", class = "btn-success", icon = icon("sync"))
     } else {
       NULL
+    status_info <- if (isTRUE(progress_rv$status == "running")) {
+      list(icon = "robot fa-spin status-active", label = "Coleta Ativa (Background)", class = "status-active")
+    } else {
+      list(icon = "check-circle status-success", label = "Base atualizada", class = "status-success")
     }
   })
 
@@ -1516,7 +1518,7 @@ server <- function(input, output, session) {
     if (progress_rv$status == "running" || progress_rv$status == "done" || progress_rv$status == "error") {
       show_progress_modal()
     } else {
-      showNotification("A base local está atualizada e sincronizada com o Google Drive.", type = "message")
+      showNotification("A base está atualizada e conectada ao banco de dados.", type = "message")
     }
   })
 
@@ -1589,9 +1591,12 @@ server <- function(input, output, session) {
         Ações = character()
       )
     } else {
+      # Defensivo: bancos antigos podem não ter a coluna campus (migração ausente);
+      # campus_badge_html trata NA/vazio com o badge padrão "Sede e Park".
+      campus_vec <- if ("campus" %in% names(df)) df$campus else rep(NA_character_, nrow(df))
       shown <- df |>
         dplyr::mutate(
-          Campus = vapply(campus, campus_badge_html, character(1)),
+          Campus = vapply(campus_vec, campus_badge_html, character(1)),
           Aderência = vapply(score_aderencia, score_bar_html, character(1)),
           Prazo = format_date_br(data_limite),
           `Qualidade <i class='fa fa-shield-halved text-info' title='Score de qualidade dos metadados extraídos.'></i>` = vapply(seq_len(nrow(df)), function(i) {
@@ -1686,7 +1691,6 @@ server <- function(input, output, session) {
     if (!is.null(conn)) track_opportunity(conn, input$row_action$id, status_usuario = "avaliar", observacoes = "")
     refresh_data()
     showNotification("Edital adicionado à lista de rastreamento.", type = "message")
-    safe_drive_upload()
   })
 
   # Modal de detalhes — função única usada por clique, deep-link e retry (MH-04)
@@ -2294,7 +2298,6 @@ server <- function(input, output, session) {
     update_tracked_opportunity(conn, rv$selected_tracked_id, input$tracked_status_input, input$tracked_notes_input %||% "")
     refresh_data()
     showNotification("Rastreamento atualizado.", type = "message")
-    safe_drive_upload()
   })
 
   observeEvent(input$btn_remove_tracked, {
@@ -2303,7 +2306,6 @@ server <- function(input, output, session) {
     rv$selected_tracked_id <- NULL
     refresh_data()
     showNotification("Item removido da lista de rastreamento.", type = "message")
-    safe_drive_upload()
   })
 
   output$recommended_table <- renderDT({

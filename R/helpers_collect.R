@@ -1316,11 +1316,12 @@ enrich_records_parallel <- function(df, log_path = NULL, conn = NULL) {
   # 1. Cache Lógico (Deduplicação)
   if (is.null(conn)) {
     db_path <- file.path(getwd(), "funding_intelligence.sqlite")
-    if (file.exists(db_path)) {
-      conn <- tryCatch(DBI::dbConnect(RSQLite::SQLite(), db_path), error = function(e) NULL)
+    if (file.exists(db_path) || nzchar(Sys.getenv("DATABASE_URL"))) {
+      # Roteia pelo mesmo backend do app (Postgres via DATABASE_URL ou SQLite local)
+      conn <- tryCatch(conectar_banco(db_path), error = function(e) NULL)
       on.exit({
         if (!is.null(conn) && DBI::dbIsValid(conn)) DBI::dbDisconnect(conn)
-      })
+      }, add = TRUE)
     }
   }
 
@@ -1334,7 +1335,7 @@ enrich_records_parallel <- function(df, log_path = NULL, conn = NULL) {
 
       existing <- tryCatch(
         {
-          DBI::dbGetQuery(
+          db_qry(
             conn,
             "SELECT id_registro, descricao_resumida, campos_inferidos_ia FROM oportunidades WHERE id_registro = ? OR hash_deduplicacao = ?",
             params = list(id, hash_val)
@@ -1350,12 +1351,12 @@ enrich_records_parallel <- function(df, log_path = NULL, conn = NULL) {
           log_progress(sprintf("Edital '%s' já enriquecido no banco. Recuperando cache...", df$titulo[[i]]), "IA")
 
           # Carrega o registro completo do banco
-          existing_full <- tryCatch(
-            {
-              DBI::dbGetQuery(conn, "SELECT * FROM oportunidades WHERE id_registro = ?", params = list(existing$id_registro[[1]]))
-            },
-            error = function(e) NULL
-          )
+              existing_full <- tryCatch(
+                {
+                  db_qry(conn, "SELECT * FROM oportunidades WHERE id_registro = ?", params = list(existing$id_registro[[1]]))
+                },
+                error = function(e) NULL
+              )
 
           if (!is.null(existing_full) && nrow(existing_full) > 0) {
             # Atualiza o df com o registro existente no banco

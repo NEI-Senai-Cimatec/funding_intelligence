@@ -118,7 +118,7 @@ recommend_partners_for_opportunity <- function(conn, opportunity_id, top_n = 5) 
     return(tibble::tibble())
   }
   
-  opp <- DBI::dbGetQuery(
+  opp <- db_qry(
     conn, 
     "SELECT titulo, descricao_resumida, palavras_chave, area_tematica FROM oportunidades WHERE id_registro = ?",
     params = list(opportunity_id)

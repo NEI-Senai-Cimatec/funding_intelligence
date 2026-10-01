@@ -463,6 +463,17 @@ create_tables <- function(conn) {
       metric_value REAL,
       context TEXT
     )")
+
+  DBI::dbExecute(conn, "
+    CREATE TABLE IF NOT EXISTS user_access_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT,
+      email TEXT,
+      role TEXT,
+      action TEXT,
+      details TEXT,
+      timestamp TEXT DEFAULT (datetime('now', 'localtime'))
+    )")
 }
 
 seed_sources <- function(conn) {
@@ -899,7 +910,8 @@ read_app_data <- function(conn) {
     history = tibble::as_tibble(read_table(conn, "historico_buscas")),
     profile = tibble::as_tibble(read_table(conn, "perfil_usuario")),
     collaborators = tibble::as_tibble(read_table(conn, "colaboradores")),
-    logs = tibble::as_tibble(read_table(conn, "logs_coleta"))
+    logs = tibble::as_tibble(read_table(conn, "logs_coleta")),
+    user_access_logs = tibble::as_tibble(tryCatch(read_table(conn, "user_access_logs"), error = function(e) tibble::tibble()))
   )
 }
 

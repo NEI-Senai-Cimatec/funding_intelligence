@@ -2999,8 +2999,7 @@ collect_erc <- function(source_row, max_pages, max_records, use_ai, log_path) {
 # ---------------------------------------------------------------------------
 
 .extract_deadline_from_cronograma_section <- function(txt) {
-  txt <- txt %||% ""
-  if (nchar(txt) < 20) return(NA_character_)
+  if (is.null(txt) || length(txt) == 0L || is.na(txt) || nchar(txt) < 20) return(NA_character_)
   lines <- strsplit(txt, "\n")[[1]]
   lower <- tolower(lines)
   cronograma_idx <- grep("cronograma", lower, fixed = TRUE)

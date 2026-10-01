@@ -605,7 +605,6 @@ server <- function(input, output, session) {
     is_dev_diretoria = FALSE,
     login_error = NULL,
     signup_success = NULL
-    collecting = FALSE
   )
 
   # Cache da assinatura de interesses por sessão (MH-01/BUG-04): lista e modal
@@ -961,7 +960,7 @@ server <- function(input, output, session) {
         tags$pre(
           style = "height: 250px; overflow-y: auto; background-color: #0f172a; color: #38bdf8; border: 1px solid #1e293b; border-radius: 6px; padding: 12px; font-family: 'Courier New', monospace; font-size: 0.85rem; white-space: pre-wrap; margin-bottom: 0;",
           textOutput("modal_log_text")
-        ),
+        )
       ),
       footer = uiOutput("progress_modal_footer")
     ))
@@ -1506,10 +1505,6 @@ server <- function(input, output, session) {
       actionButton("btn_collect_official", "Atualizar base", class = "btn-success", icon = icon("sync"))
     } else {
       NULL
-    status_info <- if (isTRUE(progress_rv$status == "running")) {
-      list(icon = "robot fa-spin status-active", label = "Coleta Ativa (Background)", class = "status-active")
-    } else {
-      list(icon = "check-circle status-success", label = "Base atualizada", class = "status-success")
     }
   })
 

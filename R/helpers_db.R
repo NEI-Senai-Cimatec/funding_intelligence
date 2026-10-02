@@ -47,6 +47,10 @@ conectar_postgres <- function(database_url) {
     sslmode <- "require"
   }
 
+  # Limite rígido de 2 segundos para evitar qualquer travamento de conexão no Windows
+  setTimeLimit(elapsed = 2, transient = TRUE)
+  on.exit(setTimeLimit(elapsed = Inf, transient = FALSE), add = TRUE)
+
   DBI::dbConnect(
     RPostgres::Postgres(),
     host = host,
@@ -55,18 +59,28 @@ conectar_postgres <- function(database_url) {
     user = parsed$username,
     password = parsed$password,
     sslmode = sslmode,
+    connect_timeout = 1L,
     application_name = "funding_intelligence",
-    # Fixa a sessão em UTC: strings de data/hora sem fuso (geradas pelo R com
-    # as.character(Sys.time())) são interpretadas como UTC, preservando a
-    # semântica atual do SQLite + parse_datetime_safe(tz = "UTC").
     options = "-c TimeZone=UTC"
   )
 }
 
+.pg_remote_unavailable <- FALSE
+
 conectar_banco <- function(db_path = "funding_intelligence.sqlite") {
   database_url <- trimws(Sys.getenv("DATABASE_URL"))
-  if (nzchar(database_url)) {
-    return(conectar_postgres(database_url))
+  is_unavail <- isTRUE(.GlobalEnv$.pg_remote_unavailable) || isTRUE(.pg_remote_unavailable)
+  if (nzchar(database_url) && !is_unavail) {
+    pg_conn <- tryCatch(
+      conectar_postgres(database_url),
+      error = function(e) {
+        .pg_remote_unavailable <<- TRUE
+        .GlobalEnv$.pg_remote_unavailable <- TRUE
+        message(sprintf("[DB] Conexão com PostgreSQL remoto indisponível (%s). Recorrendo à base local SQLite (%s).", conditionMessage(e), db_path))
+        NULL
+      }
+    )
+    if (!is.null(pg_conn) && DBI::dbIsValid(pg_conn)) return(pg_conn)
   }
   get_db_connection(db_path)
 }

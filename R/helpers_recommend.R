@@ -77,12 +77,52 @@ compute_adherence_score <- function(df, conn, current_query = "", signature = NU
   if (is.null(signature)) signature <- collect_interest_signature(conn, current_query = current_query)
   current_terms <- extract_query_terms(current_query)
   active_keywords <- unique(c(normalize_text(current_terms), signature$keywords))
+  active_keywords <- active_keywords[nzchar(active_keywords)]
+
+  # Precompila padrões regex uma única vez
+  kw_patterns <- vapply(active_keywords, term_to_pattern, character(1))
+  kw_patterns <- kw_patterns[nzchar(kw_patterns)]
+
+  area_keywords <- signature$areas[nzchar(signature$areas)]
+  area_patterns <- vapply(area_keywords, term_to_pattern, character(1))
+  area_patterns <- area_patterns[nzchar(area_patterns)]
+
+  elig_keywords <- signature$eligibility[nzchar(signature$eligibility)]
+  elig_patterns <- vapply(elig_keywords, term_to_pattern, character(1))
+  elig_patterns <- elig_patterns[nzchar(elig_patterns)]
+
   text_index <- build_search_text(df, text_cols = c("titulo", "subtitulo", "descricao_resumida", "descricao_completa", "palavras_chave", "area_tematica", "elegibilidade"))
-  keyword_scores <- vapply(text_index, keyword_overlap_score, numeric(1), keywords = active_keywords)
-  theme_scores <- vapply(seq_len(nrow(df)), function(i) keyword_overlap_score(paste(df$area_tematica[[i]], df$palavras_chave[[i]], collapse = " "), signature$areas), numeric(1))
-  funder_scores <- vapply(normalize_text(df$entidade), function(f) ifelse(f %in% signature$funders, 100, 0), numeric(1))
-  country_scores <- vapply(normalize_text(df$pais_origem), function(p) ifelse(length(signature$countries) == 0 || p %in% signature$countries, 100, 0), numeric(1))
-  eligibility_scores <- vapply(normalize_text(df$elegibilidade), function(e) keyword_overlap_score(e, signature$eligibility), numeric(1))
+  theme_index <- normalize_text(paste(df$area_tematica %||% "", df$palavras_chave %||% ""))
+  elig_index <- normalize_text(df$elegibilidade %||% "")
+  norm_entidade <- normalize_text(df$entidade %||% "")
+  norm_pais <- normalize_text(df$pais_origem %||% "")
+
+  n_rows <- nrow(df)
+
+  keyword_scores <- if (length(kw_patterns) > 0) {
+    hit_mat <- vapply(kw_patterns, function(pat) grepl(pat, text_index, ignore.case = TRUE, perl = TRUE), logical(n_rows))
+    if (is.matrix(hit_mat)) 100 * rowMeans(hit_mat) else 100 * as.numeric(hit_mat)
+  } else {
+    rep(0, n_rows)
+  }
+
+  theme_scores <- if (length(area_patterns) > 0) {
+    hit_mat <- vapply(area_patterns, function(pat) grepl(pat, theme_index, ignore.case = TRUE, perl = TRUE), logical(n_rows))
+    if (is.matrix(hit_mat)) 100 * rowMeans(hit_mat) else 100 * as.numeric(hit_mat)
+  } else {
+    rep(0, n_rows)
+  }
+
+  funder_scores <- ifelse(norm_entidade %in% signature$funders, 100, 0)
+  country_scores <- ifelse(length(signature$countries) == 0 | norm_pais %in% signature$countries, 100, 0)
+
+  eligibility_scores <- if (length(elig_patterns) > 0) {
+    hit_mat <- vapply(elig_patterns, function(pat) grepl(pat, elig_index, ignore.case = TRUE, perl = TRUE), logical(n_rows))
+    if (is.matrix(hit_mat)) 100 * rowMeans(hit_mat) else 100 * as.numeric(hit_mat)
+  } else {
+    rep(0, n_rows)
+  }
+
   total <- 0.40 * keyword_scores + 0.20 * theme_scores + 0.15 * funder_scores + 0.10 * country_scores + 0.15 * eligibility_scores
   df$score_aderencia <- round(total)
   df

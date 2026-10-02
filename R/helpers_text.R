@@ -2,13 +2,19 @@ build_search_text <- function(df, text_cols = c(
   "titulo", "subtitulo", "descricao_resumida", "descricao_completa",
   "palavras_chave", "area_tematica", "elegibilidade"
 )) {
+  if (nrow(df) == 0L) return(character(0))
+  # Se já possui campo pré-calculado e as colunas solicitadas são o conjunto padrão, reutiliza diretamente
+  default_cols <- c("titulo", "subtitulo", "descricao_resumida", "descricao_completa", "palavras_chave", "area_tematica", "elegibilidade")
+  if ("search_text" %in% names(df) && length(setdiff(text_cols, default_cols)) == 0L) {
+    st <- df$search_text
+    if (is.character(st) && length(st) == nrow(df)) return(st)
+  }
   cols <- intersect(text_cols, names(df))
-  if (length(cols) == 0L || nrow(df) == 0L) {
+  if (length(cols) == 0L) {
     return(rep("", nrow(df)))
   }
-  apply(df[, cols, drop = FALSE], 1, function(row) {
-    normalize_text(paste(row, collapse = " "))
-  })
+  combined <- do.call(paste, c(df[, cols, drop = FALSE], sep = " "))
+  normalize_text(combined)
 }
 
 insert_implicit_and <- function(tokens) {

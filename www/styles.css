@@ -5,6 +5,62 @@
   --bs-body-font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
+/* ==========================================================================
+   CONFIDENCIALIDADE & ISOLAMENTO DE ACESSO (Zero Data Leak)
+   Antes da autenticação, o Radar de Inovação fica 100% oculto atrás do overlay.
+   ========================================================================== */
+body:not(.authenticated) .app-header,
+body:not(.authenticated) .navbar,
+body:not(.authenticated) .search-card,
+body:not(.authenticated) .navset-card-tab,
+body:not(.authenticated) .tab-content,
+body:not(.authenticated) .app-footer-centered,
+body:not(.authenticated) .bslib-value-box,
+body:not(.authenticated) .bslib-sidebar-layout > aside,
+body:not(.authenticated) .card:not(.auth-card) {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* O Overlay SEMPRE deve ser visível se não autenticado */
+#auth_overlay_root {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 99999999 !important;
+  background: radial-gradient(circle at 20% 30%, #002b5e 0%, #004691 50%, #0b1a30 100%) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 1.5rem !important;
+  overflow-y: auto !important;
+  box-sizing: border-box !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+body.authenticated #auth_overlay_root {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+body.authenticated > * {
+  animation: radarFadeIn 0.35s ease-out;
+}
+
+@keyframes radarFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 body {
   background-color: #f8fafc;
   font-family: var(--bs-body-font-family);
@@ -507,38 +563,33 @@ main {
   visibility: visible !important;
 }
 
-/* Oculta os elementos do dashboard enquanto não autenticado para evitar piscadas ou vazamentos visuais */
+/* Oculta os elementos do dashboard enquanto não autenticado para garantia estrita de confidencialidade */
 body:not(.authenticated) .navbar,
 body:not(.authenticated) .sidebar,
 body:not(.authenticated) .bslib-sidebar-layout > .sidebar,
-body:not(.authenticated) .bslib-sidebar-layout > .main > *:not(#login_screen_modal),
+body:not(.authenticated) .bslib-page-main > *:not(#auth_overlay_root),
 body:not(.authenticated) .app-footer-centered,
 body:not(.authenticated) #header_status {
-  visibility: hidden !important;
-}
-
-body.authenticated .navbar,
-body.authenticated .sidebar,
-body.authenticated .bslib-sidebar-layout > .sidebar,
-body.authenticated .bslib-sidebar-layout > .main > *,
-body.authenticated .app-footer-centered,
-body.authenticated #header_status {
-  visibility: visible !important;
+  display: none !important;
 }
 
 .auth-overlay-backdrop {
-  position: fixed;
-  inset: 0;
-  width: 100vw;
-  height: 100vh;
-  z-index: 9999999;
+  position: fixed !important;
+  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 99999999 !important;
   background: radial-gradient(circle at 20% 30%, #002b5e 0%, #004691 50%, #0b1a30 100%) !important;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1.5rem;
-  overflow-y: auto;
-  box-sizing: border-box;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 1.5rem !important;
+  overflow-y: auto !important;
+  box-sizing: border-box !important;
 }
 
 .auth-card {
@@ -649,7 +700,7 @@ body.authenticated #header_status {
 
 .auth-btn-primary {
   width: 100%;
-  padding: 0.8rem 1.25rem;
+  padding: 0.85rem 1.25rem;
   font-size: 0.95rem;
   font-weight: 700;
   color: #ffffff;
@@ -661,19 +712,39 @@ body.authenticated #header_status {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 0 4px 12px rgba(0, 70, 145, 0.25);
   margin-top: 0.5rem;
+  position: relative;
 }
 
-.auth-btn-primary:hover {
+.auth-btn-primary:hover:not(:disabled) {
   background: linear-gradient(135deg, #003b7a 0%, #002850 100%);
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(0, 70, 145, 0.35);
+  transform: translateY(-1.5px);
+  box-shadow: 0 6px 18px rgba(0, 70, 145, 0.35);
 }
 
-.auth-btn-primary:active {
+.auth-btn-primary:active:not(:disabled) {
   transform: translateY(0);
+}
+
+.auth-btn-primary:disabled,
+.auth-btn-primary.loading {
+  opacity: 0.85 !important;
+  cursor: wait !important;
+  pointer-events: none !important;
+  background: linear-gradient(135deg, #003b7a 0%, #002850 100%) !important;
+  box-shadow: none !important;
+}
+
+.auth-btn-primary.loading i {
+  animation: authSpin 0.9s infinite linear !important;
+  display: inline-block;
+}
+
+@keyframes authSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 .auth-alert {

@@ -270,94 +270,14 @@ ui <- bslib::page_sidebar(
   theme = bslib::bs_theme(version = 5, bootswatch = "flatly", primary = "#004691", secondary = "#0f172a"),
   sidebar = build_sidebar(),
   tags$head(
+    tags$meta(charset = "utf-8"),
+    tags$meta(name = "viewport", content = "width=device-width, initial-scale=1.0"),
+    tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = paste0("styles.css?v=", as.integer(Sys.time()))),
-    tags$script("
-      Shiny.addCustomMessageHandler('scroll-logs', function(message) {
-        setTimeout(function() {
-          var log_elem = document.getElementById('modal_log_text');
-          if (log_elem) {
-            log_elem.parentElement.scrollTop = log_elem.parentElement.scrollHeight;
-          }
-        }, 50);
-      });
-      Shiny.addCustomMessageHandler('set_auth_state', function(isAuth) {
-        if (isAuth) {
-          $('body').addClass('authenticated');
-          $('#auth_overlay_root').fadeOut(180, function() {
-            $(this).remove();
-          });
-        } else {
-          $('body').removeClass('authenticated');
-        }
-      });
-      $(document).on('keypress', '#login_email, #login_password', function(e) {
-        if (e.which === 13) {
-          $('#btn_login_submit').click();
-        }
-      });
-      $(document).on('keypress', '#signup_email, #signup_password, #signup_password_confirm', function(e) {
-        if (e.which === 13) {
-          $('#btn_signup_submit').click();
-        }
-      });
-      $(document).on('click', '#btn_login_submit', function() {
-        var btn = $(this);
-        setTimeout(function() {
-          btn.prop('disabled', true);
-          btn.find('i').attr('class', 'fa fa-spinner fa-spin');
-          btn.find('span').text('Entrando...');
-        }, 10);
-        setTimeout(function() {
-          btn.prop('disabled', false);
-          btn.find('i').attr('class', 'fa fa-right-to-bracket');
-          btn.find('span').text('Entrar na Plataforma');
-        }, 12000);
-      });
-      $(document).on('click', '#btn_signup_submit', function() {
-        var btn = $(this);
-        setTimeout(function() {
-          btn.prop('disabled', true);
-          btn.find('i').attr('class', 'fa fa-spinner fa-spin');
-          btn.find('span').text('Cadastrando...');
-        }, 10);
-        setTimeout(function() {
-          btn.prop('disabled', false);
-          btn.find('i').attr('class', 'fa fa-user-check');
-          btn.find('span').text('Cadastrar e Criar Conta');
-        }, 12000);
-      });
-      $(document).on('click', '.btn-toggle-pwd', function() {
-        var targetId = $(this).data('target');
-        var input = $('#' + targetId);
-        var icon = $(this).find('i');
-        if (input.attr('type') === 'password') {
-          input.attr('type', 'text');
-          icon.removeClass('fa-eye').addClass('fa-eye-slash');
-        } else {
-          input.attr('type', 'password');
-          icon.removeClass('fa-eye-slash').addClass('fa-eye');
-        }
-      });
-      $(document).on('click', '.auth-tab-btn', function() {
-        var mode = $(this).data('mode');
-        $('.auth-tab-btn').removeClass('active');
-        $(this).addClass('active');
-        if (mode === 'signup') {
-          $('#auth_form_login').hide();
-          $('#auth_form_signup').show();
-        } else {
-          $('#auth_form_signup').hide();
-          $('#auth_form_login').show();
-        }
-      });
-    ")
+    tags$script(src = paste0("auth.js?v=", as.integer(Sys.time())))
   ),
 
-  tags$div(
-    id = "login_screen_modal",
-    class = "shiny-html-output",
-    render_login_overlay()
-  ),
+  render_login_overlay(),
 
   bslib::card(
     class = "search-card",
@@ -569,6 +489,23 @@ ui <- bslib::page_sidebar(
 )
 
 server <- function(input, output, session) {
+  # Wrapper resiliente para showNotification que garante uso de session e previne "attempt to apply non-function"
+  showNotification <- function(ui, action = NULL, duration = 5, closeButton = TRUE, id = NULL, 
+                               type = c("default", "message", "warning", "error")) {
+    type <- match.arg(type)
+    if (is.null(session) || isTRUE(session$isClosed()) || !is.function(session$sendNotification)) {
+      message(sprintf("[Notificação %s] %s", type, paste(as.character(ui), collapse = " ")))
+      return(invisible(id))
+    }
+    tryCatch(
+      shiny::showNotification(ui = ui, action = action, duration = duration, closeButton = closeButton, id = id, type = type, session = session),
+      error = function(e) {
+        message(sprintf("[Notificação %s] %s", type, paste(as.character(ui), collapse = " ")))
+        invisible(id)
+      }
+    )
+  }
+
   # Referência local de sessão para rastreamento de processos Callr
   bg_proc_ref <- NULL
 
@@ -602,6 +539,7 @@ server <- function(input, output, session) {
     drive_status = "idle",
     user = NULL,
     access_token = NULL,
+    refresh_token = NULL,
     is_dev_diretoria = FALSE,
     login_error = NULL,
     signup_success = NULL
@@ -612,6 +550,9 @@ server <- function(input, output, session) {
   interest_sig <- reactiveVal(NULL)
 
   refresh_data <- function(notify = FALSE) {
+    if (is.null(conn) || !DBI::dbIsValid(conn)) {
+      conn <<- tryCatch(conectar_banco(db_path), error = function(e) NULL)
+    }
     if (!is.null(conn)) ensure_auth_db_table(conn)
     data <- tryCatch(
       {
@@ -623,7 +564,11 @@ server <- function(input, output, session) {
         fallback_app_data()
       }
     )
-    rv$opportunities <- tibble::as_tibble(data$opportunities)
+    opps_df <- tibble::as_tibble(data$opportunities)
+    if (nrow(opps_df) > 0L && !"search_text" %in% names(opps_df)) {
+      opps_df$search_text <- build_search_text(opps_df)
+    }
+    rv$opportunities <- opps_df
     rv$sources <- tibble::as_tibble(data$sources)
     rv$saved_searches <- tibble::as_tibble(data$saved_searches)
     rv$tracked <- tibble::as_tibble(data$tracked)
@@ -651,22 +596,15 @@ server <- function(input, output, session) {
     }
   })
 
-  # Renderiza a tela de login em overlay tela cheia enquanto não autenticado
-  output$login_screen_modal <- renderUI({
-    if (is.null(rv$user)) {
-      render_login_overlay(error_msg = rv$login_error, success_msg = rv$signup_success)
-    } else {
-      NULL
-    }
-  })
-
   # Evento de autenticação no Supabase (Login)
   observeEvent(input$btn_login_submit, {
-    email <- input$login_email
-    pwd <- input$login_password
+    btn_data <- input$btn_login_submit
+    email <- trimws(as.character(if (is.list(btn_data) && !is.null(btn_data$email)) btn_data$email else input$login_email %||% ""))
+    pwd <- as.character(if (is.list(btn_data) && !is.null(btn_data$password)) btn_data$password else input$login_password %||% "")
 
-    if (is.null(email) || !nzchar(trimws(email)) || is.null(pwd) || !nzchar(pwd)) {
+    if (!nzchar(email) || !nzchar(pwd)) {
       rv$login_error <- "Por favor, preencha seu e-mail institucional e senha."
+      session$sendCustomMessage("login_failed", list(message = rv$login_error))
       return()
     }
 
@@ -677,9 +615,17 @@ server <- function(input, output, session) {
     if (isTRUE(auth_res$success)) {
       rv$user <- auth_res$user
       rv$access_token <- auth_res$access_token
+      rv$refresh_token <- auth_res$refresh_token
       rv$is_dev_diretoria <- isTRUE(auth_res$is_dev)
       rv$login_error <- NULL
       rv$signup_success <- NULL
+
+      # Salva a sessão no localStorage do navegador para persistir após F5
+      session$sendCustomMessage("save_auth_session", list(
+        access_token = rv$access_token,
+        refresh_token = rv$refresh_token,
+        user = rv$user
+      ))
 
       # Revela a interface do Radar para o usuário autenticado
       session$sendCustomMessage("set_auth_state", TRUE)
@@ -696,31 +642,36 @@ server <- function(input, output, session) {
       bslib::nav_select(id = "main_tabs", selected = "Resultados")
     } else {
       rv$login_error <- auth_res$message
-      showNotification(auth_res$message, type = "error", duration = 6)
+      session$sendCustomMessage("login_failed", list(message = auth_res$message))
+      try(showNotification(auth_res$message, type = "error", duration = 6), silent = TRUE)
     }
   })
 
   # Evento de cadastro de novo usuário no Supabase (Criar Conta)
   observeEvent(input$btn_signup_submit, {
-    email <- input$signup_email
-    pwd <- input$signup_password
-    pwd_conf <- input$signup_password_confirm
+    btn_data <- input$btn_signup_submit
+    email <- trimws(as.character(if (is.list(btn_data) && !is.null(btn_data$email)) btn_data$email else input$signup_email %||% ""))
+    pwd <- as.character(if (is.list(btn_data) && !is.null(btn_data$password)) btn_data$password else input$signup_password %||% "")
+    pwd_conf <- as.character(if (is.list(btn_data) && !is.null(btn_data$password_confirm)) btn_data$password_confirm else input$signup_password_confirm %||% "")
 
-    if (is.null(email) || !nzchar(trimws(email)) || is.null(pwd) || !nzchar(pwd)) {
+    if (!nzchar(email) || !nzchar(pwd)) {
       rv$login_error <- "Por favor, preencha o e-mail institucional e defina uma senha."
       rv$signup_success <- NULL
+      session$sendCustomMessage("signup_failed", list(message = rv$login_error))
       return()
     }
 
     if (!identical(pwd, pwd_conf)) {
       rv$login_error <- "As senhas digitadas não coincidem. Por favor, verifique."
       rv$signup_success <- NULL
+      session$sendCustomMessage("signup_failed", list(message = rv$login_error))
       return()
     }
 
     if (nchar(pwd) < 6) {
       rv$login_error <- "A senha deve conter no mínimo 6 caracteres."
       rv$signup_success <- NULL
+      session$sendCustomMessage("signup_failed", list(message = rv$login_error))
       return()
     }
 
@@ -742,8 +693,15 @@ server <- function(input, output, session) {
       if (isTRUE(signup_res$auto_login) && !is.null(signup_res$access_token)) {
         rv$user <- signup_res$user
         rv$access_token <- signup_res$access_token
+        rv$refresh_token <- signup_res$refresh_token
         rv$is_dev_diretoria <- supabase_is_dev_or_diretoria(rv$user, access_token = rv$access_token, conn = conn)
         rv$signup_success <- NULL
+
+        session$sendCustomMessage("save_auth_session", list(
+          access_token = rv$access_token,
+          refresh_token = rv$refresh_token,
+          user = rv$user
+        ))
         session$sendCustomMessage("set_auth_state", TRUE)
         showNotification(sprintf("Conta criada com sucesso! Bem-vindo(a), %s!", email), type = "message")
         bslib::nav_select(id = "main_tabs", selected = "Resultados")
@@ -754,7 +712,58 @@ server <- function(input, output, session) {
     } else {
       rv$login_error <- signup_res$message
       rv$signup_success <- NULL
-      showNotification(signup_res$message, type = "error", duration = 6)
+      session$sendCustomMessage("signup_failed", list(message = signup_res$message))
+      try(showNotification(signup_res$message, type = "error", duration = 6), silent = TRUE)
+    }
+  })
+
+  # Restauração automática de sessão persistente ao atualizar a página (F5)
+  observeEvent(input$restore_auth_session, {
+    session_data <- input$restore_auth_session
+    if (!is.list(session_data)) return()
+    
+    access_tok <- session_data$access_token
+    refresh_tok <- session_data$refresh_token
+    if ((is.null(access_tok) || !nzchar(as.character(access_tok))) && 
+        (is.null(refresh_tok) || !nzchar(as.character(refresh_tok)))) {
+      session$sendCustomMessage("clear_auth_session", list())
+      session$sendCustomMessage("restore_auth_failed", list())
+      return()
+    }
+    
+    if (!is.null(isolate(rv$user))) return()
+    
+    restored <- tryCatch({
+      supabase_restore_session(session_data, conn = conn)
+    }, error = function(e) list(success = FALSE))
+    
+    if (isTRUE(restored$success)) {
+      rv$user <- restored$user
+      rv$access_token <- restored$access_token
+      rv$refresh_token <- restored$refresh_token
+      rv$is_dev_diretoria <- isTRUE(restored$is_dev)
+      rv$login_error <- NULL
+      rv$signup_success <- NULL
+      
+      # Se os tokens foram renovados via refresh_token, atualiza no localStorage
+      if (isTRUE(restored$updated)) {
+        session$sendCustomMessage("save_auth_session", list(
+          access_token = rv$access_token,
+          refresh_token = rv$refresh_token,
+          user = rv$user
+        ))
+      }
+      
+      session$sendCustomMessage("set_auth_state", TRUE)
+      log_user_access(
+        conn, 
+        rv$user, 
+        action = "SESSAO_RESTAURADA", 
+        details = "Sessão persistente restaurada automaticamente no navegador"
+      )
+    } else {
+      session$sendCustomMessage("clear_auth_session", list())
+      session$sendCustomMessage("restore_auth_failed", list())
     }
   })
 
@@ -766,9 +775,11 @@ server <- function(input, output, session) {
     }
     rv$user <- NULL
     rv$access_token <- NULL
+    rv$refresh_token <- NULL
     rv$is_dev_diretoria <- FALSE
     rv$login_error <- NULL
     rv$signup_success <- NULL
+    session$sendCustomMessage("clear_auth_session", list())
     session$sendCustomMessage("set_auth_state", FALSE)
     showNotification("Você encerrou sua sessão com sucesso.", type = "message")
   })
@@ -999,7 +1010,7 @@ server <- function(input, output, session) {
     }
   )
 
-  # Validação de API Key no startup do Shiny (somente após login)
+  # Validação de API Key no startup do Shiny (somente após login, diferida para não travar a UI)
   observe({
     req(rv$user)
     key_ok <- validate_ai_config()
@@ -1011,15 +1022,19 @@ server <- function(input, output, session) {
         id = "ai_missing_warning"
       )
     } else {
-      ai_health <- tryCatch(ai_healthcheck(), error = function(e) list(ok = FALSE, error = e$message))
-      if (!isTRUE(ai_health$ok)) {
-        showNotification(
-          paste("Aviso: IA indisponível —", ai_health$error, ". Enriquecimento desativado."),
-          type = "warning", duration = NULL, id = "ai_health_warning"
-        )
-      } else {
-        message(sprintf("IA saudável: %s (%s)", ai_health$provider, ai_health$model))
-      }
+      ai_session <- session
+      later::later(function() {
+        if (!is.null(ai_session) && isTRUE(ai_session$isClosed())) return()
+        ai_health <- tryCatch(ai_healthcheck(timeout_sec = 3), error = function(e) list(ok = FALSE, error = e$message))
+        if (!isTRUE(ai_health$ok)) {
+          showNotification(
+            paste("Aviso: IA indisponível —", ai_health$error, ". Enriquecimento desativado."),
+            type = "warning", duration = 8, id = "ai_health_warning"
+          )
+        } else {
+          message(sprintf("IA saudável: %s (%s)", ai_health$provider, ai_health$model))
+        }
+      }, 0.5)
     }
   })
 
@@ -1233,7 +1248,10 @@ server <- function(input, output, session) {
       showNotification("Acesso negado: apenas a Diretoria pode atualizar a base.", type = "error")
       return()
     }
-    req(conn)
+    if (is.null(conn)) {
+      showNotification("Erro: Conexão com o banco de dados indisponível.", type = "error")
+      return()
+    }
     removeModal()
 
     log_user_access(conn, rv$user, action = "ATUALIZAR_BASE", details = sprintf("Coleta iniciada para %d fontes", length(input$collect_sources)))
@@ -1282,7 +1300,7 @@ server <- function(input, output, session) {
       helper_files_bg = COLLECTOR_HELPER_FILES,
       status_file_bg  = normalizePath(status_file, winslash = "/", mustWork = FALSE),
       log_file_bg     = normalizePath(log_file, winslash = "/", mustWork = FALSE),
-      database_url_bg = Sys.getenv("DATABASE_URL"),
+      database_url_bg = if (exists(".pg_remote_unavailable") && isTRUE(.pg_remote_unavailable)) "" else Sys.getenv("DATABASE_URL"),
       ai_env_vars     = list(
         BLUESMINDS_API_KEY= Sys.getenv("BLUESMINDS_API_KEY"),
         GEMINI_API_KEY    = Sys.getenv("GEMINI_API_KEY"),
@@ -1387,6 +1405,7 @@ server <- function(input, output, session) {
   })
 
   filtered_results <- reactive({
+    if (is.null(rv$user)) return(tibble::tibble())
     df <- base_results()
     if (nrow(df) == 0) return(df)
     
@@ -1536,13 +1555,22 @@ server <- function(input, output, session) {
     ))
   })
 
-  output$total_editais <- renderText(nrow(filtered_results()))
-  output$total_fontes <- renderText(if (nrow(filtered_results()) == 0) 0 else dplyr::n_distinct(filtered_results()$entidade))
-  output$total_urgentes <- renderText({
+  output$total_editais <- renderText({
+    if (is.null(rv$user)) return("—")
+    as.character(nrow(filtered_results()))
+  })
+  output$total_fontes <- renderText({
+    if (is.null(rv$user)) return("—")
     df <- filtered_results()
-    count_urgent_status(df$data_limite, df$data_abertura, df$texto_bruto)
+    if (nrow(df) == 0 || !"entidade" %in% names(df)) "0" else as.character(dplyr::n_distinct(df$entidade))
+  })
+  output$total_urgentes <- renderText({
+    if (is.null(rv$user)) return("—")
+    df <- filtered_results()
+    if (nrow(df) == 0 || !"data_limite" %in% names(df)) "0" else as.character(count_urgent_status(df$data_limite, df$data_abertura, df$texto_bruto))
   })
   output$ultima_coleta <- renderText({
+    if (is.null(rv$user)) return("—")
     if (nrow(rv$logs) == 0) return("-")
     latest <- max(parse_datetime_safe(rv$logs$data_execucao), na.rm = TRUE)
     if (!is.finite(as.numeric(latest))) return("-")
@@ -1550,6 +1578,7 @@ server <- function(input, output, session) {
   })
 
   output$collection_status_ui <- renderUI({
+    req(rv$user)
     summary <- rv$last_collect_summary
     msg <- summary$msg %||% "Base pronta."
     inserted <- summary$inserted_now %||% NULL
@@ -1562,9 +1591,11 @@ server <- function(input, output, session) {
     tags$div(class = "mini-kpi", h5("Coleta"), p(detail))
   })
   output$source_counter_ui <- renderUI({
+    req(rv$user)
     tags$div(class = "mini-kpi", h5("Fontes"), p(sprintf("%s fontes configuradas", nrow(rv$sources))))
   })
   output$export_status_ui <- renderUI({
+    req(rv$user)
     exp <- rv$last_collect_summary$exports
     warn <- rv$last_collect_summary$export_warnings %||% character()
     msg <- if (is.null(exp) || length(exp) == 0) "Ainda sem exportações na sessão" else paste(basename(exp), collapse = " | ")
@@ -1572,6 +1603,7 @@ server <- function(input, output, session) {
   })
 
   output$results_table <- renderDT({
+    req(rv$user)
     df <- filtered_results()
     if (nrow(df) == 0) {
       shown <- tibble::tibble(
@@ -2027,6 +2059,7 @@ server <- function(input, output, session) {
   })
 
   output$funders_plot <- renderPlotly({
+    req(rv$user)
     df <- filtered_results() |>
       dplyr::count(entidade, sort = TRUE) |>
       dplyr::slice_head(n = 15)
@@ -2038,6 +2071,7 @@ server <- function(input, output, session) {
   })
 
   output$funders_table <- renderDT({
+    req(rv$user)
     df <- filtered_results() |>
       dplyr::count(entidade, pais_origem, tipo_oportunidade, sort = TRUE, name = "n_editais")
     DT::datatable(df, options = list(pageLength = 10, scrollX = TRUE, language = list(emptyTable = "Nenhum dado disponível.")))
@@ -2061,6 +2095,7 @@ server <- function(input, output, session) {
   })
 
   output$themes_plot <- renderPlotly({
+    req(rv$user)
     df <- simple_keyword_frequency(filtered_results(), top_n = 20)
     p <- ggplot2::ggplot(df, ggplot2::aes(x = reorder(term, n), y = n)) +
       ggplot2::geom_col() +
@@ -2070,6 +2105,7 @@ server <- function(input, output, session) {
   })
 
   output$theme_funder_plot <- renderPlotly({
+    req(rv$user)
     df <- filtered_results() |>
       dplyr::count(area_tematica, entidade, sort = TRUE) |>
       dplyr::slice_head(n = 20)
@@ -2081,6 +2117,7 @@ server <- function(input, output, session) {
   })
 
   output$keywords_table <- renderDT({
+    req(rv$user)
     DT::datatable(simple_keyword_frequency(filtered_results(), top_n = 50), options = list(pageLength = 10))
   })
 
@@ -2502,7 +2539,6 @@ server <- function(input, output, session) {
 
   # Otimização de performance: suspende saídas pesadas em abas ocultas até serem ativadas pelo usuário
   try({
-    outputOptions(output, "login_screen_modal", suspendWhenHidden = FALSE)
     outputOptions(output, "user_permissions_table", suspendWhenHidden = TRUE)
     outputOptions(output, "user_access_logs_table", suspendWhenHidden = TRUE)
     outputOptions(output, "logs_table", suspendWhenHidden = TRUE)

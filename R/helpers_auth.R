@@ -183,6 +183,7 @@ supabase_sign_up <- function(email, password) {
     user <- body_json$user %||% body_json
     has_token <- !is.null(body_json$access_token) && nzchar(as.character(body_json$access_token))
     access_tok <- if (has_token) body_json$access_token else NULL
+    refresh_tok <- if (has_token) body_json$refresh_token else NULL
     
     msg <- if (has_token) {
       "Conta criada com sucesso! Acesso concedido como Leitor."
@@ -194,6 +195,7 @@ supabase_sign_up <- function(email, password) {
       success = TRUE,
       user = user,
       access_token = access_tok,
+      refresh_token = refresh_tok,
       auto_login = has_token,
       message = msg
     ))
@@ -240,6 +242,135 @@ supabase_sign_out <- function(access_token) {
       httr2::req_perform()
     invisible(TRUE)
   }, error = function(e) invisible(FALSE))
+}
+
+# ─── Sessão Persistente (Validação e Renovação de Token) ───────────────────────
+
+# Obtém os dados do usuário a partir de um access_token JWT válido
+supabase_get_user <- function(access_token) {
+  if (is.null(access_token) || !nzchar(as.character(access_token))) {
+    return(list(success = FALSE, message = "Token de acesso não fornecido."))
+  }
+  cfg <- supabase_get_config()
+  if (!isTRUE(cfg$is_configured)) {
+    return(list(success = FALSE, message = "Configuração do Supabase ausente."))
+  }
+  
+  endpoint <- paste0(cfg$url, "/auth/v1/user")
+  resp <- tryCatch({
+    httr2::request(endpoint) |>
+      httr2::req_headers(
+        "apikey" = cfg$anon_key,
+        "Authorization" = paste("Bearer", access_token)
+      ) |>
+      httr2::req_error(is_error = function(resp) FALSE) |>
+      httr2::req_timeout(8) |>
+      httr2::req_perform()
+  }, error = function(e) NULL)
+  
+  if (is.null(resp)) return(list(success = FALSE, message = "Falha de rede ao validar sessão."))
+  
+  status <- httr2::resp_status(resp)
+  if (status == 200) {
+    body_text <- tryCatch(httr2::resp_body_string(resp), error = function(e) "")
+    body_json <- tryCatch(jsonlite::fromJSON(body_text, simplifyVector = FALSE), error = function(e) NULL)
+    if (!is.null(body_json) && !is.null(body_json$email)) {
+      return(list(success = TRUE, user = body_json))
+    }
+  }
+  
+  list(success = FALSE, status_code = status)
+}
+
+# Renova o par de tokens (access e refresh) usando um refresh_token válido
+supabase_refresh_session <- function(refresh_token) {
+  if (is.null(refresh_token) || !nzchar(as.character(refresh_token))) {
+    return(list(success = FALSE, message = "Refresh token ausente."))
+  }
+  cfg <- supabase_get_config()
+  if (!isTRUE(cfg$is_configured)) {
+    return(list(success = FALSE, message = "Configuração do Supabase ausente."))
+  }
+  
+  endpoint <- paste0(cfg$url, "/auth/v1/token?grant_type=refresh_token")
+  resp <- tryCatch({
+    httr2::request(endpoint) |>
+      httr2::req_headers(
+        "apikey" = cfg$anon_key,
+        "Content-Type" = "application/json"
+      ) |>
+      httr2::req_body_json(list(refresh_token = as.character(refresh_token))) |>
+      httr2::req_error(is_error = function(resp) FALSE) |>
+      httr2::req_timeout(10) |>
+      httr2::req_perform()
+  }, error = function(e) NULL)
+  
+  if (is.null(resp)) return(list(success = FALSE, message = "Falha de rede ao renovar sessão."))
+  
+  status <- httr2::resp_status(resp)
+  if (status == 200) {
+    body_text <- tryCatch(httr2::resp_body_string(resp), error = function(e) "")
+    body_json <- tryCatch(jsonlite::fromJSON(body_text, simplifyVector = FALSE), error = function(e) NULL)
+    if (!is.null(body_json$access_token)) {
+      return(list(
+        success = TRUE,
+        access_token = body_json$access_token,
+        refresh_token = body_json$refresh_token %||% refresh_token,
+        user = body_json$user
+      ))
+    }
+  }
+  
+  list(success = FALSE, status_code = status)
+}
+
+# Restaura uma sessão a partir de dados salvos no localStorage (access_token / refresh_token)
+supabase_restore_session <- function(session_data, conn = NULL) {
+  if (!is.list(session_data)) return(list(success = FALSE))
+  access_tok <- as.character(session_data$access_token %||% "")
+  refresh_tok <- as.character(session_data$refresh_token %||% "")
+  cached_user <- session_data$user
+  
+  # 1. Tenta validar o access_token atual na API GoTrue do Supabase
+  user_res <- if (nzchar(access_tok)) {
+    supabase_get_user(access_tok)
+  } else {
+    list(success = FALSE)
+  }
+  
+  if (isTRUE(user_res$success)) {
+    user <- user_res$user
+    is_dev <- supabase_is_dev_or_diretoria(user, access_token = access_tok, conn = conn)
+    user$cargo <- if (isTRUE(is_dev)) "diretoria" else "leitor"
+    return(list(
+      success = TRUE,
+      user = user,
+      access_token = access_tok,
+      refresh_token = refresh_tok,
+      is_dev = is_dev,
+      updated = FALSE
+    ))
+  }
+  
+  # 2. Se o access_token expirou, renova silenciosamente usando o refresh_token
+  if (nzchar(refresh_tok)) {
+    ref_res <- supabase_refresh_session(refresh_tok)
+    if (isTRUE(ref_res$success)) {
+      user <- ref_res$user %||% cached_user
+      is_dev <- supabase_is_dev_or_diretoria(user, access_token = ref_res$access_token, conn = conn)
+      user$cargo <- if (isTRUE(is_dev)) "diretoria" else "leitor"
+      return(list(
+        success = TRUE,
+        user = user,
+        access_token = ref_res$access_token,
+        refresh_token = ref_res$refresh_token,
+        is_dev = is_dev,
+        updated = TRUE
+      ))
+    }
+  }
+  
+  list(success = FALSE)
 }
 
 # ─── Opção 3: Consulta de Permissões na Tabela 'public.perfis' do Supabase ───────
@@ -354,7 +485,15 @@ supabase_is_dev_or_diretoria <- function(user, access_token = NULL, conn = NULL)
     if (cargo_clean %in% c("leitor", "usuario", "user", "viewer", "pesquisador")) return(FALSE)
   }
   
-  # 2. Prioridade Máxima: Consulta à tabela 'public.perfis' do Supabase via REST API (Opção 3)
+  email <- tolower(trimws(as.character(user$email %||% "")))
+  
+  # 2. Verifica se o e-mail está na lista de dev_emails configurada no .Renviron (Super-rápido / 0ms)
+  cfg <- supabase_get_config()
+  if (nzchar(email) && length(cfg$dev_emails) > 0 && email %in% cfg$dev_emails) {
+    return(TRUE)
+  }
+  
+  # 3. Consulta à tabela 'public.perfis' do Supabase via REST API (Opção 3)
   sb_role <- tryCatch({
     supabase_get_user_role_from_db(user, access_token = access_token)
   }, error = function(e) NULL)
@@ -363,20 +502,9 @@ supabase_is_dev_or_diretoria <- function(user, access_token = NULL, conn = NULL)
     if (sb_role %in% dev_roles) {
       return(TRUE)
     }
-    # Se o perfil foi localizado no Supabase e está explicitamente como 'leitor' / 'usuario',
-    # respeitamos essa definição do Supabase Table Editor como autoritativa!
     if (sb_role %in% c("leitor", "usuario", "user", "viewer", "pesquisador")) {
       return(FALSE)
     }
-  }
-  
-  email <- tolower(trimws(as.character(user$email %||% "")))
-  if (!nzchar(email)) return(FALSE)
-  
-  # 3. Fallback: Verifica se o e-mail está na lista de dev_emails configurada no .Renviron
-  cfg <- supabase_get_config()
-  if (length(cfg$dev_emails) > 0 && email %in% cfg$dev_emails) {
-    return(TRUE)
   }
   
   # 4. Fallback: Verifica na tabela local SQLite de permissões (user_permissions)
@@ -487,7 +615,7 @@ get_user_permissions <- function(conn) {
   }, error = function(e) tibble::tibble(email = character(), role = character(), updated_at = character()))
 }
 
-# Registra uma ação de auditoria de usuário no banco de dados SQLite
+# Registra uma ação de auditoria de usuário no banco de dados SQLite ou PostgreSQL
 log_user_access <- function(conn, user, action, details = "") {
   if (is.null(conn)) return(invisible(FALSE))
   
@@ -502,7 +630,7 @@ log_user_access <- function(conn, user, action, details = "") {
   now_str <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
   
   tryCatch({
-    DBI::dbExecute(
+    db_exec(
       conn,
       "INSERT INTO user_access_logs (user_id, email, role, action, details, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
       params = list(user_id, email, role, as.character(action), as.character(details %||% ""), now_str)
@@ -515,7 +643,7 @@ log_user_access <- function(conn, user, action, details = "") {
 get_user_access_logs <- function(conn, limit = 200) {
   if (is.null(conn)) return(tibble::tibble())
   tryCatch({
-    res <- DBI::dbGetQuery(
+    res <- db_qry(
       conn,
       sprintf("SELECT id, timestamp, email, role, action, details FROM user_access_logs ORDER BY id DESC LIMIT %d", as.integer(limit))
     )
@@ -577,19 +705,32 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
       htmltools::tags$div(
         class = "auth-tabs-nav",
         htmltools::tags$button(
+          id = "auth_tab_login",
           type = "button",
           class = if (identical(initial_mode, "signup")) "auth-tab-btn" else "auth-tab-btn active",
           `data-mode` = "login",
+          onclick = "window.switchAuthTab && window.switchAuthTab('login')",
           htmltools::tags$i(class = "fa fa-right-to-bracket"),
           htmltools::tags$span("Entrar")
         ),
         htmltools::tags$button(
+          id = "auth_tab_signup",
           type = "button",
           class = if (identical(initial_mode, "signup")) "auth-tab-btn active" else "auth-tab-btn",
           `data-mode` = "signup",
+          onclick = "window.switchAuthTab && window.switchAuthTab('signup')",
           htmltools::tags$i(class = "fa fa-user-plus"),
           htmltools::tags$span("Criar Conta")
         )
+      ),
+      
+      # Estado de Restauração de Sessão (Visível quando restaurando sessão salva no localStorage)
+      htmltools::tags$div(
+        id = "auth_restoring_state",
+        style = "display: none; text-align: center; padding: 2rem 1rem;",
+        htmltools::tags$i(class = "fa fa-circle-notch fa-spin", style = "font-size: 2.2rem; color: #004691; margin-bottom: 1rem;"),
+        htmltools::tags$h4(style = "color: #0f172a; font-size: 1.15rem; font-weight: 700; margin-bottom: 0.5rem;", "Restaurando sua sessão..."),
+        htmltools::tags$p(style = "color: #64748b; font-size: 0.85rem; margin: 0;", "Validando credenciais salvas no navegador.")
       ),
       
       # ─── Formulário 1: Login ───────────────────────────────────────────────
@@ -638,12 +779,21 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
           )
         ),
         
+        # Alerta de erro dinâmico instantâneo via JavaScript
+        htmltools::tags$div(
+          id = "auth_login_error_box",
+          class = "auth-alert auth-alert-danger",
+          style = "display: none; margin-bottom: 1rem;",
+          htmltools::tags$i(class = "fa fa-circle-exclamation", style = "margin-top: 2px;"),
+          htmltools::tags$div(id = "auth_login_error_text", "")
+        ),
+        
         htmltools::tags$button(
           id = "btn_login_submit",
           type = "button",
           class = "auth-btn-primary",
-          onclick = "Shiny.setInputValue('btn_login_submit', Math.random(), {priority: 'event'})",
-          htmltools::tags$i(class = "fa fa-right-to-bracket"),
+          onclick = "window.submitLoginForm && window.submitLoginForm()",
+          htmltools::tags$i(class = "fa fa-right-to-bracket", style = "margin-right: 8px;"),
           htmltools::tags$span("Entrar na Plataforma")
         ),
         
@@ -653,7 +803,7 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
           htmltools::tags$a(
             href = "#",
             style = "color: #004691; font-weight: 600; text-decoration: none;",
-            onclick = "$('.auth-tab-btn[data-mode=\"signup\"]').click(); return false;",
+            onclick = "window.switchAuthTab && window.switchAuthTab('signup'); return false;",
             "Cadastre-se aqui"
           )
         )
@@ -738,13 +888,22 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
           " para consulta e pesquisa de editais."
         ),
         
+        # Alerta de erro dinâmico de cadastro instantâneo via JavaScript
+        htmltools::tags$div(
+          id = "auth_signup_error_box",
+          class = "auth-alert auth-alert-danger",
+          style = "display: none; margin-bottom: 1rem;",
+          htmltools::tags$i(class = "fa fa-circle-exclamation", style = "margin-top: 2px;"),
+          htmltools::tags$div(id = "auth_signup_error_text", "")
+        ),
+        
         htmltools::tags$button(
           id = "btn_signup_submit",
           type = "button",
           class = "auth-btn-primary",
           style = "background: #0284c7;",
-          onclick = "Shiny.setInputValue('btn_signup_submit', Math.random(), {priority: 'event'})",
-          htmltools::tags$i(class = "fa fa-user-check"),
+          onclick = "window.submitSignupForm && window.submitSignupForm()",
+          htmltools::tags$i(class = "fa fa-user-check", style = "margin-right: 8px;"),
           htmltools::tags$span("Cadastrar e Criar Conta")
         ),
         

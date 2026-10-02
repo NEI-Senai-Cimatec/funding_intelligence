@@ -188,6 +188,11 @@
 
     // Handler de estado de autenticação (revelação ou bloqueio do app)
     Shiny.addCustomMessageHandler('set_auth_state', function(isAuth) {
+      var elRestoring = document.getElementById('auth_restoring_state');
+      var elLogin = document.getElementById('auth_form_login');
+      var elSignup = document.getElementById('auth_form_signup');
+      var elTabs = document.querySelector('.auth-tabs-nav');
+
       if (isAuth) {
         var btn = $('#btn_login_submit');
         if (btn.length) {
@@ -195,20 +200,51 @@
         }
         $('body').addClass('authenticated');
         $('#auth_overlay_root').stop(true, true).fadeOut(250);
+
+        // Prepara o formulário em estado pronto caso o usuário deslogue
+        if (elRestoring) elRestoring.style.display = 'none';
+        if (elLogin) elLogin.style.display = 'block';
+        if (elTabs) elTabs.style.display = 'flex';
       } else {
         $('body').removeClass('authenticated');
-        $('#auth_overlay_root').stop(true, true).fadeIn(200);
-        var btn = $('#btn_login_submit');
-        if (btn.length) {
-          btn.prop('disabled', false).removeClass('loading');
-          btn.html('<i class="fa fa-right-to-bracket" style="margin-right: 8px;"></i><span>Entrar na Plataforma</span>');
+
+        // Reseta imediatamente o spinner de restauração para o formulário de login limpo
+        if (elRestoring) elRestoring.style.display = 'none';
+        if (elSignup) elSignup.style.display = 'none';
+        if (elLogin) elLogin.style.display = 'block';
+        if (elTabs) elTabs.style.display = 'flex';
+
+        // Reseta abas e esconde caixas de erro
+        $('.auth-tab-btn').removeClass('active');
+        $('.auth-tab-btn[data-mode="login"]').addClass('active');
+        $('#auth_login_error_box, #auth_signup_error_box').hide();
+
+        // Limpa campos de credenciais imediatamente ao sair
+        var inputsToClear = ['login_email', 'login_password', 'signup_email', 'signup_password', 'signup_password_confirm'];
+        inputsToClear.forEach(function(id) {
+          var el = document.getElementById(id);
+          if (el) el.value = '';
+        });
+
+        var btnLogin = $('#btn_login_submit');
+        if (btnLogin.length) {
+          btnLogin.prop('disabled', false).removeClass('loading');
+          btnLogin.html('<i class="fa fa-right-to-bracket" style="margin-right: 8px;"></i><span>Entrar na Plataforma</span>');
         }
+        var btnSignup = $('#btn_signup_submit');
+        if (btnSignup.length) {
+          btnSignup.prop('disabled', false).removeClass('loading');
+          btnSignup.html('<i class="fa fa-user-check" style="margin-right: 8px;"></i><span>Cadastrar e Criar Conta</span>');
+        }
+
+        $('#auth_overlay_root').stop(true, true).fadeIn(200);
+        sessionRestored = false;
       }
     });
 
     // Salvar sessão persistente no localStorage
     Shiny.addCustomMessageHandler('save_auth_session', function(data) {
-      if (data && (data.access_token || data.refresh_token)) {
+      if (data && (data.access_token || data.refresh_token || data.user)) {
         try {
           localStorage.setItem('quiin_auth_session', JSON.stringify(data));
         } catch(e) {}
@@ -220,16 +256,32 @@
       try {
         localStorage.removeItem('quiin_auth_session');
       } catch(e) {}
+      sessionRestored = false;
+
+      var elRestoring = document.getElementById('auth_restoring_state');
+      var elLogin = document.getElementById('auth_form_login');
+      var elSignup = document.getElementById('auth_form_signup');
+      var elTabs = document.querySelector('.auth-tabs-nav');
+      if (elRestoring) elRestoring.style.display = 'none';
+      if (elSignup) elSignup.style.display = 'none';
+      if (elLogin) elLogin.style.display = 'block';
+      if (elTabs) elTabs.style.display = 'flex';
+
+      var inputsToClear = ['login_email', 'login_password', 'signup_email', 'signup_password', 'signup_password_confirm'];
+      inputsToClear.forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.value = '';
+      });
     });
 
-    // Falha na restauração da sessão silenciosa
+    // Falha na restauração da sessão silenciosa (revela formulário sem apagar se for falha de rede transitória)
     Shiny.addCustomMessageHandler('restore_auth_failed', function(msg) {
-      try {
-        localStorage.removeItem('quiin_auth_session');
-      } catch(e) {}
-      $('#auth_restoring_state').hide();
-      $('#auth_form_login').show();
-      $('.auth-tabs-nav').show();
+      var elRestoring = document.getElementById('auth_restoring_state');
+      var elLogin = document.getElementById('auth_form_login');
+      var elTabs = document.querySelector('.auth-tabs-nav');
+      if (elRestoring) elRestoring.style.display = 'none';
+      if (elLogin) elLogin.style.display = 'block';
+      if (elTabs) elTabs.style.display = 'flex';
     });
 
     // Falha de login
@@ -267,18 +319,62 @@
 
   registerShinyHandlers();
 
-  // 4. Restauração Silenciosa ao Conectar no Shiny (SEM piscar ou apagar inputs)
-  $(document).on('shiny:connected', function() {
+  // 4. Restauração Silenciosa com Polling Robusto (SEM piscar formulário)
+  var sessionRestored = false;
+  function initSessionRestore() {
+    if (sessionRestored) return;
+    var saved = null;
     try {
-      var saved = localStorage.getItem('quiin_auth_session');
-      if (saved) {
-        var sessionData = JSON.parse(saved);
-        if (sessionData && (sessionData.access_token || sessionData.refresh_token)) {
-          // Apenas envia a validação para o servidor silenciosamente
-          Shiny.setInputValue('restore_auth_session', sessionData, {priority: 'event'});
-        }
-      }
+      saved = localStorage.getItem('quiin_auth_session');
     } catch(e) {}
+    if (!saved) return;
+
+    var sessionData = null;
+    try {
+      sessionData = JSON.parse(saved);
+    } catch(e) {}
+    if (!sessionData || (!sessionData.access_token && !sessionData.refresh_token && !sessionData.user)) return;
+
+    // Se temos uma sessão salva, esconde imediatamente o formulário de login e mostra o restoring spinner
+    var elLogin = document.getElementById('auth_form_login');
+    var elSignup = document.getElementById('auth_form_signup');
+    var elTabs = document.querySelector('.auth-tabs-nav');
+    var elRestoring = document.getElementById('auth_restoring_state');
+    if (elLogin) elLogin.style.display = 'none';
+    if (elSignup) elSignup.style.display = 'none';
+    if (elTabs) elTabs.style.display = 'none';
+    if (elRestoring) elRestoring.style.display = 'block';
+
+    var attempts = 0;
+    var maxAttempts = 120; // 12 segundos
+    var restoreTimer = setInterval(function() {
+      attempts++;
+      if (sessionRestored) {
+        clearInterval(restoreTimer);
+        return;
+      }
+      if (window.Shiny && window.Shiny.setInputValue && window.Shiny.shinyapp && window.Shiny.shinyapp.isConnected()) {
+        sessionRestored = true;
+        clearInterval(restoreTimer);
+        console.log('[AUTH] Enviando restore_auth_session para o servidor Shiny...');
+        window.Shiny.setInputValue('restore_auth_session', sessionData, {priority: 'event'});
+      } else if (attempts >= maxAttempts) {
+        clearInterval(restoreTimer);
+        console.warn('[AUTH] Timeout aguardando conexao Shiny para restaurar sessao.');
+        if (elRestoring) elRestoring.style.display = 'none';
+        if (elLogin) elLogin.style.display = 'block';
+        if (elTabs) elTabs.style.display = 'flex';
+      }
+    }, 100);
+  }
+
+  // Inicia restauração imediatamente e quando o DOM estiver pronto
+  initSessionRestore();
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initSessionRestore);
+  }
+  $(document).on('shiny:connected', function() {
+    initSessionRestore();
   });
 
 })();

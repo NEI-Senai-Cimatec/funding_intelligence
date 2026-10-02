@@ -62,9 +62,18 @@ node_modules
 package.json
 package-lock.json
 bun.lock
-.gitignore
 
 # Renviron
 *.Renviron
 .neon
 .env.local
+
+# Scratch & Dev Scripts
+scratch/
+scratch_*/
+*.tmp
+*.log
+
+# Browser test profiles & screenshots
+scratch_edge_profile*/
+*.png

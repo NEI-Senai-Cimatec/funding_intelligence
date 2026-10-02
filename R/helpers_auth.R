@@ -326,7 +326,7 @@ supabase_refresh_session <- function(refresh_token) {
 
 # Restaura uma sessão a partir de dados salvos no localStorage (access_token / refresh_token)
 supabase_restore_session <- function(session_data, conn = NULL) {
-  if (!is.list(session_data)) return(list(success = FALSE))
+  if (!is.list(session_data)) return(list(success = FALSE, is_invalid = TRUE))
   access_tok <- as.character(session_data$access_token %||% "")
   refresh_tok <- as.character(session_data$refresh_token %||% "")
   cached_user <- session_data$user
@@ -335,7 +335,7 @@ supabase_restore_session <- function(session_data, conn = NULL) {
   user_res <- if (nzchar(access_tok)) {
     supabase_get_user(access_tok)
   } else {
-    list(success = FALSE)
+    list(success = FALSE, status_code = 401)
   }
   
   if (isTRUE(user_res$success)) {
@@ -353,24 +353,46 @@ supabase_restore_session <- function(session_data, conn = NULL) {
   }
   
   # 2. Se o access_token expirou, renova silenciosamente usando o refresh_token
-  if (nzchar(refresh_tok)) {
-    ref_res <- supabase_refresh_session(refresh_tok)
-    if (isTRUE(ref_res$success)) {
-      user <- ref_res$user %||% cached_user
-      is_dev <- supabase_is_dev_or_diretoria(user, access_token = ref_res$access_token, conn = conn)
-      user$cargo <- if (isTRUE(is_dev)) "diretoria" else "leitor"
-      return(list(
-        success = TRUE,
-        user = user,
-        access_token = ref_res$access_token,
-        refresh_token = ref_res$refresh_token,
-        is_dev = is_dev,
-        updated = TRUE
-      ))
-    }
+  ref_res <- if (nzchar(refresh_tok)) {
+    supabase_refresh_session(refresh_tok)
+  } else {
+    list(success = FALSE, status_code = NULL)
   }
   
-  list(success = FALSE)
+  if (isTRUE(ref_res$success)) {
+    user <- ref_res$user %||% cached_user
+    is_dev <- supabase_is_dev_or_diretoria(user, access_token = ref_res$access_token, conn = conn)
+    user$cargo <- if (isTRUE(is_dev)) "diretoria" else "leitor"
+    return(list(
+      success = TRUE,
+      user = user,
+      access_token = ref_res$access_token,
+      refresh_token = ref_res$refresh_token,
+      is_dev = is_dev,
+      updated = TRUE
+    ))
+  }
+  
+  # 3. Fallback de resiliência: se houve erro de rede ou timeout e o usuário cached é válido
+  ref_status <- ref_res$status_code %||% 0
+  is_explicit_rejection <- ref_status %in% c(400, 401, 403)
+  
+  if (!is_explicit_rejection && is.list(cached_user) && !is.null(cached_user$email) && nzchar(as.character(cached_user$email))) {
+    user <- cached_user
+    is_dev <- supabase_is_dev_or_diretoria(user, conn = conn)
+    user$cargo <- user$cargo %||% (if (isTRUE(is_dev)) "diretoria" else "leitor")
+    return(list(
+      success = TRUE,
+      user = user,
+      access_token = access_tok,
+      refresh_token = refresh_tok,
+      is_dev = is_dev,
+      updated = FALSE,
+      offline_fallback = TRUE
+    ))
+  }
+  
+  list(success = FALSE, is_invalid = is_explicit_rejection)
 }
 
 # ─── Opção 3: Consulta de Permissões na Tabela 'public.perfis' do Supabase ───────

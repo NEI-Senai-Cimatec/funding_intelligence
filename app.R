@@ -470,6 +470,9 @@ ui <- bslib::page_sidebar(
     tags$div(
       class = "footer-bottom-centered",
       tags$p(
+        tags$i(class = "fa-solid fa-building", style = "color: #004691;"), " Superintendência de planejamento e novos negócios"
+      ),
+      tags$p(
         tags$i(class = "fa-solid fa-magnifying-glass-chart", style = "color: #004691;"), " NEI - Núcleo de Economia Industrial"
       ),
       tags$p(
@@ -621,10 +624,16 @@ server <- function(input, output, session) {
       rv$signup_success <- NULL
 
       # Salva a sessão no localStorage do navegador para persistir após F5
+      user_payload <- list(
+        id = as.character(rv$user$id %||% ""),
+        email = as.character(rv$user$email %||% ""),
+        cargo = as.character(rv$user$cargo %||% "leitor"),
+        role = as.character(rv$user$role %||% "authenticated")
+      )
       session$sendCustomMessage("save_auth_session", list(
         access_token = rv$access_token,
         refresh_token = rv$refresh_token,
-        user = rv$user
+        user = user_payload
       ))
 
       # Revela a interface do Radar para o usuário autenticado
@@ -697,10 +706,16 @@ server <- function(input, output, session) {
         rv$is_dev_diretoria <- supabase_is_dev_or_diretoria(rv$user, access_token = rv$access_token, conn = conn)
         rv$signup_success <- NULL
 
+        user_payload <- list(
+          id = as.character(rv$user$id %||% ""),
+          email = as.character(rv$user$email %||% ""),
+          cargo = as.character(rv$user$cargo %||% "leitor"),
+          role = as.character(rv$user$role %||% "authenticated")
+        )
         session$sendCustomMessage("save_auth_session", list(
           access_token = rv$access_token,
           refresh_token = rv$refresh_token,
-          user = rv$user
+          user = user_payload
         ))
         session$sendCustomMessage("set_auth_state", TRUE)
         showNotification(sprintf("Conta criada com sucesso! Bem-vindo(a), %s!", email), type = "message")
@@ -724,8 +739,11 @@ server <- function(input, output, session) {
     
     access_tok <- session_data$access_token
     refresh_tok <- session_data$refresh_token
-    if ((is.null(access_tok) || !nzchar(as.character(access_tok))) && 
-        (is.null(refresh_tok) || !nzchar(as.character(refresh_tok)))) {
+    user_email <- session_data$user$email %||% ""
+    has_tokens <- (nzchar(as.character(access_tok %||% "")) || nzchar(as.character(refresh_tok %||% "")))
+    has_user <- nzchar(as.character(user_email))
+    
+    if (!has_tokens && !has_user) {
       session$sendCustomMessage("clear_auth_session", list())
       session$sendCustomMessage("restore_auth_failed", list())
       return()
@@ -735,7 +753,7 @@ server <- function(input, output, session) {
     
     restored <- tryCatch({
       supabase_restore_session(session_data, conn = conn)
-    }, error = function(e) list(success = FALSE))
+    }, error = function(e) list(success = FALSE, is_invalid = FALSE))
     
     if (isTRUE(restored$success)) {
       rv$user <- restored$user
@@ -747,22 +765,31 @@ server <- function(input, output, session) {
       
       # Se os tokens foram renovados via refresh_token, atualiza no localStorage
       if (isTRUE(restored$updated)) {
+        user_payload <- list(
+          id = as.character(rv$user$id %||% ""),
+          email = as.character(rv$user$email %||% ""),
+          cargo = as.character(rv$user$cargo %||% "leitor"),
+          role = as.character(rv$user$role %||% "authenticated")
+        )
         session$sendCustomMessage("save_auth_session", list(
           access_token = rv$access_token,
           refresh_token = rv$refresh_token,
-          user = rv$user
+          user = user_payload
         ))
       }
       
       session$sendCustomMessage("set_auth_state", TRUE)
+      bslib::nav_select(id = "main_tabs", selected = "Resultados")
       log_user_access(
         conn, 
         rv$user, 
         action = "SESSAO_RESTAURADA", 
         details = "Sessão persistente restaurada automaticamente no navegador"
       )
-    } else {
+    } else if (isTRUE(restored$is_invalid)) {
       session$sendCustomMessage("clear_auth_session", list())
+      session$sendCustomMessage("restore_auth_failed", list())
+    } else {
       session$sendCustomMessage("restore_auth_failed", list())
     }
   })
@@ -781,6 +808,11 @@ server <- function(input, output, session) {
     rv$signup_success <- NULL
     session$sendCustomMessage("clear_auth_session", list())
     session$sendCustomMessage("set_auth_state", FALSE)
+    updateTextInput(session, "login_email", value = "")
+    updateTextInput(session, "login_password", value = "")
+    updateTextInput(session, "signup_email", value = "")
+    updateTextInput(session, "signup_password", value = "")
+    updateTextInput(session, "signup_password_confirm", value = "")
     showNotification("Você encerrou sua sessão com sucesso.", type = "message")
   })
 

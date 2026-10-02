@@ -573,6 +573,15 @@ body:not(.authenticated) #header_status {
   display: none !important;
 }
 
+/* Quando autenticado, garante que o overlay seja imediatamente ocultado e não bloqueie cliques */
+body.authenticated #auth_overlay_root,
+body.authenticated .auth-overlay-backdrop {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
 .auth-overlay-backdrop {
   position: fixed !important;
   inset: 0 !important;

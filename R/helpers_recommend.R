@@ -99,28 +99,32 @@ compute_adherence_score <- function(df, conn, current_query = "", signature = NU
 
   n_rows <- nrow(df)
 
-  keyword_scores <- if (length(kw_patterns) > 0) {
-    hit_mat <- vapply(kw_patterns, function(pat) grepl(pat, text_index, ignore.case = TRUE, perl = TRUE), logical(n_rows))
-    if (is.matrix(hit_mat)) 100 * rowMeans(hit_mat) else 100 * as.numeric(hit_mat)
-  } else {
-    rep(0, n_rows)
+  calc_pattern_score <- function(patterns, index_vec) {
+    if (n_rows == 0L || length(patterns) == 0L) return(rep(0, n_rows))
+    hit_mat <- vapply(patterns, function(pat) grepl(pat, index_vec, ignore.case = TRUE, perl = TRUE), logical(n_rows))
+    if (n_rows == 1L) {
+      100 * mean(hit_mat)
+    } else if (is.matrix(hit_mat)) {
+      100 * rowMeans(hit_mat)
+    } else {
+      100 * as.numeric(hit_mat)
+    }
   }
 
-  theme_scores <- if (length(area_patterns) > 0) {
-    hit_mat <- vapply(area_patterns, function(pat) grepl(pat, theme_index, ignore.case = TRUE, perl = TRUE), logical(n_rows))
-    if (is.matrix(hit_mat)) 100 * rowMeans(hit_mat) else 100 * as.numeric(hit_mat)
-  } else {
+  keyword_scores <- calc_pattern_score(kw_patterns, text_index)
+  theme_scores <- calc_pattern_score(area_patterns, theme_index)
+  eligibility_scores <- calc_pattern_score(elig_patterns, elig_index)
+
+  funder_scores <- if (length(signature$funders) == 0L) {
     rep(0, n_rows)
+  } else {
+    ifelse(norm_entidade %in% signature$funders, 100, 0)
   }
 
-  funder_scores <- ifelse(norm_entidade %in% signature$funders, 100, 0)
-  country_scores <- ifelse(length(signature$countries) == 0 | norm_pais %in% signature$countries, 100, 0)
-
-  eligibility_scores <- if (length(elig_patterns) > 0) {
-    hit_mat <- vapply(elig_patterns, function(pat) grepl(pat, elig_index, ignore.case = TRUE, perl = TRUE), logical(n_rows))
-    if (is.matrix(hit_mat)) 100 * rowMeans(hit_mat) else 100 * as.numeric(hit_mat)
+  country_scores <- if (length(signature$countries) == 0L) {
+    rep(100, n_rows)
   } else {
-    rep(0, n_rows)
+    ifelse(norm_pais %in% signature$countries, 100, 0)
   }
 
   total <- 0.40 * keyword_scores + 0.20 * theme_scores + 0.15 * funder_scores + 0.10 * country_scores + 0.15 * eligibility_scores

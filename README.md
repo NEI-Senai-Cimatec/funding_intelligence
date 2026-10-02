@@ -16,15 +16,19 @@ Centraliza **21 fontes de fomento** (CNPq, CAPES, FINEP, FAPESB, Horizon Europe,
 
 | Componente | Status |
 |---|---|
-| Coleta multi-agência (6 fontes ativas + FTOP proxy) | ✅ Produção |
-| Processamento assíncrono (background) | ✅ Produção |
-| Enriquecimento com IA (8 provedores) | ✅ Produção |
-| Tradução automática pt-br (fontes EU) | ✅ Produção |
-| Busca booleana avançada (AST parser) | ✅ Produção |
-| Aderência dinâmica por query | ✅ Produção |
-| Recomendação de parceiros CIMATEC | ✅ Produção |
-| Banco PostgreSQL gerenciado (Neon.tech) | ✅ Produção |
-| Containerização Docker | ✅ Produção |
+| Autenticação GoTrue & RBAC (Diretoria / Leitor) | ✅ Produção |
+| Sessões Persistentes (`localStorage` + JWT Auto-Refresh) | ✅ Produção |
+| Coleta multi-agência (21 fontes nacionais e internacionais) | ✅ Produção |
+| Processamento assíncrono (background via `callr`) | ✅ Produção |
+| Enriquecimento com IA (8 provedores com healthcheck e failover) | ✅ Produção |
+| Tradução automática pt-br (fontes internacionais) | ✅ Produção |
+| Busca booleana avançada (AST parser com operadores lógicos) | ✅ Produção |
+| Aderência dinâmica e cálculo de relevância multicritério | ✅ Produção |
+| Recomendação de parceiros internos SENAI CIMATEC | ✅ Produção |
+| Banco PostgreSQL gerenciado (Neon.tech / Supabase) | ✅ Produção |
+| Fallback e sincronização para SQLite local | ✅ Produção |
+| Exportação de relatórios em XLSX e CSV com links diretos | ✅ Produção |
+| Containerização Docker & Deploy Posit Connect | ✅ Produção |
 
 ---
 
@@ -51,11 +55,20 @@ install.packages("RPostgres")
 Crie o arquivo `.Renviron` na raiz do projeto:
 
 ```env
-# Pelo menos uma chave de IA é obrigatória
-GROQ_API_KEY=sua_chave_aqui
+# ─── Provedores de IA (pelo menos uma chave configurada) ───────────────
+NVIDIA_API_KEY=nvapi-...
+GROQ_API_KEY=gsk_...
+OPENAI_API_KEY=sk-...
+GEMINI_API_KEY=AIza...
 
-# PostgreSQL/Neon (opcional — sem esta variável o app usa SQLite local)
-DATABASE_URL=postgresql://usuario:senha@host/banco?sslmode=require
+# ─── Autenticação e RBAC (Supabase GoTrue) ──────────────────────────────
+SUPABASE_URL=https://seu-projeto.supabase.co
+SUPABASE_ANON_KEY=sua-chave-anon-publica
+SUPABASE_DEV_EMAILS=diretoria@cimatec.com.br,admin@cimatec.com.br
+
+# ─── Persistência (PostgreSQL Neon / Supabase) ─────────────────────────
+# Se omitida, a aplicação utiliza automaticamente o SQLite local como fallback
+DATABASE_URL=postgresql://usuario:senha@host:5432/postgres?sslmode=require
 ```
 
 ### 3. Executar
@@ -72,46 +85,57 @@ A aplicação estará disponível em `http://localhost:3838`.
 
 ```mermaid
 flowchart TD
-    subgraph UI [Camada de Apresentação — app.R]
-        Dashboard[Dashboard Principal]
-        TabResultados[Resultados]
-        TabRastreados[Editais Rastreados]
-        TabFinanciador[Por Financiador]
-        TabBuscas[Buscas Salvas]
-        TabLogs[Logs de Coleta]
+    subgraph Client [Navegador do Usuário]
+        UI[Interface Shiny / Bootstrap 5]
+        AuthJS[auth.js: Sessão localStorage & Auto-Refresh]
     end
 
-    subgraph Core [Camada de Lógica]
-        Utils[helpers_utils.R]
-        TextSearch[helpers_text.R]
-        Recommend[helpers_recommend.R]
+    subgraph Auth [Camada de Segurança & RBAC]
+        GoTrue[Supabase Auth / GoTrue REST API]
+        HelpersAuth[helpers_auth.R: Validação JWT & Perfis]
+        PerfisDB[(Tabela public.perfis)]
     end
 
-    subgraph Data [Camada de Dados e Coleta]
-        Collect[helpers_collect.R]
-        DB[helpers_db.R]
-        AI[helpers_ai.R]
+    subgraph Core [Camada de Lógica & Negócio]
+        Utils[helpers_utils.R: Sanitização & Formatadores]
+        TextSearch[helpers_text.R: AST Boolean Parser]
+        Recommend[helpers_recommend.R: Scoring Multicritério]
+        Export[helpers_export.R: XLSX / CSV]
     end
 
-    subgraph Storage [Persistência]
-        Neon[(PostgreSQL — Neon.tech)]
-        SQLite[(SQLite local — fallback)]
-        Exports[(data_exports/)]
+    subgraph Data [Camada de Coleta & IA]
+        Collect[helpers_collect.R: Motor Multi-Agência]
+        Stealth[tools/stealth_fetch.py: TLS Stealth Scraper]
+        DB[helpers_db.R: Dialect Abstraction]
+        AI[helpers_ai.R: Multi-LLM Healthcheck & Failover]
     end
 
-    subgraph External [Fontes Externas]
-        Fontes[21 Portais de Fomento]
-        LLMAPIs[APIs de IA]
+    subgraph Storage [Persistência & Logs]
+        Postgres[(PostgreSQL: Neon / Supabase)]
+        SQLite[(SQLite Local: Fallback & Sync)]
+        AuditLogs[(user_access_logs)]
+        ExportsDir[(data_exports/)]
     end
 
+    subgraph External [Fontes & Provedores Externos]
+        Portais[21 Portais de Financiamento]
+        LLMAPIs[APIs: NVIDIA, OpenAI, Groq, Gemini]
+    end
+
+    UI <--> AuthJS
+    AuthJS <--> GoTrue
+    UI <--> HelpersAuth
+    HelpersAuth <--> PerfisDB
+    HelpersAuth --> AuditLogs
     UI <--> Core
     Core <--> Data
-    Collect --> Fontes
+    Collect --> Stealth
+    Stealth --> Portais
+    Collect --> Portais
     AI --> LLMAPIs
-    DB --> Neon
+    DB --> Postgres
     DB --> SQLite
-    Collect --> DB
-    DB --> Exports
+    Export --> ExportsDir
 ```
 
 ---
@@ -191,64 +215,110 @@ As seguintes fontes foram removidas na versão atual do sistema (commit `fbaa74c
 
 ## Estrutura de Módulos
 
-### `app.R` — Ponto de Entrada (~1.600 linhas)
+### `app.R` — Ponto de Entrada (~2.000 linhas)
 
 Interface Shiny com `bslib` e Bootstrap 5. Responsável por:
 
-- Inicializar o banco (PostgreSQL via `DATABASE_URL` na nuvem, SQLite local como fallback)
-- Definir UI reativa com sidebar de filtros rápidos
-- Gerenciar coleta em background via `callr` com prevenção de processos zumbis
-- Streaming de logs em tempo real via `collection_status.json`
+- Orquestração do ciclo de vida da aplicação e controle reativo de sessões
+- Renderização condicional da interface: tela de login/cadastro/recuperação quando não autenticado vs dashboard completo quando autenticado
+- Controle de acesso granular baseado em perfis (RBAC): liberação seletiva de abas e botões para `diretoria` vs `leitor`
+- Inicialização da persistência (PostgreSQL via `DATABASE_URL` na nuvem, SQLite local como fallback automático)
+- Gerenciamento de coleta em background via `callr` com prevenção de processos zumbis
+- Streaming de logs de scraping e auditoria em tempo real
+
+### `R/helpers_auth.R` — Autenticação & RBAC (~1.000 linhas)
+
+Módulo de segurança integrado à API REST GoTrue do Supabase:
+
+- `supabase_authenticate()`: autenticação segura via email/senha com retorno de JWT (access_token) e refresh_token
+- `supabase_sign_up()`: cadastro de novos usuários com auto-confirmação e vínculo à tabela de perfis
+- `supabase_reset_password()`: disparo de email de redefinição de senha oficial
+- `supabase_get_user_role()`: resolução de cargo (`diretoria` vs `leitor`) consultando a tabela `public.perfis` no PostgreSQL com fallback por whitelist de emails
+- `registrar_log_acesso()`: trilha de auditoria gravando data/hora, email, cargo, IP do cliente e ação (`login`, `logout`, `coleta`) na tabela `user_access_logs`
+
+### `R/helpers_export.R` — Utilitários de Exportação (~115 linhas)
+
+Motor de exportação de dados para planilhas e relatórios:
+
+- `prepare_export_data()`: padroniza as colunas essenciais para exportação institucional (Título, Entidade, Prazo Limite, Link Portal, Link Detalhes, Link PDF)
+- `export_to_xlsx()`: geração de arquivos `.xlsx` nativos via `writexl` sem dependência de Java
+- `export_to_csv()`: exportação em formato `.csv` compatível com UTF-8
+- `generate_export_filename()`: nomenclatura padronizada com timestamp (`quiiin_export_YYYYMMDD_HHMMSS.xlsx`)
 
 ### `R/helpers_collect.R` — Motor de Coleta (~4.100 linhas)
 
-Módulo mais extenso do sistema. Pipeline de coleta:
+Módulo central de extração e web scraping:
 
 1. `source_dispatch()` — despacha estratégia correta para cada `id_fonte`
-2. `collect_listing_with_pagination()` — navega páginas de listagem
-3. `extract_detail_bundle()` — baixa detalhes de cada oportunidade
-4. `finalize_records()` — normaliza, infere campos e deduplica
-5. `translate_to_pt_br()` — traduz registros EU para pt-br via IA
+2. `collect_listing_with_pagination()` — navega páginas de listagem com suporte a paginação assíncrona
+3. `extract_detail_bundle()` — baixa detalhes e anexos de cada oportunidade
+4. `finalize_records()` — normaliza, infere campos e deduplica via hash determinístico
+5. `translate_to_pt_br()` — traduz registros internacionais para pt-br via IA
 
 **Estratégias de requisição (em cascata):**
-- `httr2` → Playwright (Python via `reticulate`) → `chromote` (R nativo)
-- Detecção de CDN/CAPTCHA (Cloudflare, Ray ID, Access Denied)
+- `httr2` → `curl_cffi` (TLS fingerprinting stealth) → Playwright (Python via `reticulate`) → `chromote` (R nativo)
+- Detecção e contorno de proteções WAF/CDN (Cloudflare, Ray ID, Access Denied)
 
-### `R/helpers_ai.R` — IA Multi-Provedor (~867 linhas)
+### `tools/stealth_fetch.py` — Scraper Stealth com Camuflagem TLS (58 linhas)
 
-Pipeline de extração em 2 estágios:
+Utilitário em Python para fontes com bloqueio agressivo de robôs e bot-protection:
+- Camuflagem TLS e HTTP/2 via impersonação do Chrome 120 (`curl_cffi`)
+- Fallback para Chromium headless automatizado via Playwright com delays humanos
+- Utilizado para fontes governamentais e portais com desafios Cloudflare
 
-1. `skill_extract_metadata()` — extração de metadados estruturados
-2. `skill_verify_metadata()` — auditoria automática de qualidade
+### `R/helpers_ai.R` — IA Multi-Provedor (~870 linhas)
 
-**Provedores suportados:** Bluesminds, Gemini, OpenAI, NVIDIA, Anthropic, Groq, OpenRouter, DeepSeek
+Pipeline de extração, inferência e auditoria de editais:
 
-**Função de tradução:** `translate_to_pt_br()` — traduz título e resumo de registros europeus para pt-br using IA.
+1. `skill_extract_metadata()` — extração de metadados estruturados (datas, elegibilidade, valores, áreas)
+2. `skill_verify_metadata()` — auditoria automática de consistência e descarte de ruídos
+3. `translate_to_pt_br()` — tradução de editais internacionais com terminologia técnica refinada
 
-### `R/helpers_db.R` — Persistência (~1.100 linhas)
+**Provedores suportados com failover e healthcheck:**
+- NVIDIA Build (ex.: `poolside/laguna-xs-2.1`)
+- Google Gemini (`gemini-2.0-flash`)
+- OpenAI (`gpt-4o-mini`, `gpt-4o`)
+- Groq (`llama-3.3-70b-versatile`)
+- Anthropic Claude, OpenRouter, DeepSeek, Bluesminds
 
-- `conectar_banco()` — roteia por `DATABASE_URL`: PostgreSQL (Neon) ou SQLite local
-- `prepare_sql()`/`db_exec()`/`db_qry()` — traduz placeholders (`?`, `:nome`) para o dialect ativo (`$1..$n` no Postgres)
-- Sessão Postgres fixada em `TimeZone=UTC` (semântica de datas idêntica à do SQLite)
-- SQLite em modo WAL com busy timeout (fallback local)
-- Schema Postgres versionado externamente em `schema.sql` (verificado no startup)
-- Catálogo de fontes com UPSERT idempotente e migrações automáticas (SQLite)
+### `R/helpers_db.R` — Persistência & Dialect Abstraction (~1.100 linhas)
 
-### `R/helpers_text.R` — Busca Booleana (247 linhas)
+- `conectar_banco()` — roteia dinamicamente por `DATABASE_URL`: PostgreSQL (Neon / Supabase) ou SQLite local
+- `prepare_sql()`/`db_exec()`/`db_qry()` — traduz placeholders (`?`, `:nome`) para o dialeto ativo (`$1..$n` no Postgres)
+- Sessão Postgres fixada em `TimeZone=UTC` (garantindo paridade de datas com o SQLite)
+- SQLite local operando em modo WAL com timeout de concorrência (`busy_timeout = 5000ms`)
+- Catálogo de fontes com UPSERT idempotente e migrações automáticas de colunas
 
-- Lexer tokenizador (AND, OR, NOT, parênteses, frases exatas)
-- Parser recursivo → AST
-- Avaliador de AST sobre índice textual
+### `R/helpers_text.R` — Busca Booleana & AST (247 linhas)
 
-### `R/helpers_recommend.R` — Recomendação (146 linhas)
+- Lexer tokenizador completo (`AND`, `OR`, `NOT`, parênteses, expressões exatas entre aspas)
+- Parser recursivo construindo Árvore Sintática Abstrata (AST)
+- Avaliador booleano de alta performance sobre índice textual
 
-- Score de aderência: keywords (40%) + áreas (20%) + financiador (15%) + elegibilidade (15%) + país (10%)
-- Recomendação de parceiros CIMATEC por afinidade temática
+### `R/helpers_recommend.R` — Recomendação & Scoring (~230 linhas)
 
-### `R/helpers_utils.R` — Utilitários (633 linhas)
+- Score de aderência multicritério robusto: palavras-chave (40%) + áreas temáticas (20%) + financiador (15%) + elegibilidade (15%) + país (10%)
+- Algoritmo totalmente vetorizado com suporte determinístico para datasets unitários ou em lote
+- Recomendação de pesquisadores e parceiros internos SENAI CIMATEC por afinidade tecnológica
 
-- Parsing de datas, valores monetários, normalização de texto
-- `%||%` (null-coalescing), botões de ação HTML
+### `R/helpers_utils.R` — Utilitários Gerais (~635 linhas)
+
+- Normalização de texto, extração de valores monetários e conversão contextual de datas
+- Operador de coalescência nula `%||%`, helpers de notificação e badges estilizados
+
+### `www/auth.js` — Gerenciador de Sessão no Frontend (284 linhas)
+
+Script JavaScript integrado ao Shiny:
+- Armazenamento seguro de tokens e metadados no `localStorage` do navegador
+- Restauração automática de sessão pós-refresh (F5) sem recarregar a interface nem expor telas
+- Auto-refresh em segundo plano do JWT a cada 50 minutos contra o endpoint `/auth/v1/token`
+- Limpeza rigorosa e imediata de credenciais nos formulários durante o logout
+
+### Utilitários de Banco de Dados (`root` e `sql/`)
+
+- `sync_supabase_to_sqlite.R`: script de sincronização bidirecional que espelha as 11 tabelas do Supabase REST para o SQLite local
+- `migrate_to_neon.R`: script de migração completa de banco local para instâncias PostgreSQL Neon ou Supabase
+- `sql/setup_supabase_perfis.sql`: script DDL para criação da tabela `public.perfis`, triggers de auto-cadastro e políticas de Row Level Security (RLS)
 
 ---
 
@@ -389,7 +459,75 @@ DBI::dbDisconnect(conn)
 
 ---
 
-## Migração SQLite → Neon (PostgreSQL)
+## Autenticação, Perfis de Usuário & Controle de Acesso (RBAC)
+
+O sistema conta com um módulo robusto de segurança e controle de acesso integrado ao **Supabase Auth (GoTrue REST API)** e tabelas relacionais em PostgreSQL.
+
+> **Guia passo a passo de configuração do Supabase:** [`docs/SUPABASE_AUTH_SETUP.md`](docs/SUPABASE_AUTH_SETUP.md)
+
+### 1. Níveis de Acesso e Matriz de Permissões
+
+| Recurso / Funcionalidade | Usuário Não Autenticado | Leitor / Pesquisador (`leitor`) | Desenvolvedor / Diretoria (`diretoria`) |
+|---|:---:|:---:|:---:|
+| **Acesso ao Dashboard** | ❌ Bloqueio total (Tela de Login) | ✅ Acesso liberado | ✅ Acesso liberado |
+| **Aba "Resultados"** | ❌ Não visualiza | ✅ **Visível** | ✅ **Visível** |
+| **Aba "Por financiador"** | ❌ Não visualiza | ✅ **Visível** | ✅ **Visível** |
+| **Busca Booleana (AST)** | ❌ Bloqueado | ✅ **Liberado** | ✅ **Liberado** |
+| **Exportação XLSX / CSV** | ❌ Bloqueado | ✅ **Liberado** | ✅ **Liberado** |
+| **Botão "Atualizar base"** | ❌ Ocultado | ❌ **Ocultado** | ✅ **Visível e Executável** |
+| **Aba "Buscas salvas"** | ❌ Ocultada | ❌ **Ocultada** | ✅ **Visível** |
+| **Aba "Editais rastreados"** | ❌ Ocultada | ❌ **Ocultada** | ✅ **Visível** |
+| **Logs de Coleta & IA** | ❌ Ocultada | ❌ **Ocultada** | ✅ **Visível** |
+| **Auditoria de Acessos** | ❌ Ocultada | ❌ **Ocultada** | ✅ **Visível** |
+
+> **Garantia de Sigilo:** Nenhum edital, oportunidade ou dado é trafegado pelo servidor Shiny antes da autenticação ser validada com sucesso via `req(rv$user)`.
+
+### 2. Ciclo de Vida da Sessão Persistente (`www/auth.js`)
+
+- **Persistência no Navegador:** Ao autenticar, o token JWT (`access_token`), `refresh_token` e metadados do usuário são persistidos de forma segura no `localStorage` do navegador.
+- **Restauração Silenciosa (F5):** Ao recarregar a página, o script `auth.js` verifica a validade da sessão e a restaura automaticamente em segundo plano, sem travamento visual ou risco de loop infinito.
+- **Auto-Refresh de Token:** A cada 50 minutos, uma rotina assíncrona solicita novo JWT junto à API do Supabase (`/auth/v1/token?grant_type=refresh_token`), evitando expirações abruptas durante análises longas.
+- **Logout Seguro:** Ao clicar em "Sair", os tokens locais são apagados, as credenciais digitadas nos campos de entrada são limpas imediatamente e a sessão no servidor Shiny é terminada.
+
+### 3. Configuração da Tabela de Perfis (`public.perfis`)
+
+O script SQL oficial está disponível em [`sql/setup_supabase_perfis.sql`](sql/setup_supabase_perfis.sql). Ele implementa:
+1. Tabela `public.perfis` com chave estrangeira para `auth.users(id)` em cascata.
+2. Row Level Security (RLS) protegendo a leitura apenas para usuários autenticados.
+3. Trigger PostgreSQL `on_auth_user_created` que cadastra automaticamente novos usuários com o cargo padrão `'leitor'`.
+4. Gestão facilitada: a alteração de cargo para `'diretoria'` é feita diretamente pelo **Supabase Table Editor** (interface planilha) ou pelo SQL Editor.
+
+---
+
+## Exportação de Oportunidades (XLSX / CSV)
+
+A plataforma implementa um pipeline completo de extração de dados através de [`R/helpers_export.R`](R/helpers_export.R), gerando planilhas otimizadas para tomadores de decisão e gestores de captação:
+
+1. **Exportação da Tabela Filtrada:**
+   - Botões dedicados no topo da visualização de resultados.
+   - Gera relatórios em `.xlsx` (via `writexl`) ou `.csv` contendo as 6 colunas prioritárias: **Título**, **Entidade**, **Prazo Limite**, **Link Portal**, **Link Detalhes** e **Link Edital/PDF**.
+   - Respeita integralmente os filtros booleanos e de pesquisa ativos na interface.
+2. **Exportação Pós-Coleta:**
+   - O modal de progresso de coleta disponibiliza botão de download imediato para a diretoria assim que os novos dados são consolidados.
+3. **Nomenclatura Padronizada:**
+   - Arquivos gerados com timestamp auditável: `quiiin_export_YYYYMMDD_HHMMSS.xlsx`.
+
+---
+
+## Sincronização Bidirecional Supabase ↔ SQLite
+
+Para garantir redundância operacional e facilitar o desenvolvimento offline, o projeto conta com o utilitário [`sync_supabase_to_sqlite.R`](sync_supabase_to_sqlite.R):
+
+- Conecta diretamente aos endpoints REST do Supabase utilizando `SUPABASE_URL` e `SUPABASE_ANON_KEY`.
+- Sincroniza as 11 tabelas essenciais para o banco local `funding_intelligence.sqlite`.
+- Execução direta via terminal ou script R:
+  ```bash
+  Rscript sync_supabase_to_sqlite.R
+  ```
+
+---
+
+## Migração SQLite → Neon / Supabase (PostgreSQL)
 
 > **Guia completo passo a passo:** [`docs/MIGRACAO_SQLITE_NEON.md`](docs/MIGRACAO_SQLITE_NEON.md)
 > — configuração do Neon do zero, migração de dados, deploy no Posit Connect,
@@ -542,43 +680,77 @@ Deve retornar JSON com `"totalResults"` > 0.
 
 ## Variáveis de Ambiente
 
-### IA (pelo menos uma obrigatória)
+O arquivo `.Renviron` na raiz do projeto concentra todas as chaves e flags de configuração do sistema. **Nunca versione este arquivo no Git.**
+
+### Autenticação & Controle de Acesso (Supabase Auth)
+
+| Variável | Descrição | Obrigatório | Exemplo / Padrão |
+|---|---|:---:|---|
+| `SUPABASE_URL` | URL base do projeto Supabase | **Sim** | `https://xxxx.supabase.co` |
+| `SUPABASE_ANON_KEY` | Chave pública anônima do Supabase | **Sim** | `eyJhbGciOi...` |
+| `SUPABASE_DEV_EMAILS` | Lista de e-mails com cargo de Diretoria permanente | Não | `diretoria@cimatec.com.br,admin@cimatec.com.br` |
+| `SUPABASE_SERVICE_ROLE_KEY` | Chave de serviço administrativa (usada apenas em scripts) | Não | `eyJhbGciOi...` |
+
+### Provedores de IA (pelo menos uma chave configurada)
+
+| Variável | Descrição | Modelo Recomendado / Testado |
+|---|---|---|
+| `NVIDIA_API_KEY` | Chave NVIDIA Build | `poolside/laguna-xs-2.1`, `meta/llama-3.1-70b-instruct` |
+| `GROQ_API_KEY` | Chave Groq | `llama-3.3-70b-versatile` |
+| `OPENAI_API_KEY` | Chave OpenAI | `gpt-4o-mini`, `gpt-4o` |
+| `GEMINI_API_KEY` | Chave Google Gemini | `gemini-2.0-flash` |
+| `ANTHROPIC_API_KEY` | Chave Anthropic Claude | `claude-3-5-sonnet-20241022` |
+| `DEEPSEEK_API_KEY` | Chave DeepSeek | `deepseek-chat` |
+| `OPENROUTER_API_KEY` | Chave OpenRouter | Roteamento multi-modelo |
+| `BLUESMINDS_API_KEY` | Chave Bluesminds | API legada institucional |
+
+### Configuração do Pipeline de IA (opcional)
 
 | Variável | Descrição | Padrão |
 |---|---|---|
-| `GROQ_API_KEY` | Chave Groq (recomendado para testes) | — |
-| `OPENAI_API_KEY` | Chave OpenAI | — |
-| `GEMINI_API_KEY` | Chave Google Gemini | — |
-| `BLUESMINDS_API_KEY` | Chave Bluesminds | — |
-| `NVIDIA_API_KEY` | Chave NVIDIA Build | — |
-| `ANTHROPIC_API_KEY` | Chave Anthropic Claude | — |
-| `OPENROUTER_API_KEY` | Chave OpenRouter | — |
-| `DEEPSEEK_API_KEY` | Chave DeepSeek | — |
+| `AI_PROVIDER` | Força provedor específico (`nvidia`, `groq`, `openai`, `gemini`, etc.) | Auto-detect |
+| `AI_MODEL` | Força modelo específico do provedor ativo | Específico por provedor |
+| `AI_API_URL` | Endpoint customizado para LLM | Padrão do provedor |
+| `AI_MAX_CHARS` | Contexto máximo de texto por edital | `12000` (trim inteligente) |
+| `AI_VERIFY_METADATA` | Habilita auditoria automática de qualidade do JSON | `true` |
+| `AI_BATCH_SIZE` | Lote de requisições de IA paralelas | `3` |
+| `AI_DELAY_BETWEEN_BATCHES` | Intervalo entre lotes de IA (segundos) | `2` |
+| `SCRAPE_WORKERS` | Workers para raspagem paralela por fonte | `4` |
 
-### Configuração de IA (opcional)
-
-| Variável | Descrição | Padrão |
-|---|---|---|
-| `AI_PROVIDER` | Força provedor específico | auto-detect |
-| `AI_MODEL` | Força modelo específico | provedor-dependent |
-| `AI_API_URL` | Endpoint customizado | provedor-dependent |
-| `AI_MAX_CHARS` | Contexto máximo por edital | `12000` (trim inteligente preserva prazos) |
-| `AI_VERIFY_METADATA` | Habilita auditoria de qualidade | `true` |
-| `AI_BATCH_SIZE` | Lote de requisições paralelas | `3` |
-| `AI_DELAY_BETWEEN_BATCHES` | Atraso entre lotes de IA (seg) | `2` |
-| `SCRAPE_WORKERS` | Workers da coleta paralela por fonte | `4` |
-
-### Banco de dados (Neon/PostgreSQL)
+### Banco de Dados (PostgreSQL / SQLite)
 
 | Variável | Descrição |
 |---|---|
-| `DATABASE_URL` | URL de conexão do PostgreSQL. Se definida, o app usa o Neon; se ausente, usa SQLite local. Ex.: `postgresql://user:senha@host/db?sslmode=require` |
+| `DATABASE_URL` | URL de conexão PostgreSQL (Neon ou Supabase com pooler). Se omitida, a aplicação opera em **SQLite local** (`funding_intelligence.sqlite`) sem falhas. Exemplo: `postgresql://postgres:senha@db.host.supabase.co:5432/postgres?sslmode=require` |
 
-### API Europeia (necessário para Posit Connect)
+### Proxies e Contorno de Bloqueios
 
 | Variável | Descrição | Padrão |
 |---|---|---|
-| `EU_API_PROXY_URL` | URL do Cloudflare Worker proxy para FTOP API | (vazio = FTOP direto) |
+| `EU_API_PROXY_URL` | URL do Cloudflare Worker proxy para requisições FTOP API no Posit Connect | Vazio (acesso direto) |
+
+---
+
+## Governança do Repositório e Regras do `.gitignore`
+
+Para manter o repositório limpo, seguro e livre de arquivos temporários, o projeto adota regras estritas de versionamento:
+
+### 1. O que NUNCA deve ser commitado no Git:
+- **Segredos e Credenciais:** `.Renviron`, `*.env`, `*.env.local`, `gdrive_credentials.json`
+- **Bancos Locais e Lockfiles:** `funding_intelligence.sqlite*`, `*.sqlite-shm`, `*.sqlite-wal`
+- **Ambiente Local e Bibliotecas:** `R_libs/`, `node_modules/`, `.Rproj.user/`
+- **Arquivos Temporários e Logs de Execução:** `logs/`, `data_exports/`, `*.tmp`, `*.log`, `*.png`
+- **Sessões e Perfis Temporários de Teste:** `scratch/`, `scratch_*/`, `scratch_edge_profile*/`
+- **Metadados de Agentes e Caches de IDE:** `.neon`, `.impeccable`, `.openspec_cache/`
+
+### 2. O que DEVE ser versionado:
+- **Código-fonte:** `app.R`, módulos em `R/` (`helpers_*.R`)
+- **Assets Web e Segurança:** `www/styles.css`, `www/auth.js`, `www/senai_cimatec.jpg`, `logos/`
+- **Modelagem de Dados e Migrações:** `schema.sql`, `sql/setup_supabase_perfis.sql`, `migrate_to_neon.R`, `sync_supabase_to_sqlite.R`
+- **Ferramentas Especializadas:** `tools/stealth_fetch.py`
+- **Infraestrutura e Deploy:** `Dockerfile`, `docker-compose.yml`, `.dockerignore`, `manifest.json`
+- **Documentação Técnica:** `README.md`, `CHANGELOG.md`, `docs/*.md`
+- **Suítes de Teste:** `tests/testthat/`, `tests/playwright/`
 
 ---
 

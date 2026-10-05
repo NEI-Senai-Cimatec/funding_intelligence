@@ -1353,3 +1353,102 @@ translate_to_pt_br <- function(records, log_path = NULL) {
 
   records
 }
+
+# ─── Avaliador de Aderência Científico-Tecnológica: Núcleo Naval & Offshore de PD&I ───────
+
+PROMPT_NAVAL_OFFSHORE <- "
+Você é um especialista sênior em fomento de PD&I para o setor Naval, Marítimo e Offshore.
+Avalie a seguinte oportunidade de fomento para um núcleo de Pesquisa, Desenvolvimento e Inovação (PD&I) focado nas seguintes áreas tecnológicas:
+1. ROV / AUV / USV (Veículos Operados Remotamente, Submarinos Autônomos, Superfície Não-Tripulada);
+2. Engenharia Naval e Oceânica (Hidrodinâmica, Estruturas Navais, Materiais e Descarbonização Embarcada);
+3. Energia Marítima (Petróleo & Gás Offshore, Eólica Offshore, Energia das Ondas/Marés, Hidrogênio Verde Marítimo);
+4. Portos & Logística Marítima (Infraestrutura Portuária, Calado Líquido, Automação de Terminais);
+5. Inteligência Artificial Marítima (Inspeção Subaquática por Visão Computacional, Navegação Autônoma, Gêmeos Digitais);
+6. Defesa & Marinha do Brasil (Vigilância da Amazônia Azul, Defesa Marítima, Tecnologias Duplas/Dual-Use);
+7. Infraestrutura de Ensaio (Tanques de Provas, Bacias de Ondas, Túneis de Vento/Cavitação, Laboratórios de Qualificação).
+
+Retorne EXCLUSIVAMENTE um objeto JSON válido no seguinte formato:
+{
+  \"aderencia_naval_nivel\": \"Muito alta\" | \"Alta\" | \"Média\" | \"Baixa\",
+  \"aderencia_naval_justificativa\": \"Explicação objetiva de 1 a 3 frases sobre por que o edital se conecta ou não com o Núcleo Naval/Offshore.\",
+  \"ideia_projeto_consorcio\": \"Sugestão prática de conceito de projeto de PD&I e estrutura de consórcio/parceiros recomendados (ex: ICT + Petrobras + Marinha + EMBRAPII + SENAI CIMATEC). Retorne null se a aderência for Média ou Baixa.\"
+}
+
+=== OPORTUNIDADE ===
+"
+
+evaluate_naval_offshore_adherence <- function(titulo, descricao, texto_bruto = "", entidade = "", use_ai = TRUE, log_path = NULL, conn = NULL) {
+  full_text <- paste(titulo %||% "", descricao %||% "", texto_bruto %||% "", entidade %||% "")
+  norm_text <- tolower(normalize_text(full_text))
+  
+  # 1. Avaliação via IA se disponível
+  if (use_ai && ai_available()) {
+    prompt <- paste0(PROMPT_NAVAL_OFFSHORE, trim_for_ai(full_text, max_chars = 6000))
+    raw_resp <- ai_request_with_fallback(prompt, log_path = log_path, conn = conn)
+    if (!is.null(raw_resp)) {
+      parsed <- tryCatch(jsonlite::fromJSON(raw_resp, simplifyVector = TRUE), error = function(e) NULL)
+      if (!is.null(parsed) && !is.null(parsed$aderencia_naval_nivel)) {
+        return(list(
+          aderencia_naval_nivel = parsed$aderencia_naval_nivel,
+          aderencia_naval_justificativa = parsed$aderencia_naval_justificativa %||% "Oportunidade analisada pela IA com conexão ao setor naval.",
+          ideia_projeto_consorcio = parsed$ideia_projeto_consorcio
+        ))
+      }
+    }
+  }
+  
+  # 2. Fallback Heurístico Determinístico
+  kw_rov <- c("rov", "auv", "usv", "submarino", "subaquatic", "veiculo autonomo", "subsea", "robotica submarina", "drone maritimo")
+  kw_naval <- c("naval", "oceanic", "oceanograf", "embarcac", "embarcação", "casco", "estabilidade naval", "hidrodinamica", "maritim", "propulsao")
+  kw_energia <- c("offshore", "petroleo", "gas", "eolica offshore", "wind offshore", "ondas", "mares", "descarbonizacao", "hidrogenio verde", "riser", "fpso")
+  kw_portos <- c("porto", "portuar", "dragagem", "calado", "terminal maritim", "logistica maritim")
+  kw_ia <- c("inteligencia artificial", "visao computacional", "gemeo digital", "digital twin", "navegacao autonoma", "manutencao preditiva")
+  kw_defesa <- c("marinha", "amazonia azul", "defesa maritima", "sisgaaz", "prosub", "vigilancia maritim", "dupla finalidade", "dual-use")
+  kw_ensaio <- c("tanque de provas", "bacia de ondas", "tunel de cavitacao", "ensaio", "laboratorio de qualificacao", "bancada de testes")
+  
+  check_hits <- function(kws) any(vapply(kws, function(k) grepl(k, norm_text, fixed = TRUE), logical(1)))
+  
+  hits_rov <- check_hits(kw_rov)
+  hits_naval <- check_hits(kw_naval)
+  hits_energia <- check_hits(kw_energia)
+  hits_portos <- check_hits(kw_portos)
+  hits_ia <- check_hits(kw_ia)
+  hits_defesa <- check_hits(kw_defesa)
+  hits_ensaio <- check_hits(kw_ensaio)
+  
+  total_hits <- sum(c(hits_rov, hits_naval, hits_energia, hits_portos, hits_ia, hits_defesa, hits_ensaio))
+  
+  found_areas <- character()
+  if (hits_rov) found_areas <- c(found_areas, "ROV/AUV/USV")
+  if (hits_naval) found_areas <- c(found_areas, "Engenharia Naval e Oceânica")
+  if (hits_energia) found_areas <- c(found_areas, "Energia Marítima & Offshore")
+  if (hits_portos) found_areas <- c(found_areas, "Portos & Logística Marítima")
+  if (hits_ia) found_areas <- c(found_areas, "Inteligência Artificial Marítima")
+  if (hits_defesa) found_areas <- c(found_areas, "Defesa & Marinha do Brasil")
+  if (hits_ensaio) found_areas <- c(found_areas, "Infraestrutura de Ensaio")
+  
+  if (total_hits >= 3 || (hits_rov && hits_energia)) {
+    nivel <- "Muito alta"
+    justificativa <- sprintf("Oportunidade com forte aderência direta ao Núcleo Naval & Offshore nas áreas: %s.", paste(found_areas, collapse = ", "))
+    ideia <- sprintf("Projeto: Desenvolver solução avançada em %s. Consórcio Recomendado: Núcleo Naval CIMATEC + Petrobras/Shell + Unidade EMBRAPII + Marinha do Brasil.", found_areas[[1]])
+  } else if (total_hits >= 2) {
+    nivel <- "Alta"
+    justificativa <- sprintf("Oportunidade relevante conectando-se a temas estratégicos navais: %s.", paste(found_areas, collapse = ", "))
+    ideia <- sprintf("Projeto: Aplicação tecnológica em %s. Consórcio Recomendado: ICT parceira + Empresa do setor Marítimo/Offshore + SENAI CIMATEC.", found_areas[[1]])
+  } else if (total_hits == 1) {
+    nivel <- "Média"
+    justificativa <- sprintf("Oportunidade tangencial com interface potencial na área de %s.", found_areas[[1]])
+    ideia <- NULL
+  } else {
+    nivel <- "Baixa"
+    justificativa <- "Oportunidade sem conexão direta identificada com o ecossistema de PD&I Naval e Offshore."
+    ideia <- NULL
+  }
+  
+  list(
+    aderencia_naval_nivel = nivel,
+    aderencia_naval_justificativa = justificativa,
+    ideia_projeto_consorcio = ideia
+  )
+}
+

@@ -882,10 +882,10 @@ apply_ai_fields_to_df <- function(ai, target_df, row_idx, inferred_fields) {
 
 extract_domain <- function(url) {
   parsed <- tryCatch(xml2::url_parse(url), error = function(e) NULL)
-  if (is.null(parsed) || is.na(parsed$server)) {
+  if (is.null(parsed) || length(parsed$server) == 0 || is.na(parsed$server[[1]]) || !nzchar(parsed$server[[1]])) {
     return("")
   }
-  paste0(parsed$server, if (!is.na(parsed$port)) paste0(":", parsed$port))
+  paste0(parsed$server[[1]], if (length(parsed$port) > 0 && !is.na(parsed$port[[1]])) paste0(":", parsed$port[[1]]))
 }
 
 DomainRateLimiter <- R6::R6Class("DomainRateLimiter",

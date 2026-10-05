@@ -132,6 +132,7 @@ safe_source("R/helpers_recommend.R")
 safe_source("R/helpers_collect.R")
 safe_source("R/helpers_export.R")
 safe_source("R/helpers_auth.R")
+safe_source("R/helpers_reports.R")
 
 # Registra a pasta logos como recurso estático do Shiny
 shiny::addResourcePath("logos", app_file("logos"))
@@ -239,6 +240,12 @@ build_sidebar <- function() {
       multiple = TRUE, 
       options = list(placeholder = "Todos os idiomas")
     ),
+    selectInput(
+      "filter_naval_level",
+      label = tags$span(tags$i(class = "fa fa-anchor"), " Aderência Naval & Offshore"),
+      choices = c("Todas" = "Todas", "Muito alta" = "Muito alta", "Alta" = "Alta", "Média" = "Média", "Baixa" = "Baixa"),
+      selected = "Todas"
+    ),
     tags$hr(style = "margin: 1rem 0; border-color: #cbd5e1;"),
     actionButton(
       "btn_clear_filters", 
@@ -318,7 +325,8 @@ ui <- bslib::page_sidebar(
   bslib::navset_card_tab(
     id = "main_tabs",
     bslib::nav_panel(
-      "Resultados",
+      title = tags$span(tags$i(class = "fa fa-list-check"), " Resultados & Editais"),
+      value = "resultados_editais",
       bslib::card(
         bslib::layout_columns(
           col_widths = c(6, 6),
@@ -337,7 +345,84 @@ ui <- bslib::page_sidebar(
       )
     ),
     bslib::nav_panel(
-      "Por financiador",
+      title = tags$span(tags$i(class = "fa fa-anchor"), " Núcleo Naval & Offshore"),
+      value = "nucleo_naval",
+      bslib::card(
+        style = "background: linear-gradient(135deg, #004691 0%, #0f172a 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;",
+        tags$div(
+          style = "display: flex; justify-content: space-between; align-items: center;",
+          tags$div(
+            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "⚓ Núcleo Naval & Offshore de PD&I"),
+            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e geração automática de propostas para os 7 Eixos Estratégicos Marítimos.")
+          ),
+          tags$div(
+            style = "text-align: right;",
+            tags$span(class = "badge bg-success", style = "font-size: 0.9rem; padding: 6px 12px;", "Aderência Ativa")
+          )
+        )
+      ),
+      bslib::layout_columns(
+        col_widths = c(6, 6),
+        selectInput("naval_theme_filter", "Eixo Temático Naval/Offshore", 
+                    choices = c("Todos os Eixos", "ROV / AUV / USV", "Engenharia Naval e Oceânica", "Energia Marítima & Offshore", "Portos & Logística Marítima", "Inteligência Artificial Marítima", "Defesa & Marinha do Brasil", "Infraestrutura de Ensaio"),
+                    selected = "Todos os Eixos"),
+        selectInput("naval_level_tab_filter", "Filtrar por Nível de Aderência",
+                    choices = c("Todos os Níveis", "Muito alta", "Alta", "Média", "Baixa"),
+                    selected = "Todos os Níveis")
+      ),
+      bslib::card(
+        tags$h5(style = "color: #004691; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Setor Marítimo & Ideias de Projetos Recomendadas"),
+        shinycssloaders::withSpinner(DTOutput("naval_results_table"), type = 6, color = "#004691")
+      )
+    ),
+    bslib::nav_panel(
+      title = tags$span(tags$i(class = "fa fa-newspaper"), " Boletins & Relatórios"),
+      value = "boletins_relatorios",
+      bslib::navset_card_pill(
+        id = "reports_subtabs",
+        bslib::nav_panel(
+          "📰 Boletim Semanal (Segunda-feira)",
+          bslib::card(
+            tags$div(
+              style = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;",
+              tags$div(
+                h5(style = "margin: 0; color: #004691; font-weight: 700;", "Boletim Semanal de Oportunidades (Últimos 7 dias)"),
+                p(style = "margin: 2px 0 0 0; color: #64748b; font-size: 0.85rem;", "Editais e chamadas identificadas ou atualizadas desde a segunda-feira anterior.")
+              ),
+              tags$div(
+                style = "display: flex; gap: 8px;",
+                actionButton("btn_generate_weekly", "Atualizar Boletim", class = "btn-primary btn-sm", icon = icon("sync")),
+                downloadButton("btn_dl_weekly_html", "Baixar HTML", class = "btn-outline-success btn-sm"),
+                downloadButton("btn_dl_weekly_md", "Baixar Markdown", class = "btn-outline-secondary btn-sm")
+              )
+            ),
+            uiOutput("weekly_bulletin_preview_ui")
+          )
+        ),
+        bslib::nav_panel(
+          "📊 Revisão Mensal (Dia 1º do Mês)",
+          bslib::card(
+            tags$div(
+              style = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;",
+              tags$div(
+                h5(style = "margin: 0; color: #004691; font-weight: 700;", "Revisão Mensal de Oportunidades"),
+                p(style = "margin: 2px 0 0 0; color: #64748b; font-size: 0.85rem;", "Balanço integral do mês-calendário anterior e destaques abertos no mês corrente.")
+              ),
+              tags$div(
+                style = "display: flex; gap: 8px;",
+                actionButton("btn_generate_monthly", "Atualizar Revisão Mensal", class = "btn-primary btn-sm", icon = icon("sync")),
+                downloadButton("btn_dl_monthly_html", "Baixar HTML", class = "btn-outline-success btn-sm"),
+                downloadButton("btn_dl_monthly_md", "Baixar Markdown", class = "btn-outline-secondary btn-sm")
+              )
+            ),
+            uiOutput("monthly_review_preview_ui")
+          )
+        )
+      )
+    ),
+    bslib::nav_panel(
+      title = tags$span(tags$i(class = "fa fa-chart-pie"), " Por Financiador"),
+      value = "por_financiador",
       bslib::layout_columns(
         col_widths = c(7, 5),
         bslib::card(plotlyOutput("funders_plot", height = 360)),
@@ -349,19 +434,8 @@ ui <- bslib::page_sidebar(
       DTOutput("funders_table")
     ),
     bslib::nav_panel(
-      "Buscas salvas",
-      tags$div(
-        style = "min-height: 480px; padding: 0.75rem 0; clear: both;",
-        tags$div(
-          style = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;",
-          tags$h5(style = "margin: 0; color: #004691; font-weight: 700;", "Buscas Salvas por Campus"),
-          actionButton("btn_run_all_saved_searches", "Executar todas as buscas salvas", class = "btn-primary", icon = icon("play"))
-        ),
-        DTOutput("saved_searches_table")
-      )
-    ),
-    bslib::nav_panel(
-      "Editais rastreados",
+      title = tags$span(tags$i(class = "fa fa-bookmark"), " Editais Rastreados"),
+      value = "editais_rastreados",
       bslib::layout_columns(
         col_widths = c(8, 4),
         DTOutput("tracked_table"),
@@ -380,18 +454,22 @@ ui <- bslib::page_sidebar(
         )
       )
     ),
-    # Painel "Recomendados para mim" ocultado da UI — código preservado para reativação futura
-    # bslib::nav_panel(
-    #   "Recomendados para mim",
-    #   bslib::layout_columns(
-    #     col_widths = c(8, 4),
-    #     bslib::card(DTOutput("recommended_table")),
-    #     bslib::card(uiOutput("profile_summary"))
-    #   ),
-    #   bslib::card(h4("Colaboradores potenciais por tema"), DTOutput("collaborators_table"))
-    # ),
     bslib::nav_panel(
-      "Logs",
+      title = tags$span(tags$i(class = "fa fa-search"), " Buscas Salvas"),
+      value = "buscas_salvas",
+      tags$div(
+        style = "min-height: 480px; padding: 0.75rem 0; clear: both;",
+        tags$div(
+          style = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;",
+          tags$h5(style = "margin: 0; color: #004691; font-weight: 700;", "Buscas Salvas por Campus"),
+          actionButton("btn_run_all_saved_searches", "Executar todas as buscas salvas", class = "btn-primary", icon = icon("play"))
+        ),
+        DTOutput("saved_searches_table")
+      )
+    ),
+    bslib::nav_panel(
+      title = tags$span(tags$i(class = "fa fa-shield-halved"), " Logs & Auditoria"),
+      value = "logs_auditoria",
       bslib::navset_card_pill(
         id = "logs_subtabs",
         bslib::nav_panel(
@@ -586,16 +664,16 @@ server <- function(input, output, session) {
   refresh_data()
 
   # Observador de controle de abas (RBAC):
-  # Abas 'Buscas salvas', 'Editais rastreados' e 'Logs' são exclusivas de Desenvolvedores / Diretoria
+  # Abas 'Buscas salvas', 'Editais rastreados' e 'Logs & Auditoria' são exclusivas de Desenvolvedores / Diretoria
   observe({
     if (!isTRUE(rv$is_dev_diretoria)) {
-      bslib::nav_hide(id = "main_tabs", target = "Buscas salvas")
-      bslib::nav_hide(id = "main_tabs", target = "Editais rastreados")
-      bslib::nav_hide(id = "main_tabs", target = "Logs")
+      bslib::nav_hide(id = "main_tabs", target = "buscas_salvas")
+      bslib::nav_hide(id = "main_tabs", target = "editais_rastreados")
+      bslib::nav_hide(id = "main_tabs", target = "logs_auditoria")
     } else {
-      bslib::nav_show(id = "main_tabs", target = "Buscas salvas")
-      bslib::nav_show(id = "main_tabs", target = "Editais rastreados")
-      bslib::nav_show(id = "main_tabs", target = "Logs")
+      bslib::nav_show(id = "main_tabs", target = "buscas_salvas")
+      bslib::nav_show(id = "main_tabs", target = "editais_rastreados")
+      bslib::nav_show(id = "main_tabs", target = "logs_auditoria")
     }
   })
 
@@ -1486,6 +1564,29 @@ server <- function(input, output, session) {
     if (length(input$filter_language) > 0) {
       df <- df |> dplyr::filter(idioma %in% input$filter_language)
     }
+
+    # Filtro de Aderência Naval & Offshore do Sidebar
+    if (!is.null(input$filter_naval_level) && input$filter_naval_level != "Todas") {
+      if (!"aderencia_naval_nivel" %in% names(df)) df$aderencia_naval_nivel <- NA_character_
+      if (!"aderencia_naval_justificativa" %in% names(df)) df$aderencia_naval_justificativa <- NA_character_
+      if (!"ideia_projeto_consorcio" %in% names(df)) df$ideia_projeto_consorcio <- NA_character_
+
+      for (i in seq_len(nrow(df))) {
+        if (is.na(df$aderencia_naval_nivel[[i]]) || !nzchar(df$aderencia_naval_nivel[[i]] %||% "")) {
+          eval_res <- evaluate_naval_offshore_adherence(
+            titulo = df$titulo[[i]],
+            descricao = df$descricao_resumida[[i]],
+            texto_bruto = df$texto_bruto[[i]],
+            entidade = df$entidade[[i]],
+            use_ai = FALSE
+          )
+          df$aderencia_naval_nivel[[i]] <- eval_res$aderencia_naval_nivel %||% "Baixa"
+          df$aderencia_naval_justificativa[[i]] <- eval_res$aderencia_naval_justificativa %||% ""
+          df$ideia_projeto_consorcio[[i]] <- eval_res$ideia_projeto_consorcio %||% NA_character_
+        }
+      }
+      df <- df |> dplyr::filter(aderencia_naval_nivel == input$filter_naval_level)
+    }
     
     dplyr::arrange(df, dplyr::desc(score_aderencia), parse_date_safe(data_limite))
   })
@@ -1537,6 +1638,7 @@ server <- function(input, output, session) {
     updateSelectizeInput(session, "filter_status", selected = character(0))
     updateSelectizeInput(session, "filter_type", selected = character(0))
     updateSelectizeInput(session, "filter_language", selected = character(0))
+    updateSelectInput(session, "filter_naval_level", selected = "Todas")
   })
 
   # Renderizador de status persistente no header da aplicação (inclui autenticação e perfil)
@@ -1795,6 +1897,22 @@ server <- function(input, output, session) {
       error = function(e) character()
     )
 
+    # Avaliação de Aderência Naval & Offshore
+    naval_eval <- list(
+      aderencia_naval_nivel = tryCatch(opp$aderencia_naval_nivel[[1]] %||% NA_character_, error = function(e) NA_character_),
+      aderencia_naval_justificativa = tryCatch(opp$aderencia_naval_justificativa[[1]] %||% NA_character_, error = function(e) NA_character_),
+      ideia_projeto_consorcio = tryCatch(opp$ideia_projeto_consorcio[[1]] %||% NA_character_, error = function(e) NA_character_)
+    )
+    if (is.na(naval_eval$aderencia_naval_nivel) || !nzchar(naval_eval$aderencia_naval_nivel %||% "")) {
+      naval_eval <- evaluate_naval_offshore_adherence(
+        titulo = opp$titulo[[1]],
+        descricao = opp$descricao_resumida[[1]],
+        texto_bruto = opp$texto_bruto[[1]],
+        entidade = opp$entidade[[1]],
+        use_ai = FALSE
+      )
+    }
+
     # Exibir Modal Dialog com detalhes estruturados
     showModal(modalDialog(
       title = tags$div(
@@ -1897,6 +2015,30 @@ server <- function(input, output, session) {
                   ))
                 )
               )
+            ),
+            # Avaliação de Aderência para Núcleo Naval & Offshore de PD&I
+            tags$div(
+              style = "margin-bottom: 25px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px;",
+              tags$div(
+                style = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;",
+                tags$h5(style = "color: #166534; font-weight: 700; margin: 0; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.5px;", "⚓ Núcleo Naval & Offshore de PD&I"),
+                tags$span(
+                  style = sprintf("background: %s; color: white; padding: 4px 10px; border-radius: 12px; font-weight: bold; font-size: 0.8rem;",
+                                  if (identical(naval_eval$aderencia_naval_nivel, "Muito alta")) "#15803d"
+                                  else if (identical(naval_eval$aderencia_naval_nivel, "Alta")) "#16a34a"
+                                  else if (identical(naval_eval$aderencia_naval_nivel, "Média")) "#d97706"
+                                  else "#64748b"),
+                  paste("Aderência:", naval_eval$aderencia_naval_nivel %||% "Baixa")
+                )
+              ),
+              tags$p(style = "color: #15803d; font-size: 0.92rem; line-height: 1.5; margin-bottom: 8px;", naval_eval$aderencia_naval_justificativa %||% "Sem dados."),
+              if (!is.null(naval_eval$ideia_projeto_consorcio) && !is.na(naval_eval$ideia_projeto_consorcio) && nzchar(naval_eval$ideia_projeto_consorcio %||% "")) {
+                tags$div(
+                  style = "background: #ffffff; border-left: 4px solid #16a34a; padding: 10px; border-radius: 4px; font-size: 0.88rem; color: #166534; margin-top: 10px;",
+                  tags$strong("💡 Ideia Inicial de Projeto & Consórcio Recomendado:"),
+                  tags$div(style = "margin-top: 4px; font-weight: 500;", naval_eval$ideia_projeto_consorcio)
+                )
+              }
             ),
             # Objeto de Financiamento (Resumo da IA)
             tags$div(
@@ -2089,6 +2231,205 @@ server <- function(input, output, session) {
       }
     }
   })
+
+  # ─── SERVIDOR: Aba Núcleo Naval & Offshore ──────────────────────────────
+  naval_filtered_results <- reactive({
+    req(rv$user)
+    df <- base_results()
+    if (nrow(df) == 0) return(df)
+    
+    # Garantir avaliação naval em todos os registros
+    if (!"aderencia_naval_nivel" %in% names(df)) df$aderencia_naval_nivel <- NA_character_
+    if (!"aderencia_naval_justificativa" %in% names(df)) df$aderencia_naval_justificativa <- NA_character_
+    if (!"ideia_projeto_consorcio" %in% names(df)) df$ideia_projeto_consorcio <- NA_character_
+
+    for (i in seq_len(nrow(df))) {
+      if (is.na(df$aderencia_naval_nivel[[i]]) || !nzchar(df$aderencia_naval_nivel[[i]] %||% "")) {
+        eval_res <- evaluate_naval_offshore_adherence(
+          titulo = df$titulo[[i]],
+          descricao = df$descricao_resumida[[i]],
+          texto_bruto = df$texto_bruto[[i]],
+          entidade = df$entidade[[i]],
+          use_ai = FALSE
+        )
+        df$aderencia_naval_nivel[[i]] <- eval_res$aderencia_naval_nivel %||% "Baixa"
+        df$aderencia_naval_justificativa[[i]] <- eval_res$aderencia_naval_justificativa %||% ""
+        df$ideia_projeto_consorcio[[i]] <- eval_res$ideia_projeto_consorcio %||% NA_character_
+      }
+    }
+    
+    # Filtro por nível de aderência
+    if (!is.null(input$naval_level_tab_filter) && input$naval_level_tab_filter != "Todos os Níveis") {
+      df <- df |> dplyr::filter(aderencia_naval_nivel == input$naval_level_tab_filter)
+    }
+    
+    # Filtro por eixo temático
+    if (!is.null(input$naval_theme_filter) && input$naval_theme_filter != "Todos os Eixos") {
+      theme_query <- tolower(normalize_text(input$naval_theme_filter))
+      df <- df |> dplyr::filter(vapply(seq_len(dplyr::n()), function(i) {
+        comb <- tolower(normalize_text(paste(df$titulo[[i]], df$descricao_resumida[[i]], df$aderencia_naval_justificativa[[i]])))
+        grepl(theme_query, comb, fixed = TRUE)
+      }, logical(1)))
+    }
+    
+    df |> dplyr::mutate(
+      naval_rank = dplyr::case_when(
+        aderencia_naval_nivel == "Muito alta" ~ 1,
+        aderencia_naval_nivel == "Alta" ~ 2,
+        aderencia_naval_nivel == "Média" ~ 3,
+        TRUE ~ 4
+      )
+    ) |> dplyr::arrange(naval_rank, parse_date_safe(data_limite))
+  })
+
+  output$naval_results_table <- renderDT({
+    req(rv$user)
+    df <- naval_filtered_results()
+    if (nrow(df) == 0) {
+      return(DT::datatable(tibble::tibble(Mensagem = "Nenhuma oportunidade cadastrada para os filtros navais selecionados."), options = list(dom = 't')))
+    }
+    
+    shown <- df |>
+      dplyr::mutate(
+        Prazo = format_date_br(data_limite),
+        Financiador = as.factor(entidade),
+        Título = stringr::str_trunc(titulo, 70),
+        Aderência = aderencia_naval_nivel,
+        `Análise & Justificativa` = stringr::str_trunc(aderencia_naval_justificativa %||% "Sem análise", 90),
+        `💡 Ideia de Projeto / Consórcio` = ifelse(!is.na(ideia_projeto_consorcio) & nzchar(ideia_projeto_consorcio %||% ""), stringr::str_trunc(ideia_projeto_consorcio, 90), "Ver edital"),
+        Ações = vapply(id_registro, make_actions_html, character(1))
+      ) |>
+      dplyr::transmute(
+        ID = id_registro,
+        Título,
+        Financiador,
+        Aderência,
+        `Análise & Justificativa`,
+        `💡 Ideia de Projeto / Consórcio`,
+        Prazo,
+        Ações
+      )
+    
+    DT::datatable(
+      shown,
+      escape = FALSE,
+      rownames = FALSE,
+      options = list(
+        pageLength = 10,
+        scrollX = TRUE,
+        language = list(emptyTable = "Nenhuma oportunidade naval encontrada."),
+        columnDefs = list(
+          list(targets = 0, visible = FALSE),
+          list(
+            targets = 3,
+            render = DT::JS("
+              function(data, type, row, meta) {
+                if (type === 'display') {
+                  var level = (data || 'Baixa').toLowerCase();
+                  var cls = 'badge-soft-neutral';
+                  if (level === 'muito alta') cls = 'badge-soft-open';
+                  else if (level === 'alta') cls = 'badge-soft-info';
+                  else if (level === 'média' || level === 'media') cls = 'badge-soft-warning';
+                  return \"<span class='status-badge \" + cls + \"'>\" + data + \"</span>\";
+                }
+                return data;
+              }
+            ")
+          )
+        )
+      )
+    )
+  }, server = FALSE)
+
+  # ─── SERVIDOR: Aba Boletins & Relatórios ──────────────────────────────────
+  weekly_bulletin_data <- reactiveVal(NULL)
+  monthly_review_data <- reactiveVal(NULL)
+
+  observeEvent(rv$opportunities, {
+    req(nrow(rv$opportunities) > 0)
+    if (is.null(weekly_bulletin_data())) {
+      try({
+        res_wb <- generate_weekly_bulletin(conn)
+        weekly_bulletin_data(res_wb)
+      }, silent = TRUE)
+    }
+    if (is.null(monthly_review_data())) {
+      try({
+        res_mr <- generate_monthly_review(conn)
+        monthly_review_data(res_mr)
+      }, silent = TRUE)
+    }
+  }, ignoreNULL = TRUE)
+
+  observeEvent(input$btn_generate_weekly, {
+    withProgress(message = "Gerando Boletim Semanal...", value = 0.5, {
+      res <- tryCatch(generate_weekly_bulletin(conn), error = function(e) {
+        showNotification(paste("Erro ao gerar boletim:", e$message), type = "error", duration = 10)
+        NULL
+      })
+      if (!is.null(res)) {
+        weekly_bulletin_data(res)
+        showNotification("Boletim Semanal atualizado com sucesso!", type = "message")
+      }
+    })
+  })
+
+  observeEvent(input$btn_generate_monthly, {
+    withProgress(message = "Gerando Revisão Mensal...", value = 0.5, {
+      res <- tryCatch(generate_monthly_review(conn), error = function(e) {
+        showNotification(paste("Erro ao gerar revisão mensal:", e$message), type = "error", duration = 10)
+        NULL
+      })
+      if (!is.null(res)) {
+        monthly_review_data(res)
+        showNotification("Revisão Mensal atualizada com sucesso!", type = "message")
+      }
+    })
+  })
+
+  output$weekly_bulletin_preview_ui <- renderUI({
+    res <- weekly_bulletin_data()
+    if (is.null(res)) return(tags$p("Clique em 'Atualizar Boletim' para visualizar."))
+    HTML(res$html)
+  })
+
+  output$monthly_review_preview_ui <- renderUI({
+    res <- monthly_review_data()
+    if (is.null(res)) return(tags$p("Clique em 'Atualizar Revisão Mensal' para visualizar."))
+    HTML(res$html)
+  })
+
+  output$btn_dl_weekly_html <- downloadHandler(
+    filename = function() sprintf("boletim_semanal_%s.html", format(Sys.Date(), "%Y%m%d")),
+    content = function(file) {
+      res <- weekly_bulletin_data()
+      writeLines(res$html %||% "<p>Sem dados.</p>", file, useBytes = TRUE)
+    }
+  )
+
+  output$btn_dl_weekly_md <- downloadHandler(
+    filename = function() sprintf("boletim_semanal_%s.md", format(Sys.Date(), "%Y%m%d")),
+    content = function(file) {
+      res <- weekly_bulletin_data()
+      writeLines(res$markdown %||% "Sem dados.", file, useBytes = TRUE)
+    }
+  )
+
+  output$btn_dl_monthly_html <- downloadHandler(
+    filename = function() sprintf("revisao_mensal_%s.html", format(Sys.Date(), "%Y%m%d")),
+    content = function(file) {
+      res <- monthly_review_data()
+      writeLines(res$html %||% "<p>Sem dados.</p>", file, useBytes = TRUE)
+    }
+  )
+
+  output$btn_dl_monthly_md <- downloadHandler(
+    filename = function() sprintf("revisao_mensal_%s.md", format(Sys.Date(), "%Y%m%d")),
+    content = function(file) {
+      res <- monthly_review_data()
+      writeLines(res$markdown %||% "Sem dados.", file, useBytes = TRUE)
+    }
+  )
 
   output$funders_plot <- renderPlotly({
     req(rv$user)

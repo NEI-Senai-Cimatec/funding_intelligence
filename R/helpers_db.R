@@ -311,7 +311,13 @@ source_catalog <- function() {
     "transferegov", "Portal Transferegov.br - Convênios e Programas Federais", "Transferegov", "Brasil", "portal federal de convênios", "governo federal", "https://www.gov.br/transferegov/pt-br", "https://www.gov.br/transferegov/pt-br", "html", "pt", "diária", "Portal unificado de captação e repasse de recursos voluntários da União, descentralização de recursos (TEDs), emendas e programas governamentais para ICTs.",
     "bnb_hubine", "Banco do Nordeste - Hub de Inovação (Hubine)", "Hubine BNB", "Brasil", "hub de inovação bancário", "banco público", "https://www.bnb.gov.br/hubine", "https://www.bnb.gov.br/hubine", "html", "pt", "mensal", "Hub de inovação do BNB para conexão com startups, aceleração, linhas de financiamento de inovação e programas de empreendedorismo do Nordeste.",
     "sebrae", "SEBRAE Inovação & Sebraetec", "SEBRAE", "Brasil", "serviço social autônomo", "sistema s", "https://sebrae.com.br/", "https://sebrae.com.br/sites/PortalSebrae/canais_adicionais/conheca_editais", "html", "pt", "semanal", "Editais de inovação do SEBRAE para MPEs, programas Sebraetec (automação e digitalização), Catalisa ICT e conexões universidade-empresa.",
-    "softex", "Associação SOFTEX - Programas Prioritários MCTI", "SOFTEX", "Brasil", "organização social de ti", "associação civil", "https://softex.br/", "https://softex.br/editais/", "html", "pt", "semanal", "Editais e chamadas dos Programas Prioritários da Lei de Informática / MCTI para Inteligência Artificial, Ciência de Dados, IoT e Indústria 4.0."
+    "softex", "Associação SOFTEX - Programas Prioritários MCTI", "SOFTEX", "Brasil", "organização social de ti", "associação civil", "https://softex.br/", "https://softex.br/editais/", "html", "pt", "semanal", "Editais e chamadas dos Programas Prioritários da Lei de Informática / MCTI para Inteligência Artificial, Ciência de Dados, IoT e Indústria 4.0.",
+    "pncp_gov", "Governo Federal - PNCP & Ministérios (MCTI, MDIC, MPOR, Defesa, Marinha)", "PNCP Gov", "Brasil", "portal público federal", "governo federal", "https://pncp.gov.br/", "https://pncp.gov.br/api/consulta/v1/contratacoes/publicas", "api_json", "pt", "diária", "API REST pública PNCP para ministérios federais, Marinha do Brasil, Ministério da Defesa, MCTI, MDIC e MPOR.",
+    "fapesp", "Fundação de Amparo à Pesquisa do Estado de São Paulo", "FAPESP", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://fapesp.br/", "https://fapesp.br/chamadas", "html", "pt", "diária", "Chamadas de pesquisa, PIPE-FAPESP, centros de pesquisa e parcerias industriais.",
+    "faperj", "Fundação Carlos Chagas Filho de Amparo à Pesquisa do Estado do RJ", "FAPERJ", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://www.faperj.br/", "https://www.faperj.br/?id=editais", "html", "pt", "diária", "Editais FAPERJ de infraestrutura, inovação tecnológica e setor naval/offshore do Rio de Janeiro.",
+    "fapemig", "Fundação de Amparo à Pesquisa do Estado de Minas Gerais", "FAPEMIG", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://fapemig.br/", "https://fapemig.br/pt/chamadas/", "html", "pt", "semanal", "Chamadas públicas FAPEMIG para PD&I e parcerias institucionais.",
+    "fapesc", "Fundação de Amparo à Pesquisa e Inovação do Estado de Santa Catarina", "FAPESC", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://fapesc.sc.gov.br/", "https://fapesc.sc.gov.br/editais/", "html", "pt", "semanal", "Editais FAPESC para ecossistema de inovação, robótica e tecnologia marítima/portuária.",
+    "anp_shell", "Cláusula de P&D Obrigatório ANP - Petrobras & Shell", "ANP/Shell", "Brasil", "chamada corporativa de P&D", "empresa / agência reguladora", "https://www.gov.br/anp/pt-br", "https://www.gov.br/anp/pt-br/assuntos/pesquisa-desenvolvimento-e-inovacao", "html", "pt", "semanal", "Projetos de P&D com recursos da Cláusula de Investimento em PD&I da ANP para petróleo, gás, descarbonização e energia offshore."
   )
 }
 
@@ -642,7 +648,10 @@ seed_demo_opportunities <- function(conn) {
   enrichment_status = "TEXT DEFAULT 'pendente'",
   enrichment_model = "TEXT",
   enrichment_at = "TEXT",
-  enrichment_error = "TEXT"
+  enrichment_error = "TEXT",
+  aderencia_naval_nivel = "TEXT",
+  aderencia_naval_justificativa = "TEXT",
+  ideia_projeto_consorcio = "TEXT"
 )
 
 migration_marker <- function(conn, flag) {
@@ -866,10 +875,14 @@ cleanup_database_opportunities <- function(conn) {
 # Poda o catálogo para as 21 fontes ativas (fontes descontinuadas do catálogo
 # ampliado não devem ser coletadas). Idempotente e válida em ambos os backends.
 prune_inactive_sources <- function(conn) {
-  try(
-    db_exec(conn, "DELETE FROM fontes_financiamento WHERE id_fonte NOT IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", params = list("cnpq", "capes", "finep", "fapesb", "horizon_europe", "erc", "sigitec", "undp", "embrapii", "daad", "quantum", "humboldt", "grants_gov", "doe_ascr", "nsf_international", "nsf_qise", "nsf_cise", "doe_quantum_genesis", "doe_genesis", "nsf_nqni", "darpa_quantum_benchmarking")),
-    silent = TRUE
-  )
+  try({
+    active_ids <- source_catalog()$id_fonte
+    if (length(active_ids) > 0) {
+      placeholders <- paste(rep("?", length(active_ids)), collapse = ", ")
+      sql <- sprintf("DELETE FROM fontes_financiamento WHERE id_fonte NOT IN (%s)", placeholders)
+      db_exec(conn, sql, params = as.list(active_ids))
+    }
+  }, silent = TRUE)
   invisible(TRUE)
 }
 

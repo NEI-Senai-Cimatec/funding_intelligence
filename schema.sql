@@ -57,7 +57,10 @@ CREATE TABLE IF NOT EXISTS oportunidades (
     enrichment_status TEXT DEFAULT 'pendente',
     enrichment_model TEXT,
     enrichment_at TIMESTAMPTZ,
-    enrichment_error TEXT
+    enrichment_error TEXT,
+    aderencia_naval_nivel TEXT,
+    aderencia_naval_justificativa TEXT,
+    ideia_projeto_consorcio TEXT
 );
 
 CREATE TABLE IF NOT EXISTS migration_flags (
@@ -167,3 +170,35 @@ CREATE INDEX IF NOT EXISTS idx_logs_coleta_status_data
 
 CREATE INDEX IF NOT EXISTS idx_metrics_coleta_tipo_timestamp
     ON metrics_coleta (metric_type, "timestamp");
+
+-- ─── Supabase Auth: Validação de Domínios de E-mail de Cadastro ────────────────
+-- Execute o bloco abaixo no SQL Editor do Supabase Dashboard para restringir
+-- cadastros exclusivamente para os domínios institucionais (@fieb, @fbter, @fbest, @senaicimatec):
+
+/*
+CREATE OR REPLACE FUNCTION public.check_email_domain()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = public, auth
+AS $$
+DECLARE
+  allowed_domains text[] := ARRAY['fieb.org.br', 'fbter.org.br', 'fbest.org.br', 'senaicimatec.com.br', 'cimatec.com.br'];
+  user_domain text;
+BEGIN
+  user_domain := lower(split_part(NEW.email, '@', 2));
+  IF NOT (user_domain = ANY(allowed_domains)) THEN
+    RAISE EXCEPTION 'Cadastro bloqueado: Apenas e-mails institucionais (@fieb.org.br, @fbter.org.br, @fbest.org.br, @senaicimatec.com.br) são permitidos.';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.check_email_domain() TO anon, authenticated, service_role;
+
+DROP TRIGGER IF EXISTS ensure_email_domain ON auth.users;
+CREATE TRIGGER ensure_email_domain
+BEFORE INSERT ON auth.users
+FOR EACH ROW
+EXECUTE FUNCTION public.check_email_domain();
+*/
+

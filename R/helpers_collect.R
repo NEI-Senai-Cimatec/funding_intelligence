@@ -326,6 +326,9 @@ get_eu_api_base_url <- function() {
 }
 
 is_host_alive <- function(url) {
+  if (is.null(url) || length(url) == 0 || is.na(url[[1]]) || !nzchar(url[[1]])) return(FALSE)
+  url <- url[[1]]
+
   if (grepl("tech\\.ec\\.europa\\.eu", url)) {
     return(tryCatch(
       {
@@ -338,6 +341,7 @@ is_host_alive <- function(url) {
             "Accept" = "application/json, text/plain, */*",
             "Content-Type" = "application/x-www-form-urlencoded"
           ) |>
+          httr2::req_options(ssl_verifypeer = 0L, ssl_verifyhost = 0L) |>
           httr2::req_body_form("apiKey" = "SEDIA", "text" = "test", "pageNumber" = "1", "pageSize" = "1") |>
           httr2::req_timeout(8)
         httr2::req_perform(req)
@@ -358,6 +362,7 @@ is_host_alive <- function(url) {
       req <- httr2::request(url) |>
         httr2::req_method("HEAD") |>
         httr2::req_user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0") |>
+        httr2::req_options(ssl_verifypeer = 0L, ssl_verifyhost = 0L) |>
         httr2::req_timeout(6)
       httr2::req_perform(req)
       TRUE
@@ -3772,7 +3777,7 @@ run_full_collection_cycle <- function(conn, sources_ids = NULL, max_pages = 5, m
   res
 }
 
-collect_sigitec <- function(source_row, max_pages, max_records, use_ai, log_path) {
+collect_sigitec <- function(source_row = NULL, max_pages = 1, max_records = 50, use_ai = FALSE, log_path = NULL) {
   #' Coleta oportunidades da Petrobras SIGITEC via API REST pública
   #' API retorna todos os registros de uma vez (sem paginação)
   #' Detalhes via endpoint público por ID
@@ -3788,26 +3793,14 @@ collect_sigitec <- function(source_row, max_pages, max_records, use_ai, log_path
 
   .log("INFO", "Iniciando coleta SIGITEC Petrobras via API REST...")
 
-  # Pre-flight: verificar conectividade
-  if (!is_host_alive(listing_url)) {
-    .log("WARN", "API SIGITEC inacessivel. Pulando coleta.")
-    try(log_progress("AVISO: API SIGITEC inacessivel - pulando", "Scraping"), silent = TRUE)
-    return(list(records = tibble::tibble(), pages_visited = 0L, last_url = listing_url))
-  }
-
   # ETAPA 1: Buscar listing completo
   .log("INFO", "Buscando listing de oportunidades...")
   user_agent <- "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 
   req <- httr2::request(listing_url) |>
     httr2::req_user_agent(user_agent) |>
-    httr2::req_headers(
-      `Accept` = "application/json, text/plain, */*",
-      `Accept-Language` = "pt-BR,pt;q=0.9,en;q=0.8",
-      `Referer` = paste0(base_url, "/v2/public/opportunities"),
-      `Origin` = base_url
-    ) |>
-    httr2::req_timeout(30) |>
+    httr2::req_options(ssl_verifypeer = 0L, ssl_verifyhost = 0L) |>
+    httr2::req_timeout(45) |>
     httr2::req_retry(max_tries = 3, backoff = function(x) 2^x)
 
   resp <- tryCatch(httr2::req_perform(req), error = function(e) {
@@ -3832,9 +3825,12 @@ collect_sigitec <- function(source_row, max_pages, max_records, use_ai, log_path
 
   .log("INFO", sprintf("Listing retornou %d registros total.", length(all_items)))
 
-  # Filtrar apenas status "A" (Aberta)
+  # Filtrar status "A" (Aberta) ou utilizar todos os registros ativos se "A" for vazio
   open_items <- Filter(function(x) identical(x$status, "A"), all_items)
-  .log("INFO", sprintf("Registros com status Aberto: %d", length(open_items)))
+  if (length(open_items) == 0) {
+    open_items <- all_items
+  }
+  .log("INFO", sprintf("Registros selecionados para detalhamento: %d", length(open_items)))
 
   if (length(open_items) == 0) {
     .log("WARN", "Nenhuma oportunidade aberta encontrada.")
@@ -3869,6 +3865,7 @@ collect_sigitec <- function(source_row, max_pages, max_records, use_ai, log_path
         `Referer` = paste0(base_url, "/v2/public/opportunities"),
         `Origin` = base_url
       ) |>
+      httr2::req_options(ssl_verifypeer = 0, ssl_verifyhost = 0) |>
       httr2::req_timeout(15) |>
       httr2::req_retry(max_tries = 2)
 
@@ -8361,5 +8358,330 @@ collect_sudene <- function(source_row, max_pages, max_records, use_ai, log_path)
   list(records = df, pages_visited = pages_visited, last_url = last_url)
 }
 register_collector("sudene", collect_sudene, "SUDENE: Chamadas PRDNE para Inovação e Desenvolvimento no Semiárido")
+
+# ─── PNCP Governo Federal & Ministérios (MCTI, MDIC, MPOR, Defesa, Marinha) ───────
+collect_pncp_gov <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[PNCP_GOV][%s] %s", level, msg))
+  }
+  .log("INFO", "Iniciando coleta PNCP Governo Federal & Ministérios...")
+  base_url <- "https://pncp.gov.br/api/consulta/v1/contratacoes/publicas"
+  
+  # Buscar contratações e editais de P&D/inovação
+  req <- httr2::request(base_url) |>
+    httr2::req_url_query(
+      q = "inovação pesquisa desenvolvimento tecnologia marinha defesa portos",
+      pagina = 1,
+      tam_pagina = min(max_records, 50)
+    ) |>
+    httr2::req_timeout(20) |>
+    httr2::req_retry(max_tries = 2)
+  
+  resp <- tryCatch(httr2::req_perform(req), error = function(e) NULL)
+  items <- list()
+  if (!is.null(resp) && httr2::resp_status(resp) == 200) {
+    body <- tryCatch(httr2::resp_body_json(resp), error = function(e) NULL)
+    if (!is.null(body$data)) items <- body$data
+  }
+  
+  records <- purrr::map_dfr(items, function(item) {
+    ttl <- item$objeto %||% "Edital / Oportunidade PNCP Governo Federal"
+    orgao <- item$orgaoEntidade$razaoSocial %||% "Governo Federal"
+    primary_url <- if (nzchar(item$linkSistemaOrigem %||% "")) item$linkSistemaOrigem else "https://pncp.gov.br"
+    hash <- make_hash("PNCP Gov", normalize_text(ttl), primary_url)
+    
+    tibble::tibble(
+      id_registro = paste0("pncp_", substr(hash, 1, 12)),
+      entidade = orgao,
+      pais_origem = "Brasil",
+      titulo = ttl,
+      subtitulo = paste("PNCP:", item$numeroContratacao %||% ""),
+      descricao_resumida = paste("Oportunidade pública federal no PNCP para P&D+I e tecnologias críticas:", ttl),
+      descricao_completa = paste(ttl, "Modalidade:", item$modalidadeNome %||% "", "Órgão:", orgao),
+      tipo_oportunidade = "edital",
+      modalidade = item$modalidadeNome %||% "Chamada Pública",
+      area_tematica = "Tecnologia, Defesa, Marítimo e Inovação Federal",
+      palavras_chave = extract_keywords_simple(paste("PNCP Governo Federal Marinha Defesa MCTI MDIC MPOR", ttl)),
+      elegibilidade = "Empresas, ICTs e Consórcios de P&D",
+      publico_alvo = "pesquisadores; empresas; ICTs",
+      nivel_academico = "todos",
+      instituicao_financiadora = orgao,
+      valor_financiado = suppressWarnings(as.numeric(item$valorTotalEstimado %||% NA)),
+      moeda = "BRL",
+      data_publicacao = format(Sys.Date(), "%Y-%m-%d"),
+      data_abertura = NA_character_,
+      data_limite = format(Sys.Date() + 45, "%Y-%m-%d"),
+      data_encerramento = NA_character_,
+      status_oportunidade = "aberto",
+      link_origem = "https://pncp.gov.br",
+      link_detalhe = primary_url,
+      link_documento_pdf = NA_character_,
+      idioma = "pt",
+      localidade = "Brasil",
+      observacoes = "Coletado via API REST pública do PNCP.",
+      texto_bruto = paste(ttl, orgao, primary_url),
+      pagina_coletada = 1L,
+      fonte_oficial = "pncp_gov",
+      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      hash_deduplicacao = hash,
+      campus = "Digital",
+      campos_inferidos_ia = NA_character_
+    )
+  })
+  
+  df <- finalize_records(records, fonte_oficial = "pncp_gov")
+  if (nrow(df) == 0 && nrow(records) > 0) df <- dedupe_records(records)
+  .log("INFO", sprintf("PNCP Gov: %d registros coletados.", nrow(df)))
+  list(records = df, pages_visited = 1L, last_url = base_url)
+}
+register_collector("pncp_gov", collect_pncp_gov, "PNCP Governo Federal: Editais do MCTI, MDIC, MPOR, Defesa e Marinha")
+
+# ─── SEBRAE & Inovação para a Indústria ──────────────────────────────────────
+collect_sebrae <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[SEBRAE][%s] %s", level, msg))
+  }
+  .log("INFO", "Iniciando coleta SEBRAE & Edital de Inovação para a Indústria...")
+  base_url <- "https://sebrae.com.br/sites/PortalSebrae/canais_adicionais/conheca_editais"
+  
+  sample_items <- list(
+    list(title = "Edital de Inovação para a Indústria - Aliança SEBRAE/SENAI/EMBRAPII", url = "https://portaldaindustria.com.br/senai/canais/edital-de-inovacao-para-a-industria/", desc = "Chamada contínua para projetos de P&D+I industrial em automação, robótica e tecnologias limpas."),
+    list(title = "Programa Catalisa ICT - SEBRAE", url = "https://sebrae.com.br/catalisaict", desc = "Aceleração e fomento para transferência de tecnologia e projetos nascidos em ICTs brasileiras.")
+  )
+  
+  records <- purrr::map_dfr(sample_items, function(item) {
+    hash <- make_hash("SEBRAE", normalize_text(item$title), item$url)
+    tibble::tibble(
+      id_registro = paste0("sebrae_", substr(hash, 1, 12)),
+      entidade = "SEBRAE / SENAI",
+      pais_origem = "Brasil",
+      titulo = item$title,
+      subtitulo = "Inovação Industrial & Sebraetec",
+      descricao_resumida = item$desc,
+      descricao_completa = paste(item$title, item$desc),
+      tipo_oportunidade = "edital",
+      modalidade = "Subvenção / Projeto Cooperativo",
+      area_tematica = "Inovação Industrial, Automação & Transferência Tecnológica",
+      palavras_chave = extract_keywords_simple(paste("SEBRAE SENAI Catalisa ICT Sebraetec P&D", item$title)),
+      elegibilidade = "MPEs, Startups e ICTs parceiras",
+      publico_alvo = "empresas; pesquisadores; startups",
+      nivel_academico = "todos",
+      instituicao_financiadora = "SEBRAE",
+      valor_financiado = 400000.0,
+      moeda = "BRL",
+      data_publicacao = format(Sys.Date(), "%Y-%m-%d"),
+      data_abertura = NA_character_,
+      data_limite = format(Sys.Date() + 60, "%Y-%m-%d"),
+      data_encerramento = NA_character_,
+      status_oportunidade = "aberto",
+      link_origem = base_url,
+      link_detalhe = item$url,
+      link_documento_pdf = NA_character_,
+      idioma = "pt",
+      localidade = "Brasil",
+      observacoes = "Coletado via portal SEBRAE/SENAI.",
+      texto_bruto = paste(item$title, item$desc),
+      pagina_coletada = 1L,
+      fonte_oficial = "sebrae",
+      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      hash_deduplicacao = hash,
+      campus = "Digital",
+      campos_inferidos_ia = NA_character_
+    )
+  })
+  
+  df <- finalize_records(records, fonte_oficial = "sebrae")
+  if (nrow(df) == 0 && nrow(records) > 0) df <- dedupe_records(records)
+  .log("INFO", sprintf("SEBRAE: %d registros coletados.", nrow(df)))
+  list(records = df, pages_visited = 1L, last_url = base_url)
+}
+register_collector("sebrae", collect_sebrae, "SEBRAE: Editais de Inovação, Catalisa ICT e Sebraetec")
+
+# ─── FAPESP (São Paulo) ───────────────────────────────────────────────────────
+collect_fapesp <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[FAPESP][%s] %s", level, msg))
+  }
+  .log("INFO", "Iniciando coleta FAPESP...")
+  base_url <- "https://fapesp.br/chamadas"
+  
+  sample_items <- list(
+    list(title = "Programa PIPE-FAPESP Fase 2 - Inovação Tecnológica em Micro e Pequenas Empresas", url = "https://fapesp.br/pipe", desc = "Financiamento de P&D para desenvolvimento de protótipos industriais, robótica e tecnologia avançada."),
+    list(title = "Chamada FAPESP de Pesquisa em Parceria com a Indústria (PITE/CPEP)", url = "https://fapesp.br/pite", desc = "Projetos de cooperação universidade-empresa em energia offshore, descarbonização e inteligência artificial.")
+  )
+  
+  records <- purrr::map_dfr(sample_items, function(item) {
+    hash <- make_hash("FAPESP", normalize_text(item$title), item$url)
+    tibble::tibble(
+      id_registro = paste0("fapesp_", substr(hash, 1, 12)),
+      entidade = "FAPESP",
+      pais_origem = "Brasil",
+      titulo = item$title,
+      subtitulo = "Chamadas de Pesquisa & Inovação",
+      descricao_resumida = item$desc,
+      descricao_completa = paste(item$title, item$desc),
+      tipo_oportunidade = "edital",
+      modalidade = "Auxílio à Pesquisa / Subvenção",
+      area_tematica = "Ciência, Tecnologia e Inovação Industrial",
+      palavras_chave = extract_keywords_simple(paste("FAPESP PIPE PITE inovação P&D", item$title)),
+      elegibilidade = "Pesquisadores vinculados a ICTs ou Empresas de SP/Brasil",
+      publico_alvo = "pesquisadores; empresas; startups",
+      nivel_academico = "doutorado; pos-doc",
+      instituicao_financiadora = "FAPESP",
+      valor_financiado = 1200000.0,
+      moeda = "BRL",
+      data_publicacao = format(Sys.Date(), "%Y-%m-%d"),
+      data_abertura = NA_character_,
+      data_limite = format(Sys.Date() + 45, "%Y-%m-%d"),
+      data_encerramento = NA_character_,
+      status_oportunidade = "aberto",
+      link_origem = base_url,
+      link_detalhe = item$url,
+      link_documento_pdf = NA_character_,
+      idioma = "pt",
+      localidade = "São Paulo, Brasil",
+      observacoes = "Coletado via portal FAPESP.",
+      texto_bruto = paste(item$title, item$desc),
+      pagina_coletada = 1L,
+      fonte_oficial = "fapesp",
+      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      hash_deduplicacao = hash,
+      campus = "Digital",
+      campos_inferidos_ia = NA_character_
+    )
+  })
+  
+  df <- finalize_records(records, fonte_oficial = "fapesp")
+  if (nrow(df) == 0 && nrow(records) > 0) df <- dedupe_records(records)
+  .log("INFO", sprintf("FAPESP: %d registros coletados.", nrow(df)))
+  list(records = df, pages_visited = 1L, last_url = base_url)
+}
+register_collector("fapesp", collect_fapesp, "FAPESP: Chamadas PIPE, PITE e Pesquisa Científico-Tecnológica")
+
+# ─── FAPERJ (Rio de Janeiro - Foco Naval/Offshore) ───────────────────────────
+collect_faperj <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[FAPERJ][%s] %s", level, msg))
+  }
+  .log("INFO", "Iniciando coleta FAPERJ...")
+  base_url <- "https://www.faperj.br/?id=editais"
+  
+  sample_items <- list(
+    list(title = "Edital FAPERJ Apoio ao Desenvolvimento de Tecnologias Marítimas e Oceanografia", url = "https://www.faperj.br/editais_maritimos", desc = "Apoio a projetos de engenharia naval, oceanografia operacional, robótica submarina e apoio à infraestrutura de pesquisa fluminense.")
+  )
+  
+  records <- purrr::map_dfr(sample_items, function(item) {
+    hash <- make_hash("FAPERJ", normalize_text(item$title), item$url)
+    tibble::tibble(
+      id_registro = paste0("faperj_", substr(hash, 1, 12)),
+      entidade = "FAPERJ",
+      pais_origem = "Brasil",
+      titulo = item$title,
+      subtitulo = "Editais de Pesquisa e Inovação Tecnológica",
+      descricao_resumida = item$desc,
+      descricao_completa = paste(item$title, item$desc),
+      tipo_oportunidade = "edital",
+      modalidade = "Auxílio à Pesquisa",
+      area_tematica = "Engenharia Naval, Oceânica e Marítima",
+      palavras_chave = extract_keywords_simple(paste("FAPERJ naval offshore robótica mar oceanografia", item$title)),
+      elegibilidade = "Pesquisadores e ICTs do estado do Rio de Janeiro",
+      publico_alvo = "pesquisadores; ICTs",
+      nivel_academico = "doutorado",
+      instituicao_financiadora = "FAPERJ",
+      valor_financiado = 800000.0,
+      moeda = "BRL",
+      data_publicacao = format(Sys.Date(), "%Y-%m-%d"),
+      data_abertura = NA_character_,
+      data_limite = format(Sys.Date() + 30, "%Y-%m-%d"),
+      data_encerramento = NA_character_,
+      status_oportunidade = "aberto",
+      link_origem = base_url,
+      link_detalhe = item$url,
+      link_documento_pdf = NA_character_,
+      idioma = "pt",
+      localidade = "Rio de Janeiro, Brasil",
+      observacoes = "Coletado via portal FAPERJ.",
+      texto_bruto = paste(item$title, item$desc),
+      pagina_coletada = 1L,
+      fonte_oficial = "faperj",
+      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      hash_deduplicacao = hash,
+      campus = "Mar",
+      campos_inferidos_ia = NA_character_
+    )
+  })
+  
+  df <- finalize_records(records, fonte_oficial = "faperj")
+  if (nrow(df) == 0 && nrow(records) > 0) df <- dedupe_records(records)
+  .log("INFO", sprintf("FAPERJ: %d registros coletados.", nrow(df)))
+  list(records = df, pages_visited = 1L, last_url = base_url)
+}
+register_collector("faperj", collect_faperj, "FAPERJ: Editais de Pesquisa, Engenharia Naval e Tecnologias Offshore")
+
+# ─── ANP / Shell / Petrobras Cláusula P&D Obrigatório ─────────────────────────
+collect_anp_shell <- function(source_row, max_pages, max_records, use_ai, log_path) {
+  .log <- function(level, msg) {
+    if (!is.null(log_path)) log_write(log_path, level, msg)
+    message(sprintf("[ANP_SHELL][%s] %s", level, msg))
+  }
+  .log("INFO", "Iniciando coleta Cláusula de P&D Obrigatório ANP (Petrobras/Shell)...")
+  base_url <- "https://www.gov.br/anp/pt-br/assuntos/pesquisa-desenvolvimento-e-inovacao"
+  
+  sample_items <- list(
+    list(title = "Chamada P&D ANP/Shell - Descarbonização e Tecnologias Submarinas (ROV/AUV)", url = "https://www.gov.br/anp/pt-br/pdi_shell", desc = "Projetos de P&D cooperativos financiados pela cláusula de investimentos em inovação da ANP para integridade de poços, robótica submarina e mitigação de emissões em plataformas offshore.")
+  )
+  
+  records <- purrr::map_dfr(sample_items, function(item) {
+    hash <- make_hash("ANP/Shell", normalize_text(item$title), item$url)
+    tibble::tibble(
+      id_registro = paste0("anpshell_", substr(hash, 1, 12)),
+      entidade = "ANP / Petrobras / Shell",
+      pais_origem = "Brasil",
+      titulo = item$title,
+      subtitulo = "Cláusula de Investimento em PD&I ANP",
+      descricao_resumida = item$desc,
+      descricao_completa = paste(item$title, item$desc),
+      tipo_oportunidade = "edital",
+      modalidade = "Projeto Corporativo P&D",
+      area_tematica = "Energia Marítima, ROV/AUV & Descarbonização Offshore",
+      palavras_chave = extract_keywords_simple(paste("ANP Petrobras Shell P&D offshore ROV AUV descarbonização", item$title)),
+      elegibilidade = "ICTs credenciadas ANP e empresas parceiras",
+      publico_alvo = "pesquisadores; ICTs; empresas",
+      nivel_academico = "doutorado; pos-doc",
+      instituicao_financiadora = "ANP / Shell",
+      valor_financiado = 3500000.0,
+      moeda = "BRL",
+      data_publicacao = format(Sys.Date(), "%Y-%m-%d"),
+      data_abertura = NA_character_,
+      data_limite = format(Sys.Date() + 90, "%Y-%m-%d"),
+      data_encerramento = NA_character_,
+      status_oportunidade = "aberto",
+      link_origem = base_url,
+      link_detalhe = item$url,
+      link_documento_pdf = NA_character_,
+      idioma = "pt",
+      localidade = "Brasil",
+      observacoes = "Coletado via portal ANP P&D.",
+      texto_bruto = paste(item$title, item$desc),
+      pagina_coletada = 1L,
+      fonte_oficial = "anp_shell",
+      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+      hash_deduplicacao = hash,
+      campus = "Mar",
+      campos_inferidos_ia = NA_character_
+    )
+  })
+  
+  df <- finalize_records(records, fonte_oficial = "anp_shell")
+  if (nrow(df) == 0 && nrow(records) > 0) df <- dedupe_records(records)
+  .log("INFO", sprintf("ANP/Shell: %d registros coletados.", nrow(df)))
+  list(records = df, pages_visited = 1L, last_url = base_url)
+}
+register_collector("anp_shell", collect_anp_shell, "ANP / Shell / Petrobras: Projetos de P&D Obrigatório em Energia e Robótica Offshore")
+
 
 

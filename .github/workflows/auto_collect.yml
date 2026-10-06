@@ -2,8 +2,8 @@ name: 🔄 Busca Automática de Editais
 
 on:
   schedule:
-    # 0 17 * * 2 = Toda terça-feira às 17:00 UTC (14:00 Horário de Brasília)
-    - cron: '0 17 * * 2'
+    # 30 17 * * 2 = Toda terça-feira às 17:30 UTC (14:30 Horário de Brasília)
+    - cron: '30 17 * * 2'
   workflow_dispatch: # Permite disparo manual com 1 clique na aba Actions do GitHub
 
 concurrency:

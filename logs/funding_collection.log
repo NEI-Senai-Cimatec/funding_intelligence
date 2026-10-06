@@ -1,0 +1,1646 @@
+[2026-10-05 12:33:19] [INFO] Início da coleta oficial.
+[2026-10-05 12:33:19] [INFO] Logs de erro antigos removidos de logs_coleta.
+[2026-10-05 12:33:20] [INFO] Iniciando coleta FINEP via API REST...
+[2026-10-05 12:33:20] [INFO] Buscando página 1: https://www.finep.gov.br/o/c/chamadapublicas?sort=dataDePublicacao:desc&page=1&pageSize=250
+[2026-10-05 12:33:20] [INFO] Coletando FAPESB via categoria (ano=2026, status=Abertos)...
+[2026-10-05 12:33:20] [INFO] Total de registros: 477
+[2026-10-05 12:33:20] [INFO] Página 1: 250 itens total, 35 filtrados (Aberta)
+[2026-10-05 12:33:21] [INFO] Buscando página 2: https://www.finep.gov.br/o/c/chamadapublicas?sort=dataDePublicacao:desc&page=2&pageSize=250
+[2026-10-05 12:33:21] [INFO] Página 2: 227 itens total, 0 filtrados (Aberta)
+[2026-10-05 12:33:21] [INFO] Total de itens coletados (Aberta): 35
+[2026-10-05 12:33:21] [WARN] Limitado a 15 registros
+[2026-10-05 12:33:21] [INFO] FINEP: 15 registros finais coletados
+[2026-10-05 12:33:21] [WARN] Ambiguidade de data: '01/10/2026'
+[2026-10-05 12:33:21] [WARN] Ambiguidade de data: '06/10/2026'
+[2026-10-05 12:33:21] [WARN] Ambiguidade de data: '03/11/2026'
+[2026-10-05 12:33:21] [WARN] Ambiguidade de data: '06/11/2026'
+[2026-10-05 12:33:21] [WARN] Ambiguidade de data: '09/11/2026'
+[2026-10-05 12:33:21] [WARN] Ambiguidade de data: '10/11/2026'
+[2026-10-05 12:33:21] [WARN] Ambiguidade de data: '07/12/2026'
+[2026-10-05 12:33:21] [WARN] Ambiguidade de data: '10/12/2026'
+[2026-10-05 12:33:21] [WARN] Ambiguidade de data: '11/12/2027'
+[2026-10-05 12:33:21] [WARN] Ambiguidade de data: '01/10/2026'
+[2026-10-05 12:33:21] [WARN] Ambiguidade de data: '06/10/2026'
+[2026-10-05 12:33:21] [WARN] Ambiguidade de data: '03/11/2026'
+[2026-10-05 12:33:21] [WARN] Ambiguidade de data: '06/11/2026'
+[2026-10-05 12:33:21] [WARN] Ambiguidade de data: '9/11/2026'
+[2026-10-05 12:33:21] [WARN] Ambiguidade de data: '10/11/2026'
+[2026-10-05 12:33:21] [WARN] Ambiguidade de data: '11/12/2027'
+[2026-10-05 12:33:21] [WARN] Ambiguidade de data: '07/12/2026'
+[2026-10-05 12:33:21] [WARN] Ambiguidade de data: '10/12/2026'
+[2026-10-05 12:33:21] [WARN] Ambiguidade de data: '06/11/20'
+[2026-10-05 12:33:22] [INFO] Iniciando coleta Horizon Europe via API REST...
+[2026-10-05 12:33:22] [INFO] Buscando termo: HORIZON-EIC-2026-PRIZE
+[2026-10-05 12:33:24] [INFO] Termo 'HORIZON-EIC-2026-PRIZE': 100 resultados brutos
+[2026-10-05 12:33:24] [INFO] Termo 'HORIZON-EIC-2026-PRIZE': 4 itens HEU acumulados (brutos)
+[2026-10-05 12:33:25] [INFO] Buscando termo: HORIZON-EIC-2026-ACCELERATOR
+[2026-10-05 12:33:25] [WARN] Ambiguidade de data: '04/10/2026'
+[2026-10-05 12:33:25] [WARN] Ambiguidade de data: '02/10/2026'
+[2026-10-05 12:33:25] [WARN] Ambiguidade de data: '06/10/2026'
+[2026-10-05 12:33:25] [WARN] Ambiguidade de data: '08/10/2026'
+[2026-10-05 12:33:25] [WARN] Ambiguidade de data: '04/11/2026'
+[2026-10-05 12:33:25] [WARN] Ambiguidade de data: '08/11/2026'
+[2026-10-05 12:33:25] [WARN] Ambiguidade de data: '10/06/2027'
+[2026-10-05 12:33:25] [WARN] Ambiguidade de data: '10/06/2027'
+[2026-10-05 12:33:25] [WARN] Ambiguidade de data: '04/10/2026'
+[2026-10-05 12:33:25] [WARN] Ambiguidade de data: '02/10/2026'
+[2026-10-05 12:33:25] [WARN] Ambiguidade de data: '06/10/2026'
+[2026-10-05 12:33:25] [WARN] Ambiguidade de data: '08/10/2026'
+[2026-10-05 12:33:25] [WARN] Ambiguidade de data: '04/11/2026'
+[2026-10-05 12:33:25] [WARN] Ambiguidade de data: '08/11/2026'
+[2026-10-05 12:33:26] [INFO] FAPESB: 15 editais abertos em 2026
+[2026-10-05 12:33:26] [INFO] [1/15] DIRETRIZES ESPECÍFICAS DA FAPESB – CHAMADA BIODIVERSA + “BIODIVFUTURE 
+[2026-10-05 12:33:27] [INFO] Termo 'HORIZON-EIC-2026-ACCELERATOR': 100 resultados brutos
+[2026-10-05 12:33:27] [INFO] Termo 'HORIZON-EIC-2026-ACCELERATOR': 36 itens HEU acumulados (brutos)
+[2026-10-05 12:33:27] [INFO] Buscando termo: HORIZON-EIC-2026-PATHFINDER
+[2026-10-05 12:33:28] [INFO] Termo 'HORIZON-EIC-2026-PATHFINDER': 100 resultados brutos
+[2026-10-05 12:33:28] [INFO] Termo 'HORIZON-EIC-2026-PATHFINDER': 43 itens HEU acumulados (brutos)
+[2026-10-05 12:33:29] [INFO] Buscando termo: HORIZON-MSCA-2026-PF
+[2026-10-05 12:33:32] [WARN] Ambiguidade de data: '06/09/2026'
+[2026-10-05 12:33:32] [INFO] [2/15] DIRETRIZES ESPECÍFICAS DA FAPESB – CHAMADA TRANSNACIONAL CONJUNTA WATE
+[2026-10-05 12:33:33] [INFO] Termo 'HORIZON-MSCA-2026-PF': 100 resultados brutos
+[2026-10-05 12:33:33] [INFO] Termo 'HORIZON-MSCA-2026-PF': 80 itens HEU acumulados (brutos)
+[2026-10-05 12:33:34] [INFO] Buscando termo: HORIZON-MSCA-2026-DN
+[2026-10-05 12:33:35] [INFO] Termo 'HORIZON-MSCA-2026-DN': 100 resultados brutos
+[2026-10-05 12:33:35] [INFO] Termo 'HORIZON-MSCA-2026-DN': 115 itens HEU acumulados (brutos)
+[2026-10-05 12:33:36] [WARN] Ambiguidade de data: '02/01/2019'
+[2026-10-05 12:33:36] [INFO] Buscando termo: HORIZON-MSCA-2026-POSTDOC
+[2026-10-05 12:33:37] [INFO] Termo 'HORIZON-MSCA-2026-POSTDOC': 100 resultados brutos
+[2026-10-05 12:33:37] [INFO] Termo 'HORIZON-MSCA-2026-POSTDOC': 118 itens HEU acumulados (brutos)
+[2026-10-05 12:33:38] [INFO] Buscando termo: HORIZON-MSCA-2026-DOCTORAL
+[2026-10-05 12:33:39] [INFO] FAPESB prazo extraido via PDF: 2027-04-06 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/DIRETRIZES___COOPINTER___WATER4ALL_VF__1_-1-1.pdf)
+[2026-10-05 12:33:39] [WARN] Ambiguidade de data: '11/12/2026'
+[2026-10-05 12:33:39] [WARN] Ambiguidade de data: '03/09/2026'
+[2026-10-05 12:33:39] [INFO] Termo 'HORIZON-MSCA-2026-DOCTORAL': 100 resultados brutos
+[2026-10-05 12:33:39] [INFO] Termo 'HORIZON-MSCA-2026-DOCTORAL': 125 itens HEU acumulados (brutos)
+[2026-10-05 12:33:39] [WARN] Ambiguidade de data: '09/10/2026'
+[2026-10-05 12:33:39] [INFO] [3/15] DIRETRIZES ESPECÍFICAS DA FAPESB – 1ª CHAMADA DA PARCERIA DE MATÉRIAS-
+[2026-10-05 12:33:39] [WARN] Ambiguidade de data: '04/09/2026'
+[2026-10-05 12:33:39] [INFO] Buscando termo: HORIZON-WIDERA-ERC-POC
+[2026-10-05 12:33:40] [INFO] Iniciando coleta ERC via API REST...
+[2026-10-05 12:33:40] [INFO] Buscando termo: ERC AdG 2026
+[2026-10-05 12:33:42] [INFO] Termo 'ERC AdG 2026': 100 resultados brutos
+[2026-10-05 12:33:42] [INFO] Termo 'ERC AdG 2026': 0 itens ERC acumulados (brutos)
+[2026-10-05 12:33:43] [INFO] Buscando termo: ERC PoC 2026
+[2026-10-05 12:33:43] [WARN] Ambiguidade de data: '10/09/2026'
+[2026-10-05 12:33:43] [WARN] Ambiguidade de data: '09/10/2026'
+[2026-10-05 12:33:43] [WARN] Ambiguidade de data: '04/12/2026'
+[2026-10-05 12:33:43] [WARN] Ambiguidade de data: '08/01/2027'
+[2026-10-05 12:33:43] [WARN] Ambiguidade de data: '10/09/2026'
+[2026-10-05 12:33:43] [WARN] Ambiguidade de data: '09/10/2026'
+[2026-10-05 12:33:43] [WARN] Ambiguidade de data: '04/12/2026'
+[2026-10-05 12:33:43] [WARN] Ambiguidade de data: '08/01/2027'
+[2026-10-05 12:33:45] [INFO] Termo 'ERC PoC 2026': 100 resultados brutos
+[2026-10-05 12:33:45] [INFO] Termo 'ERC PoC 2026': 0 itens ERC acumulados (brutos)
+[2026-10-05 12:33:46] [INFO] Deduplicando 0 itens brutos...
+[2026-10-05 12:33:46] [INFO] Após deduplicação: 0 itens únicos
+[2026-10-05 12:33:46] [INFO] Total de itens ERC coletados: 0
+[2026-10-05 12:33:46] [WARN] Nenhum item ERC encontrado
+[2026-10-05 12:33:46] [INFO] Iniciando coleta SIGITEC Petrobras via API REST...
+[2026-10-05 12:33:46] [INFO] Buscando listing de oportunidades...
+[2026-10-05 12:33:47] [INFO] Termo 'HORIZON-WIDERA-ERC-POC': 100 resultados brutos
+[2026-10-05 12:33:47] [INFO] Termo 'HORIZON-WIDERA-ERC-POC': 132 itens HEU acumulados (brutos)
+[2026-10-05 12:33:47] [INFO] Buscando termo: HORIZON-WIDERA-ERC-ADG
+[2026-10-05 12:33:48] [INFO] FAPESB prazo extraido via PDF: 2027-05-15 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/DIRETRIZES_COOPINTER_RAMP_2026.pdf)
+[2026-10-05 12:33:49] [INFO] [4/15] CHAMADA CDTI ESPANHA (2026-2027) – DIRETRIZES ESPECÍFICAS DA FAPESB -
+[2026-10-05 12:33:49] [INFO] Termo 'HORIZON-WIDERA-ERC-ADG': 100 resultados brutos
+[2026-10-05 12:33:49] [INFO] Termo 'HORIZON-WIDERA-ERC-ADG': 143 itens HEU acumulados (brutos)
+[2026-10-05 12:33:49] [INFO] Buscando termo: HORIZON-WIDERA-TWINNING
+[2026-10-05 12:33:50] [INFO] Termo 'HORIZON-WIDERA-TWINNING': 100 resultados brutos
+[2026-10-05 12:33:50] [INFO] Termo 'HORIZON-WIDERA-TWINNING': 176 itens HEU acumulados (brutos)
+[2026-10-05 12:33:50] [INFO] Iniciando coleta UNDP Brasil via componente externo...
+[2026-10-05 12:33:51] [INFO] Buscando termo: HORIZON-WIDERA-2026-NCP
+[2026-10-05 12:33:52] [INFO] Buscando componente de dados...
+[2026-10-05 12:33:52] [INFO] Parseando JSON do componente JavaScript...
+[2026-10-05 12:33:52] [INFO] Componente retornou 8 registros.
+[2026-10-05 12:33:52] [INFO] Termo 'HORIZON-WIDERA-2026-NCP': 100 resultados brutos
+[2026-10-05 12:33:52] [INFO] Termo 'HORIZON-WIDERA-2026-NCP': 198 itens HEU acumulados (brutos)
+[2026-10-05 12:33:53] [INFO] Buscando termo: HORIZON-WIDERA-2026-COFUND
+[2026-10-05 12:33:53] [WARN] Ambiguidade de data: '08/10/2026'
+[2026-10-05 12:33:53] [INFO] FAPESB prazo extraido via regex: 2026-10-08
+[2026-10-05 12:33:53] [INFO] Detalhe parseado com sucesso.
+[2026-10-05 12:33:54] [INFO] [5/15] CHAMADA GCUB – MOB Nº 2026/2027 – PROGRAMA DE MOBILIDADE INTERNACIONAL
+[2026-10-05 12:33:54] [INFO] Termo 'HORIZON-WIDERA-2026-COFUND': 100 resultados brutos
+[2026-10-05 12:33:54] [INFO] Termo 'HORIZON-WIDERA-2026-COFUND': 225 itens HEU acumulados (brutos)
+[2026-10-05 12:33:55] [INFO] Buscando termo: HORIZON-CL3-2026
+[2026-10-05 12:33:56] [INFO] Termo 'HORIZON-CL3-2026': 100 resultados brutos
+[2026-10-05 12:33:56] [INFO] Termo 'HORIZON-CL3-2026': 291 itens HEU acumulados (brutos)
+[2026-10-05 12:33:56] [INFO] Progresso: 5/8 registros processados.
+[2026-10-05 12:33:56] [INFO] Buscando termo: HORIZON-CL5-2026
+[2026-10-05 12:33:57] [INFO] Termo 'HORIZON-CL5-2026': 100 resultados brutos
+[2026-10-05 12:33:57] [INFO] Termo 'HORIZON-CL5-2026': 345 itens HEU acumulados (brutos)
+[2026-10-05 12:33:58] [INFO] UNDP: 8 registros finais coletados.
+[2026-10-05 12:33:58] [INFO] Buscando termo: HORIZON-CL2-2026
+[2026-10-05 12:33:58] [INFO] Iniciando coleta EMBRAPII (embrapii.org.br/transparencia/).
+[2026-10-05 12:33:58] [INFO] Encontradas 29 chamadas unicas na pagina de transparencia.
+[2026-10-05 12:33:58] [INFO] Detalhe parseado com sucesso (primeira chamada).
+[2026-10-05 12:33:59] [INFO] Termo 'HORIZON-CL2-2026': 100 resultados brutos
+[2026-10-05 12:33:59] [INFO] Termo 'HORIZON-CL2-2026': 397 itens HEU acumulados (brutos)
+[2026-10-05 12:33:59] [INFO] Buscando termo: HORIZON-CL4-2026-HUMAN
+[2026-10-05 12:34:00] [INFO] Termo 'HORIZON-CL4-2026-HUMAN': 100 resultados brutos
+[2026-10-05 12:34:00] [INFO] Termo 'HORIZON-CL4-2026-HUMAN': 475 itens HEU acumulados (brutos)
+[2026-10-05 12:34:01] [INFO] Buscando termo: HORIZON-CL5-2026-ENERGY
+[2026-10-05 12:34:01] [INFO] FAPESB prazo extraido via PDF: 2026-07-13 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/MINUTA_DIRETRIZES___GCUB_2026.2027.pdf)
+[2026-10-05 12:34:02] [INFO] Termo 'HORIZON-CL5-2026-ENERGY': 100 resultados brutos
+[2026-10-05 12:34:02] [INFO] Termo 'HORIZON-CL5-2026-ENERGY': 503 itens HEU acumulados (brutos)
+[2026-10-05 12:34:02] [INFO] Deduplicando 503 itens brutos...
+[2026-10-05 12:34:02] [INFO] Substituído 'HORIZON-MSCA-2027-DN-01' por versão em inglês
+[2026-10-05 12:34:02] [INFO] [6/15] CHAMADA 2026- PROGRAMA DE AUXILIO PARA DOUTORANDOS COM BOLSA NACIONAL 
+[2026-10-05 12:34:02] [INFO] Após deduplicação: 55 itens únicos
+[2026-10-05 12:34:02] [INFO] Total de itens HEU coletados: 55
+[2026-10-05 12:34:02] [WARN] 51 registro(s) HEU sem data_limite. Tentando fallback CORDIS API...
+[2026-10-05 12:34:03] [INFO] Progresso: 10/29 chamadas processadas.
+[2026-10-05 12:34:06] [INFO] HEU: 55 registros finais coletados
+[2026-10-05 12:34:06] [INFO] Retornando lista com 34 registros
+[2026-10-05 12:34:06] [INFO] Iniciando coleta DAAD Brasil (híbrido JSON + scraping).
+[2026-10-05 12:34:06] [INFO] Fase 1: Baixando catálogo global DAAD (scholarships.js).
+[2026-10-05 12:34:07] [INFO] scholarships.js baixado: 680738 caracteres.
+[2026-10-05 12:34:08] [INFO] Catálogo global: 81 bolsas Brasil extraídas de 162 totais.
+[2026-10-05 12:34:08] [INFO] Fase 2: Fazendo scraping do listing DAAD Brasil.
+[2026-10-05 12:34:08] [INFO] Progresso: 20/29 chamadas processadas.
+[2026-10-05 12:34:09] [WARN] Ambiguidade de data: '03/09/2026'
+[2026-10-05 12:34:10] [INFO] Página 1: 5 itens extraídos (total: 5).
+[2026-10-05 12:34:11] [INFO] FAPESB prazo extraido via PDF: 2026-09-03 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/CONFAP-Conselho-Nacional-dChamada-DAAD-Programa-de-Auxilio-para-Doutorando-2026.pdf)
+[2026-10-05 12:34:12] [INFO] [7/15] EDITAL FAPESB No 018/2026 – APOIO À PUBLICAÇÃO CIENTÍFICA, TECNOLÓGICA
+[2026-10-05 12:34:12] [INFO] Página 2: 5 itens extraídos (total: 10).
+[2026-10-05 12:34:13] [INFO] EMBRAPII: 29 registros finais coletados.
+[2026-10-05 12:34:14] [INFO] Página 3: 5 itens extraídos (total: 15).
+[2026-10-05 12:34:14] [INFO] Iniciando coleta EU Quantum Technologies via API REST...
+[2026-10-05 12:34:14] [INFO] Buscando termo: 'HORIZON-JU-EUROHPC-2026'
+[2026-10-05 12:34:15] [INFO] Página 4: 5 itens extraídos (total: 20).
+[2026-10-05 12:34:16] [INFO] Termo 'HORIZON-JU-EUROHPC-2026': 100 resultados brutos
+[2026-10-05 12:34:16] [INFO] Termo 'HORIZON-JU-EUROHPC-2026': 37 itens HEU quantum acumulados
+[2026-10-05 12:34:16] [ERROR] Falha ao buscar listing: Failed to perform HTTP request.
+[2026-10-05 12:34:16] [WARN] Listing retornou erro. Tentando fallback Playwright...
+[2026-10-05 12:34:16] [INFO] Tentando fallback via Playwright...
+[2026-10-05 12:34:16] [INFO] Buscando termo: 'HORIZON-JU-SNS-2022'
+[2026-10-05 12:34:17] [INFO] Página 5: 5 itens extraídos (total: 25).
+[2026-10-05 12:34:17] [INFO] Listing completo: 25 itens de 5 páginas.
+[2026-10-05 12:34:17] [INFO] Fase 3: Mergeando catálogo JSON com listing Brasil.
+[2026-10-05 12:34:17] [INFO] Fase 3: 62 bolsas descartadas (sem correspondência no listing Brasil).
+[2026-10-05 12:34:17] [INFO] Fase 3: 19 registros mergeados (JSON + listing Brasil).
+[2026-10-05 12:34:17] [INFO] Fase 4: Buscando páginas de detalhe.
+[2026-10-05 12:34:17] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:34:17] [WARN] Playwright falhou. Tentando Chromote...
+[2026-10-05 12:34:18] [INFO] Termo 'HORIZON-JU-SNS-2022': 100 resultados brutos
+[2026-10-05 12:34:18] [INFO] Termo 'HORIZON-JU-SNS-2022': 53 itens HEU quantum acumulados
+[2026-10-05 12:34:18] [INFO] Página renderizada. Extraindo candidatos do DOM...
+[2026-10-05 12:34:18] [WARN] Nenhum candidato extraído do DOM.
+[2026-10-05 12:34:18] [INFO] Iniciando coleta Alexander von Humboldt Foundation.
+[2026-10-05 12:34:18] [INFO] Buscando fellowships...
+[2026-10-05 12:34:18] [INFO] Buscando termo: 'HORIZON-CL4-2026-HUMAN'
+[2026-10-05 12:34:19] [INFO] Termo 'HORIZON-CL4-2026-HUMAN': 100 resultados brutos
+[2026-10-05 12:34:19] [INFO] Termo 'HORIZON-CL4-2026-HUMAN': 131 itens HEU quantum acumulados
+[2026-10-05 12:34:20] [INFO] Filter 'schollarships': 10 programas encontrados.
+[2026-10-05 12:34:20] [INFO] Buscando termo: 'quantum'
+[2026-10-05 12:34:21] [WARN] Ambiguidade de data: '03/07/26'
+[2026-10-05 12:34:21] [WARN] Ambiguidade de data: '20/07/26'
+[2026-10-05 12:34:21] [WARN] Ambiguidade de data: '08/10/26'
+[2026-10-05 12:34:21] [WARN] Ambiguidade de data: '16/10/26'
+[2026-10-05 12:34:21] [WARN] Ambiguidade de data: '19/10/26'
+[2026-10-05 12:34:21] [WARN] Ambiguidade de data: '04/11/26'
+[2026-10-05 12:34:21] [WARN] Ambiguidade de data: '09/11/26'
+[2026-10-05 12:34:21] [INFO] FAPESB prazo extraido via PDF: 2026-10-26 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/EDITAL_Publi_Livro_2027-VFinal.docx.pdf)
+[2026-10-05 12:34:21] [INFO] Filter 'award': 9 programas encontrados.
+[2026-10-05 12:34:21] [INFO] [8/15] EDITAL DE SELEÇÃO PÚBLICA Nº 017/ 2026 Subvenção Econômica à Pesquisa,
+[2026-10-05 12:34:22] [INFO] Termo 'quantum': 100 resultados brutos
+[2026-10-05 12:34:22] [INFO] Termo 'quantum': 135 itens HEU quantum acumulados
+[2026-10-05 12:34:22] [INFO] Total de 18 programas únicos após dedup.
+[2026-10-05 12:34:22] [INFO] Buscando termo: 'quantum computing'
+[2026-10-05 12:34:25] [INFO] Termo 'quantum computing': 100 resultados brutos
+[2026-10-05 12:34:25] [INFO] Termo 'quantum computing': 135 itens HEU quantum acumulados
+[2026-10-05 12:34:26] [INFO] Buscando termo: 'quantum communication'
+[2026-10-05 12:34:27] [INFO] Progresso: 5/15 detalhes coletados.
+[2026-10-05 12:34:28] [WARN] Ambiguidade de data: '06.02.2009'
+[2026-10-05 12:34:29] [INFO] [9/15] EDITAL Nº 019/2026 – CIÊNCIA NA MESA 5: BASE DE DADOS E SISTEMAS DE IN
+[2026-10-05 12:34:30] [INFO] Termo 'quantum communication': 100 resultados brutos
+[2026-10-05 12:34:30] [INFO] Termo 'quantum communication': 135 itens HEU quantum acumulados
+[2026-10-05 12:34:30] [INFO] Buscando termo: 'quantum sensors'
+[2026-10-05 12:34:32] [INFO] Progresso: 10/15 detalhes coletados.
+[2026-10-05 12:34:32] [INFO] Termo 'quantum sensors': 100 resultados brutos
+[2026-10-05 12:34:32] [INFO] Termo 'quantum sensors': 135 itens HEU quantum acumulados
+[2026-10-05 12:34:33] [INFO] Buscando termo: 'quantum technology'
+[2026-10-05 12:34:35] [INFO] Termo 'quantum technology': 100 resultados brutos
+[2026-10-05 12:34:35] [INFO] Termo 'quantum technology': 135 itens HEU quantum acumulados
+[2026-10-05 12:34:35] [INFO] Deduplicando 135 itens brutos...
+[2026-10-05 12:34:35] [INFO] Apos deduplicacao: 21 itens unicos
+[2026-10-05 12:34:35] [INFO] QUANTUM: 21 registros finais coletados
+[2026-10-05 12:34:35] [INFO] Retornando lista com 34 registros
+[2026-10-05 12:34:36] [INFO] Iniciando coleta Grants.gov (CFDA 19.040 - Public Diplomacy).
+[2026-10-05 12:34:36] [INFO] Tentando API Grants.gov: https://simpler.grants.gov/api/opportunities/search
+[2026-10-05 12:34:36] [INFO] [10/15] EDITAL FAPESB/SECTI – Nº 010/2026 – UNIVERSAL -
+[2026-10-05 12:34:37] [INFO] Progresso: 15/15 detalhes coletados.
+[2026-10-05 12:34:37] [INFO] HUMBOLDT: 15 registros finais coletados.
+[2026-10-05 12:34:37] [INFO] Iniciando coleta DOE ASCR (HPC, Quantum, AI for Science).
+[2026-10-05 12:34:37] [INFO] Tentando carregar DOE ASCR via https://science.osti.gov/ascr/Funding-Opportunities...
+[2026-10-05 12:34:38] [INFO] Tentando API Grants.gov: https://simpler.grants.gov/api/v1/opportunities/search
+[2026-10-05 12:34:39] [INFO] Tentando API Grants.gov: https://simpler.grants.gov/api/search
+[2026-10-05 12:34:39] [INFO] Sucesso ao carregar DOE ASCR via https://science.osti.gov/ascr/Funding-Opportunities.
+[2026-10-05 12:34:39] [INFO] DOE ASCR: 3 registros finais coletados.
+[2026-10-05 12:34:39] [INFO] Iniciando coleta NSF International Collaboration (OISE).
+[2026-10-05 12:34:41] [INFO] Tentando API Grants.gov: https://simpler.grants.gov/search/api/search
+[2026-10-05 12:34:42] [WARN] Falhas no detalhe: 7/15 (usados dados do listing/catálogo).
+[2026-10-05 12:34:42] [INFO] Fase 5: Preparando registros.
+[2026-10-05 12:34:42] [INFO] DAAD Brasil: 19 registros finais coletados.
+[2026-10-05 12:34:42] [INFO] Iniciando coleta NSF QISE International Supplements.
+[2026-10-05 12:34:43] [INFO] Grants.gov API falhou ou vazia. Tentando HTML scraping com Playwright fallback.
+[2026-10-05 12:34:43] [INFO] Grants.gov HTML: buscando https://simpler.grants.gov/search?status=posted&fundingInstrumentType=grant&assistanceListingNumber=19.040&searchText=public%20diplomacy
+[2026-10-05 12:34:44] [INFO] NSF QISE: 1 registros finais.
+[2026-10-05 12:34:44] [INFO] Iniciando coleta NSF CISE (Computing, AI, HPC).
+[2026-10-05 12:34:44] [INFO] Tentando NSF API: https://www.nsf.gov/api/v1/funding/search?directorate=CISE&page=1&pageSize=25
+[2026-10-05 12:34:44] [WARN] Ambiguidade de data: '03/07/2026'
+[2026-10-05 12:34:44] [WARN] Ambiguidade de data: '03/09/2026'
+[2026-10-05 12:34:44] [WARN] Ambiguidade de data: '04/09/2026'
+[2026-10-05 12:34:44] [WARN] Ambiguidade de data: '05/04/2027'
+[2026-10-05 12:34:44] [WARN] Ambiguidade de data: '06/05/2027'
+[2026-10-05 12:34:44] [WARN] Ambiguidade de data: '10/11/2023'
+[2026-10-05 12:34:44] [INFO] FAPESB prazo extraido via PDF: 2027-05-06 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/Edital-Universal-010-2026_VF.pdf)
+[2026-10-05 12:34:45] [INFO] [11/15] DIRETRIZES ESPECÍFICAS DA FAPESB – CHAMADA MOBILITY CONFAP ITALY 2026 
+[2026-10-05 12:34:46] [INFO] Tentando NSF API: https://www.nsf.gov/funding/api/search?directorate=CISE
+[2026-10-05 12:34:48] [INFO] Tentando NSF API: https://api.nsf.gov/services/v1/awards.json?keyword=CISE&printFields=id,title,fundsObligatedAmt,awardTitle,date&offset=0
+[2026-10-05 12:34:50] [INFO] NSF CISE API falhou. Tentando HTML scraping diretorate CISE.
+[2026-10-05 12:34:53] [WARN] Ambiguidade de data: '08/09/2026'
+[2026-10-05 12:34:54] [WARN] Ambiguidade de data: '10/06/2026'
+[2026-10-05 12:34:54] [WARN] Ambiguidade de data: '04/09/2026'
+[2026-10-05 12:34:54] [INFO] FAPESB prazo extraido via PDF: 2026-11-15 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/DIRETRIZES__MCI_VF.pdf)
+[2026-10-05 12:34:54] [INFO] Grants.gov HTML: buscando https://simpler.grants.gov/search?query=public%20diplomacy&cfda=19.040
+[2026-10-05 12:34:54] [INFO] [12/15] Edital 009/2026 – Apoio a Organização de Eventos -
+[2026-10-05 12:34:57] [WARN] Falha ao baixar PDF https://nsf-gov-resources.nsf.gov/files/MOU-Lead-Agency-Opportunity-NSF-GACR-EOI-Form-r.pdf
+[2026-10-05 12:34:58] [WARN] Falha ao baixar PDF https://nsf-gov-resources.nsf.gov/files/MOU-Lead-Agency-Opportunity-NSF-GACR-EOI-Form-r.pdf
+[2026-10-05 12:35:00] [WARN] Falha ao baixar PDF https://nsf-gov-resources.nsf.gov/files/MOU-Lead-Agency-Opportunity-NSF-GACR-EOI-Form-r.pdf
+[2026-10-05 12:35:03] [WARN] Ambiguidade de data: '03/06/2026'
+[2026-10-05 12:35:03] [WARN] Ambiguidade de data: '09/06/2026'
+[2026-10-05 12:35:03] [INFO] FAPESB prazo extraido via PDF: 2026-08-30 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/EDITAL-FAPESB-09.26-VFinal.pdf)
+[2026-10-05 12:35:04] [INFO] [13/15] EDITAL FAPESB N° 05/2026 MOVE 2026 – PARTICIPAÇÃO DE PESQUISADORES EM 
+[2026-10-05 12:35:09] [WARN] Falha ao baixar PDF https://nsf-gov-resources.nsf.gov/files/MOU-Lead-Agency-Opportunity-NSF-GACR-EOI-Form-r.pdf
+[2026-10-05 12:35:10] [INFO] NSF International: 13 registros finais.
+[2026-10-05 12:35:10] [INFO] Iniciando coleta DOE Quantum Genesis Initiative.
+[2026-10-05 12:35:12] [WARN] Ambiguidade de data: '10/03/2026'
+[2026-10-05 12:35:12] [INFO] FAPESB prazo extraido via PDF: 2026-08-20 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/Edital-Move-05.2026.pdf)
+[2026-10-05 12:35:12] [INFO] [14/15] Chamada Fundação de Amparo à Pesquisa da Bahia/SECTI/SEMA/FGB nº 01/20
+[2026-10-05 12:35:14] [INFO] Grants.gov HTML: buscando https://simpler.grants.gov/search
+[2026-10-05 12:35:21] [INFO] NSF CISE: 11 registros finais.
+[2026-10-05 12:35:21] [INFO] Iniciando coleta DOE Genesis Mission.
+[2026-10-05 12:35:22] [WARN] Ambiguidade de data: '10/04/2026'
+[2026-10-05 12:35:22] [WARN] Ambiguidade de data: '01/07/2026'
+[2026-10-05 12:35:22] [INFO] FAPESB prazo extraido via PDF: 2026-07-01 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/Edital_FGB.pdf)
+[2026-10-05 12:35:23] [INFO] [15/15] EDITAL FAPESB/SECTI/IEL nº 004/2026 – Chamada Estratégica FAPESB/SECTI
+[2026-10-05 12:35:24] [INFO] Grants.gov HTML: 10 registros finais coletados.
+[2026-10-05 12:35:24] [INFO] Iniciando coleta NSF NQNI (nsf26-505).
+[2026-10-05 12:35:27] [WARN] Falha ao baixar PDF https://nnci.net/sites/default/files/inline-files/2023_FutureNanotechnologyInfrastructure_WhitePaper_FINAL.pdf
+[2026-10-05 12:35:27] [INFO] NSF NQNI: 1 registros finais.
+[2026-10-05 12:35:27] [INFO] Iniciando coleta DARPA Quantum Benchmarking Initiative.
+[2026-10-05 12:35:31] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:35:34] [WARN] Ambiguidade de data: '04/03/2026'
+[2026-10-05 12:35:34] [WARN] Ambiguidade de data: '09/06/2026'
+[2026-10-05 12:35:34] [WARN] Ambiguidade de data: '10/06/2026'
+[2026-10-05 12:35:34] [WARN] Ambiguidade de data: '12/06/2026'
+[2026-10-05 12:35:34] [WARN] Ambiguidade de data: '03/07/2026'
+[2026-10-05 12:35:34] [WARN] Ambiguidade de data: '10/07/2026'
+[2026-10-05 12:35:34] [WARN] Ambiguidade de data: '02/12/2004'
+[2026-10-05 12:35:34] [WARN] Ambiguidade de data: '11/10/2005'
+[2026-10-05 12:35:34] [INFO] FAPESB prazo extraido via PDF: 2026-07-17 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/Edital_IEL_2026.pdf)
+[2026-10-05 12:35:34] [INFO] FAPESB: 15 registros finais coletados
+[2026-10-05 12:35:34] [INFO] [AEB] Iniciando coleta AEB (Agência Espacial Brasileira)...
+[2026-10-05 12:35:35] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:35:35] [INFO] [AEB] AEB: 1 registros finais coletados.
+[2026-10-05 12:35:36] [INFO] [FINEP Aero] Iniciando coleta FINEP Aeroespacial e Defesa...
+[2026-10-05 12:35:36] [INFO] Iniciando coleta FINEP via API REST...
+[2026-10-05 12:35:36] [INFO] Buscando página 1: https://www.finep.gov.br/o/c/chamadapublicas?sort=dataDePublicacao:desc&page=1&pageSize=250
+[2026-10-05 12:35:36] [INFO] Total de registros: 477
+[2026-10-05 12:35:36] [INFO] Página 1: 250 itens total, 35 filtrados (Aberta)
+[2026-10-05 12:35:36] [INFO] Buscando página 2: https://www.finep.gov.br/o/c/chamadapublicas?sort=dataDePublicacao:desc&page=2&pageSize=250
+[2026-10-05 12:35:37] [INFO] Página 2: 227 itens total, 0 filtrados (Aberta)
+[2026-10-05 12:35:37] [INFO] Total de itens coletados (Aberta): 35
+[2026-10-05 12:35:37] [WARN] Limitado a 30 registros
+[2026-10-05 12:35:37] [INFO] FINEP: 30 registros finais coletados
+[2026-10-05 12:35:37] [INFO] [DCTA/FAB] Iniciando coleta DCTA / Força Aérea Brasileira...
+[2026-10-05 12:35:38] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:35:41] [INFO] DOE Quantum Genesis: 13 registros finais.
+[2026-10-05 12:35:41] [INFO] [BNB FUNDECI] Iniciando coleta BNB FUNDECI (Sertão & Agro)...
+[2026-10-05 12:35:42] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:35:42] [INFO] [BNB FUNDECI] BNB FUNDECI: 1 registros finais coletados.
+[2026-10-05 12:35:42] [INFO] [CODEVASF] Iniciando coleta CODEVASF (Sertão & Bacia do São Francisco)...
+[2026-10-05 12:35:42] [INFO] [DCTA/FAB] DCTA/FAB: 11 registros finais coletados.
+[2026-10-05 12:35:42] [INFO] [EMBRAPA/MAPA] Iniciando coleta Embrapa / MAPA...
+[2026-10-05 12:35:42] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:35:43] [INFO] [EMBRAPA/MAPA] Embrapa: 5 registros finais coletados.
+[2026-10-05 12:35:43] [INFO] [SUDENE] Iniciando coleta SUDENE...
+[2026-10-05 12:35:44] [INFO] [SUDENE] SUDENE: 1 registros finais coletados.
+[2026-10-05 12:35:44] [INFO] Iniciando coleta NEH (National Endowment for the Humanities).
+[2026-10-05 12:35:48] [INFO] [CODEVASF] CODEVASF: 1 registros finais coletados.
+[2026-10-05 12:35:49] [INFO] DARPA QBI: 6 registros finais.
+[2026-10-05 12:35:50] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:35:55] [INFO] DOE Genesis: 15 registros finais.
+[2026-10-05 12:36:01] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:36:04] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:36:06] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:36:08] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:36:11] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:36:14] [WARN] Falha ao baixar PDF http://www.bndes.gov.br/SiteBNDES/bndes/bndes_pt/Galerias/Arquivos/empresa/download/apresentacoes/Coutinho_financing_infrastructure.pdf
+[2026-10-05 12:36:14] [WARN] Ambiguidade de data: '10/5/26'
+[2026-10-05 12:36:15] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:36:17] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:36:18] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:36:19] [INFO] Bloqueio de CDN/CAPTCHA (status 200) detectado via httr2 para https://business.esa.int/funding/call-for-proposals-non-competitive/arctic-region-safety-navigation-and-operations. Acionando fallbacks...
+[2026-10-05 12:36:19] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:36:20] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:36:22] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:36:22] [WARN] Bloqueio de CDN/CAPTCHA detectado via Chromote para https://business.esa.int/funding/call-for-proposals-non-competitive/arctic-region-safety-navigation-and-operations.
+[2026-10-05 12:36:22] [WARN] Falha ao requisitar https://business.esa.int/funding/call-for-proposals-non-competitive/arctic-region-safety-navigation-and-operations apos tentar todos os metodos (httr2, Playwright, Chromote Stealth)
+[2026-10-05 12:36:22] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:36:27] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:36:27] [WARN] Ambiguidade de data: '10/5/26'
+[2026-10-05 12:36:29] [WARN] Ambiguidade de data: '02/03/2026'
+[2026-10-05 12:36:29] [WARN] Ambiguidade de data: '02/03/2026'
+[2026-10-05 12:36:32] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:36:34] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:36:36] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:36:37] [WARN] Ambiguidade de data: '10/5/26'
+[2026-10-05 12:36:41] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:36:43] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:36:43] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:36:45] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:37:00] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:37:04] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:37:05] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:37:10] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:37:20] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '01/05/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '11/08/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '01/07/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '10/07/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '03/09/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '12/09/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '02/01/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '11/01/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '02/05/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '11/05/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '07/04/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '03/12/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '05/01/2026'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '01/06/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '01/04/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '10/04/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '09/06/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '12/01/2026'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '01/11/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '06/03/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '06/01/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '04/02/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '08/01/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '02/07/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '11/07/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '05/11/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '01/07/2024'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '10/12/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '05/03/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '08/04/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '07/08/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '02/06/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '07/11/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '10/09/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '06/10/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '04/08/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '05/02/2025'
+[2026-10-05 12:37:21] [WARN] Ambiguidade de data: '09/12/2025'
+[2026-10-05 12:37:29] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:37:30] [INFO] Iniciando coleta SEBRAE & Edital de Inovação para a Indústria...
+[2026-10-05 12:37:30] [INFO] SEBRAE: 2 registros coletados.
+[2026-10-05 12:37:31] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:37:33] [WARN] Ambiguidade de data: '11/09/2026'
+[2026-10-05 12:37:33] [WARN] Ambiguidade de data: '04/09/26'
+[2026-10-05 12:37:38] [WARN] Ambiguidade de data: '10/05/2026'
+[2026-10-05 12:37:40] [WARN] Ambiguidade de data: '11/02/2026'
+[2026-10-05 12:37:40] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:37:40] [INFO] Iniciando coleta PNCP Governo Federal & Ministérios...
+[2026-10-05 12:37:40] [INFO] PNCP Gov: 0 registros coletados.
+[2026-10-05 12:37:41] [INFO] Iniciando coleta FAPESP...
+[2026-10-05 12:37:41] [INFO] FAPESP: 2 registros coletados.
+[2026-10-05 12:37:41] [INFO] Iniciando coleta FAPERJ...
+[2026-10-05 12:37:41] [INFO] FAPERJ: 1 registros coletados.
+[2026-10-05 12:37:43] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:37:45] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:37:46] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:37:55] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '01/10/2026'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '10/07/2026'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '10/04/2026'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '02/04/2026'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '01/09/2026'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '08/09/2026'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '06/08/2026'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '03/07/2026'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '03/06/2025'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '10/04/2025'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '11/03/2025'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '10/06/2024'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '10/05/2024'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '08/03/2024'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '06/02/2024'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '09/01/2025'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '12/05/2022'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '06/01/2022'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '05/07/2019'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '06/04/2018'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '06/12/2024'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '01/04/2022'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '11/10/2024'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '02/08/2023'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '04/09/2023'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '09/08/2023'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '01/10/2024'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '11/09/2024'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '10/09/2024'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '05/09/2024'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '04/09/2024'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '03/09/2024'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '11/09/2023'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '03/08/2023'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '09/05/2023'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '06/09/2023'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '10/08/2023'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '01/07/2020'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '02/09/2019'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '06/08/2019'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '02/08/2019'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '11/07/2019'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '10/06/2019'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '07/06/2019'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '07/05/2019'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '08/02/2019'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '12/09/2024'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '05/04/2024'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '03/04/2024'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '08/04/2024'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '09/02/2024'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '05/12/2023'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '03/11/2023'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '12/09/2023'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '08/09/2023'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '11/08/2023'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '07/03/2023'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '01/03/2023'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '08/12/2022'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '07/11/2022'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '10/05/2024'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '05/07/2019'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '06/04/2018'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '08/09/2026'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '06/08/2026'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '03/07/2026'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '09/08/2023'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '01/10/2026'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '10/07/2026'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '10/04/2026'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '10/04/2025'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '11/03/2025'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '10/06/2024'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '01/04/2022'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '02/08/2023'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '04/09/2023'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '01/10/2024'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '11/09/2024'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '10/09/2024'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '05/09/2024'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '11/09/2023'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '01/07/2020'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '02/09/2019'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '06/08/2019'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '08/04/2024'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '05/12/2023'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '03/11/2023'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '07/03/2023'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '01/03/2023'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '08/12/2022'
+[2026-10-05 12:37:58] [WARN] Ambiguidade de data: '07/11/2022'
+[2026-10-05 12:37:59] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:38:00] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:38:03] [WARN] Ambiguidade de data: '01/04/2024'
+[2026-10-05 12:38:03] [WARN] Ambiguidade de data: '01/04/2022'
+[2026-10-05 12:38:09] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:38:11] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:38:11] [WARN] Ambiguidade de data: '04/03/2015'
+[2026-10-05 12:38:11] [WARN] Ambiguidade de data: '04/03/2015'
+[2026-10-05 12:38:12] [WARN] Host offline ou inacessivel: https://wordpress.sea.sc.gov.br/geral1. Pulando requisicoes antecipadamente.
+[2026-10-05 12:38:15] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:38:18] [WARN] Falha ao baixar PDF https://fapemig.br/files/Chamada-17_2026-PROFIX-CB?title=Chamada+17_2026+PROFIX-CB&url=https://api.site.fapemig.br/wp-content/uploads/2026-09-14__193__12653__chamada-17_2026-profix-cb__DBbAVjRX.pdf
+[2026-10-05 12:38:19] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:38:21] [INFO] Iniciando coleta Cláusula de P&D Obrigatório ANP (Petrobras/Shell)...
+[2026-10-05 12:38:21] [INFO] ANP/Shell: 1 registros coletados.
+[2026-10-05 12:38:21] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:38:23] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:38:25] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:38:30] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:38:31] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '01/10/2026'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '10/07/2026'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '10/04/2026'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '02/04/2026'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '01/09/2026'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '08/09/2026'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '06/08/2026'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '03/07/2026'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '03/06/2025'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '10/04/2025'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '11/03/2025'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '10/06/2024'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '10/05/2024'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '08/03/2024'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '06/02/2024'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '09/01/2025'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '12/05/2022'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '06/01/2022'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '05/07/2019'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '06/04/2018'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '06/12/2024'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '01/04/2022'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '11/10/2024'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '02/08/2023'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '04/09/2023'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '09/08/2023'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '01/10/2024'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '11/09/2024'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '10/09/2024'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '05/09/2024'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '04/09/2024'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '03/09/2024'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '11/09/2023'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '03/08/2023'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '09/05/2023'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '06/09/2023'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '10/08/2023'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '01/07/2020'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '02/09/2019'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '06/08/2019'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '02/08/2019'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '11/07/2019'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '10/06/2019'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '07/06/2019'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '07/05/2019'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '08/02/2019'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '12/09/2024'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '05/04/2024'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '03/04/2024'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '08/04/2024'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '09/02/2024'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '05/12/2023'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '03/11/2023'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '12/09/2023'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '08/09/2023'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '11/08/2023'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '07/03/2023'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '01/03/2023'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '08/12/2022'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '07/11/2022'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '10/05/2024'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '05/07/2019'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '06/04/2018'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '08/09/2026'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '06/08/2026'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '03/07/2026'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '09/08/2023'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '01/10/2026'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '10/07/2026'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '10/04/2026'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '10/04/2025'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '11/03/2025'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '10/06/2024'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '01/04/2022'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '02/08/2023'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '04/09/2023'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '01/10/2024'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '11/09/2024'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '10/09/2024'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '05/09/2024'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '11/09/2023'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '01/07/2020'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '02/09/2019'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '06/08/2019'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '08/04/2024'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '05/12/2023'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '03/11/2023'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '07/03/2023'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '01/03/2023'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '08/12/2022'
+[2026-10-05 12:38:34] [WARN] Ambiguidade de data: '07/11/2022'
+[2026-10-05 12:38:34] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:38:35] [WARN] Falha ao baixar PDF https://api.site.fapemig.br/wp-content/uploads/2025/05/caderno_de_modalidade_cientifica_2020-2.pdf
+[2026-10-05 12:38:37] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:38:38] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:38:41] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:38:43] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:38:44] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '01/10/2026'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '10/07/2026'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '10/04/2026'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '02/04/2026'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '01/09/2026'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '08/09/2026'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '06/08/2026'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '03/07/2026'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '03/06/2025'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '10/04/2025'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '11/03/2025'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '10/06/2024'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '10/05/2024'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '08/03/2024'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '06/02/2024'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '09/01/2025'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '12/05/2022'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '06/01/2022'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '05/07/2019'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '06/04/2018'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '06/12/2024'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '01/04/2022'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '11/10/2024'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '02/08/2023'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '04/09/2023'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '09/08/2023'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '01/10/2024'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '11/09/2024'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '10/09/2024'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '05/09/2024'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '04/09/2024'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '03/09/2024'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '11/09/2023'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '03/08/2023'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '09/05/2023'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '06/09/2023'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '10/08/2023'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '01/07/2020'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '02/09/2019'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '06/08/2019'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '02/08/2019'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '11/07/2019'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '10/06/2019'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '07/06/2019'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '07/05/2019'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '08/02/2019'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '12/09/2024'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '05/04/2024'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '03/04/2024'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '08/04/2024'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '09/02/2024'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '05/12/2023'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '03/11/2023'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '12/09/2023'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '08/09/2023'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '11/08/2023'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '07/03/2023'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '01/03/2023'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '08/12/2022'
+[2026-10-05 12:38:45] [WARN] Ambiguidade de data: '07/11/2022'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '10/05/2024'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '05/07/2019'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '06/04/2018'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '08/09/2026'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '06/08/2026'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '03/07/2026'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '09/08/2023'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '01/10/2026'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '10/07/2026'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '10/04/2026'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '10/04/2025'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '11/03/2025'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '10/06/2024'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '01/04/2022'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '02/08/2023'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '04/09/2023'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '01/10/2024'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '11/09/2024'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '10/09/2024'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '05/09/2024'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '11/09/2023'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '01/07/2020'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '02/09/2019'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '06/08/2019'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '08/04/2024'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '05/12/2023'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '03/11/2023'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '07/03/2023'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '01/03/2023'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '08/12/2022'
+[2026-10-05 12:38:46] [WARN] Ambiguidade de data: '07/11/2022'
+[2026-10-05 12:38:46] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:38:50] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:38:51] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:38:53] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:38:55] [WARN] Falha ao baixar PDF https://fapemig.br/files/Chamada-04%252F2026---PCE-3%25C2%25AA-Entrada?title=Chamada+04/2026+-+PCE+3%C2%AA+Entrada&url=https://api.site.fapemig.br/wp-content/uploads/2026-08-13__192__12506__chamada-04-2026-pce__YeuVwQ61.pdf
+[2026-10-05 12:38:56] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:38:59] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:39:01] [WARN] Falha ao baixar PDF https://fapemig.br/files/Chamada-007%252F2026-Organiza%25C3%25A7%25C3%25A3o-de-Eventos-de-car%25C3%25A1ter-T%25C3%25A9cnico-Cient%25C3%25ADfico?title=Chamada+007/2026+Organiza%C3%A7%C3%A3o+de+Eventos+de+car%C3%A1ter+T%C3%A9cnico-Cient%C3%ADfico&url=https://api.site.fapemig.br/wp-content/uploads/2026-07-28__191__12409__sei_139766349_fapemig___chamada_07-1__pjYjPKjd.pdf
+[2026-10-05 12:39:05] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:39:07] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:39:18] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:39:29] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:39:41] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:39:53] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-05 12:40:04] [INFO] Fonte em processamento: cnpq | https://www.gov.br/cnpq/pt-br/chamadas/abertas-para-submissao
+[2026-10-05 12:40:05] [INFO] Fonte em processamento: capes | https://www.gov.br/capes/pt-br/assuntos/editais-e-resultados-capes
+[2026-10-05 12:40:05] [WARN] data_inconsistente: titulo 'PORTARIA CAPES Nº 289, DE 28 DE DEZEMBRO DE 2018' | data_limite 2026-06-02 | fonte capes
+[2026-10-05 12:40:07] [INFO] Fonte em processamento: finep | https://www.finep.gov.br/o/c/chamadapublicas?sort=dataDePublicacao:desc&pageSize=250
+[2026-10-05 12:40:08] [INFO] Fonte em processamento: fapesb | https://www.fapesb.ba.gov.br/category/edital/aberto/
+[2026-10-05 12:40:09] [INFO] Fonte em processamento: horizon_europe | https://api.tech.ec.europa.eu/search-api/prod/rest/search?apiKey=SEDIA
+[2026-10-05 12:40:09] [WARN] Pacote polyglotr nao instalado. Traducao ignorada. Instale com: install.packages('polyglotr')
+[2026-10-05 12:40:10] [INFO] Fonte em processamento: erc | https://api.tech.ec.europa.eu/search-api/prod/rest/search?apiKey=SEDIA&text=ERC
+[2026-10-05 12:40:11] [INFO] Fonte em processamento: sigitec | https://sigitec-competitividade.petrobras.com.br/v2/public/opportunities
+[2026-10-05 12:40:12] [INFO] Fonte em processamento: undp | https://www.undp.org/pt/brazil/licitacoes
+[2026-10-05 12:40:13] [INFO] Fonte em processamento: embrapii | https://embrapii.org.br/transparencia/
+[2026-10-05 12:40:15] [INFO] Fonte em processamento: daad | https://www.daad-brasil.org/pt/bolsas/busca/
+[2026-10-05 12:40:16] [INFO] Fonte em processamento: quantum | https://api.tech.ec.europa.eu/search-api/prod/rest/search?apiKey=SEDIA&text=quantum
+[2026-10-05 12:40:17] [INFO] Fonte em processamento: humboldt | https://www.humboldt-foundation.de/en/apply/sponsorship-programmes/programmes-a-to-z
+[2026-10-05 12:40:18] [INFO] Fonte em processamento: grants_gov | https://simpler.grants.gov/search
+[2026-10-05 12:40:19] [INFO] Fonte em processamento: doe_ascr | https://science.osti.gov/ascr/Funding-Opportunities
+[2026-10-05 12:40:20] [INFO] Fonte em processamento: nsf_international | https://www.nsf.gov/oise/international-collaborations
+[2026-10-05 12:40:22] [INFO] Fonte em processamento: nsf_qise | https://www.nsf.gov/funding/opportunities/dcl-international-collaboration-supplements-quantum-information
+[2026-10-05 12:40:23] [INFO] Fonte em processamento: nsf_cise | https://www.nsf.gov/funding/find-by-directorate
+[2026-10-05 12:40:24] [INFO] Fonte em processamento: doe_quantum_genesis | https://www.energy.gov/science/articles/energy-department-announces-initiative-create-and-deploy-worlds-first
+[2026-10-05 12:40:25] [INFO] Fonte em processamento: doe_genesis | https://www.energy.gov/genesis
+[2026-10-05 12:40:26] [INFO] Fonte em processamento: nsf_nqni | https://www.nsf.gov/funding/opportunities/nqni-national-quantum-nanotechnology-infrastructure/nsf26-505/solicitation
+[2026-10-05 12:40:27] [INFO] Fonte em processamento: darpa_quantum_benchmarking | https://www.darpa.mil/research/programs/quantum-benchmarking-initiative
+[2026-10-05 12:40:28] [INFO] Fonte em processamento: aeb | https://www.gov.br/aeb/pt-br/acesso-a-informacao/concurso-e-processos-seletivos
+[2026-10-05 12:40:29] [INFO] Fonte em processamento: finep_aero | https://www.finep.gov.br/oportunidades
+[2026-10-05 12:40:30] [INFO] Fonte em processamento: fab_dcta | https://ieav.dcta.mil.br/index.php/editais
+[2026-10-05 12:40:30] [WARN] data_inconsistente: titulo 'Chamada Pública CAPA nº IEAv-C0002/2024 - Projeto PROPHIPER' | data_limite 2026-12-04 | fonte fab_dcta
+[2026-10-05 12:40:30] [WARN] data_inconsistente: titulo 'Chamada Pública CAPA nº IEAv-C0001/2024 - Projeto CSIO' | data_limite 2026-12-04 | fonte fab_dcta
+[2026-10-05 12:40:30] [WARN] data_inconsistente: titulo 'Chamadas Públicas - Bolsas 2023' | data_limite 2026-12-04 | fonte fab_dcta
+[2026-10-05 12:40:30] [WARN] data_inconsistente: titulo 'Chamada Pública CAPA - nº IEAv-C3/2023' | data_limite 2026-12-04 | fonte fab_dcta
+[2026-10-05 12:40:30] [WARN] data_inconsistente: titulo 'Chamada Pública CAPA nº IEAv-C2/2023' | data_limite 2026-12-04 | fonte fab_dcta
+[2026-10-05 12:40:31] [INFO] Fonte em processamento: bnb_fundeci | https://www.bnb.gov.br/ConveniosWeb/Convenente.ProgramaConvenio.Lista.aspx
+[2026-10-05 12:40:32] [INFO] Fonte em processamento: codevasf | https://www.codevasf.gov.br/acesso-a-informacao/licitacoes-e-editais
+[2026-10-05 12:40:33] [INFO] Fonte em processamento: embrapa | https://www.embrapa.br/acessoainformacao/editais
+[2026-10-05 12:40:35] [INFO] Fonte em processamento: sudene | https://pncp.gov.br/app/editais?q=533014&status=todos&pagina=1&tam_pagina=100&tipos=1
+[2026-10-05 12:40:36] [INFO] Fonte em processamento: neh | https://www.neh.gov/grants
+[2026-10-05 12:40:37] [INFO] Fonte em processamento: bndes | https://www.bndes.gov.br/wps/portal/site/home/onde-estamos/licitacoes-e-compras/editais
+[2026-10-05 12:40:38] [INFO] Fonte em processamento: esa_solutions | https://business.esa.int/funding
+[2026-10-05 12:40:39] [INFO] Fonte em processamento: nasa_sbir | https://sbir.nasa.gov/solicitations
+[2026-10-05 12:40:40] [INFO] Fonte em processamento: facepe | https://www.facepe.br/editais/
+[2026-10-05 12:40:41] [INFO] Fonte em processamento: funcap | https://www.funcap.ce.gov.br/editais/
+[2026-10-05 12:40:42] [INFO] Fonte em processamento: fapeal | https://fapeal.br/editais/
+[2026-10-05 12:40:44] [INFO] Fonte em processamento: fapema | https://www.fapema.br/editais/
+[2026-10-05 12:40:45] [INFO] Fonte em processamento: transferegov | https://www.gov.br/transferegov/pt-br
+[2026-10-05 12:40:46] [INFO] Fonte em processamento: bnb_hubine | https://www.bnb.gov.br/hubine
+[2026-10-05 12:40:47] [INFO] Fonte em processamento: sebrae | https://sebrae.com.br/sites/PortalSebrae/canais_adicionais/conheca_editais
+[2026-10-05 12:40:48] [INFO] Fonte em processamento: softex | https://softex.br/editais/
+[2026-10-05 12:40:49] [INFO] Fonte em processamento: pncp_gov | https://pncp.gov.br/api/consulta/v1/contratacoes/publicas
+[2026-10-05 12:40:50] [INFO] Fonte em processamento: fapesp | https://fapesp.br/chamadas
+[2026-10-05 12:40:51] [INFO] Fonte em processamento: faperj | https://www.faperj.br/?id=editais
+[2026-10-05 12:40:52] [INFO] Fonte em processamento: fapemig | https://fapemig.br/pt/chamadas/
+[2026-10-05 12:40:53] [INFO] Fonte em processamento: fapesc | https://fapesc.sc.gov.br/editais/
+[2026-10-05 12:40:54] [INFO] Fonte em processamento: anp_shell | https://www.gov.br/anp/pt-br/assuntos/pesquisa-desenvolvimento-e-inovacao
+[2026-10-05 12:40:55] [WARN] Falha ao exportar XLSX: attempt to select less than one element in integerOneIndex
+[2026-10-05 12:40:55] [INFO] Fim da coleta oficial. 46 fontes processadas. 383 registros adicionados nesta rodada. 384 registros na base.
+[2026-10-06 12:15:42] [INFO] Início da coleta oficial.
+[2026-10-06 12:15:42] [INFO] Logs de erro antigos removidos de logs_coleta.
+[2026-10-06 12:15:43] [INFO] Fonte em processamento: fapesb | https://www.fapesb.ba.gov.br/category/edital/aberto/
+[2026-10-06 12:15:43] [ERROR] Falha na fonte fapesb: could not find function "source_dispatch"
+[2026-10-06 12:15:43] [WARN] Falha ao exportar XLSX: attempt to select less than one element in integerOneIndex
+[2026-10-06 12:15:43] [INFO] Fim da coleta oficial. 0 fontes processadas. 0 registros adicionados nesta rodada. 384 registros na base.
+[2026-10-06 12:15:43] [WARN] Coleta finalizada sem novos registros: 0 fonte(s) processadas, 384 registros na base.
+[2026-10-06 12:16:24] [INFO] Início da coleta oficial.
+[2026-10-06 12:16:24] [INFO] Logs de erro antigos removidos de logs_coleta.
+[2026-10-06 12:16:43] [WARN] Ambiguidade de data: '11/12/2026'
+[2026-10-06 12:16:43] [WARN] Ambiguidade de data: '03/09/2026'
+[2026-10-06 12:16:44] [WARN] Ambiguidade de data: '09/10/2026'
+[2026-10-06 12:16:45] [WARN] Ambiguidade de data: '01/10/2026'
+[2026-10-06 12:16:45] [WARN] Ambiguidade de data: '06/10/2026'
+[2026-10-06 12:16:45] [WARN] Ambiguidade de data: '03/11/2026'
+[2026-10-06 12:16:45] [WARN] Ambiguidade de data: '06/11/2026'
+[2026-10-06 12:16:45] [WARN] Ambiguidade de data: '09/11/2026'
+[2026-10-06 12:16:45] [WARN] Ambiguidade de data: '10/11/2026'
+[2026-10-06 12:16:45] [WARN] Ambiguidade de data: '07/12/2026'
+[2026-10-06 12:16:45] [WARN] Ambiguidade de data: '10/12/2026'
+[2026-10-06 12:16:45] [WARN] Ambiguidade de data: '11/12/2027'
+[2026-10-06 12:16:45] [WARN] Ambiguidade de data: '01/10/2026'
+[2026-10-06 12:16:45] [WARN] Ambiguidade de data: '06/10/2026'
+[2026-10-06 12:16:45] [WARN] Ambiguidade de data: '03/11/2026'
+[2026-10-06 12:16:45] [WARN] Ambiguidade de data: '06/11/2026'
+[2026-10-06 12:16:45] [WARN] Ambiguidade de data: '9/11/2026'
+[2026-10-06 12:16:45] [WARN] Ambiguidade de data: '10/11/2026'
+[2026-10-06 12:16:45] [WARN] Ambiguidade de data: '11/12/2027'
+[2026-10-06 12:16:45] [WARN] Ambiguidade de data: '07/12/2026'
+[2026-10-06 12:16:45] [WARN] Ambiguidade de data: '10/12/2026'
+[2026-10-06 12:16:45] [WARN] Ambiguidade de data: '06/11/20'
+[2026-10-06 12:16:49] [WARN] Ambiguidade de data: '04/10/2026'
+[2026-10-06 12:16:49] [WARN] Ambiguidade de data: '02/10/2026'
+[2026-10-06 12:16:49] [WARN] Ambiguidade de data: '06/10/2026'
+[2026-10-06 12:16:49] [WARN] Ambiguidade de data: '08/10/2026'
+[2026-10-06 12:16:49] [WARN] Ambiguidade de data: '04/11/2026'
+[2026-10-06 12:16:49] [WARN] Ambiguidade de data: '08/11/2026'
+[2026-10-06 12:16:49] [WARN] Ambiguidade de data: '10/06/2027'
+[2026-10-06 12:16:49] [WARN] Ambiguidade de data: '10/06/2027'
+[2026-10-06 12:16:49] [WARN] Ambiguidade de data: '04/10/2026'
+[2026-10-06 12:16:49] [WARN] Ambiguidade de data: '02/10/2026'
+[2026-10-06 12:16:49] [WARN] Ambiguidade de data: '06/10/2026'
+[2026-10-06 12:16:49] [WARN] Ambiguidade de data: '08/10/2026'
+[2026-10-06 12:16:49] [WARN] Ambiguidade de data: '04/11/2026'
+[2026-10-06 12:16:49] [WARN] Ambiguidade de data: '08/11/2026'
+[2026-10-06 12:17:00] [WARN] Ambiguidade de data: '02/01/2019'
+[2026-10-06 12:17:03] [WARN] Ambiguidade de data: '04/09/2026'
+[2026-10-06 12:17:08] [WARN] Ambiguidade de data: '10/09/2026'
+[2026-10-06 12:17:08] [WARN] Ambiguidade de data: '09/10/2026'
+[2026-10-06 12:17:08] [WARN] Ambiguidade de data: '04/12/2026'
+[2026-10-06 12:17:08] [WARN] Ambiguidade de data: '08/01/2027'
+[2026-10-06 12:17:08] [WARN] Ambiguidade de data: '10/09/2026'
+[2026-10-06 12:17:08] [WARN] Ambiguidade de data: '09/10/2026'
+[2026-10-06 12:17:08] [WARN] Ambiguidade de data: '04/12/2026'
+[2026-10-06 12:17:08] [WARN] Ambiguidade de data: '08/01/2027'
+[2026-10-06 12:17:16] [WARN] Ambiguidade de data: '12/08/2026'
+[2026-10-06 12:17:18] [WARN] Ambiguidade de data: '04/08/2026'
+[2026-10-06 12:17:18] [WARN] Ambiguidade de data: '06/08/2026'
+[2026-10-06 12:17:20] [WARN] Ambiguidade de data: '04/08/2026'
+[2026-10-06 12:17:23] [INFO] Iniciando coleta FINEP via API REST...
+[2026-10-06 12:17:23] [INFO] Buscando página 1: https://www.finep.gov.br/o/c/chamadapublicas?sort=dataDePublicacao:desc&page=1&pageSize=250
+[2026-10-06 12:17:23] [INFO] Total de registros: 477
+[2026-10-06 12:17:23] [INFO] Página 1: 250 itens total, 34 filtrados (Aberta)
+[2026-10-06 12:17:24] [INFO] Buscando página 2: https://www.finep.gov.br/o/c/chamadapublicas?sort=dataDePublicacao:desc&page=2&pageSize=250
+[2026-10-06 12:17:24] [INFO] Página 2: 227 itens total, 0 filtrados (Aberta)
+[2026-10-06 12:17:24] [INFO] Total de itens coletados (Aberta): 34
+[2026-10-06 12:17:24] [WARN] Limitado a 20 registros
+[2026-10-06 12:17:24] [INFO] FINEP: 20 registros finais coletados
+[2026-10-06 12:17:24] [INFO] Coletando FAPESB via categoria (ano=2026, status=Abertos)...
+[2026-10-06 12:17:34] [INFO] FAPESB: 16 editais abertos em 2026
+[2026-10-06 12:17:34] [INFO] [1/16] DIRETRIZES ESPECÍFICAS DA FAPESB – CHAMADA BIODIVERSA + “BIODIVFUTURE 
+[2026-10-06 12:17:41] [WARN] Ambiguidade de data: '06/09/2026'
+[2026-10-06 12:17:41] [INFO] [2/16] DIRETRIZES ESPECÍFICAS DA FAPESB – CHAMADA TRANSNACIONAL CONJUNTA WATE
+[2026-10-06 12:17:50] [INFO] FAPESB prazo extraido via PDF: 2027-04-06 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/DIRETRIZES___COOPINTER___WATER4ALL_VF__1_-1-1.pdf)
+[2026-10-06 12:17:50] [INFO] [3/16] DIRETRIZES ESPECÍFICAS DA FAPESB – 1ª CHAMADA DA PARCERIA DE MATÉRIAS-
+[2026-10-06 12:17:59] [INFO] FAPESB prazo extraido via PDF: 2027-05-15 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/DIRETRIZES_COOPINTER_RAMP_2026.pdf)
+[2026-10-06 12:18:00] [INFO] [4/16] CHAMADA CDTI ESPANHA (2026-2027) – DIRETRIZES ESPECÍFICAS DA FAPESB -
+[2026-10-06 12:18:06] [WARN] Ambiguidade de data: '08/10/2026'
+[2026-10-06 12:18:06] [INFO] FAPESB prazo extraido via regex: 2026-10-08
+[2026-10-06 12:18:07] [INFO] [5/16] CHAMADA GCUB – MOB Nº 2026/2027 – PROGRAMA DE MOBILIDADE INTERNACIONAL
+[2026-10-06 12:18:15] [INFO] FAPESB prazo extraido via PDF: 2026-07-13 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/MINUTA_DIRETRIZES___GCUB_2026.2027.pdf)
+[2026-10-06 12:18:15] [INFO] [6/16] CHAMADA 2026- PROGRAMA DE AUXILIO PARA DOUTORANDOS COM BOLSA NACIONAL 
+[2026-10-06 12:18:23] [WARN] Ambiguidade de data: '03/09/2026'
+[2026-10-06 12:18:25] [INFO] FAPESB prazo extraido via PDF: 2026-09-03 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/CONFAP-Conselho-Nacional-dChamada-DAAD-Programa-de-Auxilio-para-Doutorando-2026.pdf)
+[2026-10-06 12:18:25] [INFO] [7/16] EDITAL FAPESB No 018/2026 – APOIO À PUBLICAÇÃO CIENTÍFICA, TECNOLÓGICA
+[2026-10-06 12:18:34] [WARN] Ambiguidade de data: '03/07/26'
+[2026-10-06 12:18:34] [WARN] Ambiguidade de data: '20/07/26'
+[2026-10-06 12:18:34] [WARN] Ambiguidade de data: '08/10/26'
+[2026-10-06 12:18:34] [WARN] Ambiguidade de data: '16/10/26'
+[2026-10-06 12:18:34] [WARN] Ambiguidade de data: '19/10/26'
+[2026-10-06 12:18:34] [WARN] Ambiguidade de data: '04/11/26'
+[2026-10-06 12:18:34] [WARN] Ambiguidade de data: '09/11/26'
+[2026-10-06 12:18:34] [INFO] FAPESB prazo extraido via PDF: 2026-10-26 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/EDITAL_Publi_Livro_2027-VFinal.docx.pdf)
+[2026-10-06 12:18:34] [INFO] [8/16] EDITAL DE SELEÇÃO PÚBLICA Nº 017/ 2026 Subvenção Econômica à Pesquisa,
+[2026-10-06 12:18:43] [WARN] Ambiguidade de data: '06.02.2009'
+[2026-10-06 12:18:43] [INFO] [9/16] EDITAL Nº 019/2026 – CIÊNCIA NA MESA 5: BASE DE DADOS E SISTEMAS DE IN
+[2026-10-06 12:18:51] [INFO] [10/16] EDITAL FAPESB/SECTI – Nº 010/2026 – UNIVERSAL -
+[2026-10-06 12:18:59] [WARN] Ambiguidade de data: '03/07/2026'
+[2026-10-06 12:18:59] [WARN] Ambiguidade de data: '03/09/2026'
+[2026-10-06 12:18:59] [WARN] Ambiguidade de data: '04/09/2026'
+[2026-10-06 12:18:59] [WARN] Ambiguidade de data: '05/04/2027'
+[2026-10-06 12:18:59] [WARN] Ambiguidade de data: '06/05/2027'
+[2026-10-06 12:18:59] [WARN] Ambiguidade de data: '10/11/2023'
+[2026-10-06 12:18:59] [INFO] FAPESB prazo extraido via PDF: 2027-05-06 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/Edital-Universal-010-2026_VF.pdf)
+[2026-10-06 12:19:00] [INFO] [11/16] DIRETRIZES ESPECÍFICAS DA FAPESB – CHAMADA MOBILITY CONFAP ITALY 2026 
+[2026-10-06 12:19:06] [WARN] Ambiguidade de data: '08/09/2026'
+[2026-10-06 12:19:08] [WARN] Ambiguidade de data: '10/06/2026'
+[2026-10-06 12:19:08] [WARN] Ambiguidade de data: '04/09/2026'
+[2026-10-06 12:19:08] [INFO] FAPESB prazo extraido via PDF: 2026-11-15 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/DIRETRIZES__MCI_VF.pdf)
+[2026-10-06 12:19:08] [INFO] [12/16] Edital 009/2026 – Apoio a Organização de Eventos -
+[2026-10-06 12:19:17] [WARN] Ambiguidade de data: '03/06/2026'
+[2026-10-06 12:19:17] [WARN] Ambiguidade de data: '09/06/2026'
+[2026-10-06 12:19:17] [INFO] FAPESB prazo extraido via PDF: 2026-08-30 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/EDITAL-FAPESB-09.26-VFinal.pdf)
+[2026-10-06 12:19:18] [INFO] [13/16] EDITAL FAPESB N° 05/2026 MOVE 2026 – PARTICIPAÇÃO DE PESQUISADORES EM 
+[2026-10-06 12:19:26] [WARN] Ambiguidade de data: '10/03/2026'
+[2026-10-06 12:19:26] [INFO] FAPESB prazo extraido via PDF: 2026-08-20 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/Edital-Move-05.2026.pdf)
+[2026-10-06 12:19:26] [INFO] [14/16] Chamada Fundação de Amparo à Pesquisa da Bahia/SECTI/SEMA/FGB nº 01/20
+[2026-10-06 12:19:36] [WARN] Ambiguidade de data: '10/04/2026'
+[2026-10-06 12:19:36] [WARN] Ambiguidade de data: '01/07/2026'
+[2026-10-06 12:19:36] [INFO] FAPESB prazo extraido via PDF: 2026-07-01 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/Edital_FGB.pdf)
+[2026-10-06 12:19:37] [INFO] [15/16] EDITAL FAPESB/SECTI/IEL nº 004/2026 – Chamada Estratégica FAPESB/SECTI
+[2026-10-06 12:19:47] [WARN] Ambiguidade de data: '04/03/2026'
+[2026-10-06 12:19:47] [WARN] Ambiguidade de data: '09/06/2026'
+[2026-10-06 12:19:47] [WARN] Ambiguidade de data: '10/06/2026'
+[2026-10-06 12:19:47] [WARN] Ambiguidade de data: '12/06/2026'
+[2026-10-06 12:19:47] [WARN] Ambiguidade de data: '03/07/2026'
+[2026-10-06 12:19:47] [WARN] Ambiguidade de data: '10/07/2026'
+[2026-10-06 12:19:47] [WARN] Ambiguidade de data: '02/12/2004'
+[2026-10-06 12:19:47] [WARN] Ambiguidade de data: '11/10/2005'
+[2026-10-06 12:19:47] [INFO] FAPESB prazo extraido via PDF: 2026-07-17 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/Edital_IEL_2026.pdf)
+[2026-10-06 12:19:48] [INFO] [16/16] EDITAL FAPESB/SECTI nº 003/2026 – Apoio a Pesquisas e Inovações para a
+[2026-10-06 12:19:57] [WARN] Ambiguidade de data: '05/02/2026'
+[2026-10-06 12:19:57] [WARN] Ambiguidade de data: '06/04/2026'
+[2026-10-06 12:19:57] [WARN] Ambiguidade de data: '04/08/2026'
+[2026-10-06 12:19:57] [WARN] Ambiguidade de data: '05/08/2026'
+[2026-10-06 12:19:57] [WARN] Ambiguidade de data: '04/09/2026'
+[2026-10-06 12:19:57] [WARN] Ambiguidade de data: '08/09/2026'
+[2026-10-06 12:19:57] [INFO] FAPESB prazo extraido via PDF: 2026-09-08 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/EDITAL_Pesquisa_Seguranca_Publica__correto___PDF_.pdf)
+[2026-10-06 12:19:58] [INFO] FAPESB: 16 registros finais coletados
+[2026-10-06 12:19:59] [INFO] Iniciando coleta Horizon Europe via API REST...
+[2026-10-06 12:19:59] [INFO] Buscando termo: HORIZON-EIC-2026-PRIZE
+[2026-10-06 12:20:02] [INFO] Termo 'HORIZON-EIC-2026-PRIZE': 100 resultados brutos
+[2026-10-06 12:20:02] [INFO] Termo 'HORIZON-EIC-2026-PRIZE': 4 itens HEU acumulados (brutos)
+[2026-10-06 12:20:02] [INFO] Buscando termo: HORIZON-EIC-2026-ACCELERATOR
+[2026-10-06 12:20:04] [INFO] Termo 'HORIZON-EIC-2026-ACCELERATOR': 100 resultados brutos
+[2026-10-06 12:20:04] [INFO] Termo 'HORIZON-EIC-2026-ACCELERATOR': 36 itens HEU acumulados (brutos)
+[2026-10-06 12:20:05] [INFO] Buscando termo: HORIZON-EIC-2026-PATHFINDER
+[2026-10-06 12:20:06] [INFO] Termo 'HORIZON-EIC-2026-PATHFINDER': 100 resultados brutos
+[2026-10-06 12:20:06] [INFO] Termo 'HORIZON-EIC-2026-PATHFINDER': 43 itens HEU acumulados (brutos)
+[2026-10-06 12:20:07] [INFO] Buscando termo: HORIZON-MSCA-2026-PF
+[2026-10-06 12:20:19] [INFO] Termo 'HORIZON-MSCA-2026-PF': 100 resultados brutos
+[2026-10-06 12:20:19] [INFO] Termo 'HORIZON-MSCA-2026-PF': 80 itens HEU acumulados (brutos)
+[2026-10-06 12:20:20] [INFO] Buscando termo: HORIZON-MSCA-2026-DN
+[2026-10-06 12:20:23] [INFO] Termo 'HORIZON-MSCA-2026-DN': 100 resultados brutos
+[2026-10-06 12:20:23] [INFO] Termo 'HORIZON-MSCA-2026-DN': 115 itens HEU acumulados (brutos)
+[2026-10-06 12:20:24] [INFO] Buscando termo: HORIZON-MSCA-2026-POSTDOC
+[2026-10-06 12:20:27] [INFO] Termo 'HORIZON-MSCA-2026-POSTDOC': 100 resultados brutos
+[2026-10-06 12:20:27] [INFO] Termo 'HORIZON-MSCA-2026-POSTDOC': 118 itens HEU acumulados (brutos)
+[2026-10-06 12:20:27] [INFO] Buscando termo: HORIZON-MSCA-2026-DOCTORAL
+[2026-10-06 12:20:28] [INFO] Termo 'HORIZON-MSCA-2026-DOCTORAL': 100 resultados brutos
+[2026-10-06 12:20:28] [INFO] Termo 'HORIZON-MSCA-2026-DOCTORAL': 125 itens HEU acumulados (brutos)
+[2026-10-06 12:20:29] [INFO] Buscando termo: HORIZON-WIDERA-ERC-POC
+[2026-10-06 12:20:51] [INFO] Termo 'HORIZON-WIDERA-ERC-POC': 100 resultados brutos
+[2026-10-06 12:20:51] [INFO] Termo 'HORIZON-WIDERA-ERC-POC': 132 itens HEU acumulados (brutos)
+[2026-10-06 12:20:51] [INFO] Buscando termo: HORIZON-WIDERA-ERC-ADG
+[2026-10-06 12:20:55] [INFO] Termo 'HORIZON-WIDERA-ERC-ADG': 100 resultados brutos
+[2026-10-06 12:20:55] [INFO] Termo 'HORIZON-WIDERA-ERC-ADG': 143 itens HEU acumulados (brutos)
+[2026-10-06 12:20:55] [INFO] Buscando termo: HORIZON-WIDERA-TWINNING
+[2026-10-06 12:20:57] [INFO] Termo 'HORIZON-WIDERA-TWINNING': 100 resultados brutos
+[2026-10-06 12:20:57] [INFO] Termo 'HORIZON-WIDERA-TWINNING': 177 itens HEU acumulados (brutos)
+[2026-10-06 12:20:58] [INFO] Buscando termo: HORIZON-WIDERA-2026-NCP
+[2026-10-06 12:20:59] [INFO] Termo 'HORIZON-WIDERA-2026-NCP': 100 resultados brutos
+[2026-10-06 12:20:59] [INFO] Termo 'HORIZON-WIDERA-2026-NCP': 199 itens HEU acumulados (brutos)
+[2026-10-06 12:21:00] [INFO] Buscando termo: HORIZON-WIDERA-2026-COFUND
+[2026-10-06 12:21:04] [INFO] Termo 'HORIZON-WIDERA-2026-COFUND': 100 resultados brutos
+[2026-10-06 12:21:04] [INFO] Termo 'HORIZON-WIDERA-2026-COFUND': 226 itens HEU acumulados (brutos)
+[2026-10-06 12:21:05] [INFO] Buscando termo: HORIZON-CL3-2026
+[2026-10-06 12:21:06] [INFO] Termo 'HORIZON-CL3-2026': 100 resultados brutos
+[2026-10-06 12:21:06] [INFO] Termo 'HORIZON-CL3-2026': 292 itens HEU acumulados (brutos)
+[2026-10-06 12:21:06] [INFO] Buscando termo: HORIZON-CL5-2026
+[2026-10-06 12:21:07] [INFO] Termo 'HORIZON-CL5-2026': 100 resultados brutos
+[2026-10-06 12:21:07] [INFO] Termo 'HORIZON-CL5-2026': 346 itens HEU acumulados (brutos)
+[2026-10-06 12:21:08] [INFO] Buscando termo: HORIZON-CL2-2026
+[2026-10-06 12:21:09] [INFO] Termo 'HORIZON-CL2-2026': 100 resultados brutos
+[2026-10-06 12:21:09] [INFO] Termo 'HORIZON-CL2-2026': 398 itens HEU acumulados (brutos)
+[2026-10-06 12:21:10] [INFO] Buscando termo: HORIZON-CL4-2026-HUMAN
+[2026-10-06 12:21:11] [INFO] Termo 'HORIZON-CL4-2026-HUMAN': 100 resultados brutos
+[2026-10-06 12:21:11] [INFO] Termo 'HORIZON-CL4-2026-HUMAN': 476 itens HEU acumulados (brutos)
+[2026-10-06 12:21:11] [INFO] Buscando termo: HORIZON-CL5-2026-ENERGY
+[2026-10-06 12:21:12] [INFO] Termo 'HORIZON-CL5-2026-ENERGY': 100 resultados brutos
+[2026-10-06 12:21:12] [INFO] Termo 'HORIZON-CL5-2026-ENERGY': 504 itens HEU acumulados (brutos)
+[2026-10-06 12:21:12] [INFO] Deduplicando 504 itens brutos...
+[2026-10-06 12:21:12] [INFO] Substituído 'HORIZON-MSCA-2026-DN-01' por versão em inglês
+[2026-10-06 12:21:12] [INFO] Substituído 'HORIZON-MSCA-2027-DN-01' por versão em inglês
+[2026-10-06 12:21:12] [INFO] Após deduplicação: 55 itens únicos
+[2026-10-06 12:21:12] [INFO] Total de itens HEU coletados: 55
+[2026-10-06 12:21:13] [WARN] 51 registro(s) HEU sem data_limite. Tentando fallback CORDIS API...
+[2026-10-06 12:21:16] [INFO] HEU: 55 registros finais coletados
+[2026-10-06 12:21:16] [INFO] Retornando lista com 34 registros
+[2026-10-06 12:21:17] [INFO] Iniciando coleta ERC via API REST...
+[2026-10-06 12:21:17] [INFO] Buscando termo: ERC AdG 2026
+[2026-10-06 12:21:19] [INFO] Termo 'ERC AdG 2026': 100 resultados brutos
+[2026-10-06 12:21:19] [INFO] Termo 'ERC AdG 2026': 0 itens ERC acumulados (brutos)
+[2026-10-06 12:21:20] [INFO] Buscando termo: ERC PoC 2026
+[2026-10-06 12:21:22] [INFO] Termo 'ERC PoC 2026': 100 resultados brutos
+[2026-10-06 12:21:22] [INFO] Termo 'ERC PoC 2026': 0 itens ERC acumulados (brutos)
+[2026-10-06 12:21:23] [INFO] Deduplicando 0 itens brutos...
+[2026-10-06 12:21:23] [INFO] Após deduplicação: 0 itens únicos
+[2026-10-06 12:21:23] [INFO] Total de itens ERC coletados: 0
+[2026-10-06 12:21:23] [WARN] Nenhum item ERC encontrado
+[2026-10-06 12:21:23] [INFO] Iniciando coleta SIGITEC Petrobras via API REST...
+[2026-10-06 12:21:23] [INFO] Buscando listing de oportunidades...
+[2026-10-06 12:22:08] [ERROR] Falha ao buscar listing: Failed to perform HTTP request.
+[2026-10-06 12:22:08] [WARN] Listing retornou erro. Tentando fallback Playwright...
+[2026-10-06 12:22:08] [INFO] Tentando fallback via Playwright...
+[2026-10-06 12:22:08] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:22:08] [WARN] Playwright falhou. Tentando Chromote...
+[2026-10-06 12:22:30] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:23:11] [WARN] Falha ao requisitar https://sigitec-competitividade.petrobras.com.br/v2/public/opportunities apos tentar todos os metodos (httr2, Playwright, Chromote Stealth)
+[2026-10-06 12:23:11] [ERROR] Todos os métodos de rendering falharam.
+[2026-10-06 12:23:11] [INFO] Iniciando coleta UNDP Brasil via componente externo...
+[2026-10-06 12:23:13] [INFO] Buscando componente de dados...
+[2026-10-06 12:23:14] [INFO] Parseando JSON do componente JavaScript...
+[2026-10-06 12:23:14] [INFO] Componente retornou 9 registros.
+[2026-10-06 12:23:15] [INFO] Detalhe parseado com sucesso.
+[2026-10-06 12:23:17] [INFO] Progresso: 5/9 registros processados.
+[2026-10-06 12:23:20] [INFO] UNDP: 9 registros finais coletados.
+[2026-10-06 12:23:20] [INFO] Iniciando coleta EMBRAPII (embrapii.org.br/transparencia/).
+[2026-10-06 12:23:23] [INFO] Encontradas 29 chamadas unicas na pagina de transparencia.
+[2026-10-06 12:23:23] [INFO] Detalhe parseado com sucesso (primeira chamada).
+[2026-10-06 12:23:35] [INFO] Progresso: 10/29 chamadas processadas.
+[2026-10-06 12:23:48] [INFO] Progresso: 20/29 chamadas processadas.
+[2026-10-06 12:23:53] [INFO] EMBRAPII: 29 registros finais coletados.
+[2026-10-06 12:23:53] [INFO] Iniciando coleta DAAD Brasil (híbrido JSON + scraping).
+[2026-10-06 12:23:53] [INFO] Fase 1: Baixando catálogo global DAAD (scholarships.js).
+[2026-10-06 12:23:54] [INFO] scholarships.js baixado: 680738 caracteres.
+[2026-10-06 12:23:55] [INFO] Catálogo global: 81 bolsas Brasil extraídas de 162 totais.
+[2026-10-06 12:23:55] [INFO] Fase 2: Fazendo scraping do listing DAAD Brasil.
+[2026-10-06 12:23:58] [INFO] Página 1: 5 itens extraídos (total: 5).
+[2026-10-06 12:23:59] [INFO] Página 2: 5 itens extraídos (total: 10).
+[2026-10-06 12:24:01] [INFO] Página 3: 5 itens extraídos (total: 15).
+[2026-10-06 12:24:03] [INFO] Página 4: 5 itens extraídos (total: 20).
+[2026-10-06 12:24:05] [INFO] Página 5: 5 itens extraídos (total: 25).
+[2026-10-06 12:24:05] [INFO] Listing completo: 25 itens de 5 páginas.
+[2026-10-06 12:24:05] [INFO] Fase 3: Mergeando catálogo JSON com listing Brasil.
+[2026-10-06 12:24:05] [INFO] Fase 3: 62 bolsas descartadas (sem correspondência no listing Brasil).
+[2026-10-06 12:24:05] [INFO] Fase 3: 19 registros mergeados (JSON + listing Brasil).
+[2026-10-06 12:24:05] [INFO] Fase 4: Buscando páginas de detalhe.
+[2026-10-06 12:24:36] [WARN] Falhas no detalhe: 8/19 (usados dados do listing/catálogo).
+[2026-10-06 12:24:36] [INFO] Fase 5: Preparando registros.
+[2026-10-06 12:24:36] [INFO] DAAD Brasil: 19 registros finais coletados.
+[2026-10-06 12:24:37] [INFO] Iniciando coleta EU Quantum Technologies via API REST...
+[2026-10-06 12:24:37] [INFO] Buscando termo: 'HORIZON-JU-EUROHPC-2026'
+[2026-10-06 12:24:39] [INFO] Termo 'HORIZON-JU-EUROHPC-2026': 100 resultados brutos
+[2026-10-06 12:24:39] [INFO] Termo 'HORIZON-JU-EUROHPC-2026': 34 itens HEU quantum acumulados
+[2026-10-06 12:24:40] [INFO] Buscando termo: 'HORIZON-JU-SNS-2022'
+[2026-10-06 12:24:41] [INFO] Termo 'HORIZON-JU-SNS-2022': 100 resultados brutos
+[2026-10-06 12:24:41] [INFO] Termo 'HORIZON-JU-SNS-2022': 50 itens HEU quantum acumulados
+[2026-10-06 12:24:42] [INFO] Buscando termo: 'HORIZON-CL4-2026-HUMAN'
+[2026-10-06 12:24:44] [INFO] Termo 'HORIZON-CL4-2026-HUMAN': 100 resultados brutos
+[2026-10-06 12:24:44] [INFO] Termo 'HORIZON-CL4-2026-HUMAN': 128 itens HEU quantum acumulados
+[2026-10-06 12:24:45] [INFO] Buscando termo: 'quantum'
+[2026-10-06 12:24:47] [INFO] Termo 'quantum': 100 resultados brutos
+[2026-10-06 12:24:47] [INFO] Termo 'quantum': 132 itens HEU quantum acumulados
+[2026-10-06 12:24:47] [INFO] Buscando termo: 'quantum computing'
+[2026-10-06 12:24:53] [INFO] Termo 'quantum computing': 100 resultados brutos
+[2026-10-06 12:24:53] [INFO] Termo 'quantum computing': 132 itens HEU quantum acumulados
+[2026-10-06 12:24:54] [INFO] Buscando termo: 'quantum communication'
+[2026-10-06 12:25:04] [INFO] Termo 'quantum communication': 100 resultados brutos
+[2026-10-06 12:25:04] [INFO] Termo 'quantum communication': 132 itens HEU quantum acumulados
+[2026-10-06 12:25:05] [INFO] Buscando termo: 'quantum sensors'
+[2026-10-06 12:25:09] [INFO] Termo 'quantum sensors': 100 resultados brutos
+[2026-10-06 12:25:09] [INFO] Termo 'quantum sensors': 132 itens HEU quantum acumulados
+[2026-10-06 12:25:09] [INFO] Buscando termo: 'quantum technology'
+[2026-10-06 12:25:13] [INFO] Termo 'quantum technology': 100 resultados brutos
+[2026-10-06 12:25:13] [INFO] Termo 'quantum technology': 132 itens HEU quantum acumulados
+[2026-10-06 12:25:13] [INFO] Deduplicando 132 itens brutos...
+[2026-10-06 12:25:13] [INFO] Apos deduplicacao: 21 itens unicos
+[2026-10-06 12:25:13] [INFO] QUANTUM: 21 registros finais coletados
+[2026-10-06 12:25:13] [INFO] Retornando lista com 34 registros
+[2026-10-06 12:25:13] [INFO] Iniciando coleta Alexander von Humboldt Foundation.
+[2026-10-06 12:25:13] [INFO] Buscando fellowships...
+[2026-10-06 12:25:15] [INFO] Filter 'schollarships': 10 programas encontrados.
+[2026-10-06 12:25:17] [INFO] Filter 'award': 9 programas encontrados.
+[2026-10-06 12:25:18] [INFO] Total de 18 programas únicos após dedup.
+[2026-10-06 12:25:22] [INFO] Progresso: 5/18 detalhes coletados.
+[2026-10-06 12:25:27] [INFO] Progresso: 10/18 detalhes coletados.
+[2026-10-06 12:25:34] [INFO] Progresso: 15/18 detalhes coletados.
+[2026-10-06 12:25:37] [INFO] HUMBOLDT: 18 registros finais coletados.
+[2026-10-06 12:25:37] [INFO] Iniciando coleta Grants.gov (CFDA 19.040 - Public Diplomacy).
+[2026-10-06 12:25:37] [INFO] Tentando API Grants.gov: https://simpler.grants.gov/api/opportunities/search
+[2026-10-06 12:25:39] [INFO] Tentando API Grants.gov: https://simpler.grants.gov/api/v1/opportunities/search
+[2026-10-06 12:25:40] [INFO] Tentando API Grants.gov: https://simpler.grants.gov/api/search
+[2026-10-06 12:25:43] [INFO] Tentando API Grants.gov: https://simpler.grants.gov/search/api/search
+[2026-10-06 12:25:44] [INFO] Grants.gov API falhou ou vazia. Tentando HTML scraping com Playwright fallback.
+[2026-10-06 12:25:44] [INFO] Grants.gov HTML: buscando https://simpler.grants.gov/search?status=posted&fundingInstrumentType=grant&assistanceListingNumber=19.040&searchText=public%20diplomacy
+[2026-10-06 12:25:54] [INFO] Grants.gov HTML: buscando https://simpler.grants.gov/search?query=public%20diplomacy&cfda=19.040
+[2026-10-06 12:26:12] [INFO] Grants.gov HTML: buscando https://simpler.grants.gov/search
+[2026-10-06 12:26:22] [INFO] Grants.gov HTML: 10 registros finais coletados.
+[2026-10-06 12:26:22] [INFO] Iniciando coleta DOE ASCR (HPC, Quantum, AI for Science).
+[2026-10-06 12:26:22] [INFO] Tentando carregar DOE ASCR via https://science.osti.gov/ascr/Funding-Opportunities...
+[2026-10-06 12:26:25] [INFO] Sucesso ao carregar DOE ASCR via https://science.osti.gov/ascr/Funding-Opportunities.
+[2026-10-06 12:26:25] [INFO] DOE ASCR: 3 registros finais coletados.
+[2026-10-06 12:26:25] [INFO] Iniciando coleta NSF International Collaboration (OISE).
+[2026-10-06 12:26:44] [WARN] Falha ao baixar PDF https://nsf-gov-resources.nsf.gov/files/MOU-Lead-Agency-Opportunity-NSF-GACR-EOI-Form-r.pdf
+[2026-10-06 12:26:45] [WARN] Falha ao baixar PDF https://nsf-gov-resources.nsf.gov/files/MOU-Lead-Agency-Opportunity-NSF-GACR-EOI-Form-r.pdf
+[2026-10-06 12:26:48] [WARN] Falha ao baixar PDF https://nsf-gov-resources.nsf.gov/files/MOU-Lead-Agency-Opportunity-NSF-GACR-EOI-Form-r.pdf
+[2026-10-06 12:26:57] [WARN] Falha ao baixar PDF https://nsf-gov-resources.nsf.gov/files/MOU-Lead-Agency-Opportunity-NSF-GACR-EOI-Form-r.pdf
+[2026-10-06 12:27:05] [INFO] NSF International: 18 registros finais.
+[2026-10-06 12:27:05] [INFO] Iniciando coleta NSF QISE International Supplements.
+[2026-10-06 12:27:07] [INFO] NSF QISE: 1 registros finais.
+[2026-10-06 12:27:07] [INFO] Iniciando coleta NSF CISE (Computing, AI, HPC).
+[2026-10-06 12:27:07] [INFO] Tentando NSF API: https://www.nsf.gov/api/v1/funding/search?directorate=CISE&page=1&pageSize=25
+[2026-10-06 12:27:10] [INFO] Tentando NSF API: https://www.nsf.gov/funding/api/search?directorate=CISE
+[2026-10-06 12:27:12] [INFO] Tentando NSF API: https://api.nsf.gov/services/v1/awards.json?keyword=CISE&printFields=id,title,fundsObligatedAmt,awardTitle,date&offset=0
+[2026-10-06 12:27:15] [INFO] NSF CISE API falhou. Tentando HTML scraping diretorate CISE.
+[2026-10-06 12:27:56] [INFO] NSF CISE: 11 registros finais.
+[2026-10-06 12:27:56] [INFO] Iniciando coleta DOE Quantum Genesis Initiative.
+[2026-10-06 12:28:38] [INFO] DOE Quantum Genesis: 17 registros finais.
+[2026-10-06 12:28:38] [INFO] Iniciando coleta DOE Genesis Mission.
+[2026-10-06 12:28:57] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:29:33] [INFO] DOE Genesis: 19 registros finais.
+[2026-10-06 12:29:33] [INFO] Iniciando coleta NSF NQNI (nsf26-505).
+[2026-10-06 12:29:35] [WARN] Falha ao baixar PDF https://nnci.net/sites/default/files/inline-files/2023_FutureNanotechnologyInfrastructure_WhitePaper_FINAL.pdf
+[2026-10-06 12:29:35] [INFO] NSF NQNI: 1 registros finais.
+[2026-10-06 12:29:36] [INFO] Iniciando coleta DARPA Quantum Benchmarking Initiative.
+[2026-10-06 12:29:44] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:29:49] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:29:58] [INFO] DARPA QBI: 6 registros finais.
+[2026-10-06 12:29:58] [INFO] [AEB] Iniciando coleta AEB (Agência Espacial Brasileira)...
+[2026-10-06 12:29:58] [INFO] [AEB] AEB: 1 registros finais coletados.
+[2026-10-06 12:29:58] [INFO] [FINEP Aero] Iniciando coleta FINEP Aeroespacial e Defesa...
+[2026-10-06 12:29:58] [INFO] Iniciando coleta FINEP via API REST...
+[2026-10-06 12:29:58] [INFO] Buscando página 1: https://www.finep.gov.br/o/c/chamadapublicas?sort=dataDePublicacao:desc&page=1&pageSize=250
+[2026-10-06 12:29:58] [INFO] Total de registros: 477
+[2026-10-06 12:29:58] [INFO] Página 1: 250 itens total, 34 filtrados (Aberta)
+[2026-10-06 12:29:59] [INFO] Buscando página 2: https://www.finep.gov.br/o/c/chamadapublicas?sort=dataDePublicacao:desc&page=2&pageSize=250
+[2026-10-06 12:29:59] [INFO] Página 2: 227 itens total, 0 filtrados (Aberta)
+[2026-10-06 12:29:59] [INFO] Total de itens coletados (Aberta): 34
+[2026-10-06 12:29:59] [INFO] FINEP: 34 registros finais coletados
+[2026-10-06 12:29:59] [INFO] [DCTA/FAB] Iniciando coleta DCTA / Força Aérea Brasileira...
+[2026-10-06 12:30:00] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:30:04] [INFO] [DCTA/FAB] DCTA/FAB: 11 registros finais coletados.
+[2026-10-06 12:30:04] [INFO] [BNB FUNDECI] Iniciando coleta BNB FUNDECI (Sertão & Agro)...
+[2026-10-06 12:30:05] [INFO] [BNB FUNDECI] BNB FUNDECI: 1 registros finais coletados.
+[2026-10-06 12:30:05] [INFO] [CODEVASF] Iniciando coleta CODEVASF (Sertão & Bacia do São Francisco)...
+[2026-10-06 12:30:05] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:30:10] [INFO] [CODEVASF] CODEVASF: 1 registros finais coletados.
+[2026-10-06 12:30:10] [INFO] [EMBRAPA/MAPA] Iniciando coleta Embrapa / MAPA...
+[2026-10-06 12:30:13] [INFO] [EMBRAPA/MAPA] Embrapa: 5 registros finais coletados.
+[2026-10-06 12:30:13] [INFO] [SUDENE] Iniciando coleta SUDENE...
+[2026-10-06 12:30:14] [INFO] [SUDENE] SUDENE: 1 registros finais coletados.
+[2026-10-06 12:30:14] [INFO] Iniciando coleta NEH (National Endowment for the Humanities).
+[2026-10-06 12:30:43] [WARN] Falha ao baixar PDF http://www.bndes.gov.br/SiteBNDES/bndes/bndes_pt/Galerias/Arquivos/empresa/download/apresentacoes/Coutinho_financing_infrastructure.pdf
+[2026-10-06 12:30:44] [WARN] Ambiguidade de data: '10/6/26'
+[2026-10-06 12:30:47] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:30:52] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:30:57] [WARN] Ambiguidade de data: '10/6/26'
+[2026-10-06 12:31:07] [WARN] Ambiguidade de data: '10/6/26'
+[2026-10-06 12:31:15] [WARN] Ambiguidade de data: '10/6/26'
+[2026-10-06 12:31:37] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:31:41] [WARN] Ambiguidade de data: '10/6/26'
+[2026-10-06 12:32:02] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:32:36] [INFO] Bloqueio de CDN/CAPTCHA (status 200) detectado via httr2 para https://business.esa.int/funding/call-for-proposals-non-competitive/arctic-region-safety-navigation-and-operations. Acionando fallbacks...
+[2026-10-06 12:32:36] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:32:39] [WARN] Bloqueio de CDN/CAPTCHA detectado via Chromote para https://business.esa.int/funding/call-for-proposals-non-competitive/arctic-region-safety-navigation-and-operations.
+[2026-10-06 12:32:39] [WARN] Falha ao requisitar https://business.esa.int/funding/call-for-proposals-non-competitive/arctic-region-safety-navigation-and-operations apos tentar todos os metodos (httr2, Playwright, Chromote Stealth)
+[2026-10-06 12:32:47] [WARN] Ambiguidade de data: '02/03/2026'
+[2026-10-06 12:32:47] [WARN] Ambiguidade de data: '02/03/2026'
+[2026-10-06 12:33:31] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:33:41] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:33:43] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:33:45] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:33:48] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:33:52] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:33:57] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:33:59] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:34:01] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:34:04] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:34:08] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:34:13] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:34:16] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:34:18] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:34:23] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:34:25] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:34:30] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:34:33] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:34:35] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:34:38] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:34:41] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:36:23] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:36:27] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:36:38] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:36:44] [WARN] Ambiguidade de data: '01/04/2024'
+[2026-10-06 12:36:44] [WARN] Ambiguidade de data: '01/04/2022'
+[2026-10-06 12:37:23] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:37:28] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:37:50] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:37:54] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '01/05/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '11/08/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '01/07/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '10/07/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '03/09/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '12/09/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '02/01/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '11/01/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '02/05/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '11/05/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '07/04/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '03/12/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '05/01/2026'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '01/06/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '01/04/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '10/04/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '09/06/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '12/01/2026'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '01/11/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '06/03/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '06/01/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '04/02/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '08/01/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '02/07/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '11/07/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '05/11/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '01/07/2024'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '10/12/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '05/03/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '08/04/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '07/08/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '02/06/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '07/11/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '10/09/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '06/10/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '04/08/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '05/02/2025'
+[2026-10-06 12:38:04] [WARN] Ambiguidade de data: '09/12/2025'
+[2026-10-06 12:38:17] [WARN] Ambiguidade de data: '11/09/2026'
+[2026-10-06 12:38:17] [WARN] Ambiguidade de data: '04/09/26'
+[2026-10-06 12:38:20] [WARN] Ambiguidade de data: '10/05/2026'
+[2026-10-06 12:38:24] [WARN] Ambiguidade de data: '11/02/2026'
+[2026-10-06 12:38:51] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:38:55] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:39:10] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:39:28] [WARN] Ambiguidade de data: '11/08/2026'
+[2026-10-06 12:39:28] [WARN] Ambiguidade de data: '11/08/2026'
+[2026-10-06 12:39:28] [WARN] Ambiguidade de data: '31/08/20'
+[2026-10-06 12:39:30] [WARN] Ambiguidade de data: '01/04/2025'
+[2026-10-06 12:39:30] [WARN] Ambiguidade de data: '06/02/2025'
+[2026-10-06 12:39:30] [WARN] Ambiguidade de data: '01/04/2025'
+[2026-10-06 12:39:30] [WARN] Ambiguidade de data: '06/02/2025'
+[2026-10-06 12:40:21] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:40:46] [INFO] Iniciando coleta SEBRAE & Edital de Inovação para a Indústria...
+[2026-10-06 12:40:46] [INFO] SEBRAE: 2 registros coletados.
+[2026-10-06 12:40:47] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:41:02] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '06/10/2026'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '01/10/2026'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '10/07/2026'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '10/04/2026'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '02/04/2026'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '01/09/2026'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '08/09/2026'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '06/08/2026'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '03/07/2026'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '03/06/2025'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '10/04/2025'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '11/03/2025'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '10/06/2024'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '10/05/2024'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '08/03/2024'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '06/02/2024'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '09/01/2025'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '12/05/2022'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '06/01/2022'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '05/07/2019'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '06/04/2018'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '06/12/2024'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '01/04/2022'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '11/10/2024'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '02/08/2023'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '04/09/2023'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '09/08/2023'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '01/10/2024'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '11/09/2024'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '10/09/2024'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '05/09/2024'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '04/09/2024'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '03/09/2024'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '11/09/2023'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '03/08/2023'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '09/05/2023'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '06/09/2023'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '10/08/2023'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '01/07/2020'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '02/09/2019'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '06/08/2019'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '02/08/2019'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '11/07/2019'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '10/06/2019'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '07/06/2019'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '07/05/2019'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '08/02/2019'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '12/09/2024'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '05/04/2024'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '03/04/2024'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '08/04/2024'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '09/02/2024'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '05/12/2023'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '03/11/2023'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '12/09/2023'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '08/09/2023'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '11/08/2023'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '07/03/2023'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '01/03/2023'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '08/12/2022'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '07/11/2022'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '10/05/2024'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '05/07/2019'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '06/04/2018'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '08/09/2026'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '06/08/2026'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '03/07/2026'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '09/08/2023'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '06/10/2026'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '01/10/2026'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '10/07/2026'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '10/04/2026'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '10/04/2025'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '11/03/2025'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '10/06/2024'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '01/04/2022'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '02/08/2023'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '04/09/2023'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '01/10/2024'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '11/09/2024'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '10/09/2024'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '05/09/2024'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '11/09/2023'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '01/07/2020'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '02/09/2019'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '06/08/2019'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '08/04/2024'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '05/12/2023'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '03/11/2023'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '07/03/2023'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '01/03/2023'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '08/12/2022'
+[2026-10-06 12:41:13] [WARN] Ambiguidade de data: '07/11/2022'
+[2026-10-06 12:41:14] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:41:29] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:41:38] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:41:42] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '06/10/2026'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '01/10/2026'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '10/07/2026'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '10/04/2026'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '02/04/2026'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '01/09/2026'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '08/09/2026'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '06/08/2026'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '03/07/2026'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '03/06/2025'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '10/04/2025'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '11/03/2025'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '10/06/2024'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '10/05/2024'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '08/03/2024'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '06/02/2024'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '09/01/2025'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '12/05/2022'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '06/01/2022'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '05/07/2019'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '06/04/2018'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '06/12/2024'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '01/04/2022'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '11/10/2024'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '02/08/2023'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '04/09/2023'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '09/08/2023'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '01/10/2024'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '11/09/2024'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '10/09/2024'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '05/09/2024'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '04/09/2024'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '03/09/2024'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '11/09/2023'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '03/08/2023'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '09/05/2023'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '06/09/2023'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '10/08/2023'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '01/07/2020'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '02/09/2019'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '06/08/2019'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '02/08/2019'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '11/07/2019'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '10/06/2019'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '07/06/2019'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '07/05/2019'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '08/02/2019'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '12/09/2024'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '05/04/2024'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '03/04/2024'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '08/04/2024'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '09/02/2024'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '05/12/2023'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '03/11/2023'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '12/09/2023'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '08/09/2023'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '11/08/2023'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '07/03/2023'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '01/03/2023'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '08/12/2022'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '07/11/2022'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '10/05/2024'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '05/07/2019'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '06/04/2018'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '08/09/2026'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '06/08/2026'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '03/07/2026'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '09/08/2023'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '06/10/2026'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '01/10/2026'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '10/07/2026'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '10/04/2026'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '10/04/2025'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '11/03/2025'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '10/06/2024'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '01/04/2022'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '02/08/2023'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '04/09/2023'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '01/10/2024'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '11/09/2024'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '10/09/2024'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '05/09/2024'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '11/09/2023'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '01/07/2020'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '02/09/2019'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '06/08/2019'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '08/04/2024'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '05/12/2023'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '03/11/2023'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '07/03/2023'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '01/03/2023'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '08/12/2022'
+[2026-10-06 12:41:53] [WARN] Ambiguidade de data: '07/11/2022'
+[2026-10-06 12:41:53] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '06/10/2026'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '01/10/2026'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '10/07/2026'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '10/04/2026'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '02/04/2026'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '01/09/2026'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '08/09/2026'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '06/08/2026'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '03/07/2026'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '03/06/2025'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '10/04/2025'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '11/03/2025'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '10/06/2024'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '10/05/2024'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '08/03/2024'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '06/02/2024'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '09/01/2025'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '12/05/2022'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '06/01/2022'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '05/07/2019'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '06/04/2018'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '06/12/2024'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '01/04/2022'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '11/10/2024'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '02/08/2023'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '04/09/2023'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '09/08/2023'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '01/10/2024'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '11/09/2024'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '10/09/2024'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '05/09/2024'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '04/09/2024'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '03/09/2024'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '11/09/2023'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '03/08/2023'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '09/05/2023'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '06/09/2023'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '10/08/2023'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '01/07/2020'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '02/09/2019'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '06/08/2019'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '02/08/2019'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '11/07/2019'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '10/06/2019'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '07/06/2019'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '07/05/2019'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '08/02/2019'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '12/09/2024'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '05/04/2024'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '03/04/2024'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '08/04/2024'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '09/02/2024'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '05/12/2023'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '03/11/2023'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '12/09/2023'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '08/09/2023'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '11/08/2023'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '07/03/2023'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '01/03/2023'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '08/12/2022'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '07/11/2022'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '10/05/2024'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '05/07/2019'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '06/04/2018'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '08/09/2026'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '06/08/2026'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '03/07/2026'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '09/08/2023'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '06/10/2026'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '01/10/2026'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '10/07/2026'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '10/04/2026'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '10/04/2025'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '11/03/2025'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '10/06/2024'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '01/04/2022'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '02/08/2023'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '04/09/2023'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '01/10/2024'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '11/09/2024'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '10/09/2024'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '05/09/2024'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '11/09/2023'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '01/07/2020'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '02/09/2019'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '06/08/2019'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '08/04/2024'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '05/12/2023'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '03/11/2023'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '07/03/2023'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '01/03/2023'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '08/12/2022'
+[2026-10-06 12:42:04] [WARN] Ambiguidade de data: '07/11/2022'
+[2026-10-06 12:42:04] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:42:16] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:42:27] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:42:37] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:42:48] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:42:59] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:43:10] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:43:21] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:43:32] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:43:43] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:43:54] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:44:04] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:44:15] [INFO] Iniciando coleta PNCP Governo Federal & Ministérios...
+[2026-10-06 12:44:15] [INFO] PNCP Gov: 0 registros coletados.
+[2026-10-06 12:44:15] [INFO] Iniciando coleta FAPESP...
+[2026-10-06 12:44:15] [INFO] FAPESP: 2 registros coletados.
+[2026-10-06 12:44:15] [INFO] Iniciando coleta FAPERJ...
+[2026-10-06 12:44:15] [INFO] FAPERJ: 1 registros coletados.
+[2026-10-06 12:44:18] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:44:26] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:44:43] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:44:47] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:44:49] [WARN] Falha ao baixar PDF https://fapemig.br/files/Chamada-17_2026-PROFIX-CB?title=Chamada+17_2026+PROFIX-CB&url=https://api.site.fapemig.br/wp-content/uploads/2026-09-14__193__12653__chamada-17_2026-profix-cb__DBbAVjRX.pdf
+[2026-10-06 12:44:53] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:44:56] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:45:02] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:45:05] [WARN] Falha ao baixar PDF https://api.site.fapemig.br/wp-content/uploads/2025/05/caderno_de_modalidade_cientifica_2020-2.pdf
+[2026-10-06 12:45:07] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:45:11] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:45:15] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:45:21] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:45:26] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:45:28] [WARN] Falha ao baixar PDF https://fapemig.br/files/Chamada-04%252F2026---PCE-3%25C2%25AA-Entrada?title=Chamada+04/2026+-+PCE+3%C2%AA+Entrada&url=https://api.site.fapemig.br/wp-content/uploads/2026-08-13__192__12506__chamada-04-2026-pce__YeuVwQ61.pdf
+[2026-10-06 12:45:32] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:45:35] [WARN] Falha ao baixar PDF https://fapemig.br/files/Chamada-007%252F2026-Organiza%25C3%25A7%25C3%25A3o-de-Eventos-de-car%25C3%25A1ter-T%25C3%25A9cnico-Cient%25C3%25ADfico?title=Chamada+007/2026+Organiza%C3%A7%C3%A3o+de+Eventos+de+car%C3%A1ter+T%C3%A9cnico-Cient%C3%ADfico&url=https://api.site.fapemig.br/wp-content/uploads/2026-07-28__191__12409__sei_139766349_fapemig___chamada_07-1__pjYjPKjd.pdf
+[2026-10-06 12:45:39] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:45:43] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:45:46] [WARN] Falha ao baixar PDF https://api.site.fapemig.br/wp-content/uploads/2025/05/caderno_de_modalidade_cientifica_2020-2.pdf
+[2026-10-06 12:45:48] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:45:53] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:45:57] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:46:01] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:46:04] [WARN] Falha ao baixar PDF https://fapemig.br/files/Manual-SAP---Solicita%25C3%25A7%25C3%25A3o-de-Altera%25C3%25A7%25C3%25A3o-de-Processos?title=Manual+SAP+-+Solicita%C3%A7%C3%A3o+de+Altera%C3%A7%C3%A3o+de+Processos&url=https://api.site.fapemig.br/wp-content/uploads/Manual-SAP-Solicitacao-de-alteracao-de-processos-EXTERNO-Rev-5.pdf
+[2026-10-06 12:46:32] [WARN] Ambiguidade de data: '04/03/2015'
+[2026-10-06 12:46:32] [WARN] Ambiguidade de data: '04/03/2015'
+[2026-10-06 12:46:33] [WARN] Host offline ou inacessivel: https://wordpress.sea.sc.gov.br/geral1. Pulando requisicoes antecipadamente.
+[2026-10-06 12:46:54] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:47:04] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:47:08] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:47:15] [WARN] Erro de execucao Playwright: too few arguments
+[2026-10-06 12:47:23] [WARN] Ambiguidade de data: '06/01/2027'
+[2026-10-06 12:47:23] [WARN] Ambiguidade de data: '04/07/2026'
+[2026-10-06 12:47:23] [WARN] Ambiguidade de data: '06/01/2027'
+[2026-10-06 12:47:28] [WARN] Ambiguidade de data: '06/01/2027'
+[2026-10-06 12:47:28] [WARN] Ambiguidade de data: '04/07/2026'
+[2026-10-06 12:47:28] [WARN] Ambiguidade de data: '06/01/2027'
+[2026-10-06 12:47:37] [INFO] Iniciando coleta Cláusula de P&D Obrigatório ANP (Petrobras/Shell)...
+[2026-10-06 12:47:37] [INFO] ANP/Shell: 1 registros coletados.
+[2026-10-06 12:47:37] [INFO] Fonte em processamento: cnpq | https://www.gov.br/cnpq/pt-br/chamadas/abertas-para-submissao
+[2026-10-06 12:47:38] [INFO] Fonte em processamento: capes | https://www.gov.br/capes/pt-br/assuntos/editais-e-resultados-capes
+[2026-10-06 12:47:38] [WARN] data_inconsistente: titulo 'PORTARIA CAPES Nº 289, DE 28 DE DEZEMBRO DE 2018' | data_limite 2026-06-02 | fonte capes
+[2026-10-06 12:47:40] [INFO] Fonte em processamento: finep | https://www.finep.gov.br/o/c/chamadapublicas?sort=dataDePublicacao:desc&pageSize=250
+[2026-10-06 12:47:41] [INFO] Fonte em processamento: fapesb | https://www.fapesb.ba.gov.br/category/edital/aberto/
+[2026-10-06 12:47:42] [INFO] Fonte em processamento: horizon_europe | https://api.tech.ec.europa.eu/search-api/prod/rest/search?apiKey=SEDIA
+[2026-10-06 12:47:43] [WARN] Pacote polyglotr nao instalado. Traducao ignorada. Instale com: install.packages('polyglotr')
+[2026-10-06 12:47:44] [INFO] Fonte em processamento: erc | https://api.tech.ec.europa.eu/search-api/prod/rest/search?apiKey=SEDIA&text=ERC
+[2026-10-06 12:47:45] [INFO] Fonte em processamento: sigitec | https://sigitec-competitividade.petrobras.com.br/v2/public/opportunities
+[2026-10-06 12:47:46] [INFO] Fonte em processamento: undp | https://www.undp.org/pt/brazil/licitacoes
+[2026-10-06 12:47:47] [INFO] Fonte em processamento: embrapii | https://embrapii.org.br/transparencia/
+[2026-10-06 12:47:48] [INFO] Fonte em processamento: daad | https://www.daad-brasil.org/pt/bolsas/busca/
+[2026-10-06 12:47:49] [INFO] Fonte em processamento: quantum | https://api.tech.ec.europa.eu/search-api/prod/rest/search?apiKey=SEDIA&text=quantum
+[2026-10-06 12:47:50] [INFO] Fonte em processamento: humboldt | https://www.humboldt-foundation.de/en/apply/sponsorship-programmes/programmes-a-to-z
+[2026-10-06 12:47:52] [INFO] Fonte em processamento: grants_gov | https://simpler.grants.gov/search
+[2026-10-06 12:47:53] [INFO] Fonte em processamento: doe_ascr | https://science.osti.gov/ascr/Funding-Opportunities
+[2026-10-06 12:47:54] [INFO] Fonte em processamento: nsf_international | https://www.nsf.gov/oise/international-collaborations
+[2026-10-06 12:47:55] [INFO] Fonte em processamento: nsf_qise | https://www.nsf.gov/funding/opportunities/dcl-international-collaboration-supplements-quantum-information
+[2026-10-06 12:47:56] [INFO] Fonte em processamento: nsf_cise | https://www.nsf.gov/funding/find-by-directorate
+[2026-10-06 12:47:57] [INFO] Fonte em processamento: doe_quantum_genesis | https://www.energy.gov/science/articles/energy-department-announces-initiative-create-and-deploy-worlds-first
+[2026-10-06 12:47:58] [INFO] Fonte em processamento: doe_genesis | https://www.energy.gov/genesis
+[2026-10-06 12:47:59] [INFO] Fonte em processamento: nsf_nqni | https://www.nsf.gov/funding/opportunities/nqni-national-quantum-nanotechnology-infrastructure/nsf26-505/solicitation
+[2026-10-06 12:48:01] [INFO] Fonte em processamento: darpa_quantum_benchmarking | https://www.darpa.mil/research/programs/quantum-benchmarking-initiative
+[2026-10-06 12:48:02] [INFO] Fonte em processamento: aeb | https://www.gov.br/aeb/pt-br/acesso-a-informacao/concurso-e-processos-seletivos
+[2026-10-06 12:48:03] [INFO] Fonte em processamento: finep_aero | https://www.finep.gov.br/oportunidades
+[2026-10-06 12:48:04] [INFO] Fonte em processamento: fab_dcta | https://ieav.dcta.mil.br/index.php/editais
+[2026-10-06 12:48:04] [WARN] data_inconsistente: titulo 'Chamada Pública CAPA nº IEAv-C0002/2024 - Projeto PROPHIPER' | data_limite 2026-12-05 | fonte fab_dcta
+[2026-10-06 12:48:04] [WARN] data_inconsistente: titulo 'Chamada Pública CAPA nº IEAv-C0001/2024 - Projeto CSIO' | data_limite 2026-12-05 | fonte fab_dcta
+[2026-10-06 12:48:04] [WARN] data_inconsistente: titulo 'Chamadas Públicas - Bolsas 2023' | data_limite 2026-12-05 | fonte fab_dcta
+[2026-10-06 12:48:04] [WARN] data_inconsistente: titulo 'Chamada Pública CAPA - nº IEAv-C3/2023' | data_limite 2026-12-05 | fonte fab_dcta
+[2026-10-06 12:48:04] [WARN] data_inconsistente: titulo 'Chamada Pública CAPA nº IEAv-C2/2023' | data_limite 2026-12-05 | fonte fab_dcta
+[2026-10-06 12:48:05] [INFO] Fonte em processamento: bnb_fundeci | https://www.bnb.gov.br/ConveniosWeb/Convenente.ProgramaConvenio.Lista.aspx
+[2026-10-06 12:48:06] [INFO] Fonte em processamento: codevasf | https://www.codevasf.gov.br/acesso-a-informacao/licitacoes-e-editais
+[2026-10-06 12:48:07] [INFO] Fonte em processamento: embrapa | https://www.embrapa.br/acessoainformacao/editais
+[2026-10-06 12:48:08] [INFO] Fonte em processamento: sudene | https://pncp.gov.br/app/editais?q=533014&status=todos&pagina=1&tam_pagina=100&tipos=1
+[2026-10-06 12:48:09] [INFO] Fonte em processamento: neh | https://www.neh.gov/grants
+[2026-10-06 12:48:10] [INFO] Fonte em processamento: bndes | https://www.bndes.gov.br/wps/portal/site/home/onde-estamos/licitacoes-e-compras/editais
+[2026-10-06 12:48:11] [INFO] Fonte em processamento: esa_solutions | https://business.esa.int/funding
+[2026-10-06 12:48:12] [INFO] Fonte em processamento: nasa_sbir | https://sbir.nasa.gov/solicitations
+[2026-10-06 12:48:14] [INFO] Fonte em processamento: facepe | https://www.facepe.br/editais/
+[2026-10-06 12:48:15] [INFO] Fonte em processamento: funcap | https://www.funcap.ce.gov.br/editais/
+[2026-10-06 12:48:16] [INFO] Fonte em processamento: fapeal | https://fapeal.br/editais/
+[2026-10-06 12:48:17] [INFO] Fonte em processamento: fapema | https://www.fapema.br/editais/
+[2026-10-06 12:48:18] [INFO] Fonte em processamento: transferegov | https://www.gov.br/transferegov/pt-br
+[2026-10-06 12:48:19] [INFO] Fonte em processamento: bnb_hubine | https://www.bnb.gov.br/hubine
+[2026-10-06 12:48:20] [INFO] Fonte em processamento: sebrae | https://sebrae.com.br/sites/PortalSebrae/canais_adicionais/conheca_editais
+[2026-10-06 12:48:21] [INFO] Fonte em processamento: softex | https://softex.br/editais/
+[2026-10-06 12:48:22] [INFO] Fonte em processamento: pncp_gov | https://pncp.gov.br/api/consulta/v1/contratacoes/publicas
+[2026-10-06 12:48:23] [INFO] Fonte em processamento: fapesp | https://fapesp.br/chamadas
+[2026-10-06 12:48:25] [INFO] Fonte em processamento: faperj | https://www.faperj.br/?id=editais
+[2026-10-06 12:48:26] [INFO] Fonte em processamento: fapemig | https://fapemig.br/pt/chamadas/
+[2026-10-06 12:48:27] [INFO] Fonte em processamento: fapesc | https://fapesc.sc.gov.br/editais/
+[2026-10-06 12:48:28] [INFO] Fonte em processamento: anp_shell | https://www.gov.br/anp/pt-br/assuntos/pesquisa-desenvolvimento-e-inovacao
+[2026-10-06 12:48:28] [WARN] Falha ao exportar XLSX: attempt to select less than one element in integerOneIndex
+[2026-10-06 12:48:28] [INFO] Fim da coleta oficial. 46 fontes processadas. 442 registros adicionados nesta rodada. 448 registros na base.

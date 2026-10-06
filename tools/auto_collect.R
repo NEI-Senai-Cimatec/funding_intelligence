@@ -71,7 +71,9 @@ main_auto_collect <- function(test_mode = FALSE) {
   }, add = TRUE)
 
   # Garantir integridade de esquema e novas colunas de aderência por campi
-  message("[AutoCollect] Verificando e migrando esquema do banco...")
+  message("[AutoCollect] Verificando e criando tabelas/fontes caso não existam...")
+  create_tables(conn)
+  seed_sources(conn)
   migrate_enrichment_columns(conn)
 
   # Registrar log inicial de início de coleta

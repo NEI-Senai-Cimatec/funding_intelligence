@@ -2,8 +2,8 @@ name: 🔄 Busca Automática de Editais
 
 on:
   schedule:
-    # 40 15 * * 2 = Toda terça-feira às 15:40 UTC (12:40 Horário de Brasília)
-    - cron: '40 15 * * 2'
+    # 0 17 * * 2 = Toda terça-feira às 17:00 UTC (14:00 Horário de Brasília)
+    - cron: '0 17 * * 2'
   workflow_dispatch: # Permite disparo manual com 1 clique na aba Actions do GitHub
 
 concurrency:
@@ -74,10 +74,10 @@ jobs:
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add funding_intelligence.sqlite data_exports/ logs/ || true
+          git add -f funding_intelligence.sqlite data_exports/ logs/ || true
           if git diff --staged --quiet; then
             echo "Nenhuma alteração nos dados detectada nesta rodada."
           else
             git commit -m "chore(auto-collect): atualização automática de editais [$(date -u +'%Y-%m-%d %H:%M UTC')]"
-            git push
+            git push origin HEAD:${{ github.ref_name }}
           fi

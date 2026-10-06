@@ -1,6 +1,9 @@
 name: 🔄 Busca Automática de Editais
 
 on:
+  push:
+    branches:
+      - feat
   schedule:
     # 30 15 * * 2 = Toda terça-feira às 15:30 UTC (12:30 Horário de Brasília)
     - cron: '30 15 * * 2'

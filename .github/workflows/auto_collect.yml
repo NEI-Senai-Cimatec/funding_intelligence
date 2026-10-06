@@ -79,5 +79,17 @@ jobs:
             echo "Nenhuma alteração nos dados detectada nesta rodada."
           else
             git commit -m "chore(auto-collect): atualização automática de editais [$(date -u +'%Y-%m-%d %H:%M UTC')]"
+            git pull --rebase -X theirs origin ${{ github.ref_name }} || git pull --rebase origin ${{ github.ref_name }} || true
             git push origin HEAD:${{ github.ref_name }}
           fi
+
+      - name: 📦 Salvar Banco de Dados e Exportações como Artefato
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: funding-intelligence-data
+          path: |
+            funding_intelligence.sqlite
+            data_exports/
+            logs/
+          retention-days: 14

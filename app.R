@@ -1829,8 +1829,12 @@ server <- function(input, output, session) {
   })
   output$ultima_coleta <- renderText({
     if (is.null(rv$user)) return("—")
-    if (nrow(rv$logs) == 0) return("-")
-    latest <- max(parse_datetime_safe(rv$logs$data_execucao), na.rm = TRUE)
+    dates_logs <- if (nrow(rv$logs) > 0 && "data_execucao" %in% names(rv$logs)) parse_datetime_safe(rv$logs$data_execucao) else as.POSIXct(character())
+    dates_opps <- if (nrow(rv$opportunities) > 0 && "data_hora_coleta" %in% names(rv$opportunities)) parse_datetime_safe(rv$opportunities$data_hora_coleta) else as.POSIXct(character())
+    all_dates <- c(dates_logs, dates_opps)
+    all_dates <- all_dates[!is.na(all_dates)]
+    if (length(all_dates) == 0) return("-")
+    latest <- max(all_dates, na.rm = TRUE)
     if (!is.finite(as.numeric(latest))) return("-")
     format(latest, "%d/%m/%Y %H:%M")
   })

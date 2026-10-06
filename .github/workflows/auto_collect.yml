@@ -1,0 +1,83 @@
+name: 🔄 Busca Automática de Editais
+
+on:
+  schedule:
+    # 30 15 * * 2 = Toda terça-feira às 15:30 UTC (12:30 Horário de Brasília)
+    - cron: '30 15 * * 2'
+  workflow_dispatch: # Permite disparo manual com 1 clique na aba Actions do GitHub
+
+concurrency:
+  group: auto-collect-group
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  collect:
+    name: 🚀 Coletar e Atualizar Oportunidades
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+
+    steps:
+      - name: 📥 Clonar repositório
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: ⚙️ Instalar dependências de sistema
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libcurl4-openssl-dev \
+            libssl-dev \
+            libxml2-dev \
+            libpoppler-cpp-dev \
+            libpq-dev \
+            sqlite3 \
+            libsqlite3-dev
+
+      - name: 📦 Configurar R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.4.0'
+          use-public-rspm: true
+
+      - name: 📚 Instalar pacotes R essenciais
+        run: |
+          Rscript -e "
+            options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/jammy/latest'));
+            pkgs <- c(
+              'DBI', 'RSQLite', 'jsonlite', 'digest', 'dplyr', 'purrr',
+              'stringr', 'httr2', 'rvest', 'xml2', 'lubridate', 'tibble',
+              'readr', 'writexl', 'callr', 'ratelimitr', 'uuid', 'memoise',
+              'RPostgres'
+            );
+            # Instala apenas os pacotes que ainda não estiverem disponíveis
+            missing_pkgs <- pkgs[!pkgs %in% installed.packages()[, 'Package']];
+            if (length(missing_pkgs) > 0) {
+              install.packages(missing_pkgs, dependencies = TRUE);
+            }
+            message('Dependências R prontas para execução.');
+          "
+
+      - name: 🔍 Executar Busca Automática de Editais
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          AI_PROVIDER: ${{ secrets.AI_PROVIDER }}
+          AI_MODEL: ${{ secrets.AI_MODEL }}
+        run: |
+          Rscript tools/auto_collect.R
+
+      - name: 💾 Commit & Push dos dados atualizados
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add funding_intelligence.sqlite data_exports/ logs/ || true
+          if git diff --staged --quiet; then
+            echo "Nenhuma alteração nos dados detectada nesta rodada."
+          else
+            git commit -m "chore(auto-collect): atualização automática de editais [$(date -u +'%Y-%m-%d %H:%M UTC')]"
+            git push
+          fi

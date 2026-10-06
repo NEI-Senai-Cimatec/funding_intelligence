@@ -376,6 +376,130 @@ ui <- bslib::page_sidebar(
       )
     ),
     bslib::nav_panel(
+      title = tags$span(tags$i(class = "fa fa-leaf"), " CIMATEC Sertão"),
+      value = "cimatec_sertao",
+      bslib::card(
+        style = "background: linear-gradient(135deg, #15803d 0%, #064e3b 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;",
+        tags$div(
+          style = "display: flex; justify-content: space-between; align-items: center;",
+          tags$div(
+            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "🌾 CIMATEC Sertão de PD&I"),
+            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado para Agro, Recursos Hídricos, Convivência com o Semiárido e Energias Renováveis.")
+          ),
+          tags$div(
+            style = "text-align: right;",
+            tags$span(class = "badge bg-success", style = "font-size: 0.9rem; padding: 6px 12px;", "Aderência Ativa")
+          )
+        )
+      ),
+      bslib::layout_columns(
+        col_widths = c(6, 6),
+        selectInput("sertao_theme_filter", "Eixo Temático Sertão & Agrotech", 
+                    choices = c("Todos os Eixos", "Agricultura de Precisão & Agrotech", "Recursos Hídricos, Irrigação & Dessalinização", "Energias Renováveis no Semiárido", "Bioeconomia da Caatinga & Biotecnologia", "Pecuária Conectada & Sanidade Animal", "Convivência com o Semiárido & Clima", "Agroindústria & Cadeias Produtivas Regionais"),
+                    selected = "Todos os Eixos"),
+        selectInput("sertao_level_tab_filter", "Filtrar por Nível de Aderência",
+                    choices = c("Todos os Níveis", "Muito alta", "Alta", "Média", "Baixa"),
+                    selected = "Todos os Níveis")
+      ),
+      bslib::card(
+        tags$h5(style = "color: #15803d; font-weight: 700; margin-bottom: 15px;", "Oportunidades do CIMATEC Sertão & Ideias de Projetos Recomendadas"),
+        shinycssloaders::withSpinner(DTOutput("sertao_results_table"), type = 6, color = "#15803d")
+      )
+    ),
+    bslib::nav_panel(
+      title = tags$span(tags$i(class = "fa fa-rocket"), " CIMATEC Aeroespacial"),
+      value = "cimatec_aeroespacial",
+      bslib::card(
+        style = "background: linear-gradient(135deg, #0284c7 0%, #0f172a 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;",
+        tags$div(
+          style = "display: flex; justify-content: space-between; align-items: center;",
+          tags$div(
+            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "🚀 CIMATEC Aeroespacial de PD&I"),
+            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado para VANTs/Drones, Tecnologias Espaciais, Satélites e Defesa Nacional.")
+          ),
+          tags$div(
+            style = "text-align: right;",
+            tags$span(class = "badge bg-success", style = "font-size: 0.9rem; padding: 6px 12px;", "Aderência Ativa")
+          )
+        )
+      ),
+      bslib::layout_columns(
+        col_widths = c(6, 6),
+        selectInput("aero_theme_filter", "Eixo Temático Aeroespacial & Defesa", 
+                    choices = c("Todos os Eixos", "VANTs, Drones & Sistemas Não-Tripulados", "Satélites, Cargas Úteis & Aplicações Espaciais", "Propulsão Aeroespacial & Lançadores", "Aviônica, Sensores, Radares & Guerra Eletrônica", "eVTOL & Mobilidade Aérea Avançada", "Materiais Compostos & Estruturas Aeronáuticas", "Defesa Nacional & Forças Armadas"),
+                    selected = "Todos os Eixos"),
+        selectInput("aero_level_tab_filter", "Filtrar por Nível de Aderência",
+                    choices = c("Todos os Níveis", "Muito alta", "Alta", "Média", "Baixa"),
+                    selected = "Todos os Níveis")
+      ),
+      bslib::card(
+        tags$h5(style = "color: #0284c7; font-weight: 700; margin-bottom: 15px;", "Oportunidades Aeroespaciais & Ideias de Projetos Recomendadas"),
+        shinycssloaders::withSpinner(DTOutput("aero_results_table"), type = 6, color = "#0284c7")
+      )
+    ),
+    bslib::nav_panel(
+      title = tags$span(tags$i(class = "fa fa-laptop-code"), " CIMATEC Digital"),
+      value = "cimatec_digital",
+      bslib::card(
+        style = "background: linear-gradient(135deg, #4f46e5 0%, #1e1b4b 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;",
+        tags$div(
+          style = "display: flex; justify-content: space-between; align-items: center;",
+          tags$div(
+            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "💻 CIMATEC Digital de PD&I"),
+            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado para Inteligência Artificial, Cibersegurança, HPC, Quântica e Tecnologias Digitais.")
+          ),
+          tags$div(
+            style = "text-align: right;",
+            tags$span(class = "badge bg-success", style = "font-size: 0.9rem; padding: 6px 12px;", "Aderência Ativa")
+          )
+        )
+      ),
+      bslib::layout_columns(
+        col_widths = c(6, 6),
+        selectInput("digital_theme_filter", "Eixo Temático Digital & IA", 
+                    choices = c("Todos os Eixos", "Inteligência Artificial & Machine Learning", "Cibersegurança & Defesa Cibernética", "Computação de Alto Desempenho (HPC)", "Tecnologias Quânticas & Sensores Quânticos", "Internet das Coisas (IoT) & Redes 5G/6G", "Gêmeos Digitais & Cidades Inteligentes", "Engenharia de Software Crítico & Dados"),
+                    selected = "Todos os Eixos"),
+        selectInput("digital_level_tab_filter", "Filtrar por Nível de Aderência",
+                    choices = c("Todos os Níveis", "Muito alta", "Alta", "Média", "Baixa"),
+                    selected = "Todos os Níveis")
+      ),
+      bslib::card(
+        tags$h5(style = "color: #4f46e5; font-weight: 700; margin-bottom: 15px;", "Oportunidades do CIMATEC Digital & Ideias de Projetos Recomendadas"),
+        shinycssloaders::withSpinner(DTOutput("digital_results_table"), type = 6, color = "#4f46e5")
+      )
+    ),
+    bslib::nav_panel(
+      title = tags$span(tags$i(class = "fa fa-industry"), " CIMATEC Park & Sede"),
+      value = "cimatec_park",
+      bslib::card(
+        style = "background: linear-gradient(135deg, #d97706 0%, #451a03 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;",
+        tags$div(
+          style = "display: flex; justify-content: space-between; align-items: center;",
+          tags$div(
+            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "🏭 CIMATEC Park & Sede de PD&I"),
+            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado para Manufatura Avançada, Materiais, Eletromobilidade, Química e Indústria 4.0.")
+          ),
+          tags$div(
+            style = "text-align: right;",
+            tags$span(class = "badge bg-success", style = "font-size: 0.9rem; padding: 6px 12px;", "Aderência Ativa")
+          )
+        )
+      ),
+      bslib::layout_columns(
+        col_widths = c(6, 6),
+        selectInput("park_theme_filter", "Eixo Temático Manufatura & Park", 
+                    choices = c("Todos os Eixos", "Manufatura Avançada & Robótica Industrial", "Materiais Avançados & Nanotecnologia", "Eletromobilidade, Baterias & Automotivo", "Química Verde, Petroquímica & Biocombustíveis", "Saúde 4.0 & Dispositivos Médicos", "Mineração Sustentável & Metalurgia", "Eficiência Energética Industrial"),
+                    selected = "Todos os Eixos"),
+        selectInput("park_level_tab_filter", "Filtrar por Nível de Aderência",
+                    choices = c("Todos os Níveis", "Muito alta", "Alta", "Média", "Baixa"),
+                    selected = "Todos os Níveis")
+      ),
+      bslib::card(
+        tags$h5(style = "color: #d97706; font-weight: 700; margin-bottom: 15px;", "Oportunidades do CIMATEC Park & Sede & Ideias de Projetos Recomendadas"),
+        shinycssloaders::withSpinner(DTOutput("park_results_table"), type = 6, color = "#d97706")
+      )
+    ),
+    bslib::nav_panel(
       title = tags$span(tags$i(class = "fa fa-newspaper"), " Boletins & Relatórios"),
       value = "boletins_relatorios",
       bslib::navset_card_pill(
@@ -2318,6 +2442,430 @@ server <- function(input, output, session) {
         pageLength = 10,
         scrollX = TRUE,
         language = list(emptyTable = "Nenhuma oportunidade naval encontrada."),
+        columnDefs = list(
+          list(targets = 0, visible = FALSE),
+          list(
+            targets = 3,
+            render = DT::JS("
+              function(data, type, row, meta) {
+                if (type === 'display') {
+                  var level = (data || 'Baixa').toLowerCase();
+                  var cls = 'badge-soft-neutral';
+                  if (level === 'muito alta') cls = 'badge-soft-open';
+                  else if (level === 'alta') cls = 'badge-soft-info';
+                  else if (level === 'média' || level === 'media') cls = 'badge-soft-warning';
+                  return \"<span class='status-badge \" + cls + \"'>\" + data + \"</span>\";
+                }
+                return data;
+              }
+            ")
+          )
+        )
+      )
+    )
+  }, server = FALSE)
+
+  # --- TAB CIMATEC SERTÃO ---
+  sertao_filtered_results <- reactive({
+    req(rv$user)
+    df <- base_results()
+    if (nrow(df) == 0) return(df)
+    
+    if (!"aderencia_sertao_nivel" %in% names(df)) df$aderencia_sertao_nivel <- NA_character_
+    if (!"aderencia_sertao_justificativa" %in% names(df)) df$aderencia_sertao_justificativa <- NA_character_
+    if (!"ideia_projeto_sertao" %in% names(df)) df$ideia_projeto_sertao <- NA_character_
+
+    for (i in seq_len(nrow(df))) {
+      if (is.na(df$aderencia_sertao_nivel[[i]]) || !nzchar(df$aderencia_sertao_nivel[[i]] %||% "")) {
+        eval_res <- evaluate_sertao_adherence(
+          titulo = df$titulo[[i]],
+          descricao = df$descricao_resumida[[i]],
+          texto_bruto = df$texto_bruto[[i]],
+          entidade = df$entidade[[i]],
+          use_ai = FALSE
+        )
+        df$aderencia_sertao_nivel[[i]] <- eval_res$aderencia_sertao_nivel %||% "Baixa"
+        df$aderencia_sertao_justificativa[[i]] <- eval_res$aderencia_sertao_justificativa %||% ""
+        df$ideia_projeto_sertao[[i]] <- eval_res$ideia_projeto_sertao %||% NA_character_
+      }
+    }
+    
+    if (!is.null(input$sertao_level_tab_filter) && input$sertao_level_tab_filter != "Todos os Níveis") {
+      df <- df |> dplyr::filter(aderencia_sertao_nivel == input$sertao_level_tab_filter)
+    }
+    
+    if (!is.null(input$sertao_theme_filter) && input$sertao_theme_filter != "Todos os Eixos") {
+      theme_query <- tolower(normalize_text(input$sertao_theme_filter))
+      df <- df |> dplyr::filter(vapply(seq_len(dplyr::n()), function(i) {
+        comb <- tolower(normalize_text(paste(df$titulo[[i]], df$descricao_resumida[[i]], df$aderencia_sertao_justificativa[[i]])))
+        grepl(theme_query, comb, fixed = TRUE)
+      }, logical(1)))
+    }
+    
+    df |> dplyr::mutate(
+      sertao_rank = dplyr::case_when(
+        aderencia_sertao_nivel == "Muito alta" ~ 1,
+        aderencia_sertao_nivel == "Alta" ~ 2,
+        aderencia_sertao_nivel == "Média" ~ 3,
+        TRUE ~ 4
+      )
+    ) |> dplyr::arrange(sertao_rank, parse_date_safe(data_limite))
+  })
+
+  output$sertao_results_table <- renderDT({
+    req(rv$user)
+    df <- sertao_filtered_results()
+    if (nrow(df) == 0) {
+      return(DT::datatable(tibble::tibble(Mensagem = "Nenhuma oportunidade encontrada para os filtros do CIMATEC Sertão."), options = list(dom = 't')))
+    }
+    
+    shown <- df |>
+      dplyr::mutate(
+        Prazo = format_date_br(data_limite),
+        Financiador = as.factor(entidade),
+        Título = stringr::str_trunc(titulo, 70),
+        Aderência = aderencia_sertao_nivel,
+        `Análise & Justificativa` = stringr::str_trunc(aderencia_sertao_justificativa %||% "Sem análise", 90),
+        `💡 Ideia de Projeto / Consórcio` = ifelse(!is.na(ideia_projeto_sertao) & nzchar(ideia_projeto_sertao %||% ""), stringr::str_trunc(ideia_projeto_sertao, 90), "Ver edital"),
+        Ações = vapply(id_registro, make_actions_html, character(1))
+      ) |>
+      dplyr::transmute(
+        ID = id_registro,
+        Título,
+        Financiador,
+        Aderência,
+        `Análise & Justificativa`,
+        `💡 Ideia de Projeto / Consórcio`,
+        Prazo,
+        Ações
+      )
+    
+    DT::datatable(
+      shown,
+      escape = FALSE,
+      rownames = FALSE,
+      options = list(
+        pageLength = 10,
+        scrollX = TRUE,
+        language = list(emptyTable = "Nenhuma oportunidade encontrada para o CIMATEC Sertão."),
+        columnDefs = list(
+          list(targets = 0, visible = FALSE),
+          list(
+            targets = 3,
+            render = DT::JS("
+              function(data, type, row, meta) {
+                if (type === 'display') {
+                  var level = (data || 'Baixa').toLowerCase();
+                  var cls = 'badge-soft-neutral';
+                  if (level === 'muito alta') cls = 'badge-soft-open';
+                  else if (level === 'alta') cls = 'badge-soft-info';
+                  else if (level === 'média' || level === 'media') cls = 'badge-soft-warning';
+                  return \"<span class='status-badge \" + cls + \"'>\" + data + \"</span>\";
+                }
+                return data;
+              }
+            ")
+          )
+        )
+      )
+    )
+  }, server = FALSE)
+
+  # --- TAB CIMATEC AEROESPACIAL ---
+  aero_filtered_results <- reactive({
+    req(rv$user)
+    df <- base_results()
+    if (nrow(df) == 0) return(df)
+    
+    if (!"aderencia_aero_nivel" %in% names(df)) df$aderencia_aero_nivel <- NA_character_
+    if (!"aderencia_aero_justificativa" %in% names(df)) df$aderencia_aero_justificativa <- NA_character_
+    if (!"ideia_projeto_aero" %in% names(df)) df$ideia_projeto_aero <- NA_character_
+
+    for (i in seq_len(nrow(df))) {
+      if (is.na(df$aderencia_aero_nivel[[i]]) || !nzchar(df$aderencia_aero_nivel[[i]] %||% "")) {
+        eval_res <- evaluate_aero_adherence(
+          titulo = df$titulo[[i]],
+          descricao = df$descricao_resumida[[i]],
+          texto_bruto = df$texto_bruto[[i]],
+          entidade = df$entidade[[i]],
+          use_ai = FALSE
+        )
+        df$aderencia_aero_nivel[[i]] <- eval_res$aderencia_aero_nivel %||% "Baixa"
+        df$aderencia_aero_justificativa[[i]] <- eval_res$aderencia_aero_justificativa %||% ""
+        df$ideia_projeto_aero[[i]] <- eval_res$ideia_projeto_aero %||% NA_character_
+      }
+    }
+    
+    if (!is.null(input$aero_level_tab_filter) && input$aero_level_tab_filter != "Todos os Níveis") {
+      df <- df |> dplyr::filter(aderencia_aero_nivel == input$aero_level_tab_filter)
+    }
+    
+    if (!is.null(input$aero_theme_filter) && input$aero_theme_filter != "Todos os Eixos") {
+      theme_query <- tolower(normalize_text(input$aero_theme_filter))
+      df <- df |> dplyr::filter(vapply(seq_len(dplyr::n()), function(i) {
+        comb <- tolower(normalize_text(paste(df$titulo[[i]], df$descricao_resumida[[i]], df$aderencia_aero_justificativa[[i]])))
+        grepl(theme_query, comb, fixed = TRUE)
+      }, logical(1)))
+    }
+    
+    df |> dplyr::mutate(
+      aero_rank = dplyr::case_when(
+        aderencia_aero_nivel == "Muito alta" ~ 1,
+        aderencia_aero_nivel == "Alta" ~ 2,
+        aderencia_aero_nivel == "Média" ~ 3,
+        TRUE ~ 4
+      )
+    ) |> dplyr::arrange(aero_rank, parse_date_safe(data_limite))
+  })
+
+  output$aero_results_table <- renderDT({
+    req(rv$user)
+    df <- aero_filtered_results()
+    if (nrow(df) == 0) {
+      return(DT::datatable(tibble::tibble(Mensagem = "Nenhuma oportunidade encontrada para os filtros do CIMATEC Aeroespacial."), options = list(dom = 't')))
+    }
+    
+    shown <- df |>
+      dplyr::mutate(
+        Prazo = format_date_br(data_limite),
+        Financiador = as.factor(entidade),
+        Título = stringr::str_trunc(titulo, 70),
+        Aderência = aderencia_aero_nivel,
+        `Análise & Justificativa` = stringr::str_trunc(aderencia_aero_justificativa %||% "Sem análise", 90),
+        `💡 Ideia de Projeto / Consórcio` = ifelse(!is.na(ideia_projeto_aero) & nzchar(ideia_projeto_aero %||% ""), stringr::str_trunc(ideia_projeto_aero, 90), "Ver edital"),
+        Ações = vapply(id_registro, make_actions_html, character(1))
+      ) |>
+      dplyr::transmute(
+        ID = id_registro,
+        Título,
+        Financiador,
+        Aderência,
+        `Análise & Justificativa`,
+        `💡 Ideia de Projeto / Consórcio`,
+        Prazo,
+        Ações
+      )
+    
+    DT::datatable(
+      shown,
+      escape = FALSE,
+      rownames = FALSE,
+      options = list(
+        pageLength = 10,
+        scrollX = TRUE,
+        language = list(emptyTable = "Nenhuma oportunidade encontrada para o CIMATEC Aeroespacial."),
+        columnDefs = list(
+          list(targets = 0, visible = FALSE),
+          list(
+            targets = 3,
+            render = DT::JS("
+              function(data, type, row, meta) {
+                if (type === 'display') {
+                  var level = (data || 'Baixa').toLowerCase();
+                  var cls = 'badge-soft-neutral';
+                  if (level === 'muito alta') cls = 'badge-soft-open';
+                  else if (level === 'alta') cls = 'badge-soft-info';
+                  else if (level === 'média' || level === 'media') cls = 'badge-soft-warning';
+                  return \"<span class='status-badge \" + cls + \"'>\" + data + \"</span>\";
+                }
+                return data;
+              }
+            ")
+          )
+        )
+      )
+    )
+  }, server = FALSE)
+
+  # --- TAB CIMATEC DIGITAL ---
+  digital_filtered_results <- reactive({
+    req(rv$user)
+    df <- base_results()
+    if (nrow(df) == 0) return(df)
+    
+    if (!"aderencia_digital_nivel" %in% names(df)) df$aderencia_digital_nivel <- NA_character_
+    if (!"aderencia_digital_justificativa" %in% names(df)) df$aderencia_digital_justificativa <- NA_character_
+    if (!"ideia_projeto_digital" %in% names(df)) df$ideia_projeto_digital <- NA_character_
+
+    for (i in seq_len(nrow(df))) {
+      if (is.na(df$aderencia_digital_nivel[[i]]) || !nzchar(df$aderencia_digital_nivel[[i]] %||% "")) {
+        eval_res <- evaluate_digital_adherence(
+          titulo = df$titulo[[i]],
+          descricao = df$descricao_resumida[[i]],
+          texto_bruto = df$texto_bruto[[i]],
+          entidade = df$entidade[[i]],
+          use_ai = FALSE
+        )
+        df$aderencia_digital_nivel[[i]] <- eval_res$aderencia_digital_nivel %||% "Baixa"
+        df$aderencia_digital_justificativa[[i]] <- eval_res$aderencia_digital_justificativa %||% ""
+        df$ideia_projeto_digital[[i]] <- eval_res$ideia_projeto_digital %||% NA_character_
+      }
+    }
+    
+    if (!is.null(input$digital_level_tab_filter) && input$digital_level_tab_filter != "Todos os Níveis") {
+      df <- df |> dplyr::filter(aderencia_digital_nivel == input$digital_level_tab_filter)
+    }
+    
+    if (!is.null(input$digital_theme_filter) && input$digital_theme_filter != "Todos os Eixos") {
+      theme_query <- tolower(normalize_text(input$digital_theme_filter))
+      df <- df |> dplyr::filter(vapply(seq_len(dplyr::n()), function(i) {
+        comb <- tolower(normalize_text(paste(df$titulo[[i]], df$descricao_resumida[[i]], df$aderencia_digital_justificativa[[i]])))
+        grepl(theme_query, comb, fixed = TRUE)
+      }, logical(1)))
+    }
+    
+    df |> dplyr::mutate(
+      digital_rank = dplyr::case_when(
+        aderencia_digital_nivel == "Muito alta" ~ 1,
+        aderencia_digital_nivel == "Alta" ~ 2,
+        aderencia_digital_nivel == "Média" ~ 3,
+        TRUE ~ 4
+      )
+    ) |> dplyr::arrange(digital_rank, parse_date_safe(data_limite))
+  })
+
+  output$digital_results_table <- renderDT({
+    req(rv$user)
+    df <- digital_filtered_results()
+    if (nrow(df) == 0) {
+      return(DT::datatable(tibble::tibble(Mensagem = "Nenhuma oportunidade encontrada para os filtros do CIMATEC Digital."), options = list(dom = 't')))
+    }
+    
+    shown <- df |>
+      dplyr::mutate(
+        Prazo = format_date_br(data_limite),
+        Financiador = as.factor(entidade),
+        Título = stringr::str_trunc(titulo, 70),
+        Aderência = aderencia_digital_nivel,
+        `Análise & Justificativa` = stringr::str_trunc(aderencia_digital_justificativa %||% "Sem análise", 90),
+        `💡 Ideia de Projeto / Consórcio` = ifelse(!is.na(ideia_projeto_digital) & nzchar(ideia_projeto_digital %||% ""), stringr::str_trunc(ideia_projeto_digital, 90), "Ver edital"),
+        Ações = vapply(id_registro, make_actions_html, character(1))
+      ) |>
+      dplyr::transmute(
+        ID = id_registro,
+        Título,
+        Financiador,
+        Aderência,
+        `Análise & Justificativa`,
+        `💡 Ideia de Projeto / Consórcio`,
+        Prazo,
+        Ações
+      )
+    
+    DT::datatable(
+      shown,
+      escape = FALSE,
+      rownames = FALSE,
+      options = list(
+        pageLength = 10,
+        scrollX = TRUE,
+        language = list(emptyTable = "Nenhuma oportunidade encontrada para o CIMATEC Digital."),
+        columnDefs = list(
+          list(targets = 0, visible = FALSE),
+          list(
+            targets = 3,
+            render = DT::JS("
+              function(data, type, row, meta) {
+                if (type === 'display') {
+                  var level = (data || 'Baixa').toLowerCase();
+                  var cls = 'badge-soft-neutral';
+                  if (level === 'muito alta') cls = 'badge-soft-open';
+                  else if (level === 'alta') cls = 'badge-soft-info';
+                  else if (level === 'média' || level === 'media') cls = 'badge-soft-warning';
+                  return \"<span class='status-badge \" + cls + \"'>\" + data + \"</span>\";
+                }
+                return data;
+              }
+            ")
+          )
+        )
+      )
+    )
+  }, server = FALSE)
+
+  # --- TAB CIMATEC PARK & SEDE ---
+  park_filtered_results <- reactive({
+    req(rv$user)
+    df <- base_results()
+    if (nrow(df) == 0) return(df)
+    
+    if (!"aderencia_park_nivel" %in% names(df)) df$aderencia_park_nivel <- NA_character_
+    if (!"aderencia_park_justificativa" %in% names(df)) df$aderencia_park_justificativa <- NA_character_
+    if (!"ideia_projeto_park" %in% names(df)) df$ideia_projeto_park <- NA_character_
+
+    for (i in seq_len(nrow(df))) {
+      if (is.na(df$aderencia_park_nivel[[i]]) || !nzchar(df$aderencia_park_nivel[[i]] %||% "")) {
+        eval_res <- evaluate_park_adherence(
+          titulo = df$titulo[[i]],
+          descricao = df$descricao_resumida[[i]],
+          texto_bruto = df$texto_bruto[[i]],
+          entidade = df$entidade[[i]],
+          use_ai = FALSE
+        )
+        df$aderencia_park_nivel[[i]] <- eval_res$aderencia_park_nivel %||% "Baixa"
+        df$aderencia_park_justificativa[[i]] <- eval_res$aderencia_park_justificativa %||% ""
+        df$ideia_projeto_park[[i]] <- eval_res$ideia_projeto_park %||% NA_character_
+      }
+    }
+    
+    if (!is.null(input$park_level_tab_filter) && input$park_level_tab_filter != "Todos os Níveis") {
+      df <- df |> dplyr::filter(aderencia_park_nivel == input$park_level_tab_filter)
+    }
+    
+    if (!is.null(input$park_theme_filter) && input$park_theme_filter != "Todos os Eixos") {
+      theme_query <- tolower(normalize_text(input$park_theme_filter))
+      df <- df |> dplyr::filter(vapply(seq_len(dplyr::n()), function(i) {
+        comb <- tolower(normalize_text(paste(df$titulo[[i]], df$descricao_resumida[[i]], df$aderencia_park_justificativa[[i]])))
+        grepl(theme_query, comb, fixed = TRUE)
+      }, logical(1)))
+    }
+    
+    df |> dplyr::mutate(
+      park_rank = dplyr::case_when(
+        aderencia_park_nivel == "Muito alta" ~ 1,
+        aderencia_park_nivel == "Alta" ~ 2,
+        aderencia_park_nivel == "Média" ~ 3,
+        TRUE ~ 4
+      )
+    ) |> dplyr::arrange(park_rank, parse_date_safe(data_limite))
+  })
+
+  output$park_results_table <- renderDT({
+    req(rv$user)
+    df <- park_filtered_results()
+    if (nrow(df) == 0) {
+      return(DT::datatable(tibble::tibble(Mensagem = "Nenhuma oportunidade encontrada para os filtros do CIMATEC Park & Sede."), options = list(dom = 't')))
+    }
+    
+    shown <- df |>
+      dplyr::mutate(
+        Prazo = format_date_br(data_limite),
+        Financiador = as.factor(entidade),
+        Título = stringr::str_trunc(titulo, 70),
+        Aderência = aderencia_park_nivel,
+        `Análise & Justificativa` = stringr::str_trunc(aderencia_park_justificativa %||% "Sem análise", 90),
+        `💡 Ideia de Projeto / Consórcio` = ifelse(!is.na(ideia_projeto_park) & nzchar(ideia_projeto_park %||% ""), stringr::str_trunc(ideia_projeto_park, 90), "Ver edital"),
+        Ações = vapply(id_registro, make_actions_html, character(1))
+      ) |>
+      dplyr::transmute(
+        ID = id_registro,
+        Título,
+        Financiador,
+        Aderência,
+        `Análise & Justificativa`,
+        `💡 Ideia de Projeto / Consórcio`,
+        Prazo,
+        Ações
+      )
+    
+    DT::datatable(
+      shown,
+      escape = FALSE,
+      rownames = FALSE,
+      options = list(
+        pageLength = 10,
+        scrollX = TRUE,
+        language = list(emptyTable = "Nenhuma oportunidade encontrada para o CIMATEC Park & Sede."),
         columnDefs = list(
           list(targets = 0, visible = FALSE),
           list(

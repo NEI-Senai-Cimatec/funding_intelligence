@@ -1452,3 +1452,382 @@ evaluate_naval_offshore_adherence <- function(titulo, descricao, texto_bruto = "
   )
 }
 
+# ─── Avaliador de Aderência Científico-Tecnológica: CIMATEC Sertão ───────────────────────
+
+PROMPT_SERTAO <- "
+Você é um especialista sênior em fomento de PD&I para o Semiárido, Agrotech, Recursos Hídricos e Energias Renováveis.
+Avalie a seguinte oportunidade de fomento para o campus SENAI CIMATEC Sertão, focado nas seguintes áreas tecnológicas:
+1. Agricultura de Precisão & Agrotech (drones agrícolas, sensores de solo, automação de colheita/plantio);
+2. Recursos Hídricos, Irrigação & Dessalinização (reúso de água, segurança hídrica, microirrigação, gestão de bacias);
+3. Energias Renováveis no Semiárido (energia solar fotovoltaica, eólica onshore, hidrogênio verde, biomassa);
+4. Bioeconomia da Caatinga & Biotecnologia Agrícola (produtos da flora nativa, biopesticidas, biofertilizantes);
+5. Pecuária Conectada & Sanidade Animal (rastreabilidade animal, nutrição resiliente, caprinovinocultura);
+6. Convivência com o Semiárido & Clima (mitigação de secas, tecnologias sociais hídricas, alertas agroclimáticos);
+7. Agroindústria & Cadeias Produtivas Regionais (processamento de alimentos, embalagens ativas, agregação de valor local).
+
+Retorne EXCLUSIVAMENTE um objeto JSON válido no seguinte formato:
+{
+  \"aderencia_sertao_nivel\": \"Muito alta\" | \"Alta\" | \"Média\" | \"Baixa\",
+  \"aderencia_sertao_justificativa\": \"Explicação objetiva de 1 a 3 frases sobre por que o edital se conecta ou não com o CIMATEC Sertão.\",
+  \"ideia_projeto_sertao\": \"Sugestão prática de conceito de projeto de PD&I e consórcio recomendado (ex: ICT + Cooperativa/Empresa Agro + EMBRAPII + CIMATEC Sertão). Retorne null se a aderência for Média ou Baixa.\"
+}
+
+=== OPORTUNIDADE ===
+"
+
+evaluate_sertao_adherence <- function(titulo, descricao, texto_bruto = "", entidade = "", use_ai = TRUE, log_path = NULL, conn = NULL) {
+  full_text <- paste(titulo %||% "", descricao %||% "", texto_bruto %||% "", entidade %||% "")
+  norm_text <- tolower(normalize_text(full_text))
+  
+  if (use_ai && ai_available()) {
+    prompt <- paste0(PROMPT_SERTAO, trim_for_ai(full_text, max_chars = 6000))
+    raw_resp <- ai_request_with_fallback(prompt, log_path = log_path, conn = conn)
+    if (!is.null(raw_resp)) {
+      parsed <- tryCatch(jsonlite::fromJSON(raw_resp, simplifyVector = TRUE), error = function(e) NULL)
+      if (!is.null(parsed) && !is.null(parsed$aderencia_sertao_nivel)) {
+        return(list(
+          aderencia_sertao_nivel = parsed$aderencia_sertao_nivel,
+          aderencia_sertao_justificativa = parsed$aderencia_sertao_justificativa %||% "Oportunidade analisada pela IA com conexão ao CIMATEC Sertão.",
+          ideia_projeto_sertao = parsed$ideia_projeto_sertao %||% NA_character_
+        ))
+      }
+    }
+  }
+  
+  kw_agro <- c("agricultur", "agronegoc", "agrotech", "lavoura", "safra", "colheita", "solo", "semeadura", "cultivo", "precisao agricola", "fazenda")
+  kw_hidro <- c("hidric", "agua", "irrigacao", "irrigad", "dessalinizacao", "poco", "bacia hidrografica", "seca", "semiarido", "semi-arido", "escassez hidrica")
+  kw_energia <- c("solar", "fotovoltaic", "eolica", "renovavel", "hidrogenio verde", "h2v", "biomassa", "geracao distribuida", "transicao energetica")
+  kw_bio <- c("caatinga", "bioeconomia", "biotecnologia agricola", "biofertilizante", "biopesticida", "flora nativa", "semente crioula")
+  kw_pecuaria <- c("pecuaria", "caprino", "ovino", "gado", "rebanho", "sanidade animal", "pastagem", "zootecnia", "leite")
+  kw_agroind <- c("agroindustria", "processamento de alimentos", "cadeia produtiva", "beneficiamento de frutas", "cooperativa agricola", "agrifood")
+  
+  check_hits <- function(kws) any(vapply(kws, function(k) grepl(k, norm_text, fixed = TRUE), logical(1)))
+  
+  hits_agro <- check_hits(kw_agro)
+  hits_hidro <- check_hits(kw_hidro)
+  hits_energia <- check_hits(kw_energia)
+  hits_bio <- check_hits(kw_bio)
+  hits_pecuaria <- check_hits(kw_pecuaria)
+  hits_agroind <- check_hits(kw_agroind)
+  
+  total_hits <- sum(c(hits_agro, hits_hidro, hits_energia, hits_bio, hits_pecuaria, hits_agroind))
+  
+  found_areas <- character()
+  if (hits_agro) found_areas <- c(found_areas, "Agricultura de Precisão & Agrotech")
+  if (hits_hidro) found_areas <- c(found_areas, "Recursos Hídricos & Irrigação")
+  if (hits_energia) found_areas <- c(found_areas, "Energias Renováveis no Semiárido")
+  if (hits_bio) found_areas <- c(found_areas, "Bioeconomia da Caatinga")
+  if (hits_pecuaria) found_areas <- c(found_areas, "Pecuária Conectada")
+  if (hits_agroind) found_areas <- c(found_areas, "Agroindústria & Cadeias Regionais")
+  
+  if (total_hits >= 3 || (hits_agro && hits_hidro) || (hits_hidro && hits_energia)) {
+    nivel <- "Muito alta"
+    justificativa <- sprintf("Forte aderência direta às prioridades do CIMATEC Sertão nas áreas: %s.", paste(found_areas, collapse = ", "))
+    ideia <- sprintf("Projeto: Solução tecnológica integrada em %s. Consórcio Recomendado: CIMATEC Sertão + EMBRAPA / CODEVASF + Produtores Locais / Empresas do Semiárido + Unidade EMBRAPII.", found_areas[[1]])
+  } else if (total_hits >= 2) {
+    nivel <- "Alta"
+    justificativa <- sprintf("Oportunidade relevante alinhada aos eixos temáticos do Sertão: %s.", paste(found_areas, collapse = ", "))
+    ideia <- sprintf("Projeto: Desenvolvimento aplicado em %s. Consórcio Recomendado: CIMATEC Sertão + Cooperativa Agrícola / Empresa Regional + Agência de Fomento.", found_areas[[1]])
+  } else if (total_hits == 1) {
+    nivel <- "Média"
+    justificativa <- sprintf("Oportunidade com aderência tangencial em %s.", found_areas[[1]])
+    ideia <- NA_character_
+  } else {
+    nivel <- "Baixa"
+    justificativa <- "Oportunidade sem conexão direta identificada com as áreas focais do CIMATEC Sertão."
+    ideia <- NA_character_
+  }
+  
+  list(
+    aderencia_sertao_nivel = nivel,
+    aderencia_sertao_justificativa = justificativa,
+    ideia_projeto_sertao = ideia
+  )
+}
+
+# ─── Avaliador de Aderência Científico-Tecnológica: CIMATEC Aeroespacial ─────────────────
+
+PROMPT_AEROESPACIAL <- "
+Você é um especialista sênior em fomento de PD&I para o setor Aeroespacial, Defesa, VANTs e Tecnologias Espaciais.
+Avalie a seguinte oportunidade de fomento para o campus SENAI CIMATEC Aeroespacial, focado nas seguintes áreas:
+1. VANTs, Drones & Sistemas Não-Tripulados (autonomia, sensoriamento remoto, controle, enxames);
+2. Satélites, Cargas Úteis & Aplicações Espaciais (CubeSats, nanossatélites, observação da Terra, telemetria);
+3. Propulsão Aeroespacial & Lançadores (motores-foguete, combustíveis verdes, Centro de Lançamento de Alcântara);
+4. Aviônica, Sensores, Radares & Guerra Eletrônica (sistemas embarcados de bordo, optrônica, RF, detecção);
+5. eVTOL & Mobilidade Aérea Avançada (veículos elétricos aéreos urbanos, gestão de espaço aéreo não-tripulado);
+6. Materiais Compostos & Estruturas Aeronáuticas (fibras de carbono, ligas leves, aerodinâmica e ensaios estruturais);
+7. Defesa Nacional & Forças Armadas (FAB, DCTA, Marinha, Exército, tecnologias duplas/dual-use e soberania).
+
+Retorne EXCLUSIVAMENTE um objeto JSON válido no seguinte formato:
+{
+  \"aderencia_aero_nivel\": \"Muito alta\" | \"Alta\" | \"Média\" | \"Baixa\",
+  \"aderencia_aero_justificativa\": \"Explicação objetiva de 1 a 3 frases sobre a conexão com o CIMATEC Aeroespacial.\",
+  \"ideia_projeto_aero\": \"Sugestão prática de conceito de projeto e consórcio (ex: ICT + Embraer/FAB/DCTA + EMBRAPII + CIMATEC Aeroespacial). Retorne null se aderência for Média ou Baixa.\"
+}
+
+=== OPORTUNIDADE ===
+"
+
+evaluate_aero_adherence <- function(titulo, descricao, texto_bruto = "", entidade = "", use_ai = TRUE, log_path = NULL, conn = NULL) {
+  full_text <- paste(titulo %||% "", descricao %||% "", texto_bruto %||% "", entidade %||% "")
+  norm_text <- tolower(normalize_text(full_text))
+  
+  if (use_ai && ai_available()) {
+    prompt <- paste0(PROMPT_AEROESPACIAL, trim_for_ai(full_text, max_chars = 6000))
+    raw_resp <- ai_request_with_fallback(prompt, log_path = log_path, conn = conn)
+    if (!is.null(raw_resp)) {
+      parsed <- tryCatch(jsonlite::fromJSON(raw_resp, simplifyVector = TRUE), error = function(e) NULL)
+      if (!is.null(parsed) && !is.null(parsed$aderencia_aero_nivel)) {
+        return(list(
+          aderencia_aero_nivel = parsed$aderencia_aero_nivel,
+          aderencia_aero_justificativa = parsed$aderencia_aero_justificativa %||% "Oportunidade analisada pela IA com conexão ao CIMATEC Aeroespacial.",
+          ideia_projeto_aero = parsed$ideia_projeto_aero %||% NA_character_
+        ))
+      }
+    }
+  }
+  
+  kw_vant <- c("vant", "drone", "rpas", "aeronave nao tripulada", "uav", "voo autonomo", "enxame de drones")
+  kw_espaco <- c("satelite", "cubesat", "nanossatelite", "espacial", "carga util", "payload", "orbita", "astronom", "astrofisic", "alcantara", "inpe", "aeb")
+  kw_propulsao <- c("propulsao", "foguete", "lancador", "motor aeronautico", "combustao", "empuxo")
+  kw_avionica <- c("avionica", "radar", "sensor embarcado", "telemetria", "navegacao aerea", "guerra eletronica", "optronica")
+  kw_evtol <- c("evtol", "mobilidade aerea", "aeroespacial", "aeronautic", "aeronave", "aviao", "helicoptero", "asa fixa", "rotativo")
+  kw_materiais <- c("compostos aeronauticos", "fibra de carbono", "aeroestrutura", "aerodinamica", "fuselagem", "ensaio em voo")
+  kw_defesa <- c("defesa", "forca aerea", "fab", "dcta", "militar", "forcas armadas", "soberania aeroespacial", "dual-use")
+  
+  check_hits <- function(kws) any(vapply(kws, function(k) grepl(k, norm_text, fixed = TRUE), logical(1)))
+  
+  hits_vant <- check_hits(kw_vant)
+  hits_espaco <- check_hits(kw_espaco)
+  hits_propulsao <- check_hits(kw_propulsao)
+  hits_avionica <- check_hits(kw_avionica)
+  hits_evtol <- check_hits(kw_evtol)
+  hits_materiais <- check_hits(kw_materiais)
+  hits_defesa <- check_hits(kw_defesa)
+  
+  total_hits <- sum(c(hits_vant, hits_espaco, hits_propulsao, hits_avionica, hits_evtol, hits_materiais, hits_defesa))
+  
+  found_areas <- character()
+  if (hits_vant) found_areas <- c(found_areas, "VANTs & Drones")
+  if (hits_espaco) found_areas <- c(found_areas, "Satélites & Espaço")
+  if (hits_propulsao) found_areas <- c(found_areas, "Propulsão Aeroespacial")
+  if (hits_avionica) found_areas <- c(found_areas, "Aviônica & Radares")
+  if (hits_evtol) found_areas <- c(found_areas, "eVTOL & Aviação Avançada")
+  if (hits_materiais) found_areas <- c(found_areas, "Materiais Aeronáuticos")
+  if (hits_defesa) found_areas <- c(found_areas, "Defesa & Forças Armadas")
+  
+  if (total_hits >= 3 || (hits_vant && hits_defesa) || (hits_espaco && hits_propulsao)) {
+    nivel <- "Muito alta"
+    justificativa <- sprintf("Forte aderência direta às competências do CIMATEC Aeroespacial nas áreas: %s.", paste(found_areas, collapse = ", "))
+    ideia <- sprintf("Projeto: Solução de ponta em %s. Consórcio Recomendado: CIMATEC Aeroespacial + Indústria Aeroespacial/Defesa + Força Aérea (FAB/DCTA) + Unidade EMBRAPII.", found_areas[[1]])
+  } else if (total_hits >= 2) {
+    nivel <- "Alta"
+    justificativa <- sprintf("Oportunidade relevante alinhada a temas aeroespaciais: %s.", paste(found_areas, collapse = ", "))
+    ideia <- sprintf("Projeto: Desenvolvimento de tecnologia aplicada em %s. Consórcio Recomendado: CIMATEC Aeroespacial + Empresa de Base Tecnológica + Agência Espacial/Setorial.", found_areas[[1]])
+  } else if (total_hits == 1) {
+    nivel <- "Média"
+    justificativa <- sprintf("Oportunidade com potencial aderência em %s.", found_areas[[1]])
+    ideia <- NA_character_
+  } else {
+    nivel <- "Baixa"
+    justificativa <- "Oportunidade sem conexão direta identificada com o setor Aeroespacial e de Defesa."
+    ideia <- NA_character_
+  }
+  
+  list(
+    aderencia_aero_nivel = nivel,
+    aderencia_aero_justificativa = justificativa,
+    ideia_projeto_aero = ideia
+  )
+}
+
+# ─── Avaliador de Aderência Científico-Tecnológica: CIMATEC Digital ──────────────────────
+
+PROMPT_DIGITAL <- "
+Você é um especialista sênior em fomento de PD&I para TIC, Inteligência Artificial, Cibersegurança e HPC.
+Avalie a seguinte oportunidade de fomento para o campus SENAI CIMATEC Digital, focado nas seguintes áreas:
+1. Inteligência Artificial & Machine Learning (LLMs, visão computacional, aprendizado profundo, IA generativa);
+2. Cibersegurança & Defesa Cibernética (criptografia, auditoria, segurança de redes e infraestruturas críticas);
+3. Computação de Alto Desempenho (HPC) & Supercomputação (clusters, processamento massivo, GPUs, nuvem científica);
+4. Tecnologias Quânticas & Sensores Quânticos (algoritmos quânticos, comunicações quânticas, pós-quântica);
+5. Internet das Coisas (IoT) & Redes Avançadas (5G/6G, sensores inteligentes, telemetria em tempo real);
+6. Gêmeos Digitais & Cidades Inteligentes (simulações dinâmicas, mobilidade urbana inteligente, smart cities);
+7. Engenharia de Software Crítico & Governança de Dados (plataformas distribuídas, confiabilidade, ética em IA).
+
+Retorne EXCLUSIVAMENTE um objeto JSON válido no seguinte formato:
+{
+  \"aderencia_digital_nivel\": \"Muito alta\" | \"Alta\" | \"Média\" | \"Baixa\",
+  \"aderencia_digital_justificativa\": \"Explicação objetiva de 1 a 3 frases sobre a conexão com o CIMATEC Digital.\",
+  \"ideia_projeto_digital\": \"Sugestão prática de conceito de projeto e consórcio (ex: ICT + Big Tech/Empresa de Software + EMBRAPII + CIMATEC Digital). Retorne null se aderência for Média ou Baixa.\"
+}
+
+=== OPORTUNIDADE ===
+"
+
+evaluate_digital_adherence <- function(titulo, descricao, texto_bruto = "", entidade = "", use_ai = TRUE, log_path = NULL, conn = NULL) {
+  full_text <- paste(titulo %||% "", descricao %||% "", texto_bruto %||% "", entidade %||% "")
+  norm_text <- tolower(normalize_text(full_text))
+  
+  if (use_ai && ai_available()) {
+    prompt <- paste0(PROMPT_DIGITAL, trim_for_ai(full_text, max_chars = 6000))
+    raw_resp <- ai_request_with_fallback(prompt, log_path = log_path, conn = conn)
+    if (!is.null(raw_resp)) {
+      parsed <- tryCatch(jsonlite::fromJSON(raw_resp, simplifyVector = TRUE), error = function(e) NULL)
+      if (!is.null(parsed) && !is.null(parsed$aderencia_digital_nivel)) {
+        return(list(
+          aderencia_digital_nivel = parsed$aderencia_digital_nivel,
+          aderencia_digital_justificativa = parsed$aderencia_digital_justificativa %||% "Oportunidade analisada pela IA com conexão ao CIMATEC Digital.",
+          ideia_projeto_digital = parsed$ideia_projeto_digital %||% NA_character_
+        ))
+      }
+    }
+  }
+  
+  kw_ia <- c("inteligencia artificial", "machine learning", "deep learning", "aprendizado de maquina", "redes neurais", "visao computacional", "processamento de linguagem natural", "llm", "ia generativa")
+  kw_cyber <- c("ciberseguranca", "cyber", "seguranca da informacao", "criptografia", "defesa cibernetica", "vulnerabilidade", "malware", "lgpd", "privacidade de dados")
+  kw_hpc <- c("supercomput", "hpc", "alto desempenho", "cluster", "gpu", "processamento paralelo", "computacao em nuvem", "cloud computing", "ogbon")
+  kw_quant <- c("quantica", "quantum", "pos-quantica", "algoritmo quantico", "computacao quantica")
+  kw_iot <- c("iot", "internet das coisas", "sensores inteligentes", "5g", "6g", "conectividade avancada", "telemetria digital")
+  kw_software <- c("software", "banco de dados", "big data", "analytics", "gemeo digital", "digital twin", "plataforma digital", "transformacao digital", "ti", "tic")
+  
+  check_hits <- function(kws) any(vapply(kws, function(k) grepl(k, norm_text, fixed = TRUE), logical(1)))
+  
+  hits_ia <- check_hits(kw_ia)
+  hits_cyber <- check_hits(kw_cyber)
+  hits_hpc <- check_hits(kw_hpc)
+  hits_quant <- check_hits(kw_quant)
+  hits_iot <- check_hits(kw_iot)
+  hits_software <- check_hits(kw_software)
+  
+  total_hits <- sum(c(hits_ia, hits_cyber, hits_hpc, hits_quant, hits_iot, hits_software))
+  
+  found_areas <- character()
+  if (hits_ia) found_areas <- c(found_areas, "Inteligência Artificial & ML")
+  if (hits_cyber) found_areas <- c(found_areas, "Cibersegurança & Defesa Cibernética")
+  if (hits_hpc) found_areas <- c(found_areas, "HPC & Supercomputação")
+  if (hits_quant) found_areas <- c(found_areas, "Tecnologias Quânticas")
+  if (hits_iot) found_areas <- c(found_areas, "IoT & Conectividade 5G/6G")
+  if (hits_software) found_areas <- c(found_areas, "Software & Gêmeos Digitais")
+  
+  if (total_hits >= 3 || (hits_ia && hits_hpc) || (hits_ia && hits_cyber)) {
+    nivel <- "Muito alta"
+    justificativa <- sprintf("Forte aderência direta ao ecossistema do CIMATEC Digital nas áreas: %s.", paste(found_areas, collapse = ", "))
+    ideia <- sprintf("Projeto: Plataforma avançada de %s. Consórcio Recomendado: CIMATEC Digital (Supercomputador Ogbon) + Empresa de Tecnologia / Telecom + Unidade EMBRAPII.", found_areas[[1]])
+  } else if (total_hits >= 2) {
+    nivel <- "Alta"
+    justificativa <- sprintf("Oportunidade relevante alinhada aos eixos de TIC e inovação digital: %s.", paste(found_areas, collapse = ", "))
+    ideia <- sprintf("Projeto: Solução tecnológica em %s. Consórcio Recomendado: CIMATEC Digital + Startup / Empresa Usuária + Fomento à Inovação Tecnológica.", found_areas[[1]])
+  } else if (total_hits == 1) {
+    nivel <- "Média"
+    justificativa <- sprintf("Oportunidade com aderência digital pontual em %s.", found_areas[[1]])
+    ideia <- NA_character_
+  } else {
+    nivel <- "Baixa"
+    justificativa <- "Oportunidade sem conexão direta identificada com temas de TIC e tecnologia digital."
+    ideia <- NA_character_
+  }
+  
+  list(
+    aderencia_digital_nivel = nivel,
+    aderencia_digital_justificativa = justificativa,
+    ideia_projeto_digital = ideia
+  )
+}
+
+# ─── Avaliador de Aderência Científico-Tecnológica: CIMATEC Park & Sede ─────────────────
+
+PROMPT_PARK <- "
+Você é um especialista sênior em fomento de PD&I para Manufatura Avançada, Materiais, Eletromobilidade, Química e Indústria 4.0.
+Avalie a seguinte oportunidade de fomento para o SENAI CIMATEC Park & Sede (Piatã e Camaçari), focado nas seguintes áreas:
+1. Manufatura Avançada & Robótica Industrial (automação 4.0, mecatrônica, linhas inteligentes, soldagem avançada);
+2. Materiais Avançados, Nanotecnologia & Polímeros (grafeno, compósitos, síntese e caracterização de novos materiais);
+3. Eletromobilidade, Baterias & Indústria Automotiva (veículos elétricos, células de bateria, powertrain, testes veiculares);
+4. Química Verde, Biocombustíveis & Petroquímica (processos sustentáveis, catalisadores, transição química, biorrefinarias);
+5. Saúde 4.0 & Dispositivos Médicos (biotecnologia médica, próteses, equipamentos biomédicos, ensaios pré-clínicos);
+6. Mineração Sustentável, Metalurgia & Siderurgia (descarbonização, aço verde, beneficiamento mineral);
+7. Eficiência Energética Industrial & Descarbonização de Plantas (recuperação de energia, CCUS, transição industrial).
+
+Retorne EXCLUSIVAMENTE um objeto JSON válido no seguinte formato:
+{
+  \"aderencia_park_nivel\": \"Muito alta\" | \"Alta\" | \"Média\" | \"Baixa\",
+  \"aderencia_park_justificativa\": \"Explicação objetiva de 1 a 3 frases sobre a conexão com o CIMATEC Park & Sede.\",
+  \"ideia_projeto_park\": \"Sugestão prática de conceito de projeto e consórcio (ex: ICT + Montadora/Indústria Química + EMBRAPII + CIMATEC Park). Retorne null se aderência for Média ou Baixa.\"
+}
+
+=== OPORTUNIDADE ===
+"
+
+evaluate_park_adherence <- function(titulo, descricao, texto_bruto = "", entidade = "", use_ai = TRUE, log_path = NULL, conn = NULL) {
+  full_text <- paste(titulo %||% "", descricao %||% "", texto_bruto %||% "", entidade %||% "")
+  norm_text <- tolower(normalize_text(full_text))
+  
+  if (use_ai && ai_available()) {
+    prompt <- paste0(PROMPT_PARK, trim_for_ai(full_text, max_chars = 6000))
+    raw_resp <- ai_request_with_fallback(prompt, log_path = log_path, conn = conn)
+    if (!is.null(raw_resp)) {
+      parsed <- tryCatch(jsonlite::fromJSON(raw_resp, simplifyVector = TRUE), error = function(e) NULL)
+      if (!is.null(parsed) && !is.null(parsed$aderencia_park_nivel)) {
+        return(list(
+          aderencia_park_nivel = parsed$aderencia_park_nivel,
+          aderencia_park_justificativa = parsed$aderencia_park_justificativa %||% "Oportunidade analisada pela IA com conexão ao CIMATEC Park & Sede.",
+          ideia_projeto_park = parsed$ideia_projeto_park %||% NA_character_
+        ))
+      }
+    }
+  }
+  
+  kw_manuf <- c("manufatura", "robotica", "automacao industrial", "usinagem", "conformacao", "fabrica inteligente", "industria 4.0", "mecatronica", "soldagem")
+  kw_materiais <- c("nanomateriais", "polimeros", "compositos", "grafeno", "metalurgia", "ligas metalicas", "materiais avancados", "caracterizacao de materiais")
+  kw_auto <- c("automotivo", "veiculo eletrico", "eletromobilidade", "bateria", "powertrain", "combustao", "celula de combustivel", "veicular")
+  kw_quimica <- c("quimica verde", "petroquimica", "biocombustivel", "catalisador", "biorrefinaria", "etanol", "biodiesel", "quimica fina")
+  kw_saude <- c("dispositivo medico", "equipamentos medicos", "farmaceutic", "saude 4.0", "protese", "biomedic", "ensaio clinico")
+  kw_mineracao <- c("mineracao", "rejeitos", "siderurgia", "metalurgic", "aco verde", "beneficiamento mineral")
+  kw_energia_ind <- c("descarbonizacao industrial", "eficiencia energetica", "transicao industrial", "captura de carbono", "ccus", "calor residual")
+  
+  check_hits <- function(kws) any(vapply(kws, function(k) grepl(k, norm_text, fixed = TRUE), logical(1)))
+  
+  hits_manuf <- check_hits(kw_manuf)
+  hits_materiais <- check_hits(kw_materiais)
+  hits_auto <- check_hits(kw_auto)
+  hits_quimica <- check_hits(kw_quimica)
+  hits_saude <- check_hits(kw_saude)
+  hits_mineracao <- check_hits(kw_mineracao)
+  hits_energia_ind <- check_hits(kw_energia_ind)
+  
+  total_hits <- sum(c(hits_manuf, hits_materiais, hits_auto, hits_quimica, hits_saude, hits_mineracao, hits_energia_ind))
+  
+  found_areas <- character()
+  if (hits_manuf) found_areas <- c(found_areas, "Manufatura Avançada & Robótica")
+  if (hits_materiais) found_areas <- c(found_areas, "Materiais Avançados & Nanotecnologia")
+  if (hits_auto) found_areas <- c(found_areas, "Eletromobilidade & Automotivo")
+  if (hits_quimica) found_areas <- c(found_areas, "Química Verde & Biocombustíveis")
+  if (hits_saude) found_areas <- c(found_areas, "Saúde 4.0 & Dispositivos Médicos")
+  if (hits_mineracao) found_areas <- c(found_areas, "Mineração & Siderurgia Sustentável")
+  if (hits_energia_ind) found_areas <- c(found_areas, "Eficiência Energética Industrial")
+  
+  if (total_hits >= 3 || (hits_manuf && hits_materiais) || (hits_auto && hits_materiais)) {
+    nivel <- "Muito alta"
+    justificativa <- sprintf("Forte aderência direta à infraestrutura de ponta do CIMATEC Park & Sede nas áreas: %s.", paste(found_areas, collapse = ", "))
+    ideia <- sprintf("Projeto: Planta piloto ou protótipo industrial em %s. Consórcio Recomendado: CIMATEC Park + Indústria Âncora do Polo + EMBRAPII + Finep/BNDES.", found_areas[[1]])
+  } else if (total_hits >= 2) {
+    nivel <- "Alta"
+    justificativa <- sprintf("Oportunidade relevante alinhada à matriz industrial e laboratórios do Park: %s.", paste(found_areas, collapse = ", "))
+    ideia <- sprintf("Projeto: Desenvolvimento de processo/produto em %s. Consórcio Recomendado: CIMATEC Park + Empresa Parceira + Linha de Fomento Industrial.", found_areas[[1]])
+  } else if (total_hits == 1) {
+    nivel <- "Média"
+    justificativa <- sprintf("Oportunidade com potencial sinergia em %s.", found_areas[[1]])
+    ideia <- NA_character_
+  } else {
+    nivel <- "Baixa"
+    justificativa <- "Oportunidade sem conexão direta identificada com as linhas industriais do CIMATEC Park & Sede."
+    ideia <- NA_character_
+  }
+  
+  list(
+    aderencia_park_nivel = nivel,
+    aderencia_park_justificativa = justificativa,
+    ideia_projeto_park = ideia
+  )
+}
+
+

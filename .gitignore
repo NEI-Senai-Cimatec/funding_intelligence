@@ -53,6 +53,8 @@ node_modules/
 
 # Github agent
 *.github
+!.github/
+!.github/**
 
 #Testes
 /tests/

@@ -60,7 +60,19 @@ CREATE TABLE IF NOT EXISTS oportunidades (
     enrichment_error TEXT,
     aderencia_naval_nivel TEXT,
     aderencia_naval_justificativa TEXT,
-    ideia_projeto_consorcio TEXT
+    ideia_projeto_consorcio TEXT,
+    aderencia_sertao_nivel TEXT,
+    aderencia_sertao_justificativa TEXT,
+    ideia_projeto_sertao TEXT,
+    aderencia_aero_nivel TEXT,
+    aderencia_aero_justificativa TEXT,
+    ideia_projeto_aero TEXT,
+    aderencia_digital_nivel TEXT,
+    aderencia_digital_justificativa TEXT,
+    ideia_projeto_digital TEXT,
+    aderencia_park_nivel TEXT,
+    aderencia_park_justificativa TEXT,
+    ideia_projeto_park TEXT
 );
 
 CREATE TABLE IF NOT EXISTS migration_flags (

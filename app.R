@@ -246,6 +246,30 @@ build_sidebar <- function() {
       choices = c("Todas" = "Todas", "Muito alta" = "Muito alta", "Alta" = "Alta", "Média" = "Média", "Baixa" = "Baixa"),
       selected = "Todas"
     ),
+    selectInput(
+      "filter_sertao_level",
+      label = tags$span(tags$i(class = "fa fa-leaf"), " Aderência Sertão & Agro"),
+      choices = c("Todas" = "Todas", "Muito alta" = "Muito alta", "Alta" = "Alta", "Média" = "Média", "Baixa" = "Baixa"),
+      selected = "Todas"
+    ),
+    selectInput(
+      "filter_aero_level",
+      label = tags$span(tags$i(class = "fa fa-rocket"), " Aderência Aeroespacial & Defesa"),
+      choices = c("Todas" = "Todas", "Muito alta" = "Muito alta", "Alta" = "Alta", "Média" = "Média", "Baixa" = "Baixa"),
+      selected = "Todas"
+    ),
+    selectInput(
+      "filter_digital_level",
+      label = tags$span(tags$i(class = "fa fa-laptop-code"), " Aderência Digital & IA"),
+      choices = c("Todas" = "Todas", "Muito alta" = "Muito alta", "Alta" = "Alta", "Média" = "Média", "Baixa" = "Baixa"),
+      selected = "Todas"
+    ),
+    selectInput(
+      "filter_park_level",
+      label = tags$span(tags$i(class = "fa fa-industry"), " Aderência Park & Manufatura"),
+      choices = c("Todas" = "Todas", "Muito alta" = "Muito alta", "Alta" = "Alta", "Média" = "Média", "Baixa" = "Baixa"),
+      selected = "Todas"
+    ),
     tags$hr(style = "margin: 1rem 0; border-color: #cbd5e1;"),
     actionButton(
       "btn_clear_filters", 
@@ -376,15 +400,15 @@ ui <- bslib::page_sidebar(
       )
     ),
     bslib::nav_panel(
-      title = tags$span(tags$i(class = "fa fa-leaf"), " CIMATEC Sertão"),
+      title = tags$span(tags$i(class = "fa fa-leaf"), " Núcleo Sertão & Agro"),
       value = "cimatec_sertao",
       bslib::card(
         style = "background: linear-gradient(135deg, #15803d 0%, #064e3b 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;",
         tags$div(
           style = "display: flex; justify-content: space-between; align-items: center;",
           tags$div(
-            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "🌾 CIMATEC Sertão de PD&I"),
-            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado para Agro, Recursos Hídricos, Convivência com o Semiárido e Energias Renováveis.")
+            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "🌾 Núcleo Sertão & Agro de PD&I"),
+            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e propostas para Agro, Recursos Hídricos, Convivência com o Semiárido e Energias Renováveis.")
           ),
           tags$div(
             style = "text-align: right;",
@@ -402,20 +426,20 @@ ui <- bslib::page_sidebar(
                     selected = "Todos os Níveis")
       ),
       bslib::card(
-        tags$h5(style = "color: #15803d; font-weight: 700; margin-bottom: 15px;", "Oportunidades do CIMATEC Sertão & Ideias de Projetos Recomendadas"),
+        tags$h5(style = "color: #15803d; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Núcleo Sertão & Agro & Ideias de Projetos Recomendadas"),
         shinycssloaders::withSpinner(DTOutput("sertao_results_table"), type = 6, color = "#15803d")
       )
     ),
     bslib::nav_panel(
-      title = tags$span(tags$i(class = "fa fa-rocket"), " CIMATEC Aeroespacial"),
+      title = tags$span(tags$i(class = "fa fa-rocket"), " Núcleo Aeroespacial & Defesa"),
       value = "cimatec_aeroespacial",
       bslib::card(
         style = "background: linear-gradient(135deg, #0284c7 0%, #0f172a 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;",
         tags$div(
           style = "display: flex; justify-content: space-between; align-items: center;",
           tags$div(
-            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "🚀 CIMATEC Aeroespacial de PD&I"),
-            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado para VANTs/Drones, Tecnologias Espaciais, Satélites e Defesa Nacional.")
+            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "🚀 Núcleo Aeroespacial & Defesa de PD&I"),
+            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e propostas para VANTs/Drones, Tecnologias Espaciais, Satélites e Defesa Nacional.")
           ),
           tags$div(
             style = "text-align: right;",
@@ -433,20 +457,20 @@ ui <- bslib::page_sidebar(
                     selected = "Todos os Níveis")
       ),
       bslib::card(
-        tags$h5(style = "color: #0284c7; font-weight: 700; margin-bottom: 15px;", "Oportunidades Aeroespaciais & Ideias de Projetos Recomendadas"),
+        tags$h5(style = "color: #0284c7; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Núcleo Aeroespacial & Defesa & Ideias de Projetos Recomendadas"),
         shinycssloaders::withSpinner(DTOutput("aero_results_table"), type = 6, color = "#0284c7")
       )
     ),
     bslib::nav_panel(
-      title = tags$span(tags$i(class = "fa fa-laptop-code"), " CIMATEC Digital"),
+      title = tags$span(tags$i(class = "fa fa-laptop-code"), " Núcleo Digital & IA"),
       value = "cimatec_digital",
       bslib::card(
         style = "background: linear-gradient(135deg, #4f46e5 0%, #1e1b4b 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;",
         tags$div(
           style = "display: flex; justify-content: space-between; align-items: center;",
           tags$div(
-            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "💻 CIMATEC Digital de PD&I"),
-            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado para Inteligência Artificial, Cibersegurança, HPC, Quântica e Tecnologias Digitais.")
+            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "💻 Núcleo Digital & IA de PD&I"),
+            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e propostas para Inteligência Artificial, Cibersegurança, HPC, Quântica e Tecnologias Digitais.")
           ),
           tags$div(
             style = "text-align: right;",
@@ -464,20 +488,20 @@ ui <- bslib::page_sidebar(
                     selected = "Todos os Níveis")
       ),
       bslib::card(
-        tags$h5(style = "color: #4f46e5; font-weight: 700; margin-bottom: 15px;", "Oportunidades do CIMATEC Digital & Ideias de Projetos Recomendadas"),
+        tags$h5(style = "color: #4f46e5; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Núcleo Digital & IA & Ideias de Projetos Recomendadas"),
         shinycssloaders::withSpinner(DTOutput("digital_results_table"), type = 6, color = "#4f46e5")
       )
     ),
     bslib::nav_panel(
-      title = tags$span(tags$i(class = "fa fa-industry"), " CIMATEC Park & Sede"),
+      title = tags$span(tags$i(class = "fa fa-industry"), " Núcleo Park & Manufatura"),
       value = "cimatec_park",
       bslib::card(
         style = "background: linear-gradient(135deg, #d97706 0%, #451a03 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;",
         tags$div(
           style = "display: flex; justify-content: space-between; align-items: center;",
           tags$div(
-            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "🏭 CIMATEC Park & Sede de PD&I"),
-            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado para Manufatura Avançada, Materiais, Eletromobilidade, Química e Indústria 4.0.")
+            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "🏭 Núcleo Park & Manufatura de PD&I"),
+            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e propostas para Manufatura Avançada, Materiais, Eletromobilidade, Química e Indústria 4.0.")
           ),
           tags$div(
             style = "text-align: right;",
@@ -495,7 +519,7 @@ ui <- bslib::page_sidebar(
                     selected = "Todos os Níveis")
       ),
       bslib::card(
-        tags$h5(style = "color: #d97706; font-weight: 700; margin-bottom: 15px;", "Oportunidades do CIMATEC Park & Sede & Ideias de Projetos Recomendadas"),
+        tags$h5(style = "color: #d97706; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Núcleo Park & Manufatura & Ideias de Projetos Recomendadas"),
         shinycssloaders::withSpinner(DTOutput("park_results_table"), type = 6, color = "#d97706")
       )
     ),
@@ -1711,6 +1735,66 @@ server <- function(input, output, session) {
       }
       df <- df |> dplyr::filter(aderencia_naval_nivel == input$filter_naval_level)
     }
+
+    # Filtro de Aderência Sertão & Agro do Sidebar
+    if (!is.null(input$filter_sertao_level) && input$filter_sertao_level != "Todas") {
+      if (!"aderencia_sertao_nivel" %in% names(df)) df$aderencia_sertao_nivel <- NA_character_
+      for (i in seq_len(nrow(df))) {
+        if (is.na(df$aderencia_sertao_nivel[[i]]) || !nzchar(df$aderencia_sertao_nivel[[i]] %||% "")) {
+          eval_res <- evaluate_sertao_adherence(
+            titulo = df$titulo[[i]], descricao = df$descricao_resumida[[i]],
+            texto_bruto = df$texto_bruto[[i]], entidade = df$entidade[[i]], use_ai = FALSE
+          )
+          df$aderencia_sertao_nivel[[i]] <- eval_res$aderencia_sertao_nivel %||% "Baixa"
+        }
+      }
+      df <- df |> dplyr::filter(aderencia_sertao_nivel == input$filter_sertao_level)
+    }
+
+    # Filtro de Aderência Aeroespacial & Defesa do Sidebar
+    if (!is.null(input$filter_aero_level) && input$filter_aero_level != "Todas") {
+      if (!"aderencia_aero_nivel" %in% names(df)) df$aderencia_aero_nivel <- NA_character_
+      for (i in seq_len(nrow(df))) {
+        if (is.na(df$aderencia_aero_nivel[[i]]) || !nzchar(df$aderencia_aero_nivel[[i]] %||% "")) {
+          eval_res <- evaluate_aero_adherence(
+            titulo = df$titulo[[i]], descricao = df$descricao_resumida[[i]],
+            texto_bruto = df$texto_bruto[[i]], entidade = df$entidade[[i]], use_ai = FALSE
+          )
+          df$aderencia_aero_nivel[[i]] <- eval_res$aderencia_aero_nivel %||% "Baixa"
+        }
+      }
+      df <- df |> dplyr::filter(aderencia_aero_nivel == input$filter_aero_level)
+    }
+
+    # Filtro de Aderência Digital & IA do Sidebar
+    if (!is.null(input$filter_digital_level) && input$filter_digital_level != "Todas") {
+      if (!"aderencia_digital_nivel" %in% names(df)) df$aderencia_digital_nivel <- NA_character_
+      for (i in seq_len(nrow(df))) {
+        if (is.na(df$aderencia_digital_nivel[[i]]) || !nzchar(df$aderencia_digital_nivel[[i]] %||% "")) {
+          eval_res <- evaluate_digital_adherence(
+            titulo = df$titulo[[i]], descricao = df$descricao_resumida[[i]],
+            texto_bruto = df$texto_bruto[[i]], entidade = df$entidade[[i]], use_ai = FALSE
+          )
+          df$aderencia_digital_nivel[[i]] <- eval_res$aderencia_digital_nivel %||% "Baixa"
+        }
+      }
+      df <- df |> dplyr::filter(aderencia_digital_nivel == input$filter_digital_level)
+    }
+
+    # Filtro de Aderência Park & Manufatura do Sidebar
+    if (!is.null(input$filter_park_level) && input$filter_park_level != "Todas") {
+      if (!"aderencia_park_nivel" %in% names(df)) df$aderencia_park_nivel <- NA_character_
+      for (i in seq_len(nrow(df))) {
+        if (is.na(df$aderencia_park_nivel[[i]]) || !nzchar(df$aderencia_park_nivel[[i]] %||% "")) {
+          eval_res <- evaluate_park_adherence(
+            titulo = df$titulo[[i]], descricao = df$descricao_resumida[[i]],
+            texto_bruto = df$texto_bruto[[i]], entidade = df$entidade[[i]], use_ai = FALSE
+          )
+          df$aderencia_park_nivel[[i]] <- eval_res$aderencia_park_nivel %||% "Baixa"
+        }
+      }
+      df <- df |> dplyr::filter(aderencia_park_nivel == input$filter_park_level)
+    }
     
     dplyr::arrange(df, dplyr::desc(score_aderencia), parse_date_safe(data_limite))
   })
@@ -1763,6 +1847,10 @@ server <- function(input, output, session) {
     updateSelectizeInput(session, "filter_type", selected = character(0))
     updateSelectizeInput(session, "filter_language", selected = character(0))
     updateSelectInput(session, "filter_naval_level", selected = "Todas")
+    updateSelectInput(session, "filter_sertao_level", selected = "Todas")
+    updateSelectInput(session, "filter_aero_level", selected = "Todas")
+    updateSelectInput(session, "filter_digital_level", selected = "Todas")
+    updateSelectInput(session, "filter_park_level", selected = "Todas")
   })
 
   # Renderizador de status persistente no header da aplicação (inclui autenticação e perfil)

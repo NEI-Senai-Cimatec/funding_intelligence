@@ -1,7 +1,10 @@
-test_that("source_catalog contains 40 sources including 11 US and no world_bank", {
+test_that("source_catalog: ids unicos, 11 fontes US presentes, sem world_bank e sem fonte sintetica anp_shell", {
   src <- source_catalog()
-  expect_equal(nrow(src), 40)
+  expect_false(anyDuplicated(src$id_fonte) > 0L)
+  expect_gte(nrow(src), 40L)
   expect_false("world_bank" %in% src$id_fonte)
+  expect_false("anp_shell" %in% src$id_fonte) # substituida pelo SIGITEC (alias em BR_SOURCE_ALIASES)
+  expect_true("sigitec" %in% src$id_fonte)
   us_ids <- c(
     "grants_gov", "doe_ascr", "nsf_international", "nsf_qise",
     "nsf_cise", "doe_quantum_genesis", "doe_genesis", "nsf_nqni",
@@ -174,7 +177,7 @@ test_that("seed_sources persists new US sources after init_database", {
   create_tables(conn)
   seed_sources(conn)
   src <- DBI::dbGetQuery(conn, "SELECT id_fonte FROM fontes_financiamento")
-  expect_equal(nrow(src), 40)
+  expect_equal(nrow(src), nrow(source_catalog()))
   expect_true(all(c("grants_gov", "doe_ascr", "neh", "nasa_sbir") %in% src$id_fonte))
   # Simulate init_database cleaning world_bank
   DBI::dbExecute(conn, "INSERT OR REPLACE INTO fontes_financiamento (id_fonte, nome_fonte, sigla, pais, categoria, tipo_financiador, url_principal, url_oportunidades, metodo_coleta, idioma, periodicidade_atualizacao, observacoes) VALUES ('world_bank','WB','WB','USA','x','y','https://x','https://y','html','en','diaria','test')")

@@ -189,53 +189,15 @@ days_to_deadline <- function(x) {
   as.integer(x - Sys.Date())
 }
 
-classify_status <- function(deadline = NA, start = NA, end = NA, text = NULL) {
-  # Regra temporal única (BUG-01): delega ao motor de status derivado quando
-  # disponível, garantindo que coleta e render compartilham as MESMAS regras.
-  if (exists("derive_status", mode = "function", inherits = FALSE)) {
-    stored <- derive_status(data_limite = deadline, data_abertura = start, texto_bruto = text %||% "")
-    if (length(stored) == 1L && length(deadline) <= 1L && length(start) <= 1L) {
-      return(stored)
-    }
-  }
-  dl <- parse_date_safe(deadline)
-  st <- parse_date_safe(start)
-  en <- parse_date_safe(end)
-  txt <- as.character(text %||% NA_character_)
-  n <- max(length(dl), length(st), length(en), length(txt), 1L)
-  dl <- rep_len(dl, n)
-  st <- rep_len(st, n)
-  en <- rep_len(en, n)
-  txt <- rep_len(txt, n)
-
-  out <- vapply(seq_len(n), function(i) {
-    txt_i <- normalize_text(txt[[i]] %||% "")
-    dl_i <- dl[[i]]
-    en_i <- en[[i]]
-    st_i <- st[[i]]
-    ref <- if (!is.na(dl_i)) dl_i else en_i
-    today <- Sys.Date()
-    if (!is.na(ref)) {
-      diff_days <- as.integer(ref - today)
-      return(dplyr::case_when(
-        diff_days < 0 ~ "encerrado",
-        diff_days <= 14 ~ "encerrando",
-        !is.na(st_i) && st_i > today ~ "em breve",
-        TRUE ~ "aberto"
-      ))
-    }
-    if (grepl("encerrad|closed|finalizad|expired", txt_i, ignore.case = TRUE)) {
-      return("encerrado")
-    }
-    if (grepl("open|abert|ongoing|em andamento", txt_i, ignore.case = TRUE)) {
-      return("aberto")
-    }
-    if (grepl("coming soon|em breve|upcoming", txt_i, ignore.case = TRUE)) {
-      return("em breve")
-    }
-    "indefinido"
-  }, character(1))
-  out
+classify_status <- function(deadline = NA, start = NA, end = NA, text = NULL, today = NULL,
+                            status_oficial = NA) {
+  # Regra temporal única (R04): delega SEMPRE ao resolvedor de helpers_status.R.
+  # `text` é aceito por compatibilidade, mas texto livre não é evidência de estado.
+  dl <- as.character(parse_date_safe(deadline))
+  en <- as.character(parse_date_safe(end))
+  ref <- ifelse(is.na(dl), en, dl)
+  derive_status(data_limite = ref, data_abertura = as.character(parse_date_safe(start)),
+                today = today, status_oficial = status_oficial)
 }
 
 normalize_country <- function(x) {
@@ -549,11 +511,15 @@ badge_status_html <- function(status) {
     "em breve" = "badge-soft-info",
     "em_breve" = "badge-soft-info",
     "encerrado" = "badge-soft-closed",
+    "cancelado" = "badge-soft-closed",
+    "suspenso" = "badge-soft-warning",
+    "em_julgamento" = "badge-soft-info",
     "badge-soft-neutral"
   )
   label <- switch(status,
     "em_breve" = "Em breve",
-    "desconhecido" = "Desconhecido",
+    "em_julgamento" = "Em julgamento",
+    "desconhecido" = "A verificar",
     tools::toTitleCase(status)
   )
   sprintf("<span class='status-badge %s'>%s</span>", class_name, label)
@@ -968,7 +934,8 @@ extract_dates_contextual <- function(text, window = 120L, log_path = NULL) {
   if (!nzchar(txt)) {
     return(as.Date(character()))
   }
-  keywords <- c("prazo", "deadline", "submiss", "inscri", "until", "due date", "até", "ate", "final")
+  # "final" isolado foi removido: contaminava com "resultado final" (Q05).
+  keywords <- c("prazo", "deadline", "submiss", "inscri", "until", "due date", "até", "ate")
   windows <- character()
   for (kw in keywords) {
     matches <- gregexpr(paste0("\\b", kw, ".{0,", window, "}"), txt, ignore.case = TRUE, perl = TRUE)[[1]]
@@ -982,10 +949,18 @@ extract_dates_contextual <- function(text, window = 120L, log_path = NULL) {
   if (length(windows) == 0L) {
     return(as.Date(character()))
   }
-  all_dates <- unique(extract_dates_from_text(paste(windows, collapse = "\n")))
+  # Sentenças rotuladas como resultado/atualização/vigência/publicação não fornecem prazo de submissão.
+  sentences <- unlist(strsplit(windows, "\n|(?<=[[:alnum:])])\\.\\s+(?=[[:upper:]])", perl = TRUE))
+  excl <- "atualiz|resultado|recurso|homologa|divulga|vigencia|publicad|emitid|assinad|impress|gabarito|classificad"
+  sentences <- sentences[!grepl(excl, normalize_text(sentences))]
+  if (length(sentences) == 0L) {
+    return(as.Date(character()))
+  }
+  all_dates <- unique(extract_dates_from_text(paste(sentences, collapse = "\n")))
   all_dates <- all_dates[!is.na(all_dates)]
   hoje <- status_today()
-  all_dates <- all_dates[all_dates >= (hoje - 730) & all_dates <= (hoje + 730)]
+  # Passado de até 10 anos é preservado (evidência histórica de encerramento); futuro limitado a 2 anos.
+  all_dates <- all_dates[all_dates >= (hoje - 3650) & all_dates <= (hoje + 730)]
   sort(all_dates)
 }
 
@@ -1076,45 +1051,17 @@ quality_badge_html <- function(quality) {
 # ─── Categorização e Inferência por Campi (Sertão, Aeroespacial, Mar, Digital, Park) ──
 
 infer_campus_from_record <- function(titulo = "", descricao = "", area_tematica = "", palavras_chave = "", fonte_oficial = "", entidade = "") {
-  txt_norm <- normalize_text(paste(titulo %||% "", descricao %||% "", area_tematica %||% "", palavras_chave %||% "", fonte_oficial %||% "", entidade %||% "", collapse = " "))
-  fonte_norm <- tolower(trimws(fonte_oficial %||% entidade %||% ""))
-  
-  campi <- character()
-  
-  # 1. Aeroespacial (🚀)
-  is_aero <- fonte_norm %in% c("aeb", "finep_aero", "fab_dcta", "afosr", "darpa", "darpa_quantum_benchmarking") ||
-    grepl("aeroespacial|aeronautica|aeronautico|espacial|satelite|satelites|vant|vants|drone|drones|defesa|propulsao|avionica|radar|radares|evtol|lancador|foguete|orbita|space|aerospace|cta|iae|dcta|forca aerea", txt_norm)
-  if (is_aero) campi <- c(campi, "Aeroespacial")
-  
-  # 2. Sertão (🌾)
-  is_sertao <- fonte_norm %in% c("bnb_fundeci", "codevasf", "embrapa", "sudene") ||
-    grepl("agro|agricultura|agrotech|precisao|semiarido|caatinga|hidrogenio verde|solar|eolica|biomassa|irrigacao|recursos hidricos|bioeconomia|pecuaria|safra|solo|bacia|sao francisco|oeste baiano|desenvolvimento regional|fundeci|codevasf|sudene|embrapa|mapa", txt_norm)
-  if (is_sertao) campi <- c(campi, "Sertão")
-  
-  # 3. Mar (🌊)
-  is_mar <- fonte_norm %in% c("sigitec") ||
-    grepl("mar|maritimo|maritima|naval|oceanica|subaquatica|offshore|submarino|portos|oceano|economia azul|petrobras|sigitec", txt_norm)
-  if (is_mar) campi <- c(campi, "Mar")
-  
-  # 4. Digital (💻)
-  is_digital <- fonte_norm %in% c("nsf_cise", "doe_ascr") ||
-    grepl("inteligencia artificial|ia|ai|ciberseguranca|iot|software|dados|computacao|cidades inteligentes|digital|hpc|supercomputacao|hardware", txt_norm)
-  if (is_digital) campi <- c(campi, "Digital")
-  
-  # 5. Park (🏭)
-  is_park <- fonte_norm %in% c("embrapii") ||
-    grepl("manufatura|industria 4\\.0|materiais|nanotecnologia|quimica|petroquimica|automotivo|eletromobilidade|processos industriais|embrapii", txt_norm)
-  if (is_park) campi <- c(campi, "Sede e Park")
-  
-  if (length(campi) == 0) {
-    return("Sede e Park")
-  }
-  paste(campi, collapse = "; ")
+  # R05: evidência = OBJETO (título/descrição/área/palavras-chave). Fonte, entidade/financiador,
+  # menus e rodapés NÃO são evidência de tema (parâmetros mantidos por compatibilidade, ignorados).
+  # Sem evidência => NA ("Não classificado"); nunca força "Sede e Park".
+  cand <- infer_campus_candidates(titulo, descricao, area_tematica, palavras_chave)
+  if (nrow(cand) == 0L) return(NA_character_)
+  paste(cand$campus, collapse = "; ")
 }
 
 campus_badge_html <- function(campus_str) {
-  if (is.null(campus_str) || is.na(campus_str) || !nzchar(trimws(campus_str))) {
-    return("<span class='badge bg-secondary' style='font-size:0.75rem;'><img src='logos/logo.png' alt='CIMATEC' style='height:12px; margin-right:4px; vertical-align:middle; filter: brightness(0) invert(1);'>Sede e Park</span>")
+  if (is.null(campus_str) || length(campus_str) == 0L || is.na(campus_str) || !nzchar(trimws(campus_str))) {
+    return("<span class='badge bg-light text-secondary' style='font-size:0.75rem;' title='Sem evidência temática no objeto do edital'>Não classificado</span>")
   }
   parts <- safe_split(campus_str, pattern = "[;,]+")
   badges <- vapply(parts, function(c_name) {

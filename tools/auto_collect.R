@@ -37,9 +37,14 @@ main_auto_collect <- function(test_mode = FALSE) {
     "R/helpers_utils.R",
     "R/helpers_db.R",
     "R/helpers_status.R",
+    "R/helpers_validation.R",
+    "R/helpers_schedule.R",
     "R/helpers_text.R",
     "R/helpers_ai.R",
-    "R/helpers_collect.R"
+    "R/helpers_collect.R",
+    "R/helpers_sources_br.R",
+    "R/helpers_sources_br_federal.R",
+    "R/helpers_sanitize.R"
   )
 
   message("----------------------------------------------------------------------")

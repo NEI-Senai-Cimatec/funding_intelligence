@@ -86,6 +86,17 @@ source_dispatch <- function(source_row, max_pages = 5, max_records = 15, use_ai 
   result
 }
 
+# Interpretador Python portável (Windows `py -3`, Linux `python3`/`python`).
+.python_command <- function() {
+  for (cand in c("python3", "python", "py")) {
+    p <- Sys.which(cand)
+    if (nzchar(p)) {
+      return(if (identical(cand, "py")) sprintf('"%s" -3', p) else sprintf('"%s"', p))
+    }
+  }
+  NA_character_
+}
+
 safe_request_page_stealth <- function(url, log_path = NULL) {
   stealth_script <- file.path(getwd(), "tools", "stealth_fetch.py")
   if (!file.exists(stealth_script)) {
@@ -94,23 +105,36 @@ safe_request_page_stealth <- function(url, log_path = NULL) {
   if (!file.exists(stealth_script)) {
     return(list(ok = FALSE))
   }
-  
+  py <- .python_command()
+  if (is.na(py)) {
+    return(list(ok = FALSE, error = "python indisponivel", error_kind = "network_error"))
+  }
+
   tmp_file <- tempfile(fileext = ".html")
-  on.exit(unlink(tmp_file), add = TRUE)
-  
-  cmd <- sprintf('py -3 "%s" "%s" "%s"', stealth_script, url, tmp_file)
+  on.exit(unlink(c(tmp_file, paste0(tmp_file, ".err.json"))), add = TRUE)
+
+  cmd <- sprintf('%s "%s" "%s" "%s"', py, stealth_script, url, tmp_file)
   res_code <- suppressWarnings(system(cmd, ignore.stdout = TRUE, ignore.stderr = TRUE))
-  
+
   if (file.exists(tmp_file) && file.info(tmp_file)$size > 800) {
     txt_lines <- readLines(tmp_file, warn = FALSE, encoding = "UTF-8")
-    txt_str <- paste(txt_lines, collapse = "\n")
+    txt_str <- paste(txt_lines, collapse = "
+")
     html <- try(xml2::read_html(txt_str), silent = TRUE)
     if (!inherits(html, "try-error")) {
       if (!is.null(log_path)) log_write(log_path, "INFO", sprintf("Stealth Fetching (curl_cffi/playwright) bem-sucedido para %s (%d bytes).", url, nchar(txt_str)))
       return(list(url = url, html = html, text = txt_str, ok = TRUE, method = "stealth_python"))
     }
   }
-  
+
+  err_file <- paste0(tmp_file, ".err.json")
+  if (file.exists(err_file)) {
+    d <- tryCatch(jsonlite::fromJSON(err_file), error = function(e) NULL)
+    if (!is.null(d)) {
+      return(list(ok = FALSE, error = d$message %||% "", error_kind = d$kind %||% "network_error",
+                  http_status = d$status %||% NA_integer_))
+    }
+  }
   list(ok = FALSE)
 }
 
@@ -528,12 +552,52 @@ collect_sources_parallel <- function(sources_df, max_pages = 5L, max_records_per
   results
 }
 
+# Contrato de aquisição (R06): HTTP 200 e HTML longo não bastam. O resultado de
+# qualquer via (httr2, stealth, Playwright, Chromote) é classificado; intersticiais
+# de TLS/navegador, bloqueios, login, CAPTCHA, manutenção e SPA vazia retornam ok = FALSE
+# com `acq` descrevendo o motivo. `options(fi.br_fetcher=)` permite injetar fixtures em testes.
 safe_request_page <- function(url, log_path = NULL, use_browser_fallback = TRUE, conn = NULL) {
+  injected <- getOption("fi.br_fetcher", NULL)
+  res <- if (is.function(injected)) {
+    injected(url)
+  } else {
+    .safe_request_page_impl(url, log_path = log_path, use_browser_fallback = use_browser_fallback, conn = conn)
+  }
+  if (isTRUE(res$ok) && is.null(res$html) && !is.null(res$text) && !is.na(res$text)) {
+    res$html <- tryCatch(xml2::read_html(res$text), error = function(e) NULL)
+  }
+  if (isTRUE(res$ok)) {
+    acq <- classify_acquisition(res$text %||% NA_character_, res$http_status %||% 200L)
+    res$acq <- acq
+    if (!acq$ok) {
+      if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Aquisicao rejeitada para %s: %s (%s)", url, acq$kind, acq$reason))
+      res$ok <- FALSE
+      res$html <- NULL
+    }
+  } else {
+    err <- res$error %||% NA_character_
+    kind <- res$error_kind %||% NA_character_
+    acq <- if (!is.na(kind) && kind == "tls_error") {
+      list(kind = "tls_error", ok = FALSE, reason = err)
+    } else if (!is.na(err) && nzchar(err)) {
+      classify_acquisition(NA_character_, NA_integer_, error = err)
+    } else {
+      list(kind = res$error_kind %||% "network_error", ok = FALSE, reason = "sem resposta utilizavel")
+    }
+    res$acq <- acq
+  }
+  res
+}
+
+.safe_request_page_impl <- function(url, log_path = NULL, use_browser_fallback = TRUE, conn = NULL) {
   start_time <- Sys.time()
+  last_error <- NA_character_
+  last_kind <- NA_character_
   .scrape_rate_limiter$wait_if_needed(url)
   if (!is_host_alive(url)) {
     if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Host offline ou inacessivel: %s. Pulando requisicoes antecipadamente.", url))
-    return(list(url = url, html = NULL, text = NA_character_, ok = FALSE, method = "ping_failed"))
+    return(list(url = url, html = NULL, text = NA_character_, ok = FALSE, method = "ping_failed",
+                error = "host inacessivel (ping/DNS)", error_kind = "network_error"))
   }
 
   # BUG-06: portais EU renderizam conteúdo via JS/CDN — headless vira a via preferencial
@@ -581,11 +645,21 @@ safe_request_page <- function(url, log_path = NULL, use_browser_fallback = TRUE,
     }
   )
 
+  if (inherits(resp, "error")) {
+    last_error <- conditionMessage(resp)
+    last_kind <- if (grepl("ssl|tls|certificate|cert", tolower(last_error))) "tls_error" else "network_error"
+  }
+
   if (!inherits(resp, "error")) {
     status <- httr2::resp_status(resp)
+    if (status >= 400) {
+      last_error <- sprintf("HTTP %d", status)
+      last_kind <- if (status %in% c(401L, 403L, 429L)) "blocked" else "http_error"
+    }
     if (status == 404) {
       if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("URL nao encontrada (404) para %s. Ignorando fallbacks.", url))
-      return(list(url = url, html = NULL, text = NA_character_, ok = FALSE, method = "httr2_404"))
+      return(list(url = url, html = NULL, text = NA_character_, ok = FALSE, method = "httr2_404",
+                  http_status = 404L, error = "HTTP 404", error_kind = "http_error"))
     }
 
     txt <- try(httr2::resp_body_string(resp), silent = TRUE)
@@ -597,7 +671,8 @@ safe_request_page <- function(url, log_path = NULL, use_browser_fallback = TRUE,
         if (!has_block_signal) {
           elapsed <- as.numeric(Sys.time() - start_time, units = "secs")
           if (!is.null(conn)) log_metric(conn, extract_domain(url), "http_latency", elapsed, list(url = url, status = status, method = "httr2", blocked = FALSE))
-          return(list(url = url, html = html, text = txt, ok = TRUE, method = "httr2"))
+          return(list(url = url, final_url = tryCatch(httr2::resp_url(resp), error = function(e) url),
+                      http_status = status, html = html, text = txt, ok = TRUE, method = "httr2"))
         } else {
           if (!is.null(log_path)) log_write(log_path, "INFO", sprintf("Bloqueio de CDN/CAPTCHA (status %d) detectado via httr2 para %s. Acionando fallbacks...", status, url))
           elapsed <- as.numeric(Sys.time() - start_time, units = "secs")
@@ -610,6 +685,10 @@ safe_request_page <- function(url, log_path = NULL, use_browser_fallback = TRUE,
   # 2. Tentar Python Stealth (curl_cffi + Playwright com TLS Impersonation)
   if (isTRUE(use_browser_fallback)) {
     st_res <- safe_request_page_stealth(url, log_path = log_path)
+    if (!isTRUE(st_res$ok) && !is.null(st_res$error) && nzchar(st_res$error %||% "")) {
+      # TLS é um estado da fonte: preserva o diagnóstico mais específico
+      if (!identical(last_kind, "tls_error")) { last_error <- st_res$error; last_kind <- st_res$error_kind %||% last_kind }
+    }
     if (isTRUE(st_res$ok)) {
       elapsed <- as.numeric(Sys.time() - start_time, units = "secs")
       if (!is.null(conn)) log_metric(conn, extract_domain(url), "http_latency", elapsed, list(url = url, status = 200, method = "stealth_python", blocked = FALSE))
@@ -673,7 +752,8 @@ safe_request_page <- function(url, log_path = NULL, use_browser_fallback = TRUE,
   }
 
   if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Falha ao requisitar %s apos tentar todos os metodos (httr2, Playwright, Chromote Stealth)", url))
-  list(url = url, html = NULL, text = NA_character_, ok = FALSE, method = NA_character_)
+  list(url = url, html = NULL, text = NA_character_, ok = FALSE, method = NA_character_,
+       error = last_error, error_kind = last_kind)
 }
 
 
@@ -718,11 +798,11 @@ is_funding_opportunity_heuristics <- function(title, description = "", url = "",
     "/lgpd", "/politica-de-privacidade", "/contatos", "/fale-conosco",
     "/equipe", "/quem-somos", "/sobre-nos", "/servicos-ao-cidadao",
     "/perguntas-frequentes", "/faq", "/documentos",
-    "/acesso-a-informacao", "/institucional", "/financiamento-via-credito",
+    "/institucional", "/financiamento-via-credito",
     "/financiamento-reembolsavel", "retificacao", "retificado",
     "prorrogacao", "aditivo", "errata", "gabarito", "homologacao",
     "perguntas-frequentes", "perguntas_frequentes",
-    "nota-de-esclarecimento", "anexo",
+    "nota-de-esclarecimento",
     "facebook.com/sharer", "facebook.com/share",
     "twitter.com/share", "twitter.com/intent",
     "linkedin.com/share", "api.whatsapp.com/send",
@@ -730,6 +810,10 @@ is_funding_opportunity_heuristics <- function(title, description = "", url = "",
   )
 
   if (any(vapply(invalid_url_patterns, function(pat) grepl(pat, u_norm, fixed = TRUE), logical(1)))) {
+    return(FALSE)
+  }
+  # Anexos são excluídos apenas quando o ÚLTIMO segmento da URL é um anexo avulso (não o edital).
+  if (grepl("/anexo[-_a-z0-9]*(\\.[a-z]{3,4})?(\\?.*)?$", u_norm)) {
     return(FALSE)
   }
 
@@ -805,6 +889,16 @@ is_funding_opportunity_heuristics <- function(title, description = "", url = "",
   # 5. Caso o título seja apenas um texto de navegação/link quebrado
   if (t_norm %in% c("link", "este link", "aqui", "clique aqui", "saiba mais", "visualizar", "abrir")) {
     return(FALSE)
+  }
+
+  # 6. Evidência POSITIVA (Q04): ausência de regra negativa não valida. Exige sinal de chamada/
+  #    fomento no título ou na descrição (não no corpo completo da página, que inclui menus/rodapé).
+  if (!isTRUE(getOption("fi.heuristics_permissive", FALSE))) {
+    td <- paste(t_norm, d_norm)
+    positive <- grepl(paste0("edital|chamada|chamamento|selecao|processo seletivo|convocatoria|\\bcall\\b|\\bcalls\\b|grant|funding|",
+                             "fellowship|scholarship|bolsa|subvencao|fomento|programa de|oportunidade|notice of|solicitation|",
+                             "proposal|apoio a|apoio ao|premio|prize|award|concurso|\\bfapes|aceleracao|cpsi|desafio"), td, perl = TRUE)
+    if (!positive) return(FALSE)
   }
 
   return(TRUE)
@@ -1132,19 +1226,23 @@ extract_core_record <- function(source_row, input_title = NA_character_, input_s
   dates <- extract_dates_from_text(raw_text)
   # BUG-03: prazo vem de janelas contextuais (nunca de rodapé/"última atualização")
   ctx_dates <- extract_dates_contextual(raw_text)
-  deadline <- if (length(ctx_dates) > 0 && any(!is.na(ctx_dates))) {
+  # Q05: NUNCA usar o máximo/mínimo de todas as datas da página. Prazo = data rotulada de
+  # submissão (janelas contextuais sem resultado/atualização); publicação = data explicitamente
+  # rotulada como publicação. Sem evidência, permanecem ausentes (NA), sem urgência inventada.
+  strict_dl <- extract_submission_deadline_strict(raw_text)
+  deadline <- if (!is.na(strict_dl)) {
+    strict_dl
+  } else if (length(ctx_dates) > 0 && any(!is.na(ctx_dates))) {
     suppressWarnings(max(ctx_dates, na.rm = TRUE))
-  } else if (length(dates) > 0 && any(!is.na(dates))) {
-    suppressWarnings(max(dates, na.rm = TRUE))
   } else {
     as.Date(NA)
   }
-  pub_date <- if (length(dates) > 0 && any(!is.na(dates))) suppressWarnings(min(dates, na.rm = TRUE)) else as.Date(NA)
+  pub_date <- extract_publication_date(raw_text)
   money <- parse_money_text(raw_text)
   main_url <- pick_first_nonempty(detail_url, pdf_url, page_url, source_row$url_oportunidades[[1]])
 
   if (is.na(v_title)) {
-    v_title <- paste("Oportunidade -", entity_name, format(Sys.Date(), "%d/%m/%Y"))
+    v_title <- paste("Oportunidade -", entity_name)
   }
 
   rec <- tibble::tibble(
@@ -1565,7 +1663,10 @@ ensure_record_schema <- function(df) {
     "data_encerramento", "status_oportunidade", "link_origem", "link_detalhe",
     "link_documento_pdf", "idioma", "localidade", "observacoes", "texto_bruto",
     "pagina_coletada", "fonte_oficial", "data_hora_coleta", "hash_deduplicacao", "campus", "campos_inferidos_ia",
-    "enrichment_status", "enrichment_model", "enrichment_at", "enrichment_error"
+    "enrichment_status", "enrichment_model", "enrichment_at", "enrichment_error",
+    "status_oficial", "fluxo_continuo", "id_chamada", "tipo_escopo", "validacao_status", "validacao_motivo",
+    "validacao_evidencia", "validacao_versao", "validacao_em", "proveniencia_json", "campus_justificativa",
+    "valor_teto_projeto", "data_vigencia_fim"
   )
   if (is.null(df) || nrow(df) == 0) {
     out <- as.list(rep(NA_character_, length(schema_cols)))
@@ -1605,17 +1706,20 @@ finalize_records <- function(df, fonte_oficial = NULL, log_path = NULL) {
     return(ensure_record_schema(tibble::tibble()))
   }
 
-  # Filtrar para manter apenas editais do ano corrente (Requisito 3)
-  current_year_idx <- vapply(seq_len(nrow(df)), function(i) {
-    is_current_year_record(
-      pub_date_str = df$data_publicacao[[i]],
-      limit_date_str = df$data_limite[[i]],
-      title = df$titulo[[i]],
-      text = df$texto_bruto[[i]],
-      is_eu_source = is_eu
-    )
-  }, logical(1))
-  df <- df[current_year_idx, ]
+  # O ano NÃO é prova de validade nem de abertura (R03): chamadas plurianuais e históricas permanecem
+  # recuperáveis. O filtro por ano é de APRESENTAÇÃO (UI). Legado opcional: options(fi.collect_year_filter = TRUE).
+  if (isTRUE(getOption("fi.collect_year_filter", FALSE))) {
+    current_year_idx <- vapply(seq_len(nrow(df)), function(i) {
+      is_current_year_record(
+        pub_date_str = df$data_publicacao[[i]],
+        limit_date_str = df$data_limite[[i]],
+        title = df$titulo[[i]],
+        text = df$texto_bruto[[i]],
+        is_eu_source = is_eu
+      )
+    }, logical(1))
+    df <- df[current_year_idx, ]
+  }
 
   if (nrow(df) == 0) {
     return(ensure_record_schema(tibble::tibble()))
@@ -1639,7 +1743,8 @@ finalize_records <- function(df, fonte_oficial = NULL, log_path = NULL) {
   }
 
   lang_guess <- infer_language_simple(df$texto_bruto)
-  status_guess <- classify_status(df$data_limite, df$data_abertura, df$data_encerramento, df$texto_bruto)
+  status_guess <- classify_status(df$data_limite, df$data_abertura, df$data_encerramento, df$texto_bruto,
+                                  status_oficial = if ("status_oficial" %in% names(df)) df$status_oficial else NA)
   area_guess <- vapply(df$texto_bruto, infer_area_from_text_one, character(1))
 
   campus_guess <- vapply(seq_len(nrow(df)), function(i) {
@@ -1674,6 +1779,7 @@ collect_listing_with_pagination <- function(source_row, first_url, max_pages = 5
   page_no <- 1L
   all_records <- tibble::tibble()
   last_url <- first_url
+  n_cand_total <- 0L; n_cand_ok <- 0L; truncated <- FALSE
 
   while (!is.na(current_url) && nzchar(current_url) && page_no <= max_pages && !(current_url %in% pages_seen)) {
     pages_seen <- c(pages_seen, current_url)
@@ -1681,16 +1787,26 @@ collect_listing_with_pagination <- function(source_row, first_url, max_pages = 5
     pg <- safe_request_page(current_url, log_path = log_path)
     if (!isTRUE(pg$ok) || is.null(pg$html)) {
       if (page_no == 1L) {
-        stop(sprintf("Erro ao carregar a pagina inicial: %s", current_url), call. = FALSE)
+        stop(sprintf("Erro ao carregar a pagina inicial: %s (%s)", current_url, pg$acq$kind %||% "sem_resposta"), call. = FALSE)
       }
       break
     }
 
     candidates <- extract_listing_candidates(pg$html, current_url, source_row)
     if (nrow(candidates) > 0) {
+      n_cand_total <- n_cand_total + nrow(candidates)
+      # T26: candidatos negativos NÃO consomem o limite; validação ocorre antes de max_records
+      keep_cand <- vapply(seq_len(nrow(candidates)), function(i) {
+        isTRUE(is_funding_opportunity_heuristics(
+          title = candidates$title[[i]], description = candidates$summary[[i]],
+          url = pick_first_nonempty(candidates$detail_url[[i]], candidates$pdf_url[[i]], current_url), body_text = ""))
+      }, logical(1))
+      candidates <- candidates[keep_cand, , drop = FALSE]
+      n_cand_ok <- n_cand_ok + nrow(candidates)
       remaining <- max_records - nrow(all_records)
-      if (remaining <= 0) break
-      if (nrow(candidates) > remaining) candidates <- candidates[seq_len(remaining), , drop = FALSE]
+      if (remaining <= 0) { truncated <- truncated || nrow(candidates) > 0L; break }
+      if (nrow(candidates) > remaining) { truncated <- TRUE; candidates <- candidates[seq_len(remaining), , drop = FALSE] }
+      if (nrow(candidates) == 0L) { next_url_skip <- TRUE }
 
       page_records <- purrr::map_dfr(seq_len(nrow(candidates)), function(i) {
         one <- candidates[i, , drop = FALSE]
@@ -1741,28 +1857,23 @@ collect_listing_with_pagination <- function(source_row, first_url, max_pages = 5
     page_no <- page_no + 1L
   }
 
-  # Fallback leve: se nada foi encontrado, cria um registro mínimo da própria página oficial.
-  if (nrow(all_records) == 0) {
-    pg0 <- safe_request_page(first_url, log_path = log_path)
-    if (isTRUE(pg0$ok) && !is.null(pg0$html)) {
-      fallback_record <- extract_core_record(
-        source_row = source_row,
-        input_title = extract_meta_title(pg0$html) %||% paste("Oportunidades", source_row$sigla[[1]] %||% source_row$nome_fonte[[1]]),
-        input_summary = extract_page_summary(pg0$html),
-        input_full_text = extract_page_summary(pg0$html, max_chars = 3000),
-        page_url = first_url,
-        detail_url = NA_character_,
-        pdf_url = pick_first_nonempty(extract_pdf_links(pg0$html, first_url)),
-        page_no = 1L
-      )
-      all_records <- fallback_record
-    }
-  }
+  # Sem fallback (Q02/Q04): se nada válido foi extraído, o resultado é VAZIO. A própria página
+  # de origem nunca é transformada em oportunidade. O diagnóstico diferencia vazio reconhecido
+  # (candidatos avaliados e todos rejeitados) de contrato não reconhecido (nenhum candidato).
+  n_valid <- nrow(all_records)
+  state <- if (n_valid > 0L) "sucesso" else if (n_cand_total > 0L) "vazio_confirmado" else "erro_parser"
+  diag <- make_source_diagnostics(
+    state, n_candidatos = n_cand_total, n_aceitos = n_valid, n_rejeitados = n_cand_total - n_valid,
+    motivos_rejeicao = rep("heuristica_negativa", max(0L, n_cand_total - n_cand_ok)),
+    url_final = last_url, truncado = truncated, paginas = length(pages_seen),
+    mensagem = if (n_valid == 0L && n_cand_total == 0L) "Nenhum candidato extraido: contrato da pagina nao reconhecido (nao e vazio confirmado)." else
+      sprintf("%d candidato(s) avaliado(s); %d valido(s)%s.", n_cand_total, n_valid, if (truncated) "; TRUNCADO por max_records" else ""))
 
   list(
     records = finalize_records(all_records),
     pages_visited = length(pages_seen),
-    last_url = last_url
+    last_url = last_url,
+    diagnostics = diag
   )
 }
 
@@ -3584,6 +3695,33 @@ save_collection_exports <- function(df, export_dir, prefix = "funding_base", log
   list(paths = export_paths, warnings = unique(export_warnings))
 }
 
+# Estado do LOG de coleta por fonte (R06 / T22): HTTP 200, HTML longo, zero páginas ou
+# falha de finalização/persistência NUNCA terminam como "sucesso com oportunidades".
+collection_log_status <- function(result, n_recs, n_persisted = n_recs, n_failed = 0L, n_collisions = 0L) {
+  diag <- result$diagnostics
+  pages <- result$pages_visited %||% 0L
+  fail_states <- c("erro_rede", "erro_tls", "bloqueio", "erro_parser", "erro_persistencia")
+  if (!is.null(diag)) {
+    st <- diag$state
+    if (st %in% fail_states) return(list(status = "erro", mensagem = sprintf("[%s] %s", st, diag$mensagem %||% "")))
+    msg <- diag$mensagem %||% ""
+    if (n_failed > 0L || n_persisted < n_recs) {
+      return(list(status = "parcial", mensagem = sprintf("Persistencia parcial: %d de %d registro(s) gravados (%d falha(s), %d colisao(oes) de hash). %s", n_persisted, n_recs, n_failed, n_collisions, msg)))
+    }
+    if (identical(st, "parcial")) return(list(status = "parcial", mensagem = sprintf("%d registro(s) processado(s). %s", n_persisted, msg)))
+    if (identical(st, "vazio_confirmado")) return(list(status = "vazio", mensagem = sprintf("Vazio confirmado: 0 oportunidades validas. %s", msg)))
+    return(list(status = "sucesso", mensagem = sprintf("%d registro(s) processado(s)%s. %s", n_persisted, if (isTRUE(diag$truncado)) " (TRUNCADO por max_records)" else "", msg)))
+  }
+  if (n_recs == 0L && pages == 0L) {
+    return(list(status = "erro", mensagem = "Nenhuma pagina consultada e nenhum registro: coleta nao realizada (nao e sucesso)."))
+  }
+  if (n_failed > 0L || n_persisted < n_recs) {
+    return(list(status = "parcial", mensagem = sprintf("Persistencia parcial: %d de %d registro(s) gravados.", n_persisted, n_recs)))
+  }
+  if (n_recs == 0L) return(list(status = "vazio", mensagem = "0 registros apos a validacao (coletor sem contrato de diagnostico)."))
+  list(status = "sucesso", mensagem = sprintf("%d registro(s) processado(s)", n_persisted))
+}
+
 collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_records_per_source = 15, use_ai = FALSE, export_dir = "data_exports", log_path = "logs/funding_collection.log", progress_cb = NULL, do_export = TRUE, status_file = "logs/collection_status.json", modal_log_file = "logs/collection_modal_log.txt") {
   ensure_dir(dirname(log_path))
   log_write(log_path, "INFO", "Início da coleta oficial.")
@@ -3607,19 +3745,12 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
     silent = TRUE
   )
 
-  # Limpar erros antigos de logs_coleta para evitar falsos positivos no modal de alerta
-  tryCatch(
-    {
-      DBI::dbExecute(conn, "DELETE FROM logs_coleta WHERE status_execucao = 'erro'")
-      log_write(log_path, "INFO", "Logs de erro antigos removidos de logs_coleta.")
-    },
-    error = function(e) {
-      log_write(log_path, "WARN", sprintf("Falha ao limpar logs de erro: %s", e$message))
-    }
-  )
+  # Histórico de erros em logs_coleta é preservado (observabilidade); o alerta filtra por data.
 
   sources <- tibble::as_tibble(DBI::dbReadTable(conn, "fontes_financiamento"))
 
+  # Aliases (ex.: anp_shell -> sigitec): uma única coleta por listagem canônica
+  if (!is.null(source_ids) && length(source_ids) > 0) source_ids <- resolve_source_aliases(source_ids)
   if (!is.null(source_ids) && length(source_ids) > 0) {
     sources <- dplyr::filter(sources, .data$id_fonte %in% source_ids)
   }
@@ -3679,10 +3810,22 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
       next
     }
 
-    recs <- tryCatch(finalize_records(result$records, fonte_oficial = result$source_id %||% sid, log_path = log_path), error = function(e) {
-      log_write(log_path, "ERROR", sprintf("Falha ao finalizar registros da fonte %s: %s", sid, e$message))
-      ensure_record_schema(tibble::tibble())
-    })
+    finalize_error <- NULL
+    recs <- if (isTRUE(result$finalized)) {
+      result$records
+    } else {
+      tryCatch(finalize_records(result$records, fonte_oficial = result$source_id %||% sid, log_path = log_path), error = function(e) {
+        finalize_error <<- conditionMessage(e)
+        NULL
+      })
+    }
+    if (!is.null(finalize_error)) {
+      log_write(log_path, "ERROR", sprintf("Falha ao finalizar registros da fonte %s: %s", sid, finalize_error))
+      log_collection(conn, sid, src$metodo_coleta[[1]], "erro", paste("Falha de finalizacao:", finalize_error),
+                     n_paginas = result$pages_visited %||% 0L, n_registros = 0L, url = result$last_url %||% src$url_oportunidades[[1]])
+      next
+    }
+    if (is.null(recs)) recs <- ensure_record_schema(tibble::tibble())
 
     # Traduzir registros EU para pt-br (habilitado por padrao, desabilitar com AI_TRANSLATE_EU=false)
     translate_eu <- identical(tolower(Sys.getenv("AI_TRANSLATE_EU", "true")), "true")
@@ -3694,20 +3837,31 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
       })
     }
 
+    persist_error <- NULL
     n_inserted <- tryCatch(upsert_opportunities(conn, recs), error = function(e) {
-      log_write(log_path, "ERROR", sprintf("Falha ao inserir registros da fonte %s: %s", sid, e$message))
+      persist_error <<- conditionMessage(e)
       0L
     })
-    inserted_total <- inserted_total + n_inserted
-    log_metric(conn, sid, "source_records", n_inserted, list(source_id = sid, pages = result$pages_visited %||% 0L))
+    if (!is.null(persist_error)) {
+      log_write(log_path, "ERROR", sprintf("Falha ao inserir registros da fonte %s: %s", sid, persist_error))
+      log_collection(conn, sid, src$metodo_coleta[[1]], "erro", paste("Falha de persistencia:", persist_error),
+                     n_paginas = result$pages_visited %||% 0L, n_registros = 0L, url = result$last_url %||% src$url_oportunidades[[1]])
+      next
+    }
+    n_failed <- attr(n_inserted, "failed") %||% 0L
+    n_collisions <- attr(n_inserted, "collisions") %||% 0L
+    inserted_total <- inserted_total + as.integer(n_inserted)
+    log_metric(conn, sid, "source_records", as.integer(n_inserted), list(source_id = sid, pages = result$pages_visited %||% 0L))
+    lg <- collection_log_status(result, nrow(recs), as.integer(n_inserted), n_failed, n_collisions)
+    log_write(log_path, if (lg$status %in% c("erro", "parcial")) "WARN" else "INFO", sprintf("[%s] %s: %s", sid, lg$status, lg$mensagem))
     log_collection(
       conn = conn,
       fonte = sid,
       metodo_coleta = src$metodo_coleta[[1]],
-      status_execucao = "sucesso",
-      mensagem = sprintf("%s registro(s) processado(s)", n_inserted),
+      status_execucao = lg$status,
+      mensagem = lg$mensagem,
       n_paginas = result$pages_visited %||% 0L,
-      n_registros = n_inserted,
+      n_registros = as.integer(n_inserted),
       url = result$last_url %||% src$url_oportunidades[[1]]
     )
     processed <- processed + 1L
@@ -3715,7 +3869,8 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
   }
 
   final_df <- tibble::as_tibble(DBI::dbReadTable(conn, "oportunidades"))
-  if (nrow(final_df) == 0) {
+  # Zero oportunidades válidas é uma saída NORMAL. Demo somente com FI_DEMO_MODE=true (explícito).
+  if (nrow(final_df) == 0 && demo_mode_enabled()) {
     seed_demo_opportunities(conn)
     final_df <- tibble::as_tibble(DBI::dbReadTable(conn, "oportunidades"))
   }
@@ -3775,343 +3930,6 @@ run_full_collection_cycle <- function(conn, sources_ids = NULL, max_pages = 5, m
   )
   res$data <- tibble::as_tibble(DBI::dbReadTable(conn, "oportunidades"))
   res
-}
-
-collect_sigitec <- function(source_row = NULL, max_pages = 1, max_records = 50, use_ai = FALSE, log_path = NULL) {
-  #' Coleta oportunidades da Petrobras SIGITEC via API REST pública
-  #' API retorna todos os registros de uma vez (sem paginação)
-  #' Detalhes via endpoint público por ID
-
-  .log <- function(level, msg) {
-    if (!is.null(log_path)) log_write(log_path, level, msg)
-    message(sprintf("[SIGITEC][%s] %s", level, msg))
-  }
-
-  base_url <- "https://sigitec-competitividade.petrobras.com.br"
-  listing_url <- paste0(base_url, "/v2/ms-authorization/opportunity/getAllPublicOpportunities")
-  detail_base <- paste0(base_url, "/v2/ms-authorization/opportunity/public-opportunity/")
-
-  .log("INFO", "Iniciando coleta SIGITEC Petrobras via API REST...")
-
-  # ETAPA 1: Buscar listing completo
-  .log("INFO", "Buscando listing de oportunidades...")
-  user_agent <- "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
-
-  req <- httr2::request(listing_url) |>
-    httr2::req_user_agent(user_agent) |>
-    httr2::req_options(ssl_verifypeer = 0L, ssl_verifyhost = 0L) |>
-    httr2::req_timeout(45) |>
-    httr2::req_retry(max_tries = 3, backoff = function(x) 2^x)
-
-  resp <- tryCatch(httr2::req_perform(req), error = function(e) {
-    .log("ERROR", sprintf("Falha ao buscar listing: %s", e$message))
-    NULL
-  })
-
-  if (is.null(resp) || httr2::resp_status(resp) != 200) {
-    .log("WARN", "Listing retornou erro. Tentando fallback Playwright...")
-    return(collect_sigitec_fallback(source_row, max_records, log_path))
-  }
-
-  all_items <- tryCatch(httr2::resp_body_json(resp), error = function(e) {
-    .log("ERROR", sprintf("Falha ao parsear JSON: %s", e$message))
-    NULL
-  })
-
-  if (is.null(all_items) || length(all_items) == 0) {
-    .log("WARN", "Listing vazio.")
-    return(list(records = tibble::tibble(), pages_visited = 1L, last_url = listing_url))
-  }
-
-  .log("INFO", sprintf("Listing retornou %d registros total.", length(all_items)))
-
-  # Filtrar status "A" (Aberta) ou utilizar todos os registros ativos se "A" for vazio
-  open_items <- Filter(function(x) identical(x$status, "A"), all_items)
-  if (length(open_items) == 0) {
-    open_items <- all_items
-  }
-  .log("INFO", sprintf("Registros selecionados para detalhamento: %d", length(open_items)))
-
-  if (length(open_items) == 0) {
-    .log("WARN", "Nenhuma oportunidade aberta encontrada.")
-    return(list(records = tibble::tibble(), pages_visited = 1L, last_url = listing_url))
-  }
-
-  # Limitar a max_records
-  if (length(open_items) > max_records) {
-    open_items <- open_items[seq_len(max_records)]
-    .log("WARN", sprintf("Limitado a %d registros.", max_records))
-  }
-
-  # ETAPA 2: Buscar detalhes de cada oportunidade
-  .log("INFO", sprintf("Buscando detalhes de %d oportunidades...", length(open_items)))
-
-  records <- list()
-  detail_failures <- 0L
-
-  for (i in seq_along(open_items)) {
-    item <- open_items[[i]]
-    item_id <- item$id
-
-    # Rate limiting: 0.5s entre requests
-    if (i > 1) Sys.sleep(0.5)
-
-    # Buscar detalhe
-    detail_url <- paste0(detail_base, item_id)
-    detail_req <- httr2::request(detail_url) |>
-      httr2::req_user_agent(user_agent) |>
-      httr2::req_headers(
-        `Accept` = "application/json, text/plain, */*",
-        `Referer` = paste0(base_url, "/v2/public/opportunities"),
-        `Origin` = base_url
-      ) |>
-      httr2::req_options(ssl_verifypeer = 0, ssl_verifyhost = 0) |>
-      httr2::req_timeout(15) |>
-      httr2::req_retry(max_tries = 2)
-
-    detail_resp <- tryCatch(httr2::req_perform(detail_req), error = function(e) NULL)
-
-    detail <- NULL
-    if (!is.null(detail_resp) && httr2::resp_status(detail_resp) == 200) {
-      detail <- tryCatch(httr2::resp_body_json(detail_resp), error = function(e) NULL)
-    }
-
-    if (is.null(detail)) {
-      detail_failures <- detail_failures + 1L
-      .log("WARN", sprintf("Detalhe falhou para ID %d, usando dados do listing.", item_id))
-      detail <- item  # Fallback para dados do listing
-    }
-
-    # Mapear campos para schema do banco
-    number_op <- detail$numberOP %||% item$numberOP %||% ""
-    title_op <- detail$titleOP %||% item$titleOP %||% ""
-    titulo <- if (nzchar(as.character(number_op))) {
-      sprintf("OP%d - %s", number_op, title_op)
-    } else {
-      as.character(title_op)
-    }
-
-    # Datas
-    deadline_raw <- detail$deadlineSubmissionOfProposal %||% item$deadlineSubmissionOfProposal %||% NA_character_
-    deadline <- if (!is.na(deadline_raw) && nzchar(deadline_raw)) {
-      as.character(as.Date(substr(deadline_raw, 1, 10)))
-    } else {
-      NA_character_
-    }
-
-    pub_raw <- detail$publicationDate %||% item$publicationDate %||% NA_character_
-    pub_date <- if (!is.na(pub_raw) && nzchar(pub_raw)) {
-      as.character(as.Date(substr(pub_raw, 1, 10)))
-    } else {
-      NA_character_
-    }
-
-    # Descrição
-    objective <- detail$objective %||% item$objective %||% ""
-    challenge <- detail$challenge %||% item$challenge %||% ""
-    description <- if (nzchar(as.character(challenge))) {
-      paste0("Desafio: ", challenge, "\n\nObjetivo: ", objective)
-    } else {
-      as.character(objective)
-    }
-
-    # Área temática
-    theme <- detail$theme %||% item$theme %||% ""
-    sub_theme <- detail$subTheme %||% item$subTheme %||% ""
-    area_tematica <- if (nzchar(as.character(sub_theme))) {
-      paste0(theme, " - ", sub_theme)
-    } else if (nzchar(as.character(theme))) {
-      as.character(theme)
-    } else {
-      detail$area %||% item$area %||% NA_character_
-    }
-
-    # TRL/CRL (valores já vem com prefixo "TRL"/"CRL" da API)
-    trl <- detail$intendedTrl %||% item$intendedTrl %||% ""
-    crl <- detail$intendedCrl %||% item$intendedCrl %||% ""
-    nivel_tech <- if (nzchar(as.character(trl)) && nzchar(as.character(crl))) {
-      paste0(trl, " / ", crl)
-    } else if (nzchar(as.character(trl))) {
-      as.character(trl)
-    } else if (nzchar(as.character(crl))) {
-      as.character(crl)
-    } else {
-      NA_character_
-    }
-
-    # Expectativas
-    expected_solution <- detail$expectedSolution %||% item$expectedSolution %||% ""
-    expected_detail <- detail$expectedSolutionDetail %||% item$expectedSolutionDetail %||% ""
-    observacoes <- if (nzchar(as.character(expected_solution)) && nzchar(as.character(expected_detail))) {
-      paste0("Solução esperada: ", expected_solution, ". ", expected_detail)
-    } else if (nzchar(as.character(expected_solution))) {
-      paste0("Solução esperada: ", expected_solution)
-    } else if (nzchar(as.character(expected_detail))) {
-      as.character(expected_detail)
-    } else {
-      NA_character_
-    }
-
-    # Status
-    status_map <- c("A" = "aberto", "J" = "julgamento", "F" = "finalizado", "C" = "cancelado")
-    status_db <- unname(status_map[detail$status %||% item$status %||% "A"])
-    if (is.na(status_db)) status_db <- "aberto"
-
-    # Link de detalhe (URL pública do React)
-    link_detalhe <- paste0(base_url, "/v2/public/opportunity/", item_id)
-
-    # Hash de deduplicação
-    hash_input <- paste0(titulo, "|", link_detalhe)
-    hash_dedup <- digest::digest(hash_input, algo = "xxhash64")
-
-    # Montar registro
-    rec <- tibble::tibble(
-      id_registro = sprintf("sigitec_%s", substr(hash_dedup, 1, 16)),
-      entidade = "PETROBRAS",
-      pais_origem = "Brasil",
-      titulo = titulo,
-      subtitulo = NA_character_,
-      descricao_resumida = substr(as.character(description), 1, 500),
-      descricao_completa = as.character(description),
-      tipo_oportunidade = "edital",
-      modalidade = "competitividade",
-      area_tematica = as.character(area_tematica),
-      palavras_chave = detail$area %||% item$area %||% NA_character_,
-      elegibilidade = detail$commitment %||% item$commitment %||% NA_character_,
-      publico_alvo = "ICT, empresas",
-      nivel_academico = nivel_tech,
-      instituicao_financiadora = "Petrobras",
-      valor_financiado = NA_real_,
-      moeda = NA_character_,
-      data_publicacao = pub_date,
-      data_abertura = NA_character_,
-      data_limite = deadline,
-      data_encerramento = NA_character_,
-      status_oportunidade = status_db,
-      link_origem = paste0(base_url, "/v2/public/opportunities"),
-      link_detalhe = link_detalhe,
-      link_documento_pdf = NA_character_,
-      idioma = "pt",
-      localidade = "Brasil",
-      observacoes = observacoes,
-      texto_bruto = paste(collapse_non_empty(titulo, description, area_tematica, observacoes), collapse = "\n"),
-      pagina_coletada = 1L,
-      fonte_oficial = "sigitec",
-      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
-      hash_deduplicacao = hash_dedup,
-      campos_inferidos_ia = NA_character_
-    )
-
-    records[[i]] <- rec
-
-    if (i %% 10 == 0) {
-      .log("INFO", sprintf("Progresso: %d/%d detalhes coletados.", i, length(open_items)))
-    }
-  }
-
-  # Combinar registros
-  if (length(records) == 0) {
-    .log("WARN", "Nenhum registro coletado.")
-    return(list(records = tibble::tibble(), pages_visited = 1L, last_url = listing_url))
-  }
-
-  df <- dplyr::bind_rows(records)
-
-  if (detail_failures > 0) {
-    .log("WARN", sprintf("Falhas no detalhe: %d/%d (usados dados do listing).", detail_failures, length(open_items)))
-  }
-
-  .log("INFO", sprintf("SIGITEC: %d registros finais coletados (%d abertos de %d total).", nrow(df), length(open_items), length(all_items)))
-
-  list(records = df, pages_visited = 1L, last_url = listing_url)
-}
-
-collect_sigitec_fallback <- function(source_row, max_records, log_path) {
-  #' Fallback: Playwright para renderizar SPA e extrair dados do DOM
-  #' Usado quando a API REST retorna erro
-
-  .log <- function(level, msg) {
-    if (!is.null(log_path)) log_write(log_path, level, msg)
-    message(sprintf("[SIGITEC-FB][%s] %s", level, msg))
-  }
-
-  .log("INFO", "Tentando fallback via Playwright...")
-
-  page_url <- source_row$url_oportunidades[[1]]
-  pg <- safe_request_page_playwright(page_url, log_path = log_path)
-
-  if (!isTRUE(pg$ok) || is.null(pg$html)) {
-    .log("WARN", "Playwright falhou. Tentando Chromote...")
-    pg <- safe_request_page(page_url, log_path = log_path, use_browser_fallback = TRUE)
-  }
-
-  if (!isTRUE(pg$ok) || is.null(pg$html)) {
-    .log("ERROR", "Todos os métodos de rendering falharam.")
-    return(list(records = tibble::tibble(), pages_visited = 0L, last_url = page_url))
-  }
-
-  .log("INFO", "Página renderizada. Extraindo candidatos do DOM...")
-
-  # Usar extract_listing_candidates genérica
-  candidates <- extract_listing_candidates(pg$html, page_url, source_row)
-
-  if (nrow(candidates) == 0) {
-    .log("WARN", "Nenhum candidato extraído do DOM.")
-    return(list(records = tibble::tibble(), pages_visited = 1L, last_url = page_url))
-  }
-
-  # Limitar a max_records
-  if (nrow(candidates) > max_records) {
-    candidates <- candidates[seq_len(max_records), ]
-  }
-
-  .log("INFO", sprintf("Fallback: %d candidatos extraídos.", nrow(candidates)))
-
-  # Converter candidatos para schema padrao
-  recs <- purrr::map_dfr(seq_len(nrow(candidates)), function(i) {
-    cand <- candidates[i, ]
-    hash_input <- paste0(cand$candidate_title, "|", cand$detail_url %||% cand$detail_url)
-    hash_dedup <- digest::digest(hash_input, algo = "xxhash64")
-
-    tibble::tibble(
-      id_registro = sprintf("sigitec_%s", substr(hash_dedup, 1, 16)),
-      entidade = "PETROBRAS",
-      pais_origem = "Brasil",
-      titulo = cand$candidate_title,
-      subtitulo = NA_character_,
-      descricao_resumida = substr(cand$candidate_summary %||% cand$candidate_title, 1, 500),
-      descricao_completa = cand$candidate_summary %||% cand$candidate_title,
-      tipo_oportunidade = "edital",
-      modalidade = "competitividade",
-      area_tematica = NA_character_,
-      palavras_chave = NA_character_,
-      elegibilidade = NA_character_,
-      publico_alvo = "ICT, empresas",
-      nivel_academico = NA_character_,
-      instituicao_financiadora = "Petrobras",
-      valor_financiado = NA_real_,
-      moeda = NA_character_,
-      data_publicacao = NA_character_,
-      data_abertura = NA_character_,
-      data_limite = NA_character_,
-      data_encerramento = NA_character_,
-      status_oportunidade = "aberto",
-      link_origem = page_url,
-      link_detalhe = as.character(cand$detail_url %||% NA_character_),
-      link_documento_pdf = as.character(cand$pdf_url %||% NA_character_),
-      idioma = "pt",
-      localidade = "Brasil",
-      observacoes = NA_character_,
-      texto_bruto = cand$candidate_summary %||% cand$candidate_title,
-      pagina_coletada = 1L,
-      fonte_oficial = "sigitec",
-      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
-      hash_deduplicacao = hash_dedup,
-      campos_inferidos_ia = NA_character_
-    )
-  })
-
-  list(records = recs, pages_visited = 1L, last_url = page_url)
 }
 
 collect_undp <- function(source_row, max_pages, max_records, use_ai, log_path) {
@@ -5481,7 +5299,6 @@ register_collector("finep", collect_finep, "FINEP custom pagination")
 register_collector("horizon_europe", collect_horizon_europe, "EU F&T Portal REST API (Horizon Europe)")
 register_collector("erc", collect_erc, "EU F&T Portal REST API (Horizon Europe/ERC)")
 register_collector("fapesb", collect_fapesb, "WordPress REST API (FAPESB)")
-register_collector("sigitec", collect_sigitec, "Petrobras SIGITEC API REST + Playwright fallback")
 register_collector("undp", collect_undp, "UNDP Procurement Notices - componente externo JSON")
 register_collector("embrapii", collect_embrapii, "EMBRAPII Chamadas Publicas - HTML estatico + detalhe")
 register_collector("daad", collect_daad, "DAAD Brasil - Híbrido: JSON catálogo global + HTML scraping detalhe")
@@ -7870,83 +7687,6 @@ make_source_logger <- function(source_name, log_path = NULL) {
   }
 }
 
-collect_aeb <- function(source_row, max_pages, max_records, use_ai, log_path) {
-  .log <- make_source_logger("AEB", log_path)
-  .log("INFO", "Iniciando coleta AEB (Agência Espacial Brasileira)...")
-  base_url <- source_row$url_oportunidades[[1]] %||% "https://www.gov.br/aeb/pt-br/acesso-a-informacao/concurso-e-processos-seletivos"
-  pages_visited <- 1L
-  last_url <- base_url
-  
-  res_pg <- safe_request_page(base_url, log_path = log_path)
-  html <- if (isTRUE(res_pg$ok)) res_pg$html else NULL
-  nodes <- if (!is.null(html)) rvest::html_nodes(html, "article, .tileItem, .hentry, li, a.summary") else NULL
-  extracted <- list()
-  if (!is.null(nodes) && length(nodes) > 0) {
-    for (node in nodes) {
-      ttl <- rvest::html_text(node, trim = TRUE)
-      link <- rvest::html_attr(rvest::html_node(node, "a"), "href") %||% rvest::html_attr(node, "href")
-      if (!is.null(link) && nzchar(link) && grepl("edital|chamada|uniespaco|selecao|portaria|proposta", paste(ttl, link), ignore.case = TRUE)) {
-        if (!grepl("^http", link)) link <- paste0("https://www.gov.br", link)
-        extracted[[length(extracted) + 1]] <- list(title = ttl, url = link)
-      }
-    }
-  }
-  
-  if (length(extracted) == 0) {
-    extracted[[1]] <- list(
-      title = "Chamada Pública Uniespaço - Pesquisa em Satélites, VANTs e Sensoriamento Remoto",
-      url = base_url
-    )
-  }
-  
-  records <- purrr::map_dfr(head(extracted, max_records), function(item) {
-    ttl <- item$title
-    hash <- make_hash("AEB", normalize_text(ttl), item$url)
-    tibble::tibble(
-      id_registro = paste0("aeb_", substr(hash, 1, 16)),
-      entidade = "Agência Espacial Brasileira",
-      pais_origem = "Brasil",
-      titulo = ttl,
-      subtitulo = "Programa Espacial Brasileiro (AEB)",
-      descricao_resumida = paste("Chamada pública / edital da Agência Espacial Brasileira para projetos em tecnologias aeroespaciais, satélites e VANTs:", ttl),
-      descricao_completa = paste("Edital oficial da Agência Espacial Brasileira:", ttl),
-      tipo_oportunidade = "edital",
-      modalidade = "rede",
-      area_tematica = "Engenharia Aeroespacial e Tecnologias Espaciais",
-      palavras_chave = extract_keywords_simple(paste("AEB aeroespacial satélites vants sensoriamento", ttl)),
-      elegibilidade = "ICTs, instituições de ensino e empresas do setor aeroespacial",
-      publico_alvo = "pesquisadores; docentes; instituições de pesquisa",
-      nivel_academico = "doutorado",
-      instituicao_financiadora = "AEB",
-      valor_financiado = NA_real_,
-      moeda = "BRL",
-      data_publicacao = format(Sys.Date(), "%Y-%m-%d"),
-      data_abertura = NA_character_,
-      data_limite = format(Sys.Date() + 45, "%Y-%m-%d"),
-      data_encerramento = NA_character_,
-      status_oportunidade = "aberto",
-      link_origem = base_url,
-      link_detalhe = item$url,
-      link_documento_pdf = NA_character_,
-      idioma = "pt",
-      localidade = "Brasil",
-      observacoes = "Coletado via portal oficial da AEB.",
-      texto_bruto = paste(ttl, item$url),
-      pagina_coletada = 1L,
-      fonte_oficial = "aeb",
-      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
-      hash_deduplicacao = hash,
-      campus = "Aeroespacial",
-      campos_inferidos_ia = NA_character_
-    )
-  })
-  
-  df <- finalize_records(records, fonte_oficial = "aeb")
-  if (nrow(df) == 0 && nrow(records) > 0) df <- dedupe_records(records)
-  .log("INFO", sprintf("AEB: %d registros finais coletados.", nrow(df)))
-  list(records = df, pages_visited = pages_visited, last_url = last_url)
-}
-register_collector("aeb", collect_aeb, "AEB: Scraping de Chamadas e Editais Espaciais")
 
 collect_finep_aero <- function(source_row, max_pages, max_records, use_ai, log_path) {
   .log <- make_source_logger("FINEP Aero", log_path)
@@ -7969,161 +7709,7 @@ collect_finep_aero <- function(source_row, max_pages, max_records, use_ai, log_p
 }
 register_collector("finep_aero", collect_finep_aero, "FINEP Aeroespacial: Oportunidades FINEP para Defesa e Setor Aeroespacial")
 
-collect_fab_dcta <- function(source_row, max_pages, max_records, use_ai, log_path) {
-  .log <- make_source_logger("DCTA/FAB", log_path)
-  .log("INFO", "Iniciando coleta DCTA / Força Aérea Brasileira...")
-  base_url <- source_row$url_oportunidades[[1]] %||% "https://ieav.dcta.mil.br/index.php/editais"
-  pages_visited <- 1L
-  last_url <- base_url
-  
-  res_pg <- safe_request_page(base_url, log_path = log_path)
-  html <- if (isTRUE(res_pg$ok)) res_pg$html else NULL
-  nodes <- if (!is.null(html)) rvest::html_nodes(html, "a, article, .news-item") else NULL
-  extracted <- list()
-  if (!is.null(nodes) && length(nodes) > 0) {
-    for (node in nodes) {
-      ttl <- rvest::html_text(node, trim = TRUE)
-      link <- rvest::html_attr(node, "href")
-      if (!is.null(link) && nzchar(link) && grepl("pesquisa|inovacao|edital|chamada|propulsao|radar|vant|tecnologia", paste(ttl, link), ignore.case = TRUE)) {
-        if (!grepl("^http", link)) link <- paste0("https://www.dcta.fab.mil.br", link)
-        extracted[[length(extracted) + 1]] <- list(title = ttl, url = link)
-      }
-    }
-  }
-  
-  if (length(extracted) == 0) {
-    extracted[[1]] <- list(
-      title = "Edital DCTA/FAB - Pesquisa em Propulsão Aeroespacial, Radares e VANTs",
-      url = base_url
-    )
-  }
-  
-  records <- purrr::map_dfr(head(extracted, max_records), function(item) {
-    ttl <- item$title
-    hash <- make_hash("DCTA/FAB", normalize_text(ttl), item$url)
-    tibble::tibble(
-      id_registro = paste0("dcta_", substr(hash, 1, 16)),
-      entidade = "DCTA / Força Aérea Brasileira",
-      pais_origem = "Brasil",
-      titulo = ttl,
-      subtitulo = "Departamento de Ciência e Tecnologia Aeroespacial",
-      descricao_resumida = paste("Oportunidade de P&D+I e parcerias em tecnologia aeroespacial militar/civil com o DCTA/FAB:", ttl),
-      descricao_completa = paste("Edital e chamadas de projetos do DCTA/FAB:", ttl),
-      tipo_oportunidade = "edital",
-      modalidade = "cooperação",
-      area_tematica = "Engenharia Aeroespacial, Defesa e Aviônica",
-      palavras_chave = extract_keywords_simple(paste("DCTA FAB aeroespacial radares propulsão vants defesa", ttl)),
-      elegibilidade = "ICTs e instituições parceiras do setor aeroespacial",
-      publico_alvo = "pesquisadores; engenheiros; instituições de defesa",
-      nivel_academico = "doutorado",
-      instituicao_financiadora = "DCTA/FAB",
-      valor_financiado = NA_real_,
-      moeda = "BRL",
-      data_publicacao = format(Sys.Date(), "%Y-%m-%d"),
-      data_abertura = NA_character_,
-      data_limite = format(Sys.Date() + 60, "%Y-%m-%d"),
-      data_encerramento = NA_character_,
-      status_oportunidade = "aberto",
-      link_origem = base_url,
-      link_detalhe = item$url,
-      link_documento_pdf = NA_character_,
-      idioma = "pt",
-      localidade = "Brasil",
-      observacoes = "Coletado via portal do DCTA/FAB.",
-      texto_bruto = paste(ttl, item$url),
-      pagina_coletada = 1L,
-      fonte_oficial = "fab_dcta",
-      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
-      hash_deduplicacao = hash,
-      campus = "Aeroespacial",
-      campos_inferidos_ia = NA_character_
-    )
-  })
-  
-  df <- finalize_records(records, fonte_oficial = "fab_dcta")
-  if (nrow(df) == 0 && nrow(records) > 0) df <- dedupe_records(records)
-  .log("INFO", sprintf("DCTA/FAB: %d registros finais coletados.", nrow(df)))
-  list(records = df, pages_visited = pages_visited, last_url = last_url)
-}
-register_collector("fab_dcta", collect_fab_dcta, "DCTA/FAB: Editais e Chamadas de P&D Aeroespacial de Defesa")
 
-collect_bnb_fundeci <- function(source_row, max_pages, max_records, use_ai, log_path) {
-  .log <- make_source_logger("BNB FUNDECI", log_path)
-  .log("INFO", "Iniciando coleta BNB FUNDECI (Sertão & Agro)...")
-  base_url <- source_row$url_oportunidades[[1]] %||% "https://www.bnb.gov.br/ConveniosWeb/Convenente.ProgramaConvenio.Lista.aspx"
-  pages_visited <- 1L
-  last_url <- base_url
-  
-  res_pg <- safe_request_page(base_url, log_path = log_path)
-  html <- if (isTRUE(res_pg$ok)) res_pg$html else NULL
-  nodes <- if (!is.null(html)) rvest::html_nodes(html, "a, article, .item") else NULL
-  extracted <- list()
-  if (!is.null(nodes) && length(nodes) > 0) {
-    for (node in nodes) {
-      ttl <- rvest::html_text(node, trim = TRUE)
-      link <- rvest::html_attr(node, "href")
-      if (!is.null(link) && nzchar(link) && grepl("edital|chamada|fundeci|semiarido|agro|hidrogenio|recursos hidricos", paste(ttl, link), ignore.case = TRUE)) {
-        if (!grepl("^http", link)) link <- paste0("https://www.bnb.gov.br", link)
-        extracted[[length(extracted) + 1]] <- list(title = ttl, url = link)
-      }
-    }
-  }
-  
-  if (length(extracted) == 0) {
-    extracted[[1]] <- list(
-      title = "Edital FUNDECI - Inovação para Convivência com o Semiárido, Agro 4.0 e Hidrogênio Verde",
-      url = base_url
-    )
-  }
-  
-  records <- purrr::map_dfr(head(extracted, max_records), function(item) {
-    ttl <- item$title
-    hash <- make_hash("BNB FUNDECI", normalize_text(ttl), item$url)
-    tibble::tibble(
-      id_registro = paste0("fundeci_", substr(hash, 1, 16)),
-      entidade = "Banco do Nordeste - FUNDECI",
-      pais_origem = "Brasil",
-      titulo = ttl,
-      subtitulo = "Fundo de Desenvolvimento Econômico, Científico e Tecnológico",
-      descricao_resumida = paste("Chamada pública do BNB/FUNDECI voltada para inovação no Sertão, agricultura de precisão, semiárido e hidrogênio verde:", ttl),
-      descricao_completa = paste("Edital oficial FUNDECI/BNB:", ttl),
-      tipo_oportunidade = "edital",
-      modalidade = "consórcio",
-      area_tematica = "Agroindústria, Semiárido e Energias Renováveis",
-      palavras_chave = extract_keywords_simple(paste("BNB fundeci sertão agro semiárido hidrogênio verde caatinga", ttl)),
-      elegibilidade = "ICTs, startups agro, cooperativas e empresas no Nordeste/Sertão",
-      publico_alvo = "pesquisadores; produtores; startups agro",
-      nivel_academico = "todos",
-      instituicao_financiadora = "BNB / FUNDECI",
-      valor_financiado = 8000000,
-      moeda = "BRL",
-      data_publicacao = format(Sys.Date(), "%Y-%m-%d"),
-      data_abertura = NA_character_,
-      data_limite = format(Sys.Date() + 40, "%Y-%m-%d"),
-      data_encerramento = NA_character_,
-      status_oportunidade = "aberto",
-      link_origem = base_url,
-      link_detalhe = item$url,
-      link_documento_pdf = NA_character_,
-      idioma = "pt",
-      localidade = "Brasil",
-      observacoes = "Coletado via portal do BNB FUNDECI.",
-      texto_bruto = paste(ttl, item$url),
-      pagina_coletada = 1L,
-      fonte_oficial = "bnb_fundeci",
-      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
-      hash_deduplicacao = hash,
-      campus = "Sertão",
-      campos_inferidos_ia = NA_character_
-    )
-  })
-  
-  df <- finalize_records(records, fonte_oficial = "bnb_fundeci")
-  if (nrow(df) == 0 && nrow(records) > 0) df <- dedupe_records(records)
-  .log("INFO", sprintf("BNB FUNDECI: %d registros finais coletados.", nrow(df)))
-  list(records = df, pages_visited = pages_visited, last_url = last_url)
-}
-register_collector("bnb_fundeci", collect_bnb_fundeci, "BNB FUNDECI: Editais e Chamadas para Inovação no Sertão e Agro")
 
 collect_codevasf <- function(source_row, max_pages, max_records, use_ai, log_path) {
   .log <- make_source_logger("CODEVASF", log_path)
@@ -8203,83 +7789,6 @@ collect_codevasf <- function(source_row, max_pages, max_records, use_ai, log_pat
 }
 register_collector("codevasf", collect_codevasf, "CODEVASF: Editais de Irrigação, Recursos Hídricos e Desenvolvimento no Sertão")
 
-collect_embrapa <- function(source_row, max_pages, max_records, use_ai, log_path) {
-  .log <- make_source_logger("EMBRAPA/MAPA", log_path)
-  .log("INFO", "Iniciando coleta Embrapa / MAPA...")
-  base_url <- source_row$url_oportunidades[[1]] %||% "https://www.embrapa.br/acessoainformacao/editais"
-  pages_visited <- 1L
-  last_url <- base_url
-  
-  res_pg <- safe_request_page(base_url, log_path = log_path)
-  html <- if (isTRUE(res_pg$ok)) res_pg$html else NULL
-  nodes <- if (!is.null(html)) rvest::html_nodes(html, "a, article, .edital-item") else NULL
-  extracted <- list()
-  if (!is.null(nodes) && length(nodes) > 0) {
-    for (node in nodes) {
-      ttl <- rvest::html_text(node, trim = TRUE)
-      link <- rvest::html_attr(node, "href")
-      if (!is.null(link) && nzchar(link) && grepl("edital|chamada|pesquisa|agrotech|bioeconomia|semiarido", paste(ttl, link), ignore.case = TRUE)) {
-        if (!grepl("^http", link)) link <- paste0("https://www.embrapa.br", link)
-        extracted[[length(extracted) + 1]] <- list(title = ttl, url = link)
-      }
-    }
-  }
-  
-  if (length(extracted) == 0) {
-    extracted[[1]] <- list(
-      title = "Chamada Embrapa/MAPA Inovação Agro - Agricultura de Precisão e Bioeconomia no Sertão",
-      url = base_url
-    )
-  }
-  
-  records <- purrr::map_dfr(head(extracted, max_records), function(item) {
-    ttl <- item$title
-    hash <- make_hash("EMBRAPA", normalize_text(ttl), item$url)
-    tibble::tibble(
-      id_registro = paste0("embrapa_", substr(hash, 1, 16)),
-      entidade = "Empresa Brasileira de Pesquisa Agropecuária & MAPA",
-      pais_origem = "Brasil",
-      titulo = ttl,
-      subtitulo = "Pesquisa e Inovação Agropecuária",
-      descricao_resumida = paste("Chamada pública Embrapa/MAPA para desenvolvimento de biotecnologia agrícola, agrotech e bioeconomia no Sertão:", ttl),
-      descricao_completa = paste("Edital oficial Embrapa:", ttl),
-      tipo_oportunidade = "edital",
-      modalidade = "cooperação",
-      area_tematica = "Biotecnologia Agrícola, Bioeconomia e Agrotech",
-      palavras_chave = extract_keywords_simple(paste("Embrapa MAPA agro biotecnologia semiárido sertão agrotech", ttl)),
-      elegibilidade = "ICTs e pesquisadores em bioeconomia e agrotech",
-      publico_alvo = "pesquisadores; engenheiros agrônomos; ICTs",
-      nivel_academico = "doutorado",
-      instituicao_financiadora = "EMBRAPA/MAPA",
-      valor_financiado = NA_real_,
-      moeda = "BRL",
-      data_publicacao = format(Sys.Date(), "%Y-%m-%d"),
-      data_abertura = NA_character_,
-      data_limite = format(Sys.Date() + 45, "%Y-%m-%d"),
-      data_encerramento = NA_character_,
-      status_oportunidade = "aberto",
-      link_origem = base_url,
-      link_detalhe = item$url,
-      link_documento_pdf = NA_character_,
-      idioma = "pt",
-      localidade = "Brasil",
-      observacoes = "Coletado via portal Embrapa.",
-      texto_bruto = paste(ttl, item$url),
-      pagina_coletada = 1L,
-      fonte_oficial = "embrapa",
-      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
-      hash_deduplicacao = hash,
-      campus = "Sertão",
-      campos_inferidos_ia = NA_character_
-    )
-  })
-  
-  df <- finalize_records(records, fonte_oficial = "embrapa")
-  if (nrow(df) == 0 && nrow(records) > 0) df <- dedupe_records(records)
-  .log("INFO", sprintf("Embrapa: %d registros finais coletados.", nrow(df)))
-  list(records = df, pages_visited = pages_visited, last_url = last_url)
-}
-register_collector("embrapa", collect_embrapa, "Embrapa/MAPA: Chamadas de Biotecnologia, Agrotech e Bioeconomia")
 
 collect_sudene <- function(source_row, max_pages, max_records, use_ai, log_path) {
   .log <- make_source_logger("SUDENE", log_path)
@@ -8623,65 +8132,6 @@ collect_faperj <- function(source_row, max_pages, max_records, use_ai, log_path)
 register_collector("faperj", collect_faperj, "FAPERJ: Editais de Pesquisa, Engenharia Naval e Tecnologias Offshore")
 
 # ─── ANP / Shell / Petrobras Cláusula P&D Obrigatório ─────────────────────────
-collect_anp_shell <- function(source_row, max_pages, max_records, use_ai, log_path) {
-  .log <- function(level, msg) {
-    if (!is.null(log_path)) log_write(log_path, level, msg)
-    message(sprintf("[ANP_SHELL][%s] %s", level, msg))
-  }
-  .log("INFO", "Iniciando coleta Cláusula de P&D Obrigatório ANP (Petrobras/Shell)...")
-  base_url <- "https://www.gov.br/anp/pt-br/assuntos/pesquisa-desenvolvimento-e-inovacao"
-  
-  sample_items <- list(
-    list(title = "Chamada P&D ANP/Shell - Descarbonização e Tecnologias Submarinas (ROV/AUV)", url = "https://www.gov.br/anp/pt-br/pdi_shell", desc = "Projetos de P&D cooperativos financiados pela cláusula de investimentos em inovação da ANP para integridade de poços, robótica submarina e mitigação de emissões em plataformas offshore.")
-  )
-  
-  records <- purrr::map_dfr(sample_items, function(item) {
-    hash <- make_hash("ANP/Shell", normalize_text(item$title), item$url)
-    tibble::tibble(
-      id_registro = paste0("anpshell_", substr(hash, 1, 12)),
-      entidade = "ANP / Petrobras / Shell",
-      pais_origem = "Brasil",
-      titulo = item$title,
-      subtitulo = "Cláusula de Investimento em PD&I ANP",
-      descricao_resumida = item$desc,
-      descricao_completa = paste(item$title, item$desc),
-      tipo_oportunidade = "edital",
-      modalidade = "Projeto Corporativo P&D",
-      area_tematica = "Energia Marítima, ROV/AUV & Descarbonização Offshore",
-      palavras_chave = extract_keywords_simple(paste("ANP Petrobras Shell P&D offshore ROV AUV descarbonização", item$title)),
-      elegibilidade = "ICTs credenciadas ANP e empresas parceiras",
-      publico_alvo = "pesquisadores; ICTs; empresas",
-      nivel_academico = "doutorado; pos-doc",
-      instituicao_financiadora = "ANP / Shell",
-      valor_financiado = 3500000.0,
-      moeda = "BRL",
-      data_publicacao = format(Sys.Date(), "%Y-%m-%d"),
-      data_abertura = NA_character_,
-      data_limite = format(Sys.Date() + 90, "%Y-%m-%d"),
-      data_encerramento = NA_character_,
-      status_oportunidade = "aberto",
-      link_origem = base_url,
-      link_detalhe = item$url,
-      link_documento_pdf = NA_character_,
-      idioma = "pt",
-      localidade = "Brasil",
-      observacoes = "Coletado via portal ANP P&D.",
-      texto_bruto = paste(item$title, item$desc),
-      pagina_coletada = 1L,
-      fonte_oficial = "anp_shell",
-      data_hora_coleta = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
-      hash_deduplicacao = hash,
-      campus = "Mar",
-      campos_inferidos_ia = NA_character_
-    )
-  })
-  
-  df <- finalize_records(records, fonte_oficial = "anp_shell")
-  if (nrow(df) == 0 && nrow(records) > 0) df <- dedupe_records(records)
-  .log("INFO", sprintf("ANP/Shell: %d registros coletados.", nrow(df)))
-  list(records = df, pages_visited = 1L, last_url = base_url)
-}
-register_collector("anp_shell", collect_anp_shell, "ANP / Shell / Petrobras: Projetos de P&D Obrigatório em Energia e Robótica Offshore")
 
 
 

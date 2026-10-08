@@ -79,3 +79,7 @@ scratch_*/
 # Browser test profiles & screenshots
 scratch_edge_profile*/
 *.png
+
+# Backups/recuperacoes locais do banco (dados pessoais)
+backups/
+scratch/qa/out/

@@ -118,9 +118,14 @@ COLLECTOR_HELPER_FILES <- c(
   "R/helpers_utils.R",
   "R/helpers_db.R",
   "R/helpers_status.R",
+  "R/helpers_validation.R",
+  "R/helpers_schedule.R",
   "R/helpers_text.R",
   "R/helpers_ai.R",
-  "R/helpers_collect.R"
+  "R/helpers_collect.R",
+  "R/helpers_sources_br.R",
+  "R/helpers_sources_br_federal.R",
+  "R/helpers_sanitize.R"
 )
 
 safe_source("R/helpers_utils.R")
@@ -129,7 +134,12 @@ safe_source("R/helpers_text.R")
 safe_source("R/helpers_status.R")
 safe_source("R/helpers_ai.R")
 safe_source("R/helpers_recommend.R")
+safe_source("R/helpers_validation.R")
+safe_source("R/helpers_schedule.R")
 safe_source("R/helpers_collect.R")
+safe_source("R/helpers_sources_br.R")
+safe_source("R/helpers_sources_br_federal.R")
+safe_source("R/helpers_sanitize.R")
 safe_source("R/helpers_export.R")
 safe_source("R/helpers_auth.R")
 safe_source("R/helpers_reports.R")
@@ -1325,7 +1335,7 @@ server <- function(input, output, session) {
 
   check_and_alert_failures <- function(since_time) {
     req(conn)
-    query <- "SELECT DISTINCT fonte FROM logs_coleta WHERE status_execucao = 'erro' AND data_execucao >= ?"
+    query <- "SELECT DISTINCT fonte FROM logs_coleta WHERE status_execucao IN ('erro', 'parcial') AND data_execucao >= ?"
     failed_sids <- tryCatch({
       db_qry(conn, query, params = list(as.character(since_time)))$fonte
     }, error = function(e) character())
@@ -1668,7 +1678,7 @@ server <- function(input, output, session) {
     if (nrow(df) == 0) return(df)
     
     # Status derivado em renderização (BUG-01): nunca ler status_oportunidade congelado
-    df$derived_status <- derive_status_vec(df$data_limite, df$data_abertura, df$texto_bruto)
+    df$derived_status <- derive_status_df(df)
 
     # Filtro regional — Ambas = literalmente todas (sem filtro), Internacionais = todas não-brasileiras
     region <- input$region_filter
@@ -1823,7 +1833,7 @@ server <- function(input, output, session) {
     updateSelectizeInput(session, "filter_area", choices = area_choices, selected = isolate(input$filter_area))
     
     # Status (derivado em render — BUG-01)
-    status_choices <- unique(derive_status_vec(opps$data_limite, opps$data_abertura, opps$texto_bruto))
+    status_choices <- unique(derive_status_df(opps))
     status_choices <- status_choices[status_choices != "" & !is.na(status_choices) & status_choices != "desconhecido"]
     status_display <- setNames(status_choices, status_display_label(status_choices))
     updateSelectizeInput(session, "filter_status", choices = status_display, selected = isolate(input$filter_status))
@@ -2084,7 +2094,7 @@ server <- function(input, output, session) {
     dynamic_score <- if ("score_aderencia" %in% names(opp_scored)) opp_scored$score_aderencia[[1]] %||% 0 else 0
 
     # Status derivado em render (BUG-01/11)
-    derived_status <- derive_status_vec(opp$data_limite, opp$data_abertura, opp$texto_bruto)[[1]]
+    derived_status <- derive_status_df(opp)[[1]]
 
     # Proveniência de enriquecimento (blindada para bancos pré-migração)
     enrich_status <- tryCatch(opp$enrichment_status[[1]] %||% NA_character_, error = function(e) NA_character_)

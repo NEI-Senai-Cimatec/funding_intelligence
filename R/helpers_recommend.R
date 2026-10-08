@@ -121,25 +121,33 @@ compute_adherence_score <- function(df, conn, current_query = "", signature = NU
     ifelse(norm_entidade %in% signature$funders, 100, 0)
   }
 
+  # R05: sem preferência de país não há pontos de país (antes: 100 => +10 pts para todos).
   country_scores <- if (length(signature$countries) == 0L) {
-    rep(100, n_rows)
+    rep(0, n_rows)
   } else {
     ifelse(norm_pais %in% signature$countries, 100, 0)
   }
 
-  total <- 0.40 * keyword_scores + 0.20 * theme_scores + 0.15 * funder_scores + 0.10 * country_scores + 0.15 * eligibility_scores
+  # Cálculo explicável: 40% palavras-chave + 20% tema + 15% elegibilidade (evidência TEMÁTICA)
+  # + 15% financiador + 10% país (contexto). Contexto só conta com ao menos uma evidência temática,
+  # para que "país/financiador" sozinhos não gerem aderência positiva. Score != autenticidade/qualidade.
+  thematic <- 0.40 * keyword_scores + 0.20 * theme_scores + 0.15 * eligibility_scores
+  context <- 0.15 * funder_scores + 0.10 * country_scores
+  total <- thematic + ifelse(thematic > 0, context, 0)
   df$score_aderencia <- round(total)
   df
 }
 
 recommend_opportunities <- function(conn, opportunities_df, current_query = "", top_n = 10, signature = NULL) {
+  # Só itens VALIDADOS (ou legados sem avaliação) participam de recomendações (R01).
+  opportunities_df <- filter_validated(opportunities_df)
   if (nrow(opportunities_df) == 0) return(opportunities_df)
   scored <- compute_adherence_score(opportunities_df, conn, current_query, signature = signature)
   tracked_ids <- if (is.null(conn)) character() else DBI::dbGetQuery(conn, "SELECT id_oportunidade FROM editais_rastreados")$id_oportunidade
   # BUG-01/11: recomendações usam status DERIVADO (nunca o campo congelado)
-  scored$derived_status <- derive_status_vec(scored$data_limite, scored$data_abertura, scored$texto_bruto)
+  scored$derived_status <- derive_status_df(scored)
   scored |>
-    dplyr::filter(!(id_registro %in% tracked_ids), derived_status != "encerrado") |>
+    dplyr::filter(!(id_registro %in% tracked_ids), !(derived_status %in% c("encerrado", "cancelado", "suspenso"))) |>
     dplyr::select(-derived_status) |>
     dplyr::arrange(dplyr::desc(score_aderencia), parse_date_safe(data_limite)) |>
     dplyr::slice_head(n = top_n)

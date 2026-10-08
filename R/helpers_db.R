@@ -278,7 +278,7 @@ source_catalog <- function() {
     "fapesb", "Fundação de Amparo à Pesquisa do Estado da Bahia", "FAPESB", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://www.fapesb.ba.gov.br/", "https://www.fapesb.ba.gov.br/category/edital/aberto/", "html", "pt", "diária", "Editais e chamadas da FAPESB.",
     "horizon_europe", "Horizon Europe", "HEU", "União Europeia", "programa multilateral", "união supranacional", "https://research-and-innovation.ec.europa.eu/", "https://api.tech.ec.europa.eu/search-api/prod/rest/search?apiKey=SEDIA", "api_json", "en", "diária", "API REST pública EU F&T Portal. Busca HORIZON (CL1-CL5, EIC, MSCA, WIDERA) + pós-filtro frameworkProgramme=43108390.",
     "erc", "European Research Council", "ERC", "União Europeia", "agência internacional", "união supranacional", "https://erc.europa.eu/", "https://api.tech.ec.europa.eu/search-api/prod/rest/search?apiKey=SEDIA&text=ERC", "api_json", "en", "diária", "API REST pública EU F&T Portal. Busca ERC + pós-filtro Horizon Europe (43108390) + ERC (43108406).",
-    "sigitec", "Petrobras SIGITEC - Sistema de Gestão de Inovação e Tecnologia Competitividade", "PETROBRAS", "Brasil", "empresa estatal", "empresa pública", "https://sigitec-competitividade.petrobras.com.br", "https://sigitec-competitividade.petrobras.com.br/v2/public/opportunities", "api_json", "pt", "diária", "API REST pública SIGITEC Petrobras. Listing + detalhe por ID. Oportunidades de P&D para empresas e ICTs.",
+    "sigitec", "Petrobras SIGITEC - Sistema de Gestão de Inovação e Tecnologia Competitividade", "PETROBRAS", "Brasil", "empresa estatal", "empresa pública", "https://sigitec-competitividade.petrobras.com.br", "https://sigitec-competitividade.petrobras.com.br/v2/public/opportunities", "api_json", "pt", "diária", "API pública do SIGITEC (listagem + detalhe); página /v2/public/opportunities é uma SPA, não um endpoint JSON. Status oficiais A/J/R/F/CC. Fonte canônica; alias legado: anp_shell.",
     "undp", "United Nations Development Programme - Brasil", "UNDP", "Brasil", "agência internacional", "organização multilateral", "https://www.undp.org/pt/brazil", "https://www.undp.org/pt/brazil/licitacoes", "api_json", "pt", "diária", "Componente externo UNDP Procurement Notices. JSON via public-components.undp.org. Detalhes via procurement-notices.undp.org.",
     "embrapii", "Empresa Brasileira de Pesquisa e Inovação Industrial", "EMBRAPII", "Brasil", "empresa estatal", "empresa pública", "https://embrapii.org.br", "https://embrapii.org.br/transparencia/", "html", "pt", "diária", "Chamadas públicas EMBRAPII via parsing HTML estático da página de transparência. Detalhes com cronograma e documentos PDF.",
     "daad", "Deutscher Akademischer Austauschdienst - Brasil", "DAAD", "Alemanha", "agência internacional", "organização internacional", "https://www.daad-brasil.org/pt/", "https://www.daad-brasil.org/pt/bolsas/busca/", "hybrid", "en", "mensal", "Bolsas de estudo DAAD Brasil. Híbrido: JSON catálogo global (scholarships.js) + HTML scraping detalhe. ~82 bolsas filtradas para Brasil (origin=48).",
@@ -293,23 +293,23 @@ source_catalog <- function() {
     "doe_genesis", "DOE Genesis Mission", "DOE Genesis", "Estados Unidos", "iniciativa estratégica", "governo federal", "https://www.energy.gov/genesis", "https://www.energy.gov/genesis", "html", "en", "mensal", "AI + advanced computing + quantum + scientific discovery. Precedente parceria EUA-Japão US$1B (DOE National Labs + instituições japonesas).",
     "nsf_nqni", "NSF National Quantum Nanotechnology Infrastructure", "NSF NQNI", "Estados Unidos", "programa temático", "governo federal", "https://www.nsf.gov/", "https://www.nsf.gov/funding/opportunities/nqni-national-quantum-nanotechnology-infrastructure/nsf26-505/solicitation", "html", "en", "mensal", "Rede nacional de infraestrutura quântica até US$100M (nsf26-505). Identificar universidades receptoras como parceiros potenciais.",
     "darpa_quantum_benchmarking", "DARPA Quantum Benchmarking Initiative", "DARPA QBI", "Estados Unidos", "agência pública nacional", "governo federal", "https://www.darpa.mil/", "https://www.darpa.mil/research/programs/quantum-benchmarking-initiative", "html", "en", "mensal", "Fronteira tecnológica e avaliação de arquiteturas quantum computing. Identificar empresas e pesquisadores avançados.",
-    "aeb", "Agência Espacial Brasileira", "AEB", "Brasil", "agência pública nacional", "governo federal", "https://www.gov.br/aeb/pt-br", "https://www.gov.br/aeb/pt-br/acesso-a-informacao/concurso-e-processos-seletivos", "html", "pt", "diária", "Programa Espacial Brasileiro, Uniespaço, satélites, VANTs e sensoriamento remoto.",
+    "aeb", "Agência Espacial Brasileira", "AEB", "Brasil", "agência pública nacional", "governo federal", "https://www.gov.br/aeb/pt-br", "https://www.gov.br/aeb/pt-br/acesso-a-informacao/concurso-e-processos-seletivos", "html", "pt", "diária", "Concursos e processos seletivos da AEB (seções Abertos/Encerrados). Concursos de cargo são excluídos; consultorias e eventos exigem revisão.",
     "finep_aero", "FINEP Aeroespacial e Defesa", "FINEP Aero", "Brasil", "agência pública nacional", "governo federal", "https://www.finep.gov.br/", "https://www.finep.gov.br/oportunidades", "api_json", "pt", "diária", "Subvenção e fomento FINEP para tecnologias críticas aeroespaciais e de defesa nacional.",
-    "fab_dcta", "Departamento de Ciência e Tecnologia Aeroespacial - FAB", "DCTA/FAB", "Brasil", "agência de defesa", "governo federal", "https://www.dcta.fab.mil.br/", "https://ieav.dcta.mil.br/index.php/editais", "html", "pt", "semanal", "Pesquisa e inovação aeroespacial de defesa, radares, propulsão e veículos aéreos.",
-    "bnb_fundeci", "Banco do Nordeste - FUNDECI", "BNB FUNDECI", "Brasil", "banco de desenvolvimento", "banco público", "https://www.bnb.gov.br/", "https://www.bnb.gov.br/ConveniosWeb/Convenente.ProgramaConvenio.Lista.aspx", "html", "pt", "semanal", "Fundo de desenvolvimento para agricultura de precisão, semiárido, energias renováveis e recursos hídricos no Sertão.",
+    "fab_dcta", "Departamento de Ciência e Tecnologia Aeroespacial - FAB", "DCTA/FAB", "Brasil", "agência de defesa", "governo federal", "https://www.dcta.fab.mil.br/", "https://ieav.dcta.mil.br/index.php/editais", "html", "pt", "semanal", "Chamadas públicas do IEAv/DCTA com cronogramas (PDF) e retificações.",
+    "bnb_fundeci", "Banco do Nordeste - FUNDECI", "BNB FUNDECI", "Brasil", "banco de desenvolvimento", "banco público", "https://www.bnb.gov.br/", "https://www.bnb.gov.br/fundeci/editais", "html", "pt", "semanal", "Editais de seleção de projetos do Fundeci e do Fundo Sustentabilidade (cards, detalhes, PDFs e cronogramas). Inscrições encerradas e vigência são estados distintos.",
     "codevasf", "Companhia de Desenvolvimento dos Vales do São Francisco e do Parnaíba", "CODEVASF", "Brasil", "empresa pública federal", "governo federal", "https://www.codevasf.gov.br/", "https://www.codevasf.gov.br/acesso-a-informacao/licitacoes-e-editais", "html", "pt", "mensal", "Inovação agrícola, irrigação, bioeconomia e desenvolvimento sustentável na bacia do São Francisco e Oeste Baiano.",
-    "embrapa", "Empresa Brasileira de Pesquisa Agropecuária & MAPA", "EMBRAPA/MAPA", "Brasil", "empresa pública de pesquisa", "governo federal", "https://www.embrapa.br/", "https://www.embrapa.br/acessoainformacao/editais", "html", "pt", "diária", "Biotecnologia agrícola, agrotech, convivência com o semiárido e bioeconomia para o Sertão.",
+    "embrapa", "Empresa Brasileira de Pesquisa Agropecuária & MAPA", "EMBRAPA/MAPA", "Brasil", "empresa pública de pesquisa", "governo federal", "https://www.embrapa.br/", "https://www.embrapa.br/acessoainformacao/editais", "html", "pt", "diária", "A URL cadastrada lista editais de licitação (compras administrativas). Itens são julgados por tipo/objeto; sem chamadas de pesquisa, retorna vazio com diagnóstico.",
     "sudene", "Superintendência do Desenvolvimento do Nordeste", "SUDENE", "Brasil", "agência de desenvolvimento regional", "governo federal", "https://www.gov.br/sudene/pt-br", "https://pncp.gov.br/app/editais?q=533014&status=todos&pagina=1&tam_pagina=100&tipos=1", "html", "pt", "mensal", "Chamadas PRDNE para desenvolvimento regional, matriz energética limpa e inovação agroindustrial no Nordeste/Sertão.",
     "neh", "National Endowment for the Humanities", "NEH", "Estados Unidos", "agência pública nacional", "governo federal", "https://www.neh.gov/", "https://www.neh.gov/grants", "html", "en", "semanal", "Editais e concessões do National Endowment for the Humanities. Foco em humanidades digitais, infraestrutura de pesquisa, inovação cultural e tecnologia.",
-    "bndes", "Banco Nacional de Desenvolvimento Econômico e Social", "BNDES", "Brasil", "banco de desenvolvimento", "banco público", "https://www.bndes.gov.br/", "https://www.bndes.gov.br/wps/portal/site/home/onde-estamos/licitacoes-e-compras/editais", "html", "pt", "semanal", "Chamadas públicas e editais BNDES para inovação industrial, BNDES Garagem, FUST (telecom/IoT), Fundo Clima e BNDES Mais Inovação.",
+    "bndes", "Banco Nacional de Desenvolvimento Econômico e Social", "BNDES", "Brasil", "banco de desenvolvimento", "banco público", "https://www.bndes.gov.br/", "https://www.bndes.gov.br/wps/portal/site/home/transparencia/licitacoes-contratos/licitacoes/", "html", "pt", "semanal", "Licitações do BNDES; prioridade para Chamadas públicas para contratação de inovação (CPSI). Navegação, redes sociais e serviços de crédito não são oportunidades.",
     "esa_solutions", "ESA Space Solutions - European Space Agency", "ESA Solutions", "Europa", "agência espacial internacional", "organização multilateral", "https://business.esa.int/", "https://business.esa.int/funding", "html", "en", "semanal", "Oportunidades de financiamento direto e chamadas abertas da Agência Espacial Europeia (ESA) para soluções comerciais, satélites, IoT e aplicações terrestres.",
     "nasa_sbir", "NASA Small Business Innovation Research / STTR", "NASA SBIR", "Estados Unidos", "agência espacial", "governo federal", "https://sbir.nasa.gov/", "https://sbir.nasa.gov/solicitations", "html", "en", "mensal", "Financiamento de P&D tecnológico da NASA em automação, robótica, sensores avançados, computação embarcada e aeroespacial.",
     "facepe", "Fundação de Amparo à Ciência e Tecnologia de Pernambuco", "FACEPE", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://www.facepe.br/", "https://www.facepe.br/editais/", "html", "pt", "semanal", "Editais e chamadas de P&D e inovação da FACEPE, com forte aderência ao ecossistema de TI, automação, IoT e pólos tecnológicos do Nordeste.",
-    "funcap", "Fundação Cearense de Apoio ao Desenvolvimento Científico e Tecnológico", "FUNCAP", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://www.funcap.ce.gov.br/", "https://www.funcap.ce.gov.br/editais/", "html", "pt", "semanal", "Fomento à pesquisa científica, inovação tecnológica, hubs de inteligência artificial e hardware/software no Ceará/Nordeste.",
+    "funcap", "Fundação Cearense de Apoio ao Desenvolvimento Científico e Tecnológico", "FUNCAP", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://www.funcap.ce.gov.br/", "https://www.funcap.ce.gov.br/editais/", "html", "pt", "semanal", "Editais FUNCAP. A página principal pode falhar na validação TLS (estado da fonte, sem bypass); alternativa oficial: https://montenegro.funcap.ce.gov.br/sugba/editais/index_montenegro.php.",
     "fapeal", "Fundação de Amparo à Pesquisa do Estado de Alagoas", "FAPEAL", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://fapeal.br/", "https://fapeal.br/editais/", "html", "pt", "mensal", "Editais de pesquisa e desenvolvimento tecnológico da FAPEAL para pesquisadores e ICTs regionais.",
     "fapema", "Fundação de Amparo à Pesquisa e ao Desenvolvimento Científico e Tecnológico do Maranhão", "FAPEMA", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://www.fapema.br/", "https://www.fapema.br/editais/", "html", "pt", "mensal", "Chamadas e editais da FAPEMA para ciência, tecnologia e inovação no Maranhão e integração Nordeste.",
     "transferegov", "Portal Transferegov.br - Convênios e Programas Federais", "Transferegov", "Brasil", "portal federal de convênios", "governo federal", "https://www.gov.br/transferegov/pt-br", "https://www.gov.br/transferegov/pt-br", "html", "pt", "diária", "Portal unificado de captação e repasse de recursos voluntários da União, descentralização de recursos (TEDs), emendas e programas governamentais para ICTs.",
-    "bnb_hubine", "Banco do Nordeste - Hub de Inovação (Hubine)", "Hubine BNB", "Brasil", "hub de inovação bancário", "banco público", "https://www.bnb.gov.br/hubine", "https://www.bnb.gov.br/hubine", "html", "pt", "mensal", "Hub de inovação do BNB para conexão com startups, aceleração, linhas de financiamento de inovação e programas de empreendedorismo do Nordeste.",
+    "bnb_hubine", "Banco do Nordeste - Hub de Inovação (Hubine)", "Hubine BNB", "Brasil", "hub de inovação bancário", "banco público", "https://www.bnb.gov.br/hub-de-inovacao", "https://www.bnb.gov.br/hub-de-inovacao", "html", "pt", "mensal", "Página institucional do hub; só seleções concretas com documento (aceleração, CPSI) são oportunidades. Zero oportunidades é resultado válido.",
     "sebrae", "SEBRAE Inovação & Sebraetec", "SEBRAE", "Brasil", "serviço social autônomo", "sistema s", "https://sebrae.com.br/", "https://sebrae.com.br/sites/PortalSebrae/canais_adicionais/conheca_editais", "html", "pt", "semanal", "Editais de inovação do SEBRAE para MPEs, programas Sebraetec (automação e digitalização), Catalisa ICT e conexões universidade-empresa.",
     "softex", "Associação SOFTEX - Programas Prioritários MCTI", "SOFTEX", "Brasil", "organização social de ti", "associação civil", "https://softex.br/", "https://softex.br/editais/", "html", "pt", "semanal", "Editais e chamadas dos Programas Prioritários da Lei de Informática / MCTI para Inteligência Artificial, Ciência de Dados, IoT e Indústria 4.0.",
     "pncp_gov", "Governo Federal - PNCP & Ministérios (MCTI, MDIC, MPOR, Defesa, Marinha)", "PNCP Gov", "Brasil", "portal público federal", "governo federal", "https://pncp.gov.br/", "https://pncp.gov.br/api/consulta/v1/contratacoes/publicas", "api_json", "pt", "diária", "API REST pública PNCP para ministérios federais, Marinha do Brasil, Ministério da Defesa, MCTI, MDIC e MPOR.",
@@ -317,7 +317,6 @@ source_catalog <- function() {
     "faperj", "Fundação Carlos Chagas Filho de Amparo à Pesquisa do Estado do RJ", "FAPERJ", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://www.faperj.br/", "https://www.faperj.br/?id=editais", "html", "pt", "diária", "Editais FAPERJ de infraestrutura, inovação tecnológica e setor naval/offshore do Rio de Janeiro.",
     "fapemig", "Fundação de Amparo à Pesquisa do Estado de Minas Gerais", "FAPEMIG", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://fapemig.br/", "https://fapemig.br/pt/chamadas/", "html", "pt", "semanal", "Chamadas públicas FAPEMIG para PD&I e parcerias institucionais.",
     "fapesc", "Fundação de Amparo à Pesquisa e Inovação do Estado de Santa Catarina", "FAPESC", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://fapesc.sc.gov.br/", "https://fapesc.sc.gov.br/editais/", "html", "pt", "semanal", "Editais FAPESC para ecossistema de inovação, robótica e tecnologia marítima/portuária.",
-    "anp_shell", "Cláusula de P&D Obrigatório ANP - Petrobras & Shell", "ANP/Shell", "Brasil", "chamada corporativa de P&D", "empresa / agência reguladora", "https://www.gov.br/anp/pt-br", "https://www.gov.br/anp/pt-br/assuntos/pesquisa-desenvolvimento-e-inovacao", "html", "pt", "semanal", "Projetos de P&D com recursos da Cláusula de Investimento em PD&I da ANP para petróleo, gás, descarbonização e energia offshore."
   )
 }
 
@@ -378,7 +377,41 @@ create_tables <- function(conn) {
       enrichment_status TEXT DEFAULT 'pendente',
       enrichment_model TEXT,
       enrichment_at TEXT,
-      enrichment_error TEXT
+      enrichment_error TEXT,
+      status_oficial TEXT,
+      fluxo_continuo INTEGER,
+      id_chamada TEXT,
+      tipo_escopo TEXT,
+      validacao_status TEXT,
+      validacao_motivo TEXT,
+      validacao_evidencia TEXT,
+      validacao_versao TEXT,
+      validacao_em TEXT,
+      proveniencia_json TEXT,
+      campus_justificativa TEXT,
+      valor_teto_projeto REAL,
+      data_vigencia_fim TEXT
+    )")
+
+  DBI::dbExecute(conn, "
+    CREATE TABLE IF NOT EXISTS id_aliases (
+      id_antigo TEXT PRIMARY KEY,
+      id_novo TEXT,
+      motivo TEXT,
+      criado_em TEXT
+    )")
+
+  DBI::dbExecute(conn, "
+    CREATE TABLE IF NOT EXISTS saneamento_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      batch_id TEXT,
+      id_registro TEXT,
+      acao TEXT,
+      justificativa TEXT,
+      antes_json TEXT,
+      depois_json TEXT,
+      criado_em TEXT,
+      revertido_em TEXT
     )")
 
   DBI::dbExecute(conn, "
@@ -616,7 +649,16 @@ seed_projetos_aprovados <- function(conn) {
 }
 
 
+# Modo demonstração: SOMENTE com configuração explícita (FI_DEMO_MODE=true ou options(fi.demo_mode = TRUE)).
+# Nunca é chamado como fallback de produção; registros demo têm prefixo `demo_` e fonte `demo`.
+demo_mode_enabled <- function() {
+  isTRUE(getOption("fi.demo_mode", FALSE)) || identical(tolower(Sys.getenv("FI_DEMO_MODE", "false")), "true")
+}
+
 seed_demo_opportunities <- function(conn) {
+  if (!demo_mode_enabled()) {
+    return(invisible(FALSE))
+  }
   existing <- DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM oportunidades")$n[[1]]
   if (existing > 0) {
     return(invisible(FALSE))
@@ -624,15 +666,17 @@ seed_demo_opportunities <- function(conn) {
   today <- Sys.Date()
   demo <- tibble::tribble(
     ~entidade, ~pais_origem, ~titulo, ~subtitulo, ~descricao_resumida, ~descricao_completa, ~tipo_oportunidade, ~modalidade, ~area_tematica, ~palavras_chave, ~elegibilidade, ~publico_alvo, ~nivel_academico, ~instituicao_financiadora, ~valor_financiado, ~moeda, ~data_publicacao, ~data_abertura, ~data_limite, ~data_encerramento, ~status_oportunidade, ~link_origem, ~link_detalhe, ~link_documento_pdf, ~idioma, ~localidade, ~observacoes, ~texto_bruto, ~pagina_coletada, ~fonte_oficial, ~data_hora_coleta,
-    "CNPq", "Brasil", "Edital Demo de Inovação em Saúde", "Base demonstrativa", "Apoio a projetos de inovação em saúde.", "Registro de demonstração para abertura do app na primeira execução.", "edital", "individual", "Saúde", "health; innovation; medical devices", "ICTs e pesquisadores", "pesquisadores; instituições", "doutorado", "CNPq", 100000, "BRL", as.character(today - 20), as.character(today - 15), as.character(today + 25), NA_character_, "aberto", "https://www.gov.br/cnpq/pt-br/chamadas/abertas-para-submissao", "https://www.gov.br/cnpq/pt-br/chamadas/abertas-para-submissao", NA_character_, "pt", "Brasil", "Seed demo.", "Seed demo.", 1L, "cnpq", as.character(Sys.time()),
-    "Horizon Europe", "União Europeia", "Grant Demo for Energy Transition", "Seed", "Support for collaborative R&D in low-carbon industry.", "Seed record for initial dashboard rendering.", "grant", "rede", "Transição Energética", "energy transition; hydrogen; biomethane", "universities; companies; research organisations", "instituições; empresas", "instituição", "Horizon Europe", 2500000, "EUR", as.character(today - 40), as.character(today - 35), as.character(today + 60), NA_character_, "aberto", "https://research-and-innovation.ec.europa.eu/", "https://research-and-innovation.ec.europa.eu/", NA_character_, "en", "União Europeia", "Seed demo.", "Seed demo.", 1L, "horizon_europe", as.character(Sys.time())
+    "CNPq", "Brasil", "Edital Demo de Inovação em Saúde", "Base demonstrativa", "Apoio a projetos de inovação em saúde.", "Registro de demonstração (modo explícito).", "edital", "individual", "Saúde", "health; innovation; medical devices", "ICTs e pesquisadores", "pesquisadores; instituições", "doutorado", "CNPq", 100000, "BRL", as.character(today - 20), as.character(today - 15), as.character(today + 25), NA_character_, "aberto", "https://www.gov.br/cnpq/pt-br/chamadas/abertas-para-submissao", "https://www.gov.br/cnpq/pt-br/chamadas/abertas-para-submissao", NA_character_, "pt", "Brasil", "DEMONSTRACAO (FI_DEMO_MODE).", "DEMONSTRACAO (FI_DEMO_MODE).", 1L, "demo", as.character(Sys.time()),
+    "Horizon Europe", "União Europeia", "Grant Demo for Energy Transition", "Seed", "Support for collaborative R&D in low-carbon industry.", "Seed record for initial dashboard rendering.", "grant", "rede", "Transição Energética", "energy transition; hydrogen; biomethane", "universities; companies; research organisations", "instituições; empresas", "instituição", "Horizon Europe", 2500000, "EUR", as.character(today - 40), as.character(today - 35), as.character(today + 60), NA_character_, "aberto", "https://research-and-innovation.ec.europa.eu/", "https://research-and-innovation.ec.europa.eu/", NA_character_, "en", "União Europeia", "DEMONSTRACAO (FI_DEMO_MODE).", "DEMONSTRACAO (FI_DEMO_MODE).", 1L, "demo", as.character(Sys.time())
   )
   demo$hash_deduplicacao <- vapply(seq_len(nrow(demo)), function(i) {
     make_hash(demo$entidade[i], normalize_text(demo$titulo[i]), demo$link_detalhe[i])
   }, character(1))
   demo <- demo |>
     dplyr::mutate(
-      id_registro = paste0("seed_", seq_len(dplyr::n())),
+      id_registro = paste0("demo_", seq_len(dplyr::n())),
+      fonte_oficial = "demo",
+      tipo_escopo = "demo", validacao_status = "validado", validacao_motivo = "demo_explicito", validacao_versao = "demo",
       campos_inferidos_ia = ""
     ) |>
     dplyr::select(id_registro, dplyr::everything())
@@ -689,6 +733,32 @@ set_migration_marker <- function(conn, flag) {
     },
     silent = TRUE
   )
+}
+
+# Colunas do contrato de integridade brasileiro (R01/R02/R03). Idempotente; SQLite e PostgreSQL.
+.br_integrity_columns <- list(
+  status_oficial = "TEXT", fluxo_continuo = "INTEGER", id_chamada = "TEXT", tipo_escopo = "TEXT",
+  validacao_status = "TEXT", validacao_motivo = "TEXT", validacao_evidencia = "TEXT",
+  validacao_versao = "TEXT", validacao_em = "TEXT", proveniencia_json = "TEXT",
+  campus_justificativa = "TEXT", valor_teto_projeto = "REAL", data_vigencia_fim = "TEXT"
+)
+
+migrate_br_integrity_columns <- function(conn) {
+  cols <- tryCatch(DBI::dbListFields(conn, "oportunidades"), error = function(e) character())
+  pg <- db_is_postgres(conn)
+  for (nm in names(.br_integrity_columns)) {
+    if (!nm %in% cols) {
+      ty <- .br_integrity_columns[[nm]]
+      if (pg && ty == "REAL") ty <- "DOUBLE PRECISION"
+      DBI::dbExecute(conn, sprintf("ALTER TABLE oportunidades ADD COLUMN %s %s", nm, ty))
+      message(sprintf("[Migration] Coluna '%s' adicionada a oportunidades.", nm))
+    }
+  }
+  id_pk <- if (pg) "TEXT PRIMARY KEY" else "TEXT PRIMARY KEY"
+  DBI::dbExecute(conn, sprintf("CREATE TABLE IF NOT EXISTS id_aliases (id_antigo %s, id_novo TEXT, motivo TEXT, criado_em TEXT)", id_pk))
+  serial <- if (pg) "SERIAL PRIMARY KEY" else "INTEGER PRIMARY KEY AUTOINCREMENT"
+  DBI::dbExecute(conn, sprintf("CREATE TABLE IF NOT EXISTS saneamento_log (id %s, batch_id TEXT, id_registro TEXT, acao TEXT, justificativa TEXT, antes_json TEXT, depois_json TEXT, criado_em TEXT, revertido_em TEXT)", serial))
+  invisible(TRUE)
 }
 
 migrate_enrichment_columns <- function(conn) {
@@ -788,100 +858,16 @@ migrate_existing_keywords <- function(conn) {
   invisible(TRUE)
 }
 
-cleanup_database_opportunities <- function(conn) {
-  # 1. Limpeza por Heurísticas Estáticas (incluindo novos filtros de retificações e Finep)
-  res <- tryCatch(
-    {
-      DBI::dbGetQuery(conn, "SELECT id_registro, titulo, descricao_resumida, link_origem, link_detalhe, texto_bruto FROM oportunidades")
-    },
-    error = function(e) NULL
-  )
-
-  if (is.null(res) || nrow(res) == 0) {
-    return(invisible(FALSE))
+# Limpeza NÃO destrutiva (R07): por padrão apenas relata (dry run). Com apply = TRUE move para
+# QUARENTENA reversível (nunca DELETE) os registros brasileiros sintéticos/fora do escopo,
+# usando validate_opportunity(). Nunca é chamada na inicialização do app.
+# Saneamento completo e rollback: tools/sanitize_br.R / R/helpers_sanitize.R.
+cleanup_database_opportunities <- function(conn, apply = FALSE, batch_id = NULL) {
+  plan <- sanitize_br_plan(conn)
+  if (!isTRUE(apply)) {
+    return(invisible(plan))
   }
-
-  to_delete <- character()
-  for (i in seq_len(nrow(res))) {
-    id <- res$id_registro[[i]]
-    title <- res$titulo[[i]] %||% ""
-    desc <- res$descricao_resumida[[i]] %||% ""
-    url <- res$link_detalhe[[i]] %||% res$link_origem[[i]] %||% ""
-    body_text <- res$texto_bruto[[i]] %||% ""
-
-    is_funding <- TRUE
-    if (exists("is_funding_opportunity_heuristics", mode = "function")) {
-      is_funding <- is_funding_opportunity_heuristics(title = title, description = desc, url = url, body_text = body_text)
-    } else {
-      # Fallback básico
-      t_norm <- tolower(title)
-      if (grepl("manual do cartao|cobranca administrativa|carta de servico|mapa de fomento|bolsas e projetos vigentes|acoes e programas|strategic plan|membros do comite|perguntas frequentes|faq|contato|quem somos|links uteis|tutoriais|tutorial|instrucoes para envio|retificacao|alteracao|aditivo|resultado|esclarecimento", t_norm)) {
-        is_funding <- FALSE
-      }
-    }
-
-    if (!is_funding) {
-      to_delete <- c(to_delete, id)
-    }
-  }
-
-  if (length(to_delete) > 0) {
-    message(sprintf("[DB Cleanup] Removendo %d registro(s) inválido(s)/não-editais do banco...", length(to_delete)))
-    for (id in to_delete) {
-      tryCatch(
-        {
-          db_exec(conn, "DELETE FROM oportunidades WHERE id_registro = ?", params = list(id))
-        },
-        error = function(e) NULL
-      )
-    }
-  }
-
-  # 2. Deduplicação Retroativa de Editais com o Mesmo Nome por Entidade
-  res_dedupe <- tryCatch(
-    {
-      DBI::dbGetQuery(conn, "SELECT id_registro, entidade, titulo, status_oportunidade, data_limite, texto_bruto, descricao_resumida FROM oportunidades")
-    },
-    error = function(e) NULL
-  )
-
-  if (!is.null(res_dedupe) && nrow(res_dedupe) > 0 && exists("normalize_text", mode = "function") && exists("parse_date_safe", mode = "function")) {
-    res_dedupe$title_norm <- vapply(res_dedupe$titulo, normalize_text, character(1))
-    res_dedupe$parsed_date <- parse_date_safe(res_dedupe$data_limite)
-    res_dedupe$status_priority <- dplyr::case_when(
-      res_dedupe$status_oportunidade == "aberto" ~ 1L,
-      res_dedupe$status_oportunidade == "futuro" ~ 2L,
-      res_dedupe$status_oportunidade == "encerrado" ~ 3L,
-      TRUE ~ 4L
-    )
-    res_dedupe$content_len <- nchar(dplyr::coalesce(res_dedupe$texto_bruto, "")) + nchar(dplyr::coalesce(res_dedupe$descricao_resumida, ""))
-
-    keep_ids <- res_dedupe |>
-      dplyr::arrange(
-        status_priority,
-        dplyr::desc(parsed_date),
-        dplyr::desc(content_len)
-      ) |>
-      dplyr::distinct(entidade, title_norm, .keep_all = TRUE) |>
-      dplyr::pull(id_registro)
-
-    all_ids <- res_dedupe$id_registro
-    to_delete_dedupe <- setdiff(all_ids, keep_ids)
-
-    if (length(to_delete_dedupe) > 0) {
-      message(sprintf("[DB Cleanup] Removendo %d registro(s) duplicado(s)/obsoletos do banco...", length(to_delete_dedupe)))
-      for (id in to_delete_dedupe) {
-        tryCatch(
-          {
-            db_exec(conn, "DELETE FROM oportunidades WHERE id_registro = ?", params = list(id))
-          },
-          error = function(e) NULL
-        )
-      }
-    }
-  }
-
-  invisible(TRUE)
+  sanitize_br_apply(conn, plan, batch_id = batch_id)
 }
 
 # Poda o catálogo para as 21 fontes ativas (fontes descontinuadas do catálogo
@@ -907,6 +893,7 @@ init_database <- function(db_path) {
     # verifica a presença das tabelas e mantém o catálogo de fontes idempotente.
     # Seeds demonstrativos e migrações SQLite são aplicáveis somente ao fallback local.
     verificar_schema_postgres(conn)
+    try(migrate_br_integrity_columns(conn), silent = TRUE)
     seed_sources(conn)
     prune_inactive_sources(conn)
     return(invisible(TRUE))
@@ -923,26 +910,37 @@ init_database <- function(db_path) {
   seed_demo_opportunities(conn)
   seed_pesquisadores_vencedores(conn)
   seed_projetos_aprovados(conn)
-  try(cleanup_database_opportunities(conn), silent = TRUE)
+  # NÃO há limpeza destrutiva na inicialização: saneamento é explícito (tools/sanitize_br.R),
+  # com dry run por padrão, quarentena reversível e log de rollback.
   try(migrate_existing_keywords(conn), silent = TRUE)
   try(migrate_enrichment_columns(conn), silent = TRUE)
+  try(migrate_br_integrity_columns(conn), silent = TRUE)
   try(migrate_dedup_hashes(conn), silent = TRUE)
   invisible(TRUE)
 }
 
 read_table <- function(conn, table_name) DBI::dbReadTable(conn, table_name)
 
-read_app_data <- function(conn) {
+# `only_validated = TRUE` (padrão): tabela, filtros, KPIs, recomendações, alertas e exportações usam o
+# MESMO universo validado. Itens a_verificar/rejeitado/quarentena ficam em `opportunities_review`.
+# Registros legados sem avaliação (validacao_status NULL) permanecem visíveis (compatibilidade).
+read_app_data <- function(conn, only_validated = TRUE) {
+  all_opps <- tibble::as_tibble(read_table(conn, "oportunidades")) |>
+    dplyr::mutate(
+      data_publicacao = parse_date_safe(data_publicacao),
+      data_abertura = parse_date_safe(data_abertura),
+      data_limite = parse_date_safe(data_limite),
+      data_encerramento = parse_date_safe(data_encerramento),
+      data_hora_coleta = parse_datetime_safe(data_hora_coleta),
+      valor_financiado = suppressWarnings(as.numeric(valor_financiado))
+    )
+  pub <- if (isTRUE(only_validated)) filter_validated(all_opps) else all_opps
+  review <- if ("validacao_status" %in% names(all_opps)) {
+    all_opps[!is.na(all_opps$validacao_status) & all_opps$validacao_status != "validado", , drop = FALSE]
+  } else all_opps[0, , drop = FALSE]
   list(
-    opportunities = tibble::as_tibble(read_table(conn, "oportunidades")) |>
-      dplyr::mutate(
-        data_publicacao = parse_date_safe(data_publicacao),
-        data_abertura = parse_date_safe(data_abertura),
-        data_limite = parse_date_safe(data_limite),
-        data_encerramento = parse_date_safe(data_encerramento),
-        data_hora_coleta = parse_datetime_safe(data_hora_coleta),
-        valor_financiado = suppressWarnings(as.numeric(valor_financiado))
-      ),
+    opportunities = pub,
+    opportunities_review = review,
     sources = tibble::as_tibble(read_table(conn, "fontes_financiamento")),
     saved_searches = tibble::as_tibble(read_table(conn, "buscas_salvas")),
     tracked = tibble::as_tibble(read_table(conn, "editais_rastreados")),
@@ -967,9 +965,17 @@ fallback_app_data <- function() {
   read_app_data(conn)
 }
 
-upsert_opportunities <- function(conn, opportunities_df) {
+# Contrato de persistência (R07 / T20 T21):
+#  * Campo ausente (NULL/NA/"") no novo registro NÃO apaga o valor já persistido
+#    (COALESCE por campo): uma coleta parcial não destrói dado verificado, enriquecimento
+#    de IA, avaliações ou referências do usuário.
+#  * Valor novo não vazio atualiza (ex.: prazo retificado).
+#  * Remoção oficial de um campo é EXPLÍCITA: `clear_fields = list(<id_registro> = c("data_limite"))`.
+#  * Decisões manuais de validação (validacao_motivo iniciando em "manual:") não são sobrescritas.
+#  * Colisões de hash UNIQUE e falhas por linha são CONTADAS e expostas como atributos do retorno.
+upsert_opportunities <- function(conn, opportunities_df, clear_fields = NULL) {
   if (is.null(opportunities_df) || nrow(opportunities_df) == 0) {
-    return(invisible(0L))
+    return(invisible(structure(0L, updated = 0L, collisions = 0L, failed = 0L)))
   }
 
   cols <- DBI::dbListFields(conn, "oportunidades")
@@ -981,12 +987,24 @@ upsert_opportunities <- function(conn, opportunities_df) {
   df <- df[, cols, drop = FALSE]
 
   cols_no_pk <- setdiff(cols, "id_registro")
-  update_clause <- paste(paste0(cols_no_pk, " = excluded.", cols_no_pk), collapse = ", ")
+  numeric_cols <- c("valor_financiado", "valor_teto_projeto", "pagina_coletada", "fluxo_continuo")
+  manual_guard <- c("validacao_status", "validacao_motivo", "validacao_evidencia", "validacao_versao", "validacao_em")
+  merge_expr <- function(cn) {
+    new <- if (cn %in% numeric_cols) sprintf("excluded.%s", cn) else sprintf("NULLIF(excluded.%s, '')", cn)
+    base <- sprintf("COALESCE(%s, oportunidades.%s)", new, cn)
+    if (cn %in% manual_guard && "validacao_motivo" %in% cols) {
+      base <- sprintf("CASE WHEN oportunidades.validacao_motivo LIKE 'manual:%%' THEN oportunidades.%s ELSE %s END", cn, base)
+    }
+    sprintf("%s = %s", cn, base)
+  }
+  update_clause <- paste(vapply(cols_no_pk, merge_expr, character(1)), collapse = ", ")
   sql_upsert <- paste0(
     "INSERT INTO oportunidades (", paste(cols, collapse = ", "), ") VALUES (",
     paste(paste0(":", cols), collapse = ", "), ") ON CONFLICT(id_registro) DO UPDATE SET ",
     update_clause
   )
+  existing_ids <- tryCatch(DBI::dbGetQuery(conn, "SELECT id_registro FROM oportunidades")$id_registro, error = function(e) character())
+  n_updated <- 0L; n_collisions <- 0L; n_failed <- 0L
 
   inserted <- 0L
   in_transaction <- FALSE
@@ -1035,6 +1053,7 @@ upsert_opportunities <- function(conn, opportunities_df) {
     # SAVEPOINT por linha: em PostgreSQL um erro aborta a transação inteira;
     # o savepoint isola a falha (ex.: colisão de hash UNIQUE) sem perder o lote.
     failed <- FALSE
+    was_existing <- !is.null(row$id_registro) && !is.na(row$id_registro) && row$id_registro %in% existing_ids
     DBI::dbExecute(conn, "SAVEPOINT upsert_row")
     affected <- tryCatch(
       {
@@ -1047,6 +1066,7 @@ upsert_opportunities <- function(conn, opportunities_df) {
           {
             msg <- conditionMessage(e)
             if (grepl("UNIQUE constraint failed.*hash_deduplicacao|hash_deduplicacao.*UNIQUE|duplicate key value violates unique constraint", msg, ignore.case = TRUE)) {
+              n_collisions <<- n_collisions + 1L
               warning(sprintf("[upsert] hash colisão ignorada id=%s titulo='%s' hash=%s", row$id_registro %||% "NA", substr(row$titulo %||% "", 1, 60), row$hash_deduplicacao %||% "NA"), call. = FALSE)
             }
           },
@@ -1056,16 +1076,29 @@ upsert_opportunities <- function(conn, opportunities_df) {
       }
     )
     if (failed) {
+      n_failed <- n_failed + 1L
       try(DBI::dbExecute(conn, "ROLLBACK TO SAVEPOINT upsert_row"), silent = TRUE)
     }
     try(DBI::dbExecute(conn, "RELEASE SAVEPOINT upsert_row"), silent = TRUE)
 
-    if (affected > 0) inserted <- inserted + 1L
+    if (affected > 0) {
+      inserted <- inserted + 1L
+      if (was_existing) n_updated <- n_updated + 1L
+    }
+  }
+
+  # Remoção oficial explícita de campos (nunca por ausência no payload)
+  if (!is.null(clear_fields) && length(clear_fields) > 0L) {
+    for (id in names(clear_fields)) {
+      for (cn in intersect(clear_fields[[id]], cols_no_pk)) {
+        db_exec(conn, sprintf("UPDATE oportunidades SET %s = NULL WHERE id_registro = ?", cn), params = list(id))
+      }
+    }
   }
 
   DBI::dbCommit(conn)
   in_transaction <- FALSE
-  invisible(inserted)
+  invisible(structure(inserted, updated = n_updated, collisions = n_collisions, failed = n_failed))
 }
 
 log_collection <- function(conn, fonte, metodo_coleta, status_execucao, mensagem, n_paginas = 0L, n_registros = 0L, url = NA_character_) {

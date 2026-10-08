@@ -32,13 +32,13 @@ generate_weekly_bulletin <- function(conn, reference_date = Sys.Date()) {
   # Data de corte: 7 dias atrás (segunda-feira anterior)
   start_date <- reference_date - 7
   
-  opps <- tibble::as_tibble(read_table(conn, "oportunidades"))
+  opps <- filter_validated(tibble::as_tibble(read_table(conn, "oportunidades")))
   if (nrow(opps) == 0) {
     return(list(title = "Boletim Semanal de Oportunidades", count = 0, opps = tibble::tibble(), markdown = "Nenhum registro encontrado.", html = "<p>Nenhum registro encontrado.</p>"))
   }
   
   # Derivar status dinamicamente
-  opps$derived_status <- derive_status_vec(opps$data_limite, opps$data_abertura, opps$texto_bruto)
+  opps$derived_status <- derive_status_df(opps)
   
   # Filtrar oportunidades coletadas nos últimos 7 dias OU com prazo nos próximos 14 dias
   opps_filtered <- opps |>
@@ -183,12 +183,12 @@ generate_monthly_review <- function(conn, reference_date = Sys.Date()) {
   prev_month_end <- current_month_first - 1
   prev_month_start <- as.Date(format(prev_month_end, "%Y-%m-01"))
   
-  opps <- tibble::as_tibble(read_table(conn, "oportunidades"))
+  opps <- filter_validated(tibble::as_tibble(read_table(conn, "oportunidades")))
   if (nrow(opps) == 0) {
     return(list(title = "Revisão Mensal de Oportunidades", count = 0, opps = tibble::tibble(), markdown = "Nenhum registro encontrado.", html = "<p>Nenhum registro encontrado.</p>"))
   }
   
-  opps$derived_status <- derive_status_vec(opps$data_limite, opps$data_abertura, opps$texto_bruto)
+  opps$derived_status <- derive_status_df(opps)
   
   # Oportunidades do mês anterior ou ainda abertas no mês corrente
   opps_monthly <- opps |>

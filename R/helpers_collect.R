@@ -91,10 +91,10 @@ source_dispatch <- function(source_row, max_pages = 5, max_records = 15, use_ai 
   for (cand in c("python3", "python", "py")) {
     p <- Sys.which(cand)
     if (nzchar(p)) {
-      return(if (identical(cand, "py")) sprintf('"%s" -3', p) else sprintf('"%s"', p))
+      return(list(bin = unname(p), is_py = identical(cand, "py")))
     }
   }
-  NA_character_
+  NULL
 }
 
 safe_request_page_stealth <- function(url, log_path = NULL) {
@@ -105,16 +105,27 @@ safe_request_page_stealth <- function(url, log_path = NULL) {
   if (!file.exists(stealth_script)) {
     return(list(ok = FALSE))
   }
-  py <- .python_command()
-  if (is.na(py)) {
+  py_info <- .python_command()
+  if (is.null(py_info) || !nzchar(py_info$bin)) {
     return(list(ok = FALSE, error = "python indisponivel", error_kind = "network_error"))
   }
 
   tmp_file <- tempfile(fileext = ".html")
   on.exit(unlink(c(tmp_file, paste0(tmp_file, ".err.json"))), add = TRUE)
 
-  cmd <- sprintf('%s "%s" "%s" "%s"', py, stealth_script, url, tmp_file)
-  res_code <- suppressWarnings(system(cmd, ignore.stdout = TRUE, ignore.stderr = TRUE))
+  args <- if (isTRUE(py_info$is_py)) {
+    c("-3", stealth_script, url, tmp_file)
+  } else {
+    c(stealth_script, url, tmp_file)
+  }
+
+  # Execução via system2() passa argumentos diretamente ao binário sem passar por /bin/sh
+  res_code <- suppressWarnings(system2(
+    command = py_info$bin,
+    args = args,
+    stdout = FALSE,
+    stderr = FALSE
+  ))
 
   if (file.exists(tmp_file) && file.info(tmp_file)$size > 800) {
     txt_lines <- readLines(tmp_file, warn = FALSE, encoding = "UTF-8")

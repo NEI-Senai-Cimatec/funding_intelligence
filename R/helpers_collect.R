@@ -119,10 +119,10 @@ safe_request_page_stealth <- function(url, log_path = NULL) {
     c(stealth_script, url, tmp_file)
   }
 
-  # Execução via system2() passa argumentos diretamente ao binário sem passar por /bin/sh
+  # Execução via system2() com shQuote para proteção total de parênteses e caracteres no shell
   res_code <- suppressWarnings(system2(
     command = py_info$bin,
-    args = args,
+    args = shQuote(args),
     stdout = FALSE,
     stderr = FALSE
   ))
@@ -295,7 +295,7 @@ eu_api_request <- function(url, body_data, timeout_sec = 60, log_path = NULL, la
           http_code <- suppressWarnings(as.integer(output[length(output)]))
           if (is.na(http_code)) 1L else http_code
         } else {
-          system2(curl_bin, args, stdout = tmp_err, stderr = tmp_err)
+          system2(curl_bin, shQuote(args), stdout = tmp_err, stderr = tmp_err)
         }
       },
       error = function(e) {

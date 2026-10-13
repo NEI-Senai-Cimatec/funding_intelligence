@@ -321,6 +321,11 @@ source_catalog <- function() {
 }
 
 create_tables <- function(conn) {
+  if (db_is_postgres(conn)) {
+    verificar_schema_postgres(conn)
+    return(invisible(TRUE))
+  }
+
   DBI::dbExecute(conn, "
     CREATE TABLE IF NOT EXISTS fontes_financiamento (
       id_fonte TEXT PRIMARY KEY,

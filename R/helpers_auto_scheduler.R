@@ -10,10 +10,10 @@ get_last_successful_collection_time <- function(conn) {
     if (DBI::dbExistsTable(conn, "logs_coleta")) {
       res <- DBI::dbGetQuery(
         conn,
-        "SELECT data_hora FROM logs_coleta WHERE status_execucao = 'sucesso' ORDER BY data_hora DESC LIMIT 1"
+        "SELECT data_execucao FROM logs_coleta WHERE status_execucao = 'sucesso' ORDER BY data_execucao DESC LIMIT 1"
       )
-      if (nrow(res) > 0 && nzchar(res$data_hora[[1]])) {
-        return(lubridate::as_datetime(res$data_hora[[1]]))
+      if (nrow(res) > 0 && !is.na(res$data_execucao[[1]])) {
+        return(lubridate::as_datetime(res$data_execucao[[1]]))
       }
     }
     NULL
@@ -69,12 +69,6 @@ trigger_background_collection_daemon <- function(app_dir = getwd()) {
   
   message(sprintf("[Agendador] Disparando coleta automática recorrente em background às %s...", format(Sys.time(), "%H:%M:%S")))
   
-  log_dir <- file.path(app_dir, "logs")
-  if (!dir.exists(log_dir)) dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
-  
-  stdout_log <- file.path(log_dir, "auto_scheduler_stdout.log")
-  stderr_log <- file.path(log_dir, "auto_scheduler_stderr.log")
-  
   db_url <- Sys.getenv("DATABASE_URL")
   gemini_key <- Sys.getenv("GEMINI_API_KEY")
   nvidia_key <- Sys.getenv("NVIDIA_API_KEY")
@@ -107,8 +101,8 @@ trigger_background_collection_daemon <- function(app_dir = getwd()) {
           EU_API_PROXY_URL = proxy_url
         )
       ),
-      stdout = stdout_log,
-      stderr = stderr_log,
+      stdout = "",
+      stderr = "",
       supervise = TRUE
     )
   }, error = function(e) {

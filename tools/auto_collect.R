@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 # tools/auto_collect.R — Execução autônoma de coleta para GitHub Actions ou Cron
 
-main_auto_collect <- function(test_mode = FALSE) {
+main_auto_collect <- function(test_mode = FALSE, source_filter = NULL) {
   app_dir <- normalizePath(getwd(), winslash = "/", mustWork = FALSE)
 
   # Define SCRAPE_WORKERS = 1 por padrão para garantir execução estável e sequencial
@@ -9,7 +9,21 @@ main_auto_collect <- function(test_mode = FALSE) {
     Sys.setenv(SCRAPE_WORKERS = "1")
   }
 
-  # Suporte a biblioteca local R_libs (desenvolvimento local) ou biblioteca do sistema (GHA)
+  # Identificação do ambiente de execução (Posit Connect, GitHub Actions ou Cron)
+  exec_env <- if (nzchar(Sys.getenv("CONNECT_SERVER")) || nzchar(Sys.getenv("R_CONFIG_ACTIVE"))) {
+    "POSIT_CONNECT"
+  } else if (nzchar(Sys.getenv("GITHUB_ACTIONS"))) {
+    "GITHUB_ACTIONS"
+  } else {
+    "AUTO_COLLECT"
+  }
+  exec_url <- if (nzchar(Sys.getenv("CONNECT_SERVER"))) {
+    Sys.getenv("CONNECT_SERVER")
+  } else {
+    "https://github.com/workflows/auto_collect"
+  }
+
+  # Suporte a biblioteca local R_libs (desenvolvimento local) ou biblioteca do sistema (GHA/Connect)
   local_libs <- file.path(app_dir, "R_libs")
   if (dir.exists(local_libs)) {
     .libPaths(c(local_libs, .libPaths()))
@@ -48,7 +62,7 @@ main_auto_collect <- function(test_mode = FALSE) {
   )
 
   message("----------------------------------------------------------------------")
-  message("[AutoCollect] Iniciando ciclo de busca automática de editais...")
+  message(sprintf("[AutoCollect] Iniciando ciclo de busca automática (%s)...", exec_env))
   message(sprintf("[AutoCollect] Horário de execução: %s", as.character(Sys.time())))
   message("----------------------------------------------------------------------")
 
@@ -84,13 +98,13 @@ main_auto_collect <- function(test_mode = FALSE) {
   # Registrar log inicial de início de coleta
   log_collection(
     conn = conn,
-    fonte = "GITHUB_ACTIONS",
+    fonte = exec_env,
     metodo_coleta = "agendamento_automatico",
     status_execucao = "iniciado",
-    mensagem = sprintf("Busca automática disparada às %s", format(Sys.time(), "%H:%M:%S")),
+    mensagem = sprintf("Busca automática disparada às %s via %s", format(Sys.time(), "%H:%M:%S"), exec_env),
     n_paginas = 0L,
     n_registros = 0L,
-    url = "https://github.com/workflows/auto_collect"
+    url = exec_url
   )
 
   # Configurações de coleta
@@ -98,8 +112,10 @@ main_auto_collect <- function(test_mode = FALSE) {
   max_records <- if (test_mode) 5L else 20L
   use_ai <- ai_available()
 
-  # Se for teste rápido, pode limitar a uma fonte de teste (ex: finep ou fapesb)
-  source_filter <- if (test_mode) c("fapesb") else NULL
+  # Se for teste rápido e nenhuma fonte informada, filtra para teste rápido
+  if (is.null(source_filter) && isTRUE(test_mode)) {
+    source_filter <- c("fapesb")
+  }
 
   message(sprintf("[AutoCollect] Parâmetros: max_pages=%d, max_records=%d, use_ai=%s, fontes=%s", 
                   max_pages, max_records, as.character(use_ai), 
@@ -122,13 +138,13 @@ main_auto_collect <- function(test_mode = FALSE) {
     error = function(e) {
       log_collection(
         conn = conn,
-        fonte = "GITHUB_ACTIONS",
+        fonte = exec_env,
         metodo_coleta = "agendamento_automatico",
         status_execucao = "erro",
         mensagem = sprintf("Erro na execução automática: %s", e$message),
         n_paginas = 0L,
         n_registros = 0L,
-        url = "https://github.com/workflows/auto_collect"
+        url = exec_url
       )
       stop(sprintf("[AutoCollect] Falha durante a coleta: %s", e$message), call. = FALSE)
     }
@@ -137,14 +153,14 @@ main_auto_collect <- function(test_mode = FALSE) {
   # Registrar log de conclusão
   log_collection(
     conn = conn,
-    fonte = "GITHUB_ACTIONS",
+    fonte = exec_env,
     metodo_coleta = "agendamento_automatico",
     status_execucao = "sucesso",
-    mensagem = sprintf("Ciclo concluído: %d fontes processadas, %d novos registros adicionados.", 
-                       res$sources_processed %||% 0L, res$inserted_now %||% 0L),
+    mensagem = sprintf("Ciclo concluído via %s: %d fontes processadas, %d novos registros adicionados.", 
+                       exec_env, res$sources_processed %||% 0L, res$inserted_now %||% 0L),
     n_paginas = 0L,
     n_registros = res$inserted_now %||% 0L,
-    url = "https://github.com/workflows/auto_collect"
+    url = exec_url
   )
 
   message("----------------------------------------------------------------------")
@@ -155,6 +171,9 @@ main_auto_collect <- function(test_mode = FALSE) {
   invisible(res)
 }
 
-args <- commandArgs(trailingOnly = TRUE)
-is_test <- "--test" %in% args || "--dry-run" %in% args
-main_auto_collect(test_mode = is_test)
+# Executa automaticamente apenas se invocado diretamente via linha de comando/Rscript
+if (sys.nframe() == 0L) {
+  args <- commandArgs(trailingOnly = TRUE)
+  is_test <- "--test" %in% args || "--dry-run" %in% args
+  main_auto_collect(test_mode = is_test)
+}

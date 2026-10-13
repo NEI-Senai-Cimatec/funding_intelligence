@@ -1,0 +1,225 @@
+---
+title: "🔄 Relatório de Coleta de Editais"
+subtitle: "Funding Intelligence — SENAI CIMATEC / NEI"
+date: "`r format(Sys.time(), '%d/%m/%Y %H:%M:%S (%Z)')`"
+output:
+  html_document:
+    theme: cosmo
+    toc: true
+    toc_float: true
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = TRUE, warning = TRUE)
+options(width = 120)
+t_inicio <- Sys.time()
+```
+
+<style>
+  .metric-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    margin-bottom: 25px;
+  }
+  .metric-card {
+    flex: 1;
+    min-width: 200px;
+    padding: 16px 20px;
+    border-radius: 8px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  }
+  .metric-card.success {
+    border-left: 5px solid #10b981;
+  }
+  .metric-card.primary {
+    border-left: 5px solid #0284c7;
+  }
+  .metric-card.warning {
+    border-left: 5px solid #f59e0b;
+  }
+  .metric-card.info {
+    border-left: 5px solid #6366f1;
+  }
+  .metric-label {
+    font-size: 0.85rem;
+    color: #64748b;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+  }
+  .metric-value {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #0f172a;
+  }
+  .status-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 0.85rem;
+  }
+  .badge-success { background-color: #d1fae5; color: #065f46; }
+  .badge-error { background-color: #fee2e2; color: #991b1b; }
+</style>
+
+## 1. ⚙️ Diagnóstico do Ambiente de Execução
+
+```{r env_check}
+app_dir <- normalizePath(getwd(), winslash = "/", mustWork = FALSE)
+is_connect <- nzchar(Sys.getenv("CONNECT_SERVER")) || nzchar(Sys.getenv("R_CONFIG_ACTIVE"))
+db_url <- Sys.getenv("DATABASE_URL")
+has_db_url <- nzchar(db_url)
+has_gemini <- nzchar(Sys.getenv("GEMINI_API_KEY"))
+
+env_info <- data.frame(
+  Parâmetro = c("Servidor / Ambiente", "Alvo do Banco de Dados", "API de Inteligência Artificial", "Diretório Base"),
+  Configuração = c(
+    if (is_connect) "Posit Connect (Produção)" else "Ambiente Local / Servidor",
+    if (has_db_url) "PostgreSQL / Supabase (DATABASE_URL)" else "SQLite Local (funding_intelligence.sqlite)",
+    if (has_gemini) "Gemini API Ativa (Enriquecimento Habilitado)" else "Modo Estático (Sem chave de IA)",
+    app_dir
+  ),
+  stringsAsFactors = FALSE
+)
+knitr::kable(env_info, col.names = c("Parâmetro", "Configuração Atual"))
+```
+
+---
+
+## 2. 🚀 Execução da Busca Automática de Editais
+
+```{r execution}
+source(file.path(app_dir, "tools", "auto_collect.R"))
+
+exec_success <- FALSE
+error_msg <- NULL
+res <- NULL
+
+t_exec_start <- Sys.time()
+tryCatch({
+  res <- main_auto_collect(test_mode = FALSE)
+  exec_success <- TRUE
+}, error = function(e) {
+  error_msg <<- e$message
+  message(sprintf("ERRO DURANTE COLETA: %s", e$message))
+})
+t_exec_end <- Sys.time()
+duracao_seg <- round(as.numeric(difftime(t_exec_end, t_exec_start, units = "secs")), 1)
+```
+
+```{r metrics, results='asis'}
+if (isTRUE(exec_success) && !is.null(res)) {
+  n_fontes <- res$sources_processed %||% 0L
+  n_novos <- res$inserted_now %||% 0L
+  n_total <- res$n_records %||% 0L
+  
+  cat('<div class="metric-container">')
+  cat(sprintf('
+    <div class="metric-card success">
+      <div class="metric-label">Status da Rodada</div>
+      <div class="metric-value"><span class="status-badge badge-success">Concluído</span></div>
+    </div>
+    <div class="metric-card info">
+      <div class="metric-label">Fontes Consultadas</div>
+      <div class="metric-value">%d</div>
+    </div>
+    <div class="metric-card primary">
+      <div class="metric-label">Novos Editais Inseridos</div>
+      <div class="metric-value">%d</div>
+    </div>
+    <div class="metric-card warning">
+      <div class="metric-label">Total de Editais no Banco</div>
+      <div class="metric-value">%d</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Tempo de Execução</div>
+      <div class="metric-value">%.1fs</div>
+    </div>
+  ', n_fontes, n_novos, n_total, duracao_seg))
+  cat('</div>')
+} else {
+  cat('<div class="metric-container">')
+  cat(sprintf('
+    <div class="metric-card" style="border-left: 5px solid #ef4444;">
+      <div class="metric-label">Status da Rodada</div>
+      <div class="metric-value"><span class="status-badge badge-error">Falha</span></div>
+    </div>
+    <div class="metric-card" style="flex: 2;">
+      <div class="metric-label">Detalhe do Erro</div>
+      <div style="color: #b91c1c; font-size: 1rem; margin-top: 5px;">%s</div>
+    </div>
+  ', htmltools::htmlEscape(error_msg %||% "Erro desconhecido")))
+  cat('</div>')
+}
+```
+
+---
+
+## 3. 📋 Oportunidades Identificadas
+
+```{r opportunities_table}
+if (isTRUE(exec_success) && !is.null(res$data)) {
+  df <- res$data
+  n_novos <- res$inserted_now %||% 0L
+  
+  if (n_novos > 0) {
+    cat(sprintf("> **%d novo(s) edital(is) foram inseridos no banco nesta rodada.**\n\n", n_novos))
+    # Exibe os registros mais recentes ordenados pela data de inclusao/modificacao
+    cols_exibir <- intersect(c("titulo", "financiador", "prazo_submissao", "status", "link"), names(df))
+    if ("data_extracao" %in% names(df)) {
+      df_recente <- head(df[order(df$data_extracao, decreasing = TRUE), cols_exibir, drop = FALSE], 25)
+    } else {
+      df_recente <- head(df[, cols_exibir, drop = FALSE], 25)
+    }
+    knitr::kable(df_recente, caption = "Amostra dos editais mais recentes na base de dados")
+  } else {
+    cat("> ℹ️ **Nenhum novo edital foi publicado pelas fontes desde a última coleta.**  \n")
+    cat(sprintf("> A base permanece atualizada com os **%d** editais já cadastrados.\n", nrow(df)))
+  }
+}
+```
+
+---
+
+## 4. 📊 Histórico de Coletas Registrado no Banco
+
+```{r logs_table}
+tryCatch({
+  conn <- conectar_banco("funding_intelligence.sqlite")
+  on.exit(try(DBI::dbDisconnect(conn), silent = TRUE), add = TRUE)
+  
+  if (DBI::dbExistsTable(conn, "logs_coleta")) {
+    logs_df <- DBI::dbGetQuery(
+      conn, 
+      "SELECT data_hora, fonte, metodo_coleta, status_execucao, n_registros, mensagem 
+       FROM logs_coleta 
+       ORDER BY data_hora DESC 
+       LIMIT 15"
+    )
+    if (nrow(logs_df) > 0) {
+      knitr::kable(logs_df, caption = "Últimos 15 registros de log de coleta no banco")
+    } else {
+      cat("_Nenhum log encontrado na tabela `logs_coleta`._\n")
+    }
+  }
+}, error = function(e) {
+  cat(sprintf("_Não foi possível recuperar logs adicionais: %s_\n", e$message))
+})
+```
+
+---
+
+```{r fail_if_error}
+# Garante que o Posit Connect marque a execução agendada como FALHA se houve erro crítico
+if (!isTRUE(exec_success)) {
+  stop(sprintf("A execução da coleta falhou: %s", error_msg), call. = FALSE)
+}
+```
+
+*Relatório gerado automaticamente pelo **Funding Intelligence System** no Posit Connect.*

@@ -1,6 +1,6 @@
 # ─── Agendador Autônomo em Background para Posit Connect ──────────────────────
 # Executa a busca de editais semanalmente sem depender do painel do Connect.
-# Configuração padrão: Toda terça-feira às 12:30 (Horário de Brasília), recorrente sem fim.
+# Configuração padrão: Toda terça-feira às 14:15 (Horário de Brasília), recorrente sem fim.
 
 .auto_scheduler_bg_process <- NULL
 .auto_scheduler_initialized <- FALSE
@@ -20,7 +20,7 @@ get_last_successful_collection_time <- function(conn) {
   }, error = function(e) NULL)
 }
 
-is_collection_due <- function(target_wday = 3, target_hour = 12, target_minute = 30) {
+is_collection_due <- function(target_wday = 3, target_hour = 14, target_minute = 15) {
   # wday no lubridate: 1=Dom, 2=Seg, 3=Ter, 4=Qua, 5=Qui, 6=Sex, 7=Sáb
   # 3 = Terça-feira
   now_brt <- tryCatch(
@@ -31,7 +31,7 @@ is_collection_due <- function(target_wday = 3, target_hour = 12, target_minute =
   current_wday <- lubridate::wday(now_brt)
   days_since_target <- (current_wday - target_wday) %% 7
   
-  # Data/hora de referência da última terça-feira às 12:30
+  # Data/hora de referência da última terça-feira às 14:15
   target_dt <- lubridate::floor_date(now_brt - lubridate::days(days_since_target), "day") +
     lubridate::hours(target_hour) + lubridate::minutes(target_minute)
   
@@ -118,13 +118,13 @@ trigger_background_collection_daemon <- function(app_dir = getwd()) {
   invisible(FALSE)
 }
 
-init_auto_scheduler_daemon <- function(check_interval_sec = 600) {
+init_auto_scheduler_daemon <- function(check_interval_sec = 120) {
   if (isTRUE(.auto_scheduler_initialized)) return(invisible(NULL))
   .auto_scheduler_initialized <<- TRUE
   
   heartbeat <- function() {
     tryCatch({
-      if (is_collection_due(target_wday = 3, target_hour = 12, target_minute = 30)) {
+      if (is_collection_due(target_wday = 3, target_hour = 14, target_minute = 15)) {
         trigger_background_collection_daemon()
       }
     }, error = function(e) {
@@ -137,5 +137,5 @@ init_auto_scheduler_daemon <- function(check_interval_sec = 600) {
   
   # Primeira verificação 15 segundos após carregar o app
   later::later(heartbeat, 15)
-  message("[Agendador] Daemon interno de coleta recorrente ATIVADO (Terças-feiras às 12:30 BRT, sem fim).")
+  message("[Agendador] Daemon interno de coleta recorrente ATIVADO (Terças-feiras às 14:15 BRT, sem fim).")
 }

@@ -143,6 +143,7 @@ safe_source("R/helpers_sanitize.R")
 safe_source("R/helpers_export.R")
 safe_source("R/helpers_auth.R")
 safe_source("R/helpers_reports.R")
+safe_source("R/helpers_auto_scheduler.R")
 
 # Registra a pasta logos como recurso estático do Shiny
 shiny::addResourcePath("logos", app_file("logos"))
@@ -164,6 +165,13 @@ conn <- tryCatch(
 )
 onStop(function() {
   if (!is.null(conn) && DBI::dbIsValid(conn)) DBI::dbDisconnect(conn)
+})
+
+# Inicializa o daemon interno de coleta semanal autônoma (executa no Posit Connect)
+tryCatch({
+  init_auto_scheduler_daemon(check_interval_sec = 600)
+}, error = function(e) {
+  message("[Agendador] Falha ao iniciar daemon: ", e$message)
 })
 
 # Rodar testes automaticamente no startup (se configurado)

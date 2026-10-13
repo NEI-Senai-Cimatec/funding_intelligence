@@ -102,8 +102,12 @@ error_msg <- NULL
 res <- NULL
 
 t_exec_start <- Sys.time()
+is_initial_deploy <- is_connect && !has_db_url
+
 tryCatch({
-  res <- main_auto_collect(test_mode = FALSE)
+  # No primeiro deploy no Connect (quando Vars ainda não foram salvas), roda modo rápido
+  # de verificação para publicar em segundos sem prender o usuário ou estourar timeout.
+  res <- main_auto_collect(test_mode = is_initial_deploy)
   exec_success <- TRUE
 }, error = function(e) {
   error_msg <<- e$message
@@ -114,6 +118,18 @@ duracao_seg <- round(as.numeric(difftime(t_exec_end, t_exec_start, units = "secs
 ```
 
 ```{r metrics, results='asis'}
+if (isTRUE(is_initial_deploy)) {
+  cat('
+  <div style="background: #e0f2fe; border-left: 5px solid #0284c7; padding: 15px; border-radius: 6px; margin-bottom: 20px; color: #0369a1;">
+    <strong>ℹ️ Publicação e Inicialização Concluídas com Sucesso!</strong><br>
+    O relatório agendado já está ativo no Posit Connect. Para iniciar a coleta oficial no banco remoto:<br>
+    1. Acesse a aba <strong>Vars</strong> deste documento no Connect e adicione a <code>DATABASE_URL</code> do Supabase.<br>
+    2. Acesse a aba de <strong>Schedule</strong> (Calendário) e agende para <strong>Tuesday às 12:00</strong>.<br>
+    3. Clique em <strong>Run Now</strong> para disparar a primeira rodada completa quando desejar!
+  </div>
+  ')
+}
+
 if (isTRUE(exec_success) && !is.null(res)) {
   n_fontes <- res$sources_processed %||% 0L
   n_novos <- res$inserted_now %||% 0L
@@ -123,7 +139,7 @@ if (isTRUE(exec_success) && !is.null(res)) {
   cat(sprintf('
     <div class="metric-card success">
       <div class="metric-label">Status da Rodada</div>
-      <div class="metric-value"><span class="status-badge badge-success">Concluído</span></div>
+      <div class="metric-value"><span class="status-badge badge-success">%s</span></div>
     </div>
     <div class="metric-card info">
       <div class="metric-label">Fontes Consultadas</div>
@@ -141,7 +157,7 @@ if (isTRUE(exec_success) && !is.null(res)) {
       <div class="metric-label">Tempo de Execução</div>
       <div class="metric-value">%.1fs</div>
     </div>
-  ', n_fontes, n_novos, n_total, duracao_seg))
+  ', if (isTRUE(is_initial_deploy)) "Inicializado" else "Concluído", n_fontes, n_novos, n_total, duracao_seg))
   cat('</div>')
 } else {
   cat('<div class="metric-container">')

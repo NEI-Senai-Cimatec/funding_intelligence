@@ -208,6 +208,22 @@ db_qry <- function(conn, sql, params = NULL) {
   }
 }
 
+ensure_alive_connection <- function(conn, db_path = "funding_intelligence.sqlite") {
+  needs_reconnect <- FALSE
+  if (is.null(conn) || !DBI::dbIsValid(conn)) {
+    needs_reconnect <- TRUE
+  } else if (db_is_postgres(conn)) {
+    test <- tryCatch(DBI::dbGetQuery(conn, "SELECT 1"), error = function(e) e)
+    if (inherits(test, "error")) needs_reconnect <- TRUE
+  }
+  if (needs_reconnect) {
+    message("[DB] Conexão inativa com banco detectada. Reconectando...")
+    try(DBI::dbDisconnect(conn), silent = TRUE)
+    conn <- conectar_banco(db_path)
+  }
+  conn
+}
+
 .app_tables <- c(
   "fontes_financiamento", "oportunidades", "migration_flags", "buscas_salvas",
   "editais_rastreados", "perfil_usuario", "historico_buscas", "colaboradores",

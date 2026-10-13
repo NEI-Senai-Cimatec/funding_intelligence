@@ -151,6 +151,7 @@ main_auto_collect <- function(test_mode = FALSE, source_filter = NULL) {
   )
 
   # Registrar log de conclusão
+  conn <- ensure_alive_connection(conn)
   log_collection(
     conn = conn,
     fonte = exec_env,

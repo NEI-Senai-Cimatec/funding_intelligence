@@ -3790,6 +3790,9 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
     scrape_results <- c(scrape_results, vector("list", total - length(scrape_results)))
   }
 
+  # Revalida e reconecta ao banco caso a conexao remota tenha caido durante a raspagem
+  conn <- ensure_alive_connection(conn)
+
   for (i in seq_len(total)) {
     src <- sources[i, , drop = FALSE]
     sid <- src$id_fonte[[1]]

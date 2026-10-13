@@ -2,8 +2,8 @@ name: 🔄 Busca Automática de Editais
 
 on:
   schedule:
-    # 15 17 * * 2 = Toda terça-feira às 17:15 UTC (14:15 Horário de Brasília)
-    - cron: '15 17 * * 2'
+    # 0 18 * * 2 = Toda terça-feira às 18:00 UTC (15:00 Horário de Brasília)
+    - cron: '0 18 * * 2'
   workflow_dispatch: # Permite disparo manual com 1 clique na aba Actions do GitHub
 
 concurrency:
@@ -20,9 +20,10 @@ jobs:
     timeout-minutes: 50
 
     steps:
-      - name: 📥 Clonar repositório
+      - name: 📥 Clonar repositório (branch feat-fix-new-fontes)
         uses: actions/checkout@v4
         with:
+          ref: feat-fix-new-fontes
           fetch-depth: 0
 
       - name: ⚙️ Instalar dependências de sistema
@@ -63,24 +64,24 @@ jobs:
 
       - name: 🔍 Executar Busca Automática de Editais
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL || 'postgresql://neondb_owner:npg_zjkV1DUg0Olb@ep-super-frost-b80ll6q3-pooler.c-14.us-east-1.aws.neon.tech/neondb?sslmode=require' }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          AI_PROVIDER: ${{ secrets.AI_PROVIDER }}
-          AI_MODEL: ${{ secrets.AI_MODEL }}
+          AI_PROVIDER: ${{ secrets.AI_PROVIDER || 'gemini' }}
+          AI_MODEL: ${{ secrets.AI_MODEL || 'gemini-1.5-flash' }}
         run: |
           Rscript tools/auto_collect.R
 
-      - name: 💾 Commit & Push dos dados atualizados
+      - name: 💾 Commit & Push dos dados atualizados na feat-fix-new-fontes
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add -f funding_intelligence.sqlite data_exports/ logs/ || true
           if git diff --staged --quiet; then
-            echo "Nenhuma alteração nos dados detectada nesta rodada."
+            echo "Nenhuma alteração nos arquivos locais detectada nesta rodada."
           else
             git commit -m "chore(auto-collect): atualização automática de editais [$(date -u +'%Y-%m-%d %H:%M UTC')]"
-            git pull --rebase -X theirs origin ${{ github.ref_name }} || git pull --rebase origin ${{ github.ref_name }} || true
-            git push origin HEAD:${{ github.ref_name }}
+            git pull --rebase -X theirs origin feat-fix-new-fontes || git pull --rebase origin feat-fix-new-fontes || true
+            git push origin HEAD:feat-fix-new-fontes
           fi
 
       - name: 📦 Salvar Banco de Dados e Exportações como Artefato

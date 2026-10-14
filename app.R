@@ -976,6 +976,84 @@ server <- function(input, output, session) {
     }
   })
 
+  # Evento de solicitação de recuperação de senha (Esqueci a Senha)
+  observeEvent(input$btn_recovery_submit, {
+    btn_data <- input$btn_recovery_submit
+    email <- trimws(as.character(if (is.list(btn_data) && !is.null(btn_data$email)) btn_data$email else input$recovery_email %||% ""))
+
+    if (!nzchar(email)) {
+      session$sendCustomMessage("recovery_failed", list(message = "Por favor, preencha seu e-mail institucional."))
+      return()
+    }
+
+    shiny::withProgress(message = "Enviando link de recuperação...", {
+      rec_res <- supabase_request_password_reset(email)
+    })
+
+    if (isTRUE(rec_res$success)) {
+      rv$login_error <- NULL
+      log_user_access(
+        conn,
+        list(email = email),
+        action = "RECUPERAR_SENHA",
+        details = "Solicitação de link de recuperação de senha enviada"
+      )
+      session$sendCustomMessage("recovery_success", list(message = rec_res$message))
+      showNotification("Link de recuperação enviado com sucesso! Verifique sua caixa de entrada.", type = "message", duration = 8)
+    } else {
+      session$sendCustomMessage("recovery_failed", list(message = rec_res$message))
+      try(showNotification(rec_res$message, type = "error", duration = 6), silent = TRUE)
+    }
+  })
+
+  # Evento de redefinição de senha com token de recuperação
+  observeEvent(input$btn_reset_password_submit, {
+    btn_data <- input$btn_reset_password_submit
+    pwd <- as.character(if (is.list(btn_data) && !is.null(btn_data$password)) btn_data$password else input$reset_password_new %||% "")
+    access_token <- as.character(if (is.list(btn_data) && !is.null(btn_data$access_token)) btn_data$access_token else "")
+
+    if (!nzchar(pwd)) {
+      session$sendCustomMessage("reset_password_failed", list(message = "Por favor, defina uma nova senha."))
+      return()
+    }
+
+    if (nchar(pwd) < 6) {
+      session$sendCustomMessage("reset_password_failed", list(message = "A senha deve conter no mínimo 6 caracteres."))
+      return()
+    }
+
+    if (!nzchar(access_token)) {
+      session$sendCustomMessage("reset_password_failed", list(message = "Token de recuperação ausente ou expirado. Por favor, solicite um novo link."))
+      return()
+    }
+
+    shiny::withProgress(message = "Atualizando senha no Supabase...", {
+      update_res <- supabase_update_password(access_token, pwd)
+    })
+
+    if (isTRUE(update_res$success)) {
+      rv$login_error <- NULL
+      # Tenta obter dados do usuário para registrar auditoria
+      user_res <- supabase_get_user(access_token)
+      user_info <- if (isTRUE(user_res$success)) user_res$user else list(email = "recuperado")
+
+      log_user_access(
+        conn,
+        user_info,
+        action = "RECUPERAR_SENHA",
+        details = "Senha redefinida com sucesso via link de recuperação"
+      )
+
+      session$sendCustomMessage("reset_password_success", list(
+        message = "Sua senha foi redefinida com sucesso! Você já pode entrar utilizando suas novas credenciais."
+      ))
+      showNotification("Senha redefinida com sucesso! Entre com sua nova senha.", type = "message", duration = 8)
+    } else {
+      session$sendCustomMessage("reset_password_failed", list(message = update_res$message))
+      try(showNotification(update_res$message, type = "error", duration = 6), silent = TRUE)
+    }
+  })
+
   # Restauração automática de sessão persistente ao atualizar a página (F5)
   observeEvent(input$restore_auth_session, {
     session_data <- input$restore_auth_session

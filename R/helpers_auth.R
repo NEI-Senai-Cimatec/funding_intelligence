@@ -244,6 +244,169 @@ supabase_sign_out <- function(access_token) {
   }, error = function(e) invisible(FALSE))
 }
 
+# Solicita envio de e-mail de recuperação de senha no Supabase Auth
+supabase_request_password_reset <- function(email, redirect_to = NULL) {
+  email <- tolower(trimws(as.character(email %||% "")))
+  
+  if (!nzchar(email)) {
+    return(list(
+      success = FALSE,
+      message = "Por favor, informe seu e-mail institucional para recuperar a senha."
+    ))
+  }
+  
+  cfg <- supabase_get_config()
+  if (!isTRUE(cfg$is_configured)) {
+    return(list(
+      success = FALSE,
+      message = "Configuração do Supabase ausente. Defina SUPABASE_URL e SUPABASE_ANON_KEY no arquivo .Renviron."
+    ))
+  }
+  
+  endpoint <- paste0(cfg$url, "/auth/v1/recover")
+  
+  body_data <- list(email = email)
+  if (!is.null(redirect_to) && nzchar(redirect_to)) {
+    body_data$redirectTo <- redirect_to
+  }
+  
+  resp <- tryCatch({
+    httr2::request(endpoint) |>
+      httr2::req_headers(
+        "apikey" = cfg$anon_key,
+        "Authorization" = paste("Bearer", cfg$anon_key),
+        "Content-Type" = "application/json"
+      ) |>
+      httr2::req_body_json(body_data) |>
+      httr2::req_error(is_error = function(resp) FALSE) |>
+      httr2::req_timeout(15) |>
+      httr2::req_perform()
+  }, error = function(e) {
+    return(list(
+      success = FALSE,
+      message = sprintf("Não foi possível conectar ao servidor Supabase: %s", e$message)
+    ))
+  })
+  
+  if (is.list(resp) && !inherits(resp, "httr2_response")) {
+    return(resp)
+  }
+  
+  status <- httr2::resp_status(resp)
+  body_text <- tryCatch(httr2::resp_body_string(resp), error = function(e) "")
+  body_json <- tryCatch(jsonlite::fromJSON(body_text, simplifyVector = FALSE), error = function(e) NULL)
+  
+  if (status %in% c(200, 201, 204)) {
+    return(list(
+      success = TRUE,
+      message = "Link de recuperação enviado com sucesso! Verifique sua caixa de entrada (e pasta de spam) para redefinir sua senha."
+    ))
+  }
+  
+  raw_msg <- body_json$msg %||% body_json$error_description %||% body_json$message %||% ""
+  
+  err_msg <- if (grepl("too many requests|rate limit", tolower(raw_msg))) {
+    "Muitas tentativas consecutivas de recuperação. Aguarde alguns instantes e tente novamente."
+  } else if (grepl("user not found", tolower(raw_msg))) {
+    "E-mail não encontrado no sistema. Por favor, verifique o endereço digitado."
+  } else if (nzchar(raw_msg)) {
+    raw_msg
+  } else {
+    sprintf("Não foi possível solicitar a recuperação de senha (Código HTTP %s).", status)
+  }
+  
+  list(
+    success = FALSE,
+    message = err_msg,
+    status_code = status
+  )
+}
+
+# Atualiza a senha do usuário utilizando o access_token de recuperação
+supabase_update_password <- function(access_token, new_password) {
+  access_token <- as.character(access_token %||% "")
+  new_password <- as.character(new_password %||% "")
+  
+  if (!nzchar(access_token)) {
+    return(list(
+      success = FALSE,
+      message = "Token de recuperação ausente ou expirado. Por favor, solicite um novo link de recuperação."
+    ))
+  }
+  
+  if (!nzchar(new_password) || nchar(new_password) < 6) {
+    return(list(
+      success = FALSE,
+      message = "A nova senha deve conter no mínimo 6 caracteres."
+    ))
+  }
+  
+  cfg <- supabase_get_config()
+  if (!isTRUE(cfg$is_configured)) {
+    return(list(
+      success = FALSE,
+      message = "Configuração do Supabase ausente. Defina SUPABASE_URL e SUPABASE_ANON_KEY no arquivo .Renviron."
+    ))
+  }
+  
+  endpoint <- paste0(cfg$url, "/auth/v1/user")
+  
+  resp <- tryCatch({
+    httr2::request(endpoint) |>
+      httr2::req_headers(
+        "apikey" = cfg$anon_key,
+        "Authorization" = paste("Bearer", access_token),
+        "Content-Type" = "application/json"
+      ) |>
+      httr2::req_method("PUT") |>
+      httr2::req_body_json(list(password = new_password)) |>
+      httr2::req_error(is_error = function(resp) FALSE) |>
+      httr2::req_timeout(15) |>
+      httr2::req_perform()
+  }, error = function(e) {
+    return(list(
+      success = FALSE,
+      message = sprintf("Não foi possível conectar ao servidor Supabase: %s", e$message)
+    ))
+  })
+  
+  if (is.list(resp) && !inherits(resp, "httr2_response")) {
+    return(resp)
+  }
+  
+  status <- httr2::resp_status(resp)
+  body_text <- tryCatch(httr2::resp_body_string(resp), error = function(e) "")
+  body_json <- tryCatch(jsonlite::fromJSON(body_text, simplifyVector = FALSE), error = function(e) NULL)
+  
+  if (status %in% c(200, 204)) {
+    return(list(
+      success = TRUE,
+      user = body_json,
+      message = "Senha redefinida com sucesso! Você já pode entrar com sua nova senha."
+    ))
+  }
+  
+  raw_msg <- body_json$msg %||% body_json$error_description %||% body_json$message %||% ""
+  
+  err_msg <- if (grepl("weak_password|at least 6 characters", tolower(raw_msg))) {
+    "A nova senha deve conter no mínimo 6 caracteres."
+  } else if (grepl("same_password", tolower(raw_msg))) {
+    "A nova senha deve ser diferente da senha anterior."
+  } else if (grepl("expired|invalid_token|jwt", tolower(raw_msg))) {
+    "O link de recuperação expirou ou é inválido. Por favor, solicite uma nova recuperação."
+  } else if (nzchar(raw_msg)) {
+    raw_msg
+  } else {
+    sprintf("Não foi possível redefinir a senha (Código HTTP %s).", status)
+  }
+  
+  list(
+    success = FALSE,
+    message = err_msg,
+    status_code = status
+  )
+}
+
 # ─── Sessão Persistente (Validação e Renovação de Token) ───────────────────────
 
 # Obtém os dados do usuário a partir de um access_token JWT válido
@@ -801,6 +964,19 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
           )
         ),
         
+        # Link 'Esqueci a senha'
+        htmltools::tags$div(
+          style = "display: flex; justify-content: flex-end; margin-top: -0.4rem; margin-bottom: 1.15rem;",
+          htmltools::tags$a(
+            id = "link_forgot_password",
+            href = "#",
+            class = "auth-link-forgot",
+            onclick = "window.switchAuthTab && window.switchAuthTab('forgot'); return false;",
+            htmltools::tags$i(class = "fa fa-key", style = "margin-right: 4px; font-size: 0.75rem;"),
+            "Esqueci a senha"
+          )
+        ),
+        
         # Alerta de erro dinâmico instantâneo via JavaScript
         htmltools::tags$div(
           id = "auth_login_error_box",
@@ -808,6 +984,15 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
           style = "display: none; margin-bottom: 1rem;",
           htmltools::tags$i(class = "fa fa-circle-exclamation", style = "margin-top: 2px;"),
           htmltools::tags$div(id = "auth_login_error_text", "")
+        ),
+        
+        # Alerta de sucesso dinâmico instantâneo (ex.: após redefinição de senha)
+        htmltools::tags$div(
+          id = "auth_login_success_box",
+          class = "auth-alert auth-alert-success",
+          style = "display: none; margin-bottom: 1rem;",
+          htmltools::tags$i(class = "fa fa-circle-check", style = "margin-top: 2px;"),
+          htmltools::tags$div(id = "auth_login_success_text", "")
         ),
         
         htmltools::tags$button(
@@ -937,6 +1122,172 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
             style = "color: #004691; font-weight: 600; text-decoration: none;",
             onclick = "$('.auth-tab-btn[data-mode=\"login\"]').click(); return false;",
             "Faça login aqui"
+          )
+        )
+      ),
+      
+      # ─── Formulário 3: Esqueci a Senha / Solicitação de Recuperação ────────
+      htmltools::tags$div(
+        id = "auth_form_forgot",
+        style = "display: none;",
+        
+        htmltools::tags$div(
+          style = "text-align: center; margin-bottom: 1.35rem;",
+          htmltools::tags$div(
+            style = "width: 52px; height: 52px; border-radius: 50%; background: #eff6ff; border: 1px solid #bfdbfe; color: #004691; display: inline-flex; align-items: center; justify-content: center; font-size: 1.35rem; margin-bottom: 0.75rem; box-shadow: 0 2px 8px rgba(0, 70, 145, 0.1);",
+            htmltools::tags$i(class = "fa fa-key")
+          ),
+          htmltools::tags$h3(style = "font-size: 1.25rem; font-weight: 800; color: #0f172a; margin: 0 0 0.35rem 0;", "Recuperar Senha"),
+          htmltools::tags$p(style = "font-size: 0.85rem; color: #64748b; margin: 0; line-height: 1.45;", "Digite seu e-mail institucional cadastrado. Enviaremos um link seguro para você redefinir sua senha de acesso.")
+        ),
+        
+        htmltools::tags$div(
+          class = "auth-form-group",
+          htmltools::tags$label(class = "auth-form-label", "E-mail institucional:"),
+          htmltools::tags$div(
+            class = "auth-input-wrapper",
+            htmltools::tags$i(class = "fa fa-envelope auth-input-icon"),
+            shiny::tags$input(
+              id = "recovery_email",
+              type = "email",
+              class = "auth-input",
+              placeholder = "seu.email@fieb.org.br",
+              autocomplete = "email"
+            )
+          )
+        ),
+        
+        # Alerta de erro dinâmico de recuperação
+        htmltools::tags$div(
+          id = "auth_recovery_error_box",
+          class = "auth-alert auth-alert-danger",
+          style = "display: none; margin-bottom: 1rem;",
+          htmltools::tags$i(class = "fa fa-circle-exclamation", style = "margin-top: 2px;"),
+          htmltools::tags$div(id = "auth_recovery_error_text", "")
+        ),
+        
+        # Alerta de sucesso dinâmico de recuperação
+        htmltools::tags$div(
+          id = "auth_recovery_success_box",
+          class = "auth-alert auth-alert-success",
+          style = "display: none; margin-bottom: 1rem;",
+          htmltools::tags$i(class = "fa fa-circle-check", style = "margin-top: 2px;"),
+          htmltools::tags$div(id = "auth_recovery_success_text", "")
+        ),
+        
+        htmltools::tags$button(
+          id = "btn_recovery_submit",
+          type = "button",
+          class = "auth-btn-primary",
+          onclick = "window.submitRecoveryForm && window.submitRecoveryForm()",
+          htmltools::tags$i(class = "fa fa-paper-plane", style = "margin-right: 8px;"),
+          htmltools::tags$span("Enviar Link de Recuperação")
+        ),
+        
+        htmltools::tags$div(
+          style = "text-align: center; margin-top: 1.25rem; font-size: 0.825rem;",
+          htmltools::tags$a(
+            href = "#",
+            class = "auth-link-back",
+            onclick = "window.switchAuthTab && window.switchAuthTab('login'); return false;",
+            htmltools::tags$i(class = "fa fa-arrow-left"),
+            htmltools::tags$span("Voltar para o Login")
+          )
+        )
+      ),
+      
+      # ─── Formulário 4: Redefinir Nova Senha (via link do e-mail) ────────────
+      htmltools::tags$div(
+        id = "auth_form_reset_password",
+        style = "display: none;",
+        
+        htmltools::tags$div(
+          style = "text-align: center; margin-bottom: 1.35rem;",
+          htmltools::tags$div(
+            style = "width: 52px; height: 52px; border-radius: 50%; background: #f0fdf4; border: 1px solid #bbf7d0; color: #16a34a; display: inline-flex; align-items: center; justify-content: center; font-size: 1.35rem; margin-bottom: 0.75rem; box-shadow: 0 2px 8px rgba(22, 163, 74, 0.1);",
+            htmltools::tags$i(class = "fa fa-lock-open")
+          ),
+          htmltools::tags$h3(style = "font-size: 1.25rem; font-weight: 800; color: #0f172a; margin: 0 0 0.35rem 0;", "Criar Nova Senha"),
+          htmltools::tags$p(style = "font-size: 0.85rem; color: #64748b; margin: 0; line-height: 1.45;", "Defina uma nova senha segura para acessar a plataforma.")
+        ),
+        
+        htmltools::tags$div(
+          class = "auth-form-group",
+          htmltools::tags$label(class = "auth-form-label", "Nova senha (mínimo 6 caracteres):"),
+          htmltools::tags$div(
+            class = "auth-input-wrapper",
+            htmltools::tags$i(class = "fa fa-lock auth-input-icon"),
+            shiny::tags$input(
+              id = "reset_password_new",
+              type = "password",
+              class = "auth-input",
+              placeholder = "••••••••",
+              autocomplete = "new-password",
+              style = "padding-right: 2.5rem;"
+            ),
+            htmltools::tags$button(
+              type = "button",
+              class = "btn-toggle-pwd",
+              `data-target` = "reset_password_new",
+              style = "position: absolute; right: 0.75rem; background: none; border: none; color: #94a3b8; cursor: pointer; padding: 4px;",
+              title = "Mostrar/ocultar senha",
+              htmltools::tags$i(class = "fa fa-eye")
+            )
+          )
+        ),
+        
+        htmltools::tags$div(
+          class = "auth-form-group",
+          htmltools::tags$label(class = "auth-form-label", "Confirmar nova senha:"),
+          htmltools::tags$div(
+            class = "auth-input-wrapper",
+            htmltools::tags$i(class = "fa fa-check-double auth-input-icon"),
+            shiny::tags$input(
+              id = "reset_password_confirm",
+              type = "password",
+              class = "auth-input",
+              placeholder = "••••••••",
+              autocomplete = "new-password",
+              style = "padding-right: 2.5rem;"
+            ),
+            htmltools::tags$button(
+              type = "button",
+              class = "btn-toggle-pwd",
+              `data-target` = "reset_password_confirm",
+              style = "position: absolute; right: 0.75rem; background: none; border: none; color: #94a3b8; cursor: pointer; padding: 4px;",
+              title = "Mostrar/ocultar senha",
+              htmltools::tags$i(class = "fa fa-eye")
+            )
+          )
+        ),
+        
+        # Alerta de erro dinâmico de redefinição
+        htmltools::tags$div(
+          id = "auth_reset_error_box",
+          class = "auth-alert auth-alert-danger",
+          style = "display: none; margin-bottom: 1rem;",
+          htmltools::tags$i(class = "fa fa-circle-exclamation", style = "margin-top: 2px;"),
+          htmltools::tags$div(id = "auth_reset_error_text", "")
+        ),
+        
+        htmltools::tags$button(
+          id = "btn_reset_password_submit",
+          type = "button",
+          class = "auth-btn-primary",
+          style = "background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);",
+          onclick = "window.submitResetPasswordForm && window.submitResetPasswordForm()",
+          htmltools::tags$i(class = "fa fa-check", style = "margin-right: 8px;"),
+          htmltools::tags$span("Atualizar Senha")
+        ),
+        
+        htmltools::tags$div(
+          style = "text-align: center; margin-top: 1.25rem; font-size: 0.825rem;",
+          htmltools::tags$a(
+            href = "#",
+            class = "auth-link-back",
+            onclick = "window.switchAuthTab && window.switchAuthTab('login'); return false;",
+            htmltools::tags$i(class = "fa fa-arrow-left"),
+            htmltools::tags$span("Voltar para o Login")
           )
         )
       ),

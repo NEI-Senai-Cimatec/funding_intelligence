@@ -883,4 +883,39 @@ body.authenticated .auth-overlay-backdrop {
   transform: translateY(-1px);
 }
 
+/* Links de Recuperação de Senha no Login */
+.auth-link-forgot {
+  font-size: 0.8rem;
+  color: #004691;
+  text-decoration: none;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  transition: all 0.2s ease;
+}
+
+.auth-link-forgot:hover {
+  color: #0284c7;
+  text-decoration: underline;
+  transform: translateY(-0.5px);
+}
+
+.auth-link-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #004691;
+  font-weight: 600;
+  font-size: 0.825rem;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.auth-link-back:hover {
+  color: #0284c7;
+  transform: translateX(-2px);
+  text-decoration: none;
+}
+
+
 

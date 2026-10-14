@@ -12,6 +12,7 @@
     var pwdInput = document.getElementById('login_password');
     var errBox = $('#auth_login_error_box');
     var errText = $('#auth_login_error_text');
+    var successBox = $('#auth_login_success_box');
     var btn = $('#btn_login_submit');
 
     var email = emailInput ? emailInput.value.trim() : '';
@@ -24,6 +25,7 @@
     }
 
     errBox.hide();
+    if (successBox.length) successBox.hide();
 
     // Feedback visual imediato e animação no botão
     btn.prop('disabled', true).addClass('loading');
@@ -111,16 +113,121 @@
     }
   };
 
-  // 2. Função de Alternância de Abas Instantânea (Entrar vs Criar Conta)
+  // Submissão do Formulário de Recuperação de Senha (Esqueci a Senha)
+  window.submitRecoveryForm = function() {
+    var emailInput = document.getElementById('recovery_email');
+    var errBox = $('#auth_recovery_error_box');
+    var errText = $('#auth_recovery_error_text');
+    var successBox = $('#auth_recovery_success_box');
+    var successText = $('#auth_recovery_success_text');
+    var btn = $('#btn_recovery_submit');
+
+    var email = emailInput ? emailInput.value.trim() : '';
+
+    errBox.hide();
+    successBox.hide();
+
+    if (!email) {
+      errText.text('Por favor, informe seu e-mail institucional para recuperar a senha.');
+      errBox.stop(true, true).slideDown(150);
+      return;
+    }
+
+    var emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      errText.text('Por favor, informe um endereço de e-mail válido.');
+      errBox.stop(true, true).slideDown(150);
+      return;
+    }
+
+    btn.prop('disabled', true).addClass('loading');
+    btn.html('<i class="fa fa-spinner fa-spin" style="margin-right: 8px;"></i><span>Enviando link...</span>');
+
+    var payload = { email: email, timestamp: Date.now() };
+
+    if (window.Shiny && window.Shiny.setInputValue) {
+      Shiny.setInputValue('recovery_email', email);
+      Shiny.setInputValue('btn_recovery_submit', payload, {priority: 'event'});
+    } else {
+      setTimeout(function() {
+        if (window.Shiny && window.Shiny.setInputValue) {
+          Shiny.setInputValue('recovery_email', email);
+          Shiny.setInputValue('btn_recovery_submit', payload, {priority: 'event'});
+        } else {
+          btn.prop('disabled', false).removeClass('loading');
+          btn.html('<i class="fa fa-paper-plane" style="margin-right: 8px;"></i><span>Enviar Link de Recuperação</span>');
+          errText.text('Não foi possível conectar ao servidor. Tente novamente em alguns segundos.');
+          errBox.slideDown(150);
+        }
+      }, 500);
+    }
+  };
+
+  // Submissão do Formulário de Redefinição de Nova Senha (via link do e-mail)
+  window.submitResetPasswordForm = function() {
+    var pwdInput = document.getElementById('reset_password_new');
+    var pwdConfInput = document.getElementById('reset_password_confirm');
+    var errBox = $('#auth_reset_error_box');
+    var errText = $('#auth_reset_error_text');
+    var btn = $('#btn_reset_password_submit');
+
+    var pwd = pwdInput ? pwdInput.value : '';
+    var pwdConf = pwdConfInput ? pwdConfInput.value : '';
+
+    errBox.hide();
+
+    if (!pwd || !pwdConf) {
+      errText.text('Por favor, preencha e confirme sua nova senha.');
+      errBox.stop(true, true).slideDown(150);
+      return;
+    }
+
+    if (pwd !== pwdConf) {
+      errText.text('As senhas digitadas não coincidem.');
+      errBox.stop(true, true).slideDown(150);
+      return;
+    }
+
+    if (pwd.length < 6) {
+      errText.text('A senha deve conter no mínimo 6 caracteres.');
+      errBox.stop(true, true).slideDown(150);
+      return;
+    }
+
+    btn.prop('disabled', true).addClass('loading');
+    btn.html('<i class="fa fa-spinner fa-spin" style="margin-right: 8px;"></i><span>Atualizando senha...</span>');
+
+    var token = window.currentRecoveryToken || '';
+    var payload = { password: pwd, access_token: token, timestamp: Date.now() };
+
+    if (window.Shiny && window.Shiny.setInputValue) {
+      Shiny.setInputValue('btn_reset_password_submit', payload, {priority: 'event'});
+    } else {
+      setTimeout(function() {
+        if (window.Shiny && window.Shiny.setInputValue) {
+          Shiny.setInputValue('btn_reset_password_submit', payload, {priority: 'event'});
+        } else {
+          btn.prop('disabled', false).removeClass('loading');
+          btn.html('<i class="fa fa-check" style="margin-right: 8px;"></i><span>Atualizar Senha</span>');
+          errText.text('Não foi possível conectar ao servidor. Tente novamente em alguns segundos.');
+          errBox.slideDown(150);
+        }
+      }, 500);
+    }
+  };
+
+  // 2. Função de Alternância de Abas Instantânea (Login, Cadastro, Recuperar e Redefinir)
   window.switchAuthTab = function(mode) {
+    var tabsNav = $('.auth-tabs-nav');
     $('.auth-tab-btn').removeClass('active');
-    $('.auth-tab-btn[data-mode="' + mode + '"]').addClass('active');
 
     var formLogin = document.getElementById('auth_form_login');
     var formSignup = document.getElementById('auth_form_signup');
+    var formForgot = document.getElementById('auth_form_forgot');
+    var formReset = document.getElementById('auth_form_reset_password');
 
-    // Limpa caixas de erro ao trocar de aba
-    $('#auth_login_error_box, #auth_signup_error_box').hide();
+    // Limpa caixas de erro e mensagens de sucesso
+    $('#auth_login_error_box, #auth_signup_error_box, #auth_recovery_error_box, #auth_recovery_success_box, #auth_reset_error_box').hide();
 
     // Reseta botões se estiverem em loading
     var btnLogin = $('#btn_login_submit');
@@ -131,11 +238,51 @@
     btnSignup.prop('disabled', false).removeClass('loading');
     btnSignup.html('<i class="fa fa-user-check" style="margin-right: 8px;"></i><span>Cadastrar e Criar Conta</span>');
 
-    if (mode === 'signup') {
+    var btnRecovery = $('#btn_recovery_submit');
+    btnRecovery.prop('disabled', false).removeClass('loading');
+    btnRecovery.html('<i class="fa fa-paper-plane" style="margin-right: 8px;"></i><span>Enviar Link de Recuperação</span>');
+
+    var btnReset = $('#btn_reset_password_submit');
+    btnReset.prop('disabled', false).removeClass('loading');
+    btnReset.html('<i class="fa fa-check" style="margin-right: 8px;"></i><span>Atualizar Senha</span>');
+
+    if (mode === 'forgot') {
+      tabsNav.hide();
       if (formLogin) formLogin.style.display = 'none';
-      if (formSignup) formSignup.style.display = 'block';
-    } else {
       if (formSignup) formSignup.style.display = 'none';
+      if (formReset) formReset.style.display = 'none';
+      if (formForgot) {
+        formForgot.style.display = 'block';
+        var loginEmail = document.getElementById('login_email');
+        var recoveryEmail = document.getElementById('recovery_email');
+        if (loginEmail && recoveryEmail && loginEmail.value.trim() && !recoveryEmail.value.trim()) {
+          recoveryEmail.value = loginEmail.value.trim();
+        }
+        if (recoveryEmail) recoveryEmail.focus();
+      }
+    } else if (mode === 'reset') {
+      tabsNav.hide();
+      if (formLogin) formLogin.style.display = 'none';
+      if (formSignup) formSignup.style.display = 'none';
+      if (formForgot) formForgot.style.display = 'none';
+      if (formReset) {
+        formReset.style.display = 'block';
+        var resetPwd = document.getElementById('reset_password_new');
+        if (resetPwd) resetPwd.focus();
+      }
+    } else if (mode === 'signup') {
+      tabsNav.show();
+      $('.auth-tab-btn[data-mode="signup"]').addClass('active');
+      if (formLogin) formLogin.style.display = 'none';
+      if (formForgot) formForgot.style.display = 'none';
+      if (formReset) formReset.style.display = 'none';
+      if (formSignup) formSignup.style.display = 'block';
+    } else { // default: login
+      tabsNav.show();
+      $('.auth-tab-btn[data-mode="login"]').addClass('active');
+      if (formSignup) formSignup.style.display = 'none';
+      if (formForgot) formForgot.style.display = 'none';
+      if (formReset) formReset.style.display = 'none';
       if (formLogin) formLogin.style.display = 'block';
     }
   };
@@ -177,6 +324,20 @@
         window.submitSignupForm();
       }
     });
+
+    $(document).on('keypress', '#recovery_email', function(e) {
+      if (e.which === 13) {
+        e.preventDefault();
+        window.submitRecoveryForm();
+      }
+    });
+
+    $(document).on('keypress', '#reset_password_new, #reset_password_confirm', function(e) {
+      if (e.which === 13) {
+        e.preventDefault();
+        window.submitResetPasswordForm();
+      }
+    });
   });
 
   // 3. Handlers Seguros do Shiny
@@ -191,6 +352,8 @@
       var elRestoring = document.getElementById('auth_restoring_state');
       var elLogin = document.getElementById('auth_form_login');
       var elSignup = document.getElementById('auth_form_signup');
+      var elForgot = document.getElementById('auth_form_forgot');
+      var elReset = document.getElementById('auth_form_reset_password');
       var elTabs = document.querySelector('.auth-tabs-nav');
 
       if (isAuth) {
@@ -203,6 +366,9 @@
 
         // Prepara o formulário em estado pronto caso o usuário deslogue
         if (elRestoring) elRestoring.style.display = 'none';
+        if (elForgot) elForgot.style.display = 'none';
+        if (elReset) elReset.style.display = 'none';
+        if (elSignup) elSignup.style.display = 'none';
         if (elLogin) elLogin.style.display = 'block';
         if (elTabs) elTabs.style.display = 'flex';
       } else {
@@ -210,17 +376,19 @@
 
         // Reseta imediatamente o spinner de restauração para o formulário de login limpo
         if (elRestoring) elRestoring.style.display = 'none';
+        if (elForgot) elForgot.style.display = 'none';
+        if (elReset) elReset.style.display = 'none';
         if (elSignup) elSignup.style.display = 'none';
         if (elLogin) elLogin.style.display = 'block';
         if (elTabs) elTabs.style.display = 'flex';
 
-        // Reseta abas e esconde caixas de erro
+        // Reseta abas e esconde caixas de erro e mensagens de sucesso
         $('.auth-tab-btn').removeClass('active');
         $('.auth-tab-btn[data-mode="login"]').addClass('active');
-        $('#auth_login_error_box, #auth_signup_error_box').hide();
+        $('#auth_login_error_box, #auth_signup_error_box, #auth_recovery_error_box, #auth_recovery_success_box, #auth_reset_error_box').hide();
 
         // Limpa campos de credenciais imediatamente ao sair
-        var inputsToClear = ['login_email', 'login_password', 'signup_email', 'signup_password', 'signup_password_confirm'];
+        var inputsToClear = ['login_email', 'login_password', 'signup_email', 'signup_password', 'signup_password_confirm', 'recovery_email', 'reset_password_new', 'reset_password_confirm'];
         inputsToClear.forEach(function(id) {
           var el = document.getElementById(id);
           if (el) el.value = '';
@@ -261,13 +429,17 @@
       var elRestoring = document.getElementById('auth_restoring_state');
       var elLogin = document.getElementById('auth_form_login');
       var elSignup = document.getElementById('auth_form_signup');
+      var elForgot = document.getElementById('auth_form_forgot');
+      var elReset = document.getElementById('auth_form_reset_password');
       var elTabs = document.querySelector('.auth-tabs-nav');
       if (elRestoring) elRestoring.style.display = 'none';
+      if (elForgot) elForgot.style.display = 'none';
+      if (elReset) elReset.style.display = 'none';
       if (elSignup) elSignup.style.display = 'none';
       if (elLogin) elLogin.style.display = 'block';
       if (elTabs) elTabs.style.display = 'flex';
 
-      var inputsToClear = ['login_email', 'login_password', 'signup_email', 'signup_password', 'signup_password_confirm'];
+      var inputsToClear = ['login_email', 'login_password', 'signup_email', 'signup_password', 'signup_password_confirm', 'recovery_email', 'reset_password_new', 'reset_password_confirm'];
       inputsToClear.forEach(function(id) {
         var el = document.getElementById(id);
         if (el) el.value = '';
@@ -306,6 +478,53 @@
       $('#auth_signup_error_box').stop(true, true).slideDown(150);
     });
 
+    // Sucesso no envio do link de recuperação
+    Shiny.addCustomMessageHandler('recovery_success', function(data) {
+      var btn = $('#btn_recovery_submit');
+      btn.prop('disabled', false).removeClass('loading');
+      btn.html('<i class="fa fa-paper-plane" style="margin-right: 8px;"></i><span>Enviar Link de Recuperação</span>');
+
+      var msg = (data && data.message) ? data.message : 'Link de recuperação enviado com sucesso! Verifique sua caixa de entrada e spam.';
+      $('#auth_recovery_error_box').hide();
+      $('#auth_recovery_success_text').text(msg);
+      $('#auth_recovery_success_box').stop(true, true).slideDown(150);
+    });
+
+    // Falha na recuperação de senha
+    Shiny.addCustomMessageHandler('recovery_failed', function(data) {
+      var btn = $('#btn_recovery_submit');
+      btn.prop('disabled', false).removeClass('loading');
+      btn.html('<i class="fa fa-paper-plane" style="margin-right: 8px;"></i><span>Enviar Link de Recuperação</span>');
+
+      var msg = (data && data.message) ? data.message : 'Não foi possível solicitar a recuperação. Verifique o e-mail informado.';
+      $('#auth_recovery_success_box').hide();
+      $('#auth_recovery_error_text').text(msg);
+      $('#auth_recovery_error_box').stop(true, true).slideDown(150);
+    });
+
+    // Sucesso na redefinição de senha via link
+    Shiny.addCustomMessageHandler('reset_password_success', function(data) {
+      var btn = $('#btn_reset_password_submit');
+      btn.prop('disabled', false).removeClass('loading');
+      btn.html('<i class="fa fa-check" style="margin-right: 8px;"></i><span>Atualizar Senha</span>');
+
+      var msg = (data && data.message) ? data.message : 'Senha atualizada com sucesso! Você já pode entrar com sua nova senha.';
+      window.switchAuthTab('login');
+      $('#auth_login_success_text').text(msg);
+      $('#auth_login_success_box').stop(true, true).slideDown(200);
+    });
+
+    // Falha na redefinição de senha via link
+    Shiny.addCustomMessageHandler('reset_password_failed', function(data) {
+      var btn = $('#btn_reset_password_submit');
+      btn.prop('disabled', false).removeClass('loading');
+      btn.html('<i class="fa fa-check" style="margin-right: 8px;"></i><span>Atualizar Senha</span>');
+
+      var msg = (data && data.message) ? data.message : 'Não foi possível redefinir sua senha. O link pode ter expirado.';
+      $('#auth_reset_error_text').text(msg);
+      $('#auth_reset_error_box').stop(true, true).slideDown(150);
+    });
+
     // Scroll para logs
     Shiny.addCustomMessageHandler('scroll-logs', function(msg) {
       setTimeout(function() {
@@ -319,10 +538,51 @@
 
   registerShinyHandlers();
 
-  // 4. Restauração Silenciosa com Polling Robusto (SEM piscar formulário)
+  // 4. Detecção de Link de Recuperação de Senha na URL
+  function checkUrlForRecovery() {
+    var hash = window.location.hash || '';
+    var search = window.location.search || '';
+    var params = {};
+
+    if (hash && hash.length > 1) {
+      var hashParts = hash.substring(1).split('&');
+      hashParts.forEach(function(part) {
+        var kv = part.split('=');
+        if (kv.length === 2) {
+          params[decodeURIComponent(kv[0])] = decodeURIComponent(kv[1]);
+        }
+      });
+    }
+
+    if (search && search.length > 1) {
+      var searchParts = search.substring(1).split('&');
+      searchParts.forEach(function(part) {
+        var kv = part.split('=');
+        if (kv.length === 2) {
+          params[decodeURIComponent(kv[0])] = decodeURIComponent(kv[1]);
+        }
+      });
+    }
+
+    if (params.type === 'recovery' && params.access_token) {
+      window.currentRecoveryToken = params.access_token;
+      if (window.history && window.history.replaceState) {
+        window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
+      }
+      window.switchAuthTab('reset');
+      return true;
+    }
+    return false;
+  }
+
+  // 5. Restauração Silenciosa com Polling Robusto (SEM piscar formulário)
   var sessionRestored = false;
   function initSessionRestore() {
     if (sessionRestored) return;
+
+    // Se a URL contém token de recuperação de senha, prioriza o fluxo de recuperação
+    if (checkUrlForRecovery()) return;
+
     var saved = null;
     try {
       saved = localStorage.getItem('quiin_auth_session');
@@ -338,10 +598,14 @@
     // Se temos uma sessão salva, esconde imediatamente o formulário de login e mostra o restoring spinner
     var elLogin = document.getElementById('auth_form_login');
     var elSignup = document.getElementById('auth_form_signup');
+    var elForgot = document.getElementById('auth_form_forgot');
+    var elReset = document.getElementById('auth_form_reset_password');
     var elTabs = document.querySelector('.auth-tabs-nav');
     var elRestoring = document.getElementById('auth_restoring_state');
     if (elLogin) elLogin.style.display = 'none';
     if (elSignup) elSignup.style.display = 'none';
+    if (elForgot) elForgot.style.display = 'none';
+    if (elReset) elReset.style.display = 'none';
     if (elTabs) elTabs.style.display = 'none';
     if (elRestoring) elRestoring.style.display = 'block';
 
@@ -368,12 +632,17 @@
     }, 100);
   }
 
-  // Inicia restauração imediatamente e quando o DOM estiver pronto
+  // Inicia detecção de recuperação e restauração imediatamente e quando o DOM estiver pronto
+  checkUrlForRecovery();
   initSessionRestore();
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initSessionRestore);
+    document.addEventListener('DOMContentLoaded', function() {
+      checkUrlForRecovery();
+      initSessionRestore();
+    });
   }
   $(document).on('shiny:connected', function() {
+    checkUrlForRecovery();
     initSessionRestore();
   });
 

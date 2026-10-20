@@ -1,0 +1,62 @@
+name: 🟢 Manter Supabase Ativo (Keep-Alive)
+
+on:
+  schedule:
+    # Executa TODOS OS DIAS às 06:00 UTC (03:00 Horário de Brasília)
+    # Evita que o Supabase atinja 7 dias de inatividade e pause o projeto
+    - cron: '0 6 * * *'
+  workflow_dispatch: # Permite disparar manualmente a qualquer momento na aba Actions
+
+concurrency:
+  group: keep-alive-supabase
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    name: ⚡ Ping Diário no Supabase (Radar da Inovação)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: 🌐 Realizar Consulta no Supabase REST API
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://jsystdrhtcoopjkrcwql.supabase.co' }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpzeXN0ZHJodGNvb3Bqa3Jjd3FsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA4Njk5MzksImV4cCI6MjEwNjQ0NTkzOX0.2zCgYRema1h-KAz7ibQmoJfrmvVfoJTjMaKBeB18j98' }}
+        run: |
+          CLEAN_URL="${SUPABASE_URL%/}"
+          CLEAN_URL="${CLEAN_URL%/rest/v1}"
+          
+          echo "Consultando Supabase em: ${CLEAN_URL}"
+
+          # 1. Consulta via PostgREST (força query SQL no PostgreSQL, resetando timer de inatividade)
+          STATUS=$(curl -s -o response_rest.json -w "%{http_code}" -X GET \
+            "${CLEAN_URL}/rest/v1/perfis?select=id&limit=1" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}")
+
+          echo "HTTP Status (PostgREST /perfis): $STATUS"
+          cat response_rest.json || true
+          echo ""
+
+          # 2. Consulta adicional na API de Auth GoTrue
+          STATUS_AUTH=$(curl -s -o response_auth.json -w "%{http_code}" -X GET \
+            "${CLEAN_URL}/auth/v1/health" \
+            -H "apikey: ${SUPABASE_ANON_KEY}")
+
+          echo "HTTP Status (Auth /health): $STATUS_AUTH"
+          cat response_auth.json || true
+          echo ""
+
+          # Validação: qualquer resposta 2xx ou 3xx indica que o serviço está ativo e processou a requisição
+          if [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 400 ]; then
+            echo "✅ Sucesso: Banco de dados Supabase consultado com sucesso! Inatividade resetada."
+          elif [ "$STATUS_AUTH" -ge 200 ] && [ "$STATUS_AUTH" -lt 400 ]; then
+            echo "✅ Sucesso: Serviço Auth do Supabase respondeu com sucesso! Inatividade resetada."
+          elif [ "$STATUS" -eq 521 ]; then
+            echo "⚠️ ATENÇÃO: O projeto Supabase está pausado (HTTP 521)."
+            echo "Acesse o painel https://supabase.com/dashboard e clique em 'Resume project'."
+            exit 1
+          else
+            echo "❌ Falha ao consultar o Supabase (Status REST: $STATUS, Status Auth: $STATUS_AUTH)."
+            exit 1
+          fi

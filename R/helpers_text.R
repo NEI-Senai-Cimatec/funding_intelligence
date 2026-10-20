@@ -2,13 +2,19 @@ build_search_text <- function(df, text_cols = c(
   "titulo", "subtitulo", "descricao_resumida", "descricao_completa",
   "palavras_chave", "area_tematica", "elegibilidade"
 )) {
+  if (nrow(df) == 0L) return(character(0))
+  # Se já possui campo pré-calculado e as colunas solicitadas são o conjunto padrão, reutiliza diretamente
+  default_cols <- c("titulo", "subtitulo", "descricao_resumida", "descricao_completa", "palavras_chave", "area_tematica", "elegibilidade")
+  if ("search_text" %in% names(df) && length(setdiff(text_cols, default_cols)) == 0L) {
+    st <- df$search_text
+    if (is.character(st) && length(st) == nrow(df)) return(st)
+  }
   cols <- intersect(text_cols, names(df))
-  if (length(cols) == 0L || nrow(df) == 0L) {
+  if (length(cols) == 0L) {
     return(rep("", nrow(df)))
   }
-  apply(df[, cols, drop = FALSE], 1, function(row) {
-    normalize_text(paste(row, collapse = " "))
-  })
+  combined <- do.call(paste, c(df[, cols, drop = FALSE], sep = " "))
+  normalize_text(combined)
 }
 
 insert_implicit_and <- function(tokens) {
@@ -294,4 +300,41 @@ simple_keyword_frequency <- function(df, top_n = 20) {
     dplyr::filter(nzchar(term)) |>
     dplyr::count(term, sort = TRUE) |>
     dplyr::slice_head(n = top_n)
+}
+
+# ─── Trim inteligente para IA (corrige BUG-09) ────────────────────────────────
+# Prazos e valores ficam com frequência no FINAL de PDFs longos. Em vez de
+# truncar a cauda, mantemos: cabeçalho (4k) + janelas ±120 chars em torno de
+# keywords de prazo/valor + cauda (2k), tudo limitado a max_chars (12k).
+
+trim_for_ai <- function(text, max_chars = NULL, window = 120L, header_chars = 4000L, tail_chars = 2000L) {
+  if (is.null(max_chars)) {
+    max_chars <- as.numeric(Sys.getenv("AI_MAX_CHARS", "12000"))
+    if (is.na(max_chars) || max_chars <= 0) max_chars <- 12000
+  }
+  text <- normalize_ws(text %||% "")
+  if (nchar(text) <= max_chars) {
+    return(text)
+  }
+
+  keywords <- c("prazo", "deadline", "submiss", "inscri", "valor", "orçamento", "orcamento", "budget", "recurso")
+  windows <- character()
+  for (kw in keywords) {
+    matches <- gregexpr(paste0(kw, ".{0,", window, "}"), text, ignore.case = TRUE, perl = TRUE)[[1]]
+    if (length(matches) == 0L || is.na(matches[[1]])) next
+    for (pos in matches) {
+      start <- max(1L, pos - window)
+      end <- min(nchar(text), pos + window)
+      windows <- c(windows, substr(text, start, end))
+    }
+  }
+
+  header <- substr(text, 1, header_chars)
+  tail <- substr(text, max(1L, nchar(text) - tail_chars), nchar(text))
+  result <- paste(c(header, windows, tail), collapse = "\n\n---\n\n")
+
+  if (nchar(result) > max_chars) {
+    result <- substr(result, 1, max_chars)
+  }
+  result
 }

@@ -45,28 +45,110 @@ keyword_overlap_score <- function(text, keywords) {
   100 * mean(hits)
 }
 
-compute_adherence_score <- function(df, conn, current_query = "") {
+# Tokens proibidos nos chips/score (BUG-04/MH-01): anos, números, siglas sem semântica
+.banned_match_tokens <- c(
+  "2022", "2023", "2024", "2025", "2026", "2027", "2028", "2029", "2030",
+  "cnpq", "capes", "finep", "fapesb", "fapes", "confap", "daad", "embrapii",
+  "erc", "undp", "petrobras", "sigitec", "humboldt", "nsf", "doe", "horizon"
+)
+
+is_semantic_token <- function(term) {
+  t <- normalize_text(term)
+  nzchar(t) && !(t %in% .banned_match_tokens) && !grepl("^\\d+$", t)
+}
+
+# Termos da assinatura presentes no texto do registro (para chips explicáveis)
+matched_keywords <- function(signature, text, keywords_extra = NULL) {
+  if (is.null(signature) || length(signature) == 0) {
+    return(character())
+  }
+  terms <- unique(normalize_text(c(signature$keywords %||% character(), keywords_extra %||% character())))
+  terms <- terms[nzchar(terms) & vapply(terms, is_semantic_token, logical(1))]
+  if (length(terms) == 0) return(character())
+  norm_txt <- normalize_text(text)
+  terms[vapply(terms, function(k) {
+    pat <- tryCatch(term_to_pattern(k), error = function(e) "")
+    nzchar(pat) && grepl(pat, norm_txt, ignore.case = TRUE, perl = TRUE)
+  }, logical(1))]
+}
+
+compute_adherence_score <- function(df, conn, current_query = "", signature = NULL) {
   if (nrow(df) == 0) return(df)
-  signature <- collect_interest_signature(conn, current_query = current_query)
+  if (is.null(signature)) signature <- collect_interest_signature(conn, current_query = current_query)
   current_terms <- extract_query_terms(current_query)
   active_keywords <- unique(c(normalize_text(current_terms), signature$keywords))
+  active_keywords <- active_keywords[nzchar(active_keywords)]
+
+  # Precompila padrões regex uma única vez
+  kw_patterns <- vapply(active_keywords, term_to_pattern, character(1))
+  kw_patterns <- kw_patterns[nzchar(kw_patterns)]
+
+  area_keywords <- signature$areas[nzchar(signature$areas)]
+  area_patterns <- vapply(area_keywords, term_to_pattern, character(1))
+  area_patterns <- area_patterns[nzchar(area_patterns)]
+
+  elig_keywords <- signature$eligibility[nzchar(signature$eligibility)]
+  elig_patterns <- vapply(elig_keywords, term_to_pattern, character(1))
+  elig_patterns <- elig_patterns[nzchar(elig_patterns)]
+
   text_index <- build_search_text(df, text_cols = c("titulo", "subtitulo", "descricao_resumida", "descricao_completa", "palavras_chave", "area_tematica", "elegibilidade"))
-  keyword_scores <- vapply(text_index, keyword_overlap_score, numeric(1), keywords = active_keywords)
-  theme_scores <- vapply(seq_len(nrow(df)), function(i) keyword_overlap_score(paste(df$area_tematica[[i]], df$palavras_chave[[i]], collapse = " "), signature$areas), numeric(1))
-  funder_scores <- vapply(normalize_text(df$entidade), function(f) ifelse(f %in% signature$funders, 100, 0), numeric(1))
-  country_scores <- vapply(normalize_text(df$pais_origem), function(p) ifelse(length(signature$countries) == 0 || p %in% signature$countries, 100, 0), numeric(1))
-  eligibility_scores <- vapply(normalize_text(df$elegibilidade), function(e) keyword_overlap_score(e, signature$eligibility), numeric(1))
-  total <- 0.40 * keyword_scores + 0.20 * theme_scores + 0.15 * funder_scores + 0.10 * country_scores + 0.15 * eligibility_scores
+  theme_index <- normalize_text(paste(df$area_tematica %||% "", df$palavras_chave %||% ""))
+  elig_index <- normalize_text(df$elegibilidade %||% "")
+  norm_entidade <- normalize_text(df$entidade %||% "")
+  norm_pais <- normalize_text(df$pais_origem %||% "")
+
+  n_rows <- nrow(df)
+
+  calc_pattern_score <- function(patterns, index_vec) {
+    if (n_rows == 0L || length(patterns) == 0L) return(rep(0, n_rows))
+    hit_mat <- vapply(patterns, function(pat) grepl(pat, index_vec, ignore.case = TRUE, perl = TRUE), logical(n_rows))
+    if (n_rows == 1L) {
+      100 * mean(hit_mat)
+    } else if (is.matrix(hit_mat)) {
+      100 * rowMeans(hit_mat)
+    } else {
+      100 * as.numeric(hit_mat)
+    }
+  }
+
+  keyword_scores <- calc_pattern_score(kw_patterns, text_index)
+  theme_scores <- calc_pattern_score(area_patterns, theme_index)
+  eligibility_scores <- calc_pattern_score(elig_patterns, elig_index)
+
+  funder_scores <- if (length(signature$funders) == 0L) {
+    rep(0, n_rows)
+  } else {
+    ifelse(norm_entidade %in% signature$funders, 100, 0)
+  }
+
+  # R05: sem preferência de país não há pontos de país (antes: 100 => +10 pts para todos).
+  country_scores <- if (length(signature$countries) == 0L) {
+    rep(0, n_rows)
+  } else {
+    ifelse(norm_pais %in% signature$countries, 100, 0)
+  }
+
+  # Cálculo explicável: 40% palavras-chave + 20% tema + 15% elegibilidade (evidência TEMÁTICA)
+  # + 15% financiador + 10% país (contexto). Contexto só conta com ao menos uma evidência temática,
+  # para que "país/financiador" sozinhos não gerem aderência positiva. Score != autenticidade/qualidade.
+  thematic <- 0.40 * keyword_scores + 0.20 * theme_scores + 0.15 * eligibility_scores
+  context <- 0.15 * funder_scores + 0.10 * country_scores
+  total <- thematic + ifelse(thematic > 0, context, 0)
   df$score_aderencia <- round(total)
   df
 }
 
-recommend_opportunities <- function(conn, opportunities_df, current_query = "", top_n = 10) {
+recommend_opportunities <- function(conn, opportunities_df, current_query = "", top_n = 10, signature = NULL) {
+  # Só itens VALIDADOS (ou legados sem avaliação) participam de recomendações (R01).
+  opportunities_df <- filter_validated(opportunities_df)
   if (nrow(opportunities_df) == 0) return(opportunities_df)
-  scored <- compute_adherence_score(opportunities_df, conn, current_query)
+  scored <- compute_adherence_score(opportunities_df, conn, current_query, signature = signature)
   tracked_ids <- if (is.null(conn)) character() else DBI::dbGetQuery(conn, "SELECT id_oportunidade FROM editais_rastreados")$id_oportunidade
+  # BUG-01/11: recomendações usam status DERIVADO (nunca o campo congelado)
+  scored$derived_status <- derive_status_df(scored)
   scored |>
-    dplyr::filter(!(id_registro %in% tracked_ids), status_oportunidade != "encerrado") |>
+    dplyr::filter(!(id_registro %in% tracked_ids), !(derived_status %in% c("encerrado", "cancelado", "suspenso"))) |>
+    dplyr::select(-derived_status) |>
     dplyr::arrange(dplyr::desc(score_aderencia), parse_date_safe(data_limite)) |>
     dplyr::slice_head(n = top_n)
 }
@@ -88,7 +170,7 @@ recommend_partners_for_opportunity <- function(conn, opportunity_id, top_n = 5) 
     return(tibble::tibble())
   }
   
-  opp <- DBI::dbGetQuery(
+  opp <- db_qry(
     conn, 
     "SELECT titulo, descricao_resumida, palavras_chave, area_tematica FROM oportunidades WHERE id_registro = ?",
     params = list(opportunity_id)

@@ -1,25 +1,135 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 /* Reset e Fonte Global */
+:root {
+  --bs-body-font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* ==========================================================================
+   CONFIDENCIALIDADE & ISOLAMENTO DE ACESSO (Zero Data Leak)
+   Antes da autenticação, o Radar de Inovação fica 100% oculto atrás do overlay.
+   ========================================================================== */
+body:not(.authenticated) .app-header,
+body:not(.authenticated) .navbar,
+body:not(.authenticated) .search-card,
+body:not(.authenticated) .navset-card-tab,
+body:not(.authenticated) .tab-content,
+body:not(.authenticated) .app-footer-centered,
+body:not(.authenticated) .bslib-value-box,
+body:not(.authenticated) .bslib-sidebar-layout > aside,
+body:not(.authenticated) .card:not(.auth-card) {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* O Overlay SEMPRE deve ser visível se não autenticado */
+#auth_overlay_root {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 99999999 !important;
+  background: radial-gradient(circle at 20% 30%, #002b5e 0%, #004691 50%, #0b1a30 100%) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 1.5rem !important;
+  overflow-y: auto !important;
+  box-sizing: border-box !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+body.authenticated #auth_overlay_root {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+body.authenticated > * {
+  animation: radarFadeIn 0.35s ease-out;
+}
+
+@keyframes radarFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 body {
   background-color: #f8fafc;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--bs-body-font-family);
   color: #1e293b;
   margin: 0;
   padding: 0;
 }
 
 /* Estrutura do Cabeçalho */
-.navbar {
+.navbar, .navbar-expand-lg, .navbar-expand-md, .bg-light, .bg-primary, .app-header, .bslib-page-sidebar > .navbar {
+  background-color: #ffffff !important;
+  background: #ffffff !important;
   box-shadow: none !important;
+  border: none !important;
   border-bottom: none !important;
+  opacity: 1 !important;
+  filter: none !important;
 }
 
 .app-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  width: 100%;
   gap: 1.5rem;
   padding: 0.5rem 0;
+}
+
+/* Header Status Widget */
+.header-status-widget {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background-color: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 999px !important;
+  padding: 0.4rem 1rem !important;
+  font-size: 0.825rem !important;
+  font-weight: 700 !important;
+  color: #1e293b !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.header-status-widget:hover {
+  background-color: #f1f5f9 !important;
+  border-color: #94a3b8 !important;
+  transform: translateY(-1px) !important;
+}
+
+@keyframes pulse-sync {
+  0% { opacity: 0.7; }
+  50% { opacity: 1; }
+  100% { opacity: 0.7; }
+}
+
+.status-syncing {
+  animation: pulse-sync 1.5s infinite ease-in-out;
+  color: #004691 !important;
+}
+
+.status-active {
+  animation: pulse-sync 1.5s infinite ease-in-out;
+  color: #ea580c !important;
+}
+
+.status-success {
+  color: #16a34a !important;
 }
 
 .logo-container {
@@ -46,6 +156,25 @@ body {
   color: #64748b;
   font-size: 0.875rem;
   font-weight: 500;
+}
+
+@media (max-width: 640px) {
+  .app-header {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .app-title-main h2 {
+    font-size: 1.3rem;
+  }
+
+  .app-title-main p {
+    font-size: 0.78rem;
+  }
+
+  .logo-container {
+    padding: 0.35rem 0.75rem;
+  }
 }
 
 /* Cartões (Cards) */
@@ -123,14 +252,26 @@ body {
   color: #1e293b !important;
 }
 
-/* Posicionamento do botão na barra de busca */
-.action-top {
-  width: 100%;
-  margin-top: 1.85rem;
-  height: 38px;
+/* Ações da barra de busca */
+.search-actions {
   display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.9rem;
+}
+
+.search-actions .btn {
+  height: 38px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+@media (max-width: 576px) {
+  .search-actions .btn {
+    flex: 1 1 100%;
+  }
 }
 
 /* Badges de Status do Edital */
@@ -192,7 +333,7 @@ body {
 }
 
 .score-bar-fill {
-  background: linear-gradient(90deg, #004691 0%, #0084ff 100%);
+  background: linear-gradient(90deg, #004691 0%, #0056b3 100%);
   height: 100%;
   border-radius: 999px;
 }
@@ -255,6 +396,13 @@ table.dataTable tbody tr:hover {
   background-color: #f8fafc !important;
 }
 
+table.dataTable thead .sorting:after,
+table.dataTable thead .sorting_asc:after,
+table.dataTable thead .sorting_desc:after {
+  opacity: 1 !important;
+  color: #ffffff !important;
+}
+
 .dataTables_wrapper .dataTables_paginate .paginate_button.current, 
 .dataTables_wrapper .dataTables_paginate .paginate_button.current:hover {
   background: #004691 !important;
@@ -265,14 +413,14 @@ table.dataTable tbody tr:hover {
 
 /* Estilo para links da tabela */
 table.dataTable tbody td a {
-  color: #0084ff;
+  color: #004691;
   font-weight: 600;
   text-decoration: none;
   transition: color 0.15s ease-in-out;
 }
 
 table.dataTable tbody td a:hover {
-  color: #004691;
+  color: #e30613;
   text-decoration: underline;
 }
 
@@ -303,9 +451,471 @@ main {
 }
 
 /* Garante rolagem horizontal apenas nas tabelas de dados quando necessario */
-.dataTables_wrapper,
+.dataTables_wrapper {
+  clear: both !important;
+  width: 100% !important;
+  position: relative !important;
+  margin-bottom: 2rem !important;
+}
+
 .dataTables_scrollBody {
   overflow-x: auto !important;
-  overflow-y: visible !important;
+  overflow-y: auto !important;
+  max-height: none !important;
 }
+
+/* Customização do Modal */
+.modal-header {
+  border-bottom: 2px solid #004691 !important;
+  padding: 1rem 1.5rem !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  background-color: #ffffff;
+}
+
+.modal-title {
+  width: 100% !important;
+}
+
+/* Garante que o botão de fechar fique alinhado e estético */
+.modal-header .btn-close {
+  padding: 0.5rem !important;
+  margin: -0.5rem -0.5rem -0.5rem auto !important;
+  opacity: 0.8;
+  transition: opacity 0.15s ease-in-out;
+}
+
+.modal-header .btn-close:hover {
+  opacity: 1;
+}
+
+.modal-body {
+  padding: 1.5rem !important;
+}
+
+.modal-footer {
+  border-top: 1px solid #e2e8f0 !important;
+  padding: 1rem 1.5rem !important;
+}
+
+/* Footer Styles */
+.app-footer-centered {
+  clear: both !important;
+  position: relative !important;
+  display: block !important;
+  width: 100% !important;
+  background-color: #E9E9E9;
+  color: #64748b;
+  padding: 2.5rem 2rem 2rem 2rem;
+  margin-top: 4rem !important;
+  margin-bottom: 0 !important;
+  text-align: center;
+  border-top: 4px solid #004691;
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05); /* Premium shadow */
+}
+
+.footer-top-centered p {
+  color: #334155;
+  font-size: 0.95rem;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.footer-top-centered i {
+  color: #004691;
+  font-size: 0.9rem;
+}
+
+.footer-bottom-centered p {
+  font-size: 0.8rem;
+  margin: 0.4rem 0;
+  color: #475569;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.footer-bottom-centered p:first-child {
+  color: #475569;
+  font-size: 0.85rem;
+}
+
+.footer-bottom-centered i {
+  color: #004691;
+  font-size: 0.8rem;
+}
+
+/* ─── Supabase Auth & RBAC Styles ────────────────────────────────────────── */
+#login_screen_modal,
+#login_screen_modal.recalculating,
+.auth-overlay-backdrop,
+.auth-overlay-backdrop.recalculating,
+#auth_overlay_root,
+#auth_overlay_root.recalculating {
+  opacity: 1 !important;
+  transition: none !important;
+  visibility: visible !important;
+}
+
+/* Oculta os elementos do dashboard enquanto não autenticado para garantia estrita de confidencialidade */
+body:not(.authenticated) .navbar,
+body:not(.authenticated) .sidebar,
+body:not(.authenticated) .bslib-sidebar-layout > .sidebar,
+body:not(.authenticated) .bslib-page-main > *:not(#auth_overlay_root),
+body:not(.authenticated) .app-footer-centered,
+body:not(.authenticated) #header_status {
+  display: none !important;
+}
+
+/* Quando autenticado, garante que o overlay seja imediatamente ocultado e não bloqueie cliques */
+body.authenticated #auth_overlay_root,
+body.authenticated .auth-overlay-backdrop {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.auth-overlay-backdrop {
+  position: fixed !important;
+  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 99999999 !important;
+  background: radial-gradient(circle at 20% 30%, #002b5e 0%, #004691 50%, #0b1a30 100%) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 1.5rem !important;
+  overflow-y: auto !important;
+  box-sizing: border-box !important;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 440px;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.1);
+  padding: 2.25rem 2rem;
+  box-sizing: border-box;
+  animation: authCardFadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes authCardFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.auth-header {
+  text-align: center;
+  margin-bottom: 1.75rem;
+}
+
+.auth-logo-img {
+  max-height: 48px;
+  width: auto;
+  margin-bottom: 1rem;
+}
+
+.auth-title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #004691;
+  margin: 0 0 0.25rem 0;
+  letter-spacing: -0.5px;
+}
+
+.auth-subtitle {
+  font-size: 0.85rem;
+  color: #64748b;
+  margin: 0 0 0.85rem 0;
+  line-height: 1.4;
+}
+
+.auth-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background-color: #f1f5f9;
+  color: #475569;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.auth-form-group {
+  margin-bottom: 1.25rem;
+}
+
+.auth-form-label {
+  display: block;
+  font-size: 0.825rem;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 0.4rem;
+}
+
+.auth-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.auth-input-icon {
+  position: absolute;
+  left: 1rem;
+  color: #94a3b8;
+  font-size: 0.95rem;
+  pointer-events: none;
+}
+
+.auth-input {
+  width: 100%;
+  padding: 0.75rem 1rem 0.75rem 2.6rem;
+  font-size: 0.925rem;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 10px;
+  transition: all 0.2s ease;
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+.auth-input:focus {
+  outline: none;
+  border-color: #004691;
+  background-color: #ffffff;
+  box-shadow: 0 0 0 3px rgba(0, 70, 145, 0.15);
+}
+
+.auth-btn-primary {
+  width: 100%;
+  padding: 0.85rem 1.25rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #ffffff;
+  background: linear-gradient(135deg, #004691 0%, #003366 100%);
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px rgba(0, 70, 145, 0.25);
+  margin-top: 0.5rem;
+  position: relative;
+}
+
+.auth-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #003b7a 0%, #002850 100%);
+  transform: translateY(-1.5px);
+  box-shadow: 0 6px 18px rgba(0, 70, 145, 0.35);
+}
+
+.auth-btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.auth-btn-primary:disabled,
+.auth-btn-primary.loading {
+  opacity: 0.85 !important;
+  cursor: wait !important;
+  pointer-events: none !important;
+  background: linear-gradient(135deg, #003b7a 0%, #002850 100%) !important;
+  box-shadow: none !important;
+}
+
+.auth-btn-primary.loading i {
+  animation: authSpin 0.9s infinite linear !important;
+  display: inline-block;
+}
+
+@keyframes authSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.auth-alert {
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  font-size: 0.825rem;
+  margin-bottom: 1.25rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  line-height: 1.4;
+}
+
+.auth-alert-danger {
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+}
+
+.auth-alert-warning {
+  background-color: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #b45309;
+}
+
+.auth-alert-success {
+  background-color: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #15803d;
+}
+
+/* Abas de alternância Login / Cadastro */
+.auth-tabs-nav {
+  display: flex;
+  background: #f1f5f9;
+  border-radius: 10px;
+  padding: 4px;
+  margin-bottom: 1.35rem;
+  gap: 4px;
+}
+
+.auth-tab-btn {
+  flex: 1;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #64748b;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+}
+
+.auth-tab-btn:hover {
+  color: #004691;
+}
+
+.auth-tab-btn.active {
+  background: #ffffff;
+  color: #004691;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.auth-footer {
+  text-align: center;
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid #f1f5f9;
+  font-size: 0.775rem;
+  color: #94a3b8;
+  line-height: 1.5;
+}
+
+/* User Header Badge & Sair Button */
+.user-header-profile {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  padding: 0.3rem 0.5rem 0.3rem 0.75rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.user-header-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+  text-align: left;
+}
+
+.user-header-email {
+  font-size: 0.775rem;
+  font-weight: 700;
+  color: #1e293b;
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-header-logout {
+  background-color: #fee2e2;
+  color: #dc2626;
+  border: 1px solid #fca5a5;
+  border-radius: 999px;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  transition: all 0.2s ease;
+}
+
+.btn-header-logout:hover {
+  background-color: #fecaca;
+  color: #b91c1c;
+  border-color: #f87171;
+  transform: translateY(-1px);
+}
+
+/* Links de Recuperação de Senha no Login */
+.auth-link-forgot {
+  font-size: 0.8rem;
+  color: #004691;
+  text-decoration: none;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  transition: all 0.2s ease;
+}
+
+.auth-link-forgot:hover {
+  color: #0284c7;
+  text-decoration: underline;
+  transform: translateY(-0.5px);
+}
+
+.auth-link-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #004691;
+  font-weight: 600;
+  font-size: 0.825rem;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.auth-link-back:hover {
+  color: #0284c7;
+  transform: translateX(-2px);
+  text-decoration: none;
+}
+
+
 

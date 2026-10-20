@@ -6,9 +6,16 @@ if (!dir.exists(local_libs)) dir.create(local_libs, showWarnings = FALSE)
 required_packages <- c(
   "shiny", "bslib", "DT", "dplyr", "tidyr", "purrr", "stringr", "stringi", "lubridate",
   "ggplot2", "plotly", "DBI", "RSQLite", "jsonlite", "digest", "htmltools",
-  "rvest", "xml2", "httr2", "tibble", "tools", "readr", "writexl", "janitor",
-  "glue", "progress", "pdftools", "polite", "callr", "shinycssloaders"
+  "rvest", "xml2", "httr", "httr2", "tibble", "tools", "readr", "writexl", "janitor",
+  "glue", "progress", "pdftools", "polite", "callr", "shinycssloaders",
+  "base64enc"
 )
+
+# RPostgres só é exigido quando há banco em nuvem configurado (DATABASE_URL);
+# no ambiente local sem a variável, o app segue no SQLite sem depender de libpq.
+if (nzchar(Sys.getenv("DATABASE_URL"))) {
+  required_packages <- c(required_packages, "RPostgres")
+}
 
 install_missing_packages <- function(pkgs) {
   if (length(pkgs) == 0) return(invisible(TRUE))
@@ -34,10 +41,14 @@ install_missing_packages <- function(pkgs) {
   invisible(TRUE)
 }
 
-missing_packages <- required_packages[!vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)]
-if (length(missing_packages) > 0) {
-  install_missing_packages(missing_packages)
+is_posit_connect <- nzchar(Sys.getenv("CONNECT_SERVER")) || nzchar(Sys.getenv("CONNECT_API_KEY"))
+if (!is_posit_connect) {
+  missing_packages <- required_packages[!vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)]
+  if (length(missing_packages) > 0) {
+    install_missing_packages(missing_packages)
+  }
 }
+
 
 missing_after_install <- required_packages[!vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)]
 if (length(missing_after_install) > 0) {
@@ -53,8 +64,11 @@ if (length(missing_after_install) > 0) {
   )
 }
 
+library(janitor)
+library(polite)
 invisible(lapply(required_packages, library, character.only = TRUE))
 # callr::r_bg() é usado para execução em background (sem future)
+.GlobalEnv$.global_scraping_active <- FALSE
 
 get_app_dir <- function() {
   ofiles <- character(0)
@@ -89,19 +103,50 @@ if (!exists("ensure_dir", mode = "function")) {
 
 safe_source <- function(path) {
   full_path <- app_file(path)
-  out <- try(source(full_path, local = TRUE, encoding = "UTF-8"), silent = TRUE)
+  out <- try(source(full_path, local = parent.frame(), encoding = "UTF-8"), silent = TRUE)
   if (inherits(out, "try-error")) {
     warning(sprintf("Não foi possível carregar %s. O app seguirá com fallbacks quando possível.", full_path), call. = FALSE)
   }
   invisible(out)
 }
 
+# Fonte única de verdade dos módulos exigidos pelo pipeline de coleta.
+# O job background (callr::r_bg) DEVE carregar exatamente esta lista —
+# omitir módulos aqui faz coletores quebrarem com "could not find function"
+# (ex.: status_today de helpers_status.R), mascarado como "Resultado vazio".
+COLLECTOR_HELPER_FILES <- c(
+  "R/helpers_utils.R",
+  "R/helpers_db.R",
+  "R/helpers_status.R",
+  "R/helpers_validation.R",
+  "R/helpers_schedule.R",
+  "R/helpers_text.R",
+  "R/helpers_ai.R",
+  "R/helpers_collect.R",
+  "R/helpers_sources_br.R",
+  "R/helpers_sources_br_federal.R",
+  "R/helpers_sanitize.R"
+)
+
 safe_source("R/helpers_utils.R")
 safe_source("R/helpers_db.R")
 safe_source("R/helpers_text.R")
+safe_source("R/helpers_status.R")
 safe_source("R/helpers_ai.R")
 safe_source("R/helpers_recommend.R")
+safe_source("R/helpers_validation.R")
+safe_source("R/helpers_schedule.R")
 safe_source("R/helpers_collect.R")
+safe_source("R/helpers_sources_br.R")
+safe_source("R/helpers_sources_br_federal.R")
+safe_source("R/helpers_sanitize.R")
+safe_source("R/helpers_export.R")
+safe_source("R/helpers_auth.R")
+safe_source("R/helpers_reports.R")
+safe_source("R/helpers_auto_scheduler.R")
+
+# Registra a pasta logos como recurso estático do Shiny
+shiny::addResourcePath("logos", app_file("logos"))
 
 db_path <- app_file("funding_intelligence.sqlite")
 export_dir <- app_file("data_exports")
@@ -109,17 +154,147 @@ log_path <- app_file("logs", "funding_collection.log")
 ensure_dir(export_dir)
 ensure_dir(dirname(log_path))
 
+# Inicializa o banco: PostgreSQL via DATABASE_URL (nuvem) ou SQLite local
 try(init_database(db_path), silent = TRUE)
-conn <- tryCatch(get_db_connection(db_path), error = function(e) NULL)
+conn <- tryCatch(
+  conectar_banco(db_path),
+  error = function(e) {
+    message("[DB] Falha ao conectar: ", conditionMessage(e))
+    NULL
+  }
+)
 onStop(function() {
   if (!is.null(conn) && DBI::dbIsValid(conn)) DBI::dbDisconnect(conn)
 })
 
+# Inicializa o daemon interno de coleta semanal autônoma (executa no Posit Connect)
+tryCatch({
+  init_auto_scheduler_daemon(check_interval_sec = 600)
+}, error = function(e) {
+  message("[Agendador] Falha ao iniciar daemon: ", e$message)
+})
+
+# Rodar testes automaticamente no startup (se configurado)
+if (identical(Sys.getenv("RUN_STARTUP_TESTS"), "true") && requireNamespace("testthat", quietly = TRUE)) {
+  tryCatch({
+    test_dir <- file.path(getwd(), "tests", "testthat")
+    if (dir.exists(test_dir)) {
+      test_results <- testthat::test_dir(test_dir, reporter = "summary")
+      n_failed <- sum(vapply(test_results, function(r) r$failed, integer(1)) > 0)
+      if (n_failed > 0) {
+        warning(sprintf("Startup tests: %d teste(s) falhou(s)", n_failed))
+      } else {
+        message("Startup tests: todos os testes passaram")
+      }
+    }
+  }, error = function(e) {
+    message(sprintf("Startup tests: erro ao executar testes - %s", e$message))
+  })
+}
+
 build_sidebar <- function() {
   bslib::sidebar(
-    open = "closed",
-    width = 0,
-    tags$div(style = "display:none;")
+    title = tags$div(
+      style = "display: flex; align-items: center; gap: 8px; font-weight: 700; color: #004691;",
+      tags$i(class = "fa fa-filter"), "Filtros Rápidos"
+    ),
+    open = "desktop",
+    width = 320,
+    selectizeInput(
+      "filter_campus", 
+      label = tags$span(tags$i(class = "fa fa-map-marked-alt"), " Campi SENAI CIMATEC"),
+      choices = c(
+        "🚀 Aeroespacial" = "Aeroespacial",
+        "🌾 Sertão" = "Sertão",
+        "🌊 Mar" = "Mar",
+        "💻 Digital" = "Digital",
+        "<img src='logos/logo.png' height='14px' style='vertical-align: middle; margin-right: 4px;'> Sede e Park" = "Sede e Park"
+      ), 
+      multiple = TRUE, 
+      options = list(
+        placeholder = "Todos os campi",
+        render = I("{
+          option: function(item, escape) {
+            return '<div>' + item.label + '</div>';
+          },
+          item: function(item, escape) {
+            return '<div>' + item.label + '</div>';
+          }
+        }")
+      )
+    ),
+    selectizeInput(
+      "filter_funder", 
+      label = tags$span(tags$i(class = "fa fa-university"), " Financiador"),
+      choices = NULL, 
+      multiple = TRUE, 
+      options = list(placeholder = "Todos os financiadores")
+    ),
+    selectizeInput(
+      "filter_area", 
+      label = tags$span(tags$i(class = "fa fa-laptop-code"), " Área Temática"),
+      choices = NULL, 
+      multiple = TRUE, 
+      options = list(placeholder = "Todas as áreas")
+    ),
+    selectizeInput(
+      "filter_status", 
+      label = tags$span(tags$i(class = "fa fa-info-circle"), " Status"),
+      choices = NULL, 
+      multiple = TRUE, 
+      options = list(placeholder = "Todos os status")
+    ),
+    selectizeInput(
+      "filter_type", 
+      label = tags$span(tags$i(class = "fa fa-tags"), " Tipo de Oportunidade"),
+      choices = NULL, 
+      multiple = TRUE, 
+      options = list(placeholder = "Todos os tipos")
+    ),
+    selectizeInput(
+      "filter_language", 
+      label = tags$span(tags$i(class = "fa fa-language"), " Idioma"),
+      choices = NULL, 
+      multiple = TRUE, 
+      options = list(placeholder = "Todos os idiomas")
+    ),
+    selectInput(
+      "filter_naval_level",
+      label = tags$span(tags$i(class = "fa fa-anchor"), " Aderência Naval & Offshore"),
+      choices = c("Todas" = "Todas", "Muito alta" = "Muito alta", "Alta" = "Alta", "Média" = "Média", "Baixa" = "Baixa"),
+      selected = "Todas"
+    ),
+    selectInput(
+      "filter_sertao_level",
+      label = tags$span(tags$i(class = "fa fa-leaf"), " Aderência Sertão & Agro"),
+      choices = c("Todas" = "Todas", "Muito alta" = "Muito alta", "Alta" = "Alta", "Média" = "Média", "Baixa" = "Baixa"),
+      selected = "Todas"
+    ),
+    selectInput(
+      "filter_aero_level",
+      label = tags$span(tags$i(class = "fa fa-rocket"), " Aderência Aeroespacial & Defesa"),
+      choices = c("Todas" = "Todas", "Muito alta" = "Muito alta", "Alta" = "Alta", "Média" = "Média", "Baixa" = "Baixa"),
+      selected = "Todas"
+    ),
+    selectInput(
+      "filter_digital_level",
+      label = tags$span(tags$i(class = "fa fa-laptop-code"), " Aderência Digital & IA"),
+      choices = c("Todas" = "Todas", "Muito alta" = "Muito alta", "Alta" = "Alta", "Média" = "Média", "Baixa" = "Baixa"),
+      selected = "Todas"
+    ),
+    selectInput(
+      "filter_park_level",
+      label = tags$span(tags$i(class = "fa fa-industry"), " Aderência Park & Manufatura"),
+      choices = c("Todas" = "Todas", "Muito alta" = "Muito alta", "Alta" = "Alta", "Média" = "Média", "Baixa" = "Baixa"),
+      selected = "Todas"
+    ),
+    tags$hr(style = "margin: 1rem 0; border-color: #cbd5e1;"),
+    actionButton(
+      "btn_clear_filters", 
+      "Limpar Filtros", 
+      class = "btn-outline-secondary w-100", 
+      icon = icon("redo")
+    )
   )
 }
 
@@ -128,41 +303,56 @@ ui <- bslib::page_sidebar(
   title = tags$div(
     class = "app-header",
     tags$div(
-      class = "logo-container",
-      tags$img(src = "senai_cimatec.jpg", height = "36px", alt = "SENAI CIMATEC")
+      style = "display: flex; align-items: center; gap: 1.5rem;",
+      tags$div(
+        class = "logo-container",
+        tags$img(src = "senai_cimatec.jpg", height = "36px", alt = "SENAI CIMATEC")
+      ),
+      tags$div(
+        class = "app-title-main",
+        h2("Radar da Inovação"),
+        p("Plataforma de inteligência de fomento à P&D+I para os Campi Sertão, Aeroespacial, Mar, Digital e Park")
+      )
     ),
-    tags$div(
-      class = "app-title-main",
-      h2("Funding Intelligence Hub"),
-      p("Busca booleana, monitoramento de editais e recomendação a partir do banco local.")
-    )
+    uiOutput("header_status")
   ),
   theme = bslib::bs_theme(version = 5, bootswatch = "flatly", primary = "#004691", secondary = "#0f172a"),
   sidebar = build_sidebar(),
   tags$head(
-    tags$link(rel = "stylesheet", type = "text/css", href = "styles.css"),
-    tags$script("
-      Shiny.addCustomMessageHandler('scroll-logs', function(message) {
-        setTimeout(function() {
-          var log_elem = document.getElementById('modal_log_text');
-          if (log_elem) {
-            log_elem.parentElement.scrollTop = log_elem.parentElement.scrollHeight;
-          }
-        }, 50);
-      });
-    ")
+    tags$meta(charset = "utf-8"),
+    tags$meta(name = "viewport", content = "width=device-width, initial-scale=1.0"),
+    tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"),
+    tags$link(rel = "stylesheet", type = "text/css", href = paste0("styles.css?v=", as.integer(Sys.time()))),
+    tags$script(src = paste0("auth.js?v=", as.integer(Sys.time())))
   ),
+
+  render_login_overlay(),
 
   bslib::card(
     class = "search-card",
     bslib::layout_columns(
-      col_widths = c(5, 3, 1, 1, 1, 1),
-      textInput("search_query", "Barra de busca principal", value = "", placeholder = "Ex.: (health OR medical devices) AND innovation NOT veterinary"),
-      radioButtons("region_filter", "Região das fontes", choices = c("Brasileiras", "Europeias", "Ambas"), selected = "Ambas", inline = TRUE),
-      actionButton("btn_search", "Buscar", class = "btn-primary action-top"),
-      actionButton("btn_advanced", "Busca avançada", class = "btn-outline-primary action-top"),
-      actionButton("btn_save_search", "Salvar busca", class = "btn-outline-secondary action-top"),
-      actionButton("btn_collect_official", "Atualizar base", class = "btn-success action-top")
+      col_widths = c(8, 4),
+      textInput(
+        "search_query", 
+        label = tags$span(
+          "Barra de busca principal ",
+          tags$span(
+            style = "cursor: pointer; color: #004691; margin-left: 4px;",
+            onclick = "Shiny.setInputValue('click_search_help', Math.random(), {priority: 'event'})",
+            tags$i(class = "fa fa-question-circle")
+          )
+        ),
+        value = "", 
+        placeholder = "Ex.: (aeroespacial OR satélite) OR (agro OR semiárido OR hidrogênio verde)"
+      ),
+      selectInput("region_filter", "Região das fontes", choices = c("Ambas", "Brasileiras", "Europeias", "Internacionais"), selected = "Ambas")
+    ),
+    tags$div(
+      class = "search-actions",
+      actionButton("btn_search", "Buscar", class = "btn-primary", icon = icon("search")),
+      actionButton("btn_advanced", "Busca avançada", class = "btn-outline-primary", icon = icon("sliders-h")),
+      actionButton("btn_save_search", "Salvar busca", class = "btn-outline-secondary", icon = icon("bookmark")),
+      uiOutput("btn_collect_container")
     )
   ),
 
@@ -177,19 +367,228 @@ ui <- bslib::page_sidebar(
   bslib::navset_card_tab(
     id = "main_tabs",
     bslib::nav_panel(
-      "Resultados",
+      title = tags$span(tags$i(class = "fa fa-list-check"), " Resultados & Editais"),
+      value = "resultados_editais",
       bslib::card(
         bslib::layout_columns(
-          col_widths = c(4, 4, 4),
+          col_widths = c(6, 6),
           uiOutput("collection_status_ui"),
-          uiOutput("source_counter_ui"),
-          uiOutput("export_status_ui")
+          uiOutput("source_counter_ui")
         )
       ),
-      shinycssloaders::withSpinner(DTOutput("results_table"), type = 6, color = "#004691")
+      bslib::card(
+        tags$div(
+          style = "display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding: 5px 0;",
+          tags$strong(style = "font-size: 0.8rem; color: #475569; text-transform: uppercase;", "Exportar:"),
+          downloadButton("btn_export_xlsx", "XLSX", class = "btn-sm btn-outline-success", style = "font-size: 0.75rem;"),
+          downloadButton("btn_export_csv", "CSV", class = "btn-sm btn-outline-primary", style = "font-size: 0.75rem;")
+        ),
+        shinycssloaders::withSpinner(DTOutput("results_table"), type = 6, color = "#004691")
+      )
     ),
     bslib::nav_panel(
-      "Por financiador",
+      title = tags$span(tags$i(class = "fa fa-anchor"), " Núcleo Naval & Offshore"),
+      value = "nucleo_naval",
+      bslib::card(
+        style = "background: linear-gradient(135deg, #004691 0%, #0f172a 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;",
+        tags$div(
+          style = "display: flex; justify-content: space-between; align-items: center;",
+          tags$div(
+            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "⚓ Núcleo Naval & Offshore de PD&I"),
+            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e geração automática de propostas para os 7 Eixos Estratégicos Marítimos.")
+          ),
+          tags$div(
+            style = "text-align: right;",
+            tags$span(class = "badge bg-success", style = "font-size: 0.9rem; padding: 6px 12px;", "Aderência Ativa")
+          )
+        )
+      ),
+      bslib::layout_columns(
+        col_widths = c(6, 6),
+        selectInput("naval_theme_filter", "Eixo Temático Naval/Offshore", 
+                    choices = c("Todos os Eixos", "ROV / AUV / USV", "Engenharia Naval e Oceânica", "Energia Marítima & Offshore", "Portos & Logística Marítima", "Inteligência Artificial Marítima", "Defesa & Marinha do Brasil", "Infraestrutura de Ensaio"),
+                    selected = "Todos os Eixos"),
+        selectInput("naval_level_tab_filter", "Filtrar por Nível de Aderência",
+                    choices = c("Todos os Níveis", "Muito alta", "Alta", "Média", "Baixa"),
+                    selected = "Todos os Níveis")
+      ),
+      bslib::card(
+        tags$h5(style = "color: #004691; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Setor Marítimo & Ideias de Projetos Recomendadas"),
+        shinycssloaders::withSpinner(DTOutput("naval_results_table"), type = 6, color = "#004691")
+      )
+    ),
+    bslib::nav_panel(
+      title = tags$span(tags$i(class = "fa fa-leaf"), " Núcleo Sertão & Agro"),
+      value = "cimatec_sertao",
+      bslib::card(
+        style = "background: linear-gradient(135deg, #15803d 0%, #064e3b 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;",
+        tags$div(
+          style = "display: flex; justify-content: space-between; align-items: center;",
+          tags$div(
+            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "🌾 Núcleo Sertão & Agro de PD&I"),
+            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e propostas para Agro, Recursos Hídricos, Convivência com o Semiárido e Energias Renováveis.")
+          ),
+          tags$div(
+            style = "text-align: right;",
+            tags$span(class = "badge bg-success", style = "font-size: 0.9rem; padding: 6px 12px;", "Aderência Ativa")
+          )
+        )
+      ),
+      bslib::layout_columns(
+        col_widths = c(6, 6),
+        selectInput("sertao_theme_filter", "Eixo Temático Sertão & Agrotech", 
+                    choices = c("Todos os Eixos", "Agricultura de Precisão & Agrotech", "Recursos Hídricos, Irrigação & Dessalinização", "Energias Renováveis no Semiárido", "Bioeconomia da Caatinga & Biotecnologia", "Pecuária Conectada & Sanidade Animal", "Convivência com o Semiárido & Clima", "Agroindústria & Cadeias Produtivas Regionais"),
+                    selected = "Todos os Eixos"),
+        selectInput("sertao_level_tab_filter", "Filtrar por Nível de Aderência",
+                    choices = c("Todos os Níveis", "Muito alta", "Alta", "Média", "Baixa"),
+                    selected = "Todos os Níveis")
+      ),
+      bslib::card(
+        tags$h5(style = "color: #15803d; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Núcleo Sertão & Agro & Ideias de Projetos Recomendadas"),
+        shinycssloaders::withSpinner(DTOutput("sertao_results_table"), type = 6, color = "#15803d")
+      )
+    ),
+    bslib::nav_panel(
+      title = tags$span(tags$i(class = "fa fa-rocket"), " Núcleo Aeroespacial & Defesa"),
+      value = "cimatec_aeroespacial",
+      bslib::card(
+        style = "background: linear-gradient(135deg, #0284c7 0%, #0f172a 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;",
+        tags$div(
+          style = "display: flex; justify-content: space-between; align-items: center;",
+          tags$div(
+            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "🚀 Núcleo Aeroespacial & Defesa de PD&I"),
+            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e propostas para VANTs/Drones, Tecnologias Espaciais, Satélites e Defesa Nacional.")
+          ),
+          tags$div(
+            style = "text-align: right;",
+            tags$span(class = "badge bg-success", style = "font-size: 0.9rem; padding: 6px 12px;", "Aderência Ativa")
+          )
+        )
+      ),
+      bslib::layout_columns(
+        col_widths = c(6, 6),
+        selectInput("aero_theme_filter", "Eixo Temático Aeroespacial & Defesa", 
+                    choices = c("Todos os Eixos", "VANTs, Drones & Sistemas Não-Tripulados", "Satélites, Cargas Úteis & Aplicações Espaciais", "Propulsão Aeroespacial & Lançadores", "Aviônica, Sensores, Radares & Guerra Eletrônica", "eVTOL & Mobilidade Aérea Avançada", "Materiais Compostos & Estruturas Aeronáuticas", "Defesa Nacional & Forças Armadas"),
+                    selected = "Todos os Eixos"),
+        selectInput("aero_level_tab_filter", "Filtrar por Nível de Aderência",
+                    choices = c("Todos os Níveis", "Muito alta", "Alta", "Média", "Baixa"),
+                    selected = "Todos os Níveis")
+      ),
+      bslib::card(
+        tags$h5(style = "color: #0284c7; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Núcleo Aeroespacial & Defesa & Ideias de Projetos Recomendadas"),
+        shinycssloaders::withSpinner(DTOutput("aero_results_table"), type = 6, color = "#0284c7")
+      )
+    ),
+    bslib::nav_panel(
+      title = tags$span(tags$i(class = "fa fa-laptop-code"), " Núcleo Digital & IA"),
+      value = "cimatec_digital",
+      bslib::card(
+        style = "background: linear-gradient(135deg, #4f46e5 0%, #1e1b4b 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;",
+        tags$div(
+          style = "display: flex; justify-content: space-between; align-items: center;",
+          tags$div(
+            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "💻 Núcleo Digital & IA de PD&I"),
+            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e propostas para Inteligência Artificial, Cibersegurança, HPC, Quântica e Tecnologias Digitais.")
+          ),
+          tags$div(
+            style = "text-align: right;",
+            tags$span(class = "badge bg-success", style = "font-size: 0.9rem; padding: 6px 12px;", "Aderência Ativa")
+          )
+        )
+      ),
+      bslib::layout_columns(
+        col_widths = c(6, 6),
+        selectInput("digital_theme_filter", "Eixo Temático Digital & IA", 
+                    choices = c("Todos os Eixos", "Inteligência Artificial & Machine Learning", "Cibersegurança & Defesa Cibernética", "Computação de Alto Desempenho (HPC)", "Tecnologias Quânticas & Sensores Quânticos", "Internet das Coisas (IoT) & Redes 5G/6G", "Gêmeos Digitais & Cidades Inteligentes", "Engenharia de Software Crítico & Dados"),
+                    selected = "Todos os Eixos"),
+        selectInput("digital_level_tab_filter", "Filtrar por Nível de Aderência",
+                    choices = c("Todos os Níveis", "Muito alta", "Alta", "Média", "Baixa"),
+                    selected = "Todos os Níveis")
+      ),
+      bslib::card(
+        tags$h5(style = "color: #4f46e5; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Núcleo Digital & IA & Ideias de Projetos Recomendadas"),
+        shinycssloaders::withSpinner(DTOutput("digital_results_table"), type = 6, color = "#4f46e5")
+      )
+    ),
+    bslib::nav_panel(
+      title = tags$span(tags$i(class = "fa fa-industry"), " Núcleo Park & Manufatura"),
+      value = "cimatec_park",
+      bslib::card(
+        style = "background: linear-gradient(135deg, #d97706 0%, #451a03 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;",
+        tags$div(
+          style = "display: flex; justify-content: space-between; align-items: center;",
+          tags$div(
+            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "🏭 Núcleo Park & Manufatura de PD&I"),
+            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e propostas para Manufatura Avançada, Materiais, Eletromobilidade, Química e Indústria 4.0.")
+          ),
+          tags$div(
+            style = "text-align: right;",
+            tags$span(class = "badge bg-success", style = "font-size: 0.9rem; padding: 6px 12px;", "Aderência Ativa")
+          )
+        )
+      ),
+      bslib::layout_columns(
+        col_widths = c(6, 6),
+        selectInput("park_theme_filter", "Eixo Temático Manufatura & Park", 
+                    choices = c("Todos os Eixos", "Manufatura Avançada & Robótica Industrial", "Materiais Avançados & Nanotecnologia", "Eletromobilidade, Baterias & Automotivo", "Química Verde, Petroquímica & Biocombustíveis", "Saúde 4.0 & Dispositivos Médicos", "Mineração Sustentável & Metalurgia", "Eficiência Energética Industrial"),
+                    selected = "Todos os Eixos"),
+        selectInput("park_level_tab_filter", "Filtrar por Nível de Aderência",
+                    choices = c("Todos os Níveis", "Muito alta", "Alta", "Média", "Baixa"),
+                    selected = "Todos os Níveis")
+      ),
+      bslib::card(
+        tags$h5(style = "color: #d97706; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Núcleo Park & Manufatura & Ideias de Projetos Recomendadas"),
+        shinycssloaders::withSpinner(DTOutput("park_results_table"), type = 6, color = "#d97706")
+      )
+    ),
+    bslib::nav_panel(
+      title = tags$span(tags$i(class = "fa fa-newspaper"), " Boletins & Relatórios"),
+      value = "boletins_relatorios",
+      bslib::navset_card_pill(
+        id = "reports_subtabs",
+        bslib::nav_panel(
+          "📰 Boletim Semanal (Segunda-feira)",
+          bslib::card(
+            tags$div(
+              style = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;",
+              tags$div(
+                h5(style = "margin: 0; color: #004691; font-weight: 700;", "Boletim Semanal de Oportunidades (Últimos 7 dias)"),
+                p(style = "margin: 2px 0 0 0; color: #64748b; font-size: 0.85rem;", "Editais e chamadas identificadas ou atualizadas desde a segunda-feira anterior.")
+              ),
+              tags$div(
+                style = "display: flex; gap: 8px;",
+                actionButton("btn_generate_weekly", "Atualizar Boletim", class = "btn-primary btn-sm", icon = icon("sync")),
+                downloadButton("btn_dl_weekly_html", "Baixar HTML", class = "btn-outline-success btn-sm"),
+                downloadButton("btn_dl_weekly_md", "Baixar Markdown", class = "btn-outline-secondary btn-sm")
+              )
+            ),
+            uiOutput("weekly_bulletin_preview_ui")
+          )
+        ),
+        bslib::nav_panel(
+          "📊 Revisão Mensal (Dia 1º do Mês)",
+          bslib::card(
+            tags$div(
+              style = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;",
+              tags$div(
+                h5(style = "margin: 0; color: #004691; font-weight: 700;", "Revisão Mensal de Oportunidades"),
+                p(style = "margin: 2px 0 0 0; color: #64748b; font-size: 0.85rem;", "Balanço integral do mês-calendário anterior e destaques abertos no mês corrente.")
+              ),
+              tags$div(
+                style = "display: flex; gap: 8px;",
+                actionButton("btn_generate_monthly", "Atualizar Revisão Mensal", class = "btn-primary btn-sm", icon = icon("sync")),
+                downloadButton("btn_dl_monthly_html", "Baixar HTML", class = "btn-outline-success btn-sm"),
+                downloadButton("btn_dl_monthly_md", "Baixar Markdown", class = "btn-outline-secondary btn-sm")
+              )
+            ),
+            uiOutput("monthly_review_preview_ui")
+          )
+        )
+      )
+    ),
+    bslib::nav_panel(
+      title = tags$span(tags$i(class = "fa fa-chart-pie"), " Por Financiador"),
+      value = "por_financiador",
       bslib::layout_columns(
         col_widths = c(7, 5),
         bslib::card(plotlyOutput("funders_plot", height = 360)),
@@ -201,11 +600,8 @@ ui <- bslib::page_sidebar(
       DTOutput("funders_table")
     ),
     bslib::nav_panel(
-      "Buscas salvas",
-      DTOutput("saved_searches_table")
-    ),
-    bslib::nav_panel(
-      "Editais rastreados",
+      title = tags$span(tags$i(class = "fa fa-bookmark"), " Editais Rastreados"),
+      value = "editais_rastreados",
       bslib::layout_columns(
         col_widths = c(8, 4),
         DTOutput("tracked_table"),
@@ -225,22 +621,153 @@ ui <- bslib::page_sidebar(
       )
     ),
     bslib::nav_panel(
-      "Recomendados para mim",
-      bslib::layout_columns(
-        col_widths = c(8, 4),
-        bslib::card(DTOutput("recommended_table")),
-        bslib::card(uiOutput("profile_summary"))
-      ),
-      bslib::card(h4("Colaboradores potenciais por tema"), DTOutput("collaborators_table"))
+      title = tags$span(tags$i(class = "fa fa-search"), " Buscas Salvas"),
+      value = "buscas_salvas",
+      tags$div(
+        style = "min-height: 480px; padding: 0.75rem 0; clear: both;",
+        tags$div(
+          style = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;",
+          tags$h5(style = "margin: 0; color: #004691; font-weight: 700;", "Buscas Salvas por Campus"),
+          actionButton("btn_run_all_saved_searches", "Executar todas as buscas salvas", class = "btn-primary", icon = icon("play"))
+        ),
+        DTOutput("saved_searches_table")
+      )
     ),
     bslib::nav_panel(
-      "Logs",
-      DTOutput("logs_table")
+      title = tags$span(tags$i(class = "fa fa-shield-halved"), " Logs & Auditoria"),
+      value = "logs_auditoria",
+      bslib::navset_card_pill(
+        id = "logs_subtabs",
+        bslib::nav_panel(
+          "Coletores & Scraping",
+          tags$div(
+            style = "min-height: 420px; padding: 0.75rem 0; clear: both;",
+            DTOutput("logs_table")
+          )
+        ),
+        bslib::nav_panel(
+          "Auditoria de Acessos",
+          tags$div(
+            style = "min-height: 420px; padding: 0.75rem 0; clear: both;",
+            tags$p(style = "color: #64748b; font-size: 0.85rem; margin-bottom: 0.75rem;",
+                   "Controle e rastreabilidade de acessos: histórico de quem visualiza a plataforma, realiza buscas, abre editais e exporta dados."),
+            DTOutput("user_access_logs_table")
+          )
+        ),
+        bslib::nav_panel(
+          "Gestão de Permissões",
+          tags$div(
+            style = "min-height: 420px; padding: 0.75rem 0; clear: both;",
+            bslib::layout_columns(
+              col_widths = c(5, 7),
+              bslib::card(
+                tags$h5(style = "color: #004691; font-weight: 700; margin-bottom: 0.75rem;", 
+                        tags$i(class = "fa fa-table-cells"), " Gestão no Supabase (Opção 3)"),
+                tags$p(style = "font-size: 0.85rem; color: #334155; margin-bottom: 0.75rem; line-height: 1.45;",
+                       "Os níveis de acesso são controlados na tabela ", tags$code("public.perfis"), " no Supabase:"),
+                tags$div(
+                  style = "background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.75rem; margin-bottom: 1rem; font-size: 0.8rem; color: #475569;",
+                  tags$ol(
+                    style = "padding-left: 1.25rem; margin-bottom: 0;",
+                    tags$li(tags$strong("Acesse o Supabase:"), " no menu lateral esquerdo, clique em ", tags$strong("Table Editor"), " (ícone de planilha)."),
+                    tags$li(tags$strong("Abra a tabela 'perfis':"), " você verá todos os usuários cadastrados."),
+                    tags$li(tags$strong("Altere o cargo:"), " dê dois cliques na célula da coluna ", tags$strong("cargo"), " e digite ", tags$code("diretoria"), " ou ", tags$code("leitor"), "."),
+                    tags$li(tags$strong("Pronto!"), " O usuário terá o novo nível aplicado imediatamente no próximo login.")
+                  )
+                ),
+                actionButton("btn_refresh_perm_table", "Recarregar Usuários do Supabase", class = "btn-outline-primary w-100 mb-3", icon = icon("arrows-rotate")),
+                tags$hr(style = "margin: 0.5rem 0 1rem 0;"),
+                tags$h6(style = "color: #475569; font-weight: 600; font-size: 0.85rem;", 
+                        tags$i(class = "fa fa-user-plus"), " Atribuição Local / Emergência"),
+                textInput("perm_user_email", "E-mail institucional", placeholder = "exemplo@fieb.org.br"),
+                selectInput("perm_user_role", "Nível de acesso atribuído", 
+                            choices = c("Diretoria" = "diretoria", "Leitor / Pesquisador" = "usuario"),
+                            selected = "diretoria"),
+                actionButton("btn_save_permission", "Salvar Permissão Local", class = "btn-sm btn-secondary w-100 mb-2", icon = icon("check"))
+              ),
+              bslib::card(
+                tags$div(
+                  style = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;",
+                  tags$h5(style = "color: #004691; font-weight: 700; margin: 0;", 
+                          tags$i(class = "fa fa-users-gear"), " Usuários e Níveis de Acesso"),
+                  tags$span(class = "badge bg-primary", "Sincronizado Supabase")
+                ),
+                tags$p(style = "font-size: 0.8rem; color: #64748b; margin-bottom: 0.75rem;",
+                       "Usuários sincronizados via Supabase Table Editor ou base local:"),
+                DTOutput("user_permissions_table")
+              )
+            )
+          )
+        )
+      )
+    )
+  ),
+  
+  tags$footer(
+    class = "app-footer-centered",
+    tags$div(
+      class = "footer-top-centered",
+      tags$p(
+        tags$i(class = "fa-solid fa-person-chalkboard", style = "color: #004691;"), " SENAI CIMATEC – Educação, Ciência, Tecnologia, Inovação e Negócios para Indústria e a Sociedade"
+      )
+    ),
+    tags$div(
+      class = "footer-bottom-centered",
+      tags$p(
+        tags$i(class = "fa-solid fa-building", style = "color: #004691;"), " Superintendência de planejamento e novos negócios"
+      ),
+      tags$p(
+        tags$i(class = "fa-solid fa-magnifying-glass-chart", style = "color: #004691;"), " NEI - Núcleo de Economia Industrial"
+      ),
+      tags$p(
+        "Responsável técnico: Mabel Diz Marques Mota"
+      ),
+      tags$p(
+        "Curador: Felipe Dourado Figueiroa, Mabel Diz Marques Mota, Raphael de Oliveira Silva e Yuri Conrado Dantas"
+      ),
+      tags$p(
+        sprintf("© %s Núcleo de Economia Industrial – SENAI CIMATEC. Transformando conhecimento econômico em vantagem competitiva.", format(Sys.Date(), "%Y"))
+      ),
+      tags$p(
+        tags$i(class = "fa fa-map-marker-alt", style = "color: #004691;"), "Salvador, Bahia"
+      )
     )
   )
 )
 
 server <- function(input, output, session) {
+  # Wrapper resiliente para showNotification que garante uso de session e previne "attempt to apply non-function"
+  showNotification <- function(ui, action = NULL, duration = 5, closeButton = TRUE, id = NULL, 
+                               type = c("default", "message", "warning", "error")) {
+    type <- match.arg(type)
+    if (is.null(session) || isTRUE(session$isClosed()) || !is.function(session$sendNotification)) {
+      message(sprintf("[Notificação %s] %s", type, paste(as.character(ui), collapse = " ")))
+      return(invisible(id))
+    }
+    tryCatch(
+      shiny::showNotification(ui = ui, action = action, duration = duration, closeButton = closeButton, id = id, type = type, session = session),
+      error = function(e) {
+        message(sprintf("[Notificação %s] %s", type, paste(as.character(ui), collapse = " ")))
+        invisible(id)
+      }
+    )
+  }
+
+  # Referência local de sessão para rastreamento de processos Callr
+  bg_proc_ref <- NULL
+
+  # Cleanup automático ao fechar a sessão do navegador
+  session$onSessionEnded(function() {
+    if (!is.null(bg_proc_ref) && bg_proc_ref$is_alive()) {
+      message(sprintf("[callr] Sessão encerrada. Matando processo background ativo (PID: %d)", bg_proc_ref$get_pid()))
+      try(bg_proc_ref$kill(), silent = TRUE)
+    }
+    # Libera o semáforo global se fomos nós que iniciamos a coleta
+    if (isTRUE(isolate(rv$collecting))) {
+      .GlobalEnv$.global_scraping_active <- FALSE
+    }
+  })
+
   rv <- reactiveValues(
     opportunities = tibble::tibble(),
     sources = tibble::tibble(),
@@ -250,17 +777,33 @@ server <- function(input, output, session) {
     profile = tibble::tibble(),
     collaborators = tibble::tibble(),
     logs = tibble::tibble(),
+    user_access_logs = tibble::tibble(),
     current_query = "",
     advanced_filters = list(),
     last_collect_summary = list(msg = "Base pronta.", n = 0L, exports = NULL),
     selected_tracked_id = NULL,
-    collecting = FALSE
+    collecting = FALSE,
+    drive_status = "idle",
+    user = NULL,
+    access_token = NULL,
+    refresh_token = NULL,
+    is_dev_diretoria = FALSE,
+    login_error = NULL,
+    signup_success = NULL
   )
 
+  # Cache da assinatura de interesses por sessão (MH-01/BUG-04): lista e modal
+  # consomem a MESMA assinatura, gerando scores sempre consistentes.
+  interest_sig <- reactiveVal(NULL)
+
   refresh_data <- function(notify = FALSE) {
+    if (is.null(conn) || !DBI::dbIsValid(conn)) {
+      conn <<- tryCatch(conectar_banco(db_path), error = function(e) NULL)
+    }
+    if (!is.null(conn)) ensure_auth_db_table(conn)
     data <- tryCatch(
       {
-        if (is.null(conn)) stop("Conexão SQLite indisponível.", call. = FALSE)
+        if (is.null(conn)) stop("Conexão com o banco indisponível.", call. = FALSE)
         read_app_data(conn)
       },
       error = function(e) {
@@ -268,7 +811,11 @@ server <- function(input, output, session) {
         fallback_app_data()
       }
     )
-    rv$opportunities <- tibble::as_tibble(data$opportunities)
+    opps_df <- tibble::as_tibble(data$opportunities)
+    if (nrow(opps_df) > 0L && !"search_text" %in% names(opps_df)) {
+      opps_df$search_text <- build_search_text(opps_df)
+    }
+    rv$opportunities <- opps_df
     rv$sources <- tibble::as_tibble(data$sources)
     rv$saved_searches <- tibble::as_tibble(data$saved_searches)
     rv$tracked <- tibble::as_tibble(data$tracked)
@@ -276,10 +823,320 @@ server <- function(input, output, session) {
     rv$profile <- tibble::as_tibble(data$profile)
     rv$collaborators <- tibble::as_tibble(data$collaborators)
     rv$logs <- tibble::as_tibble(data$logs)
+    rv$user_access_logs <- tibble::as_tibble(data$user_access_logs %||% tibble::tibble())
     invisible(TRUE)
   }
 
   refresh_data()
+
+  # Observador de controle de abas (RBAC):
+  # Abas 'Buscas salvas', 'Editais rastreados' e 'Logs & Auditoria' são exclusivas de Desenvolvedores / Diretoria
+  observe({
+    if (!isTRUE(rv$is_dev_diretoria)) {
+      bslib::nav_hide(id = "main_tabs", target = "buscas_salvas")
+      bslib::nav_hide(id = "main_tabs", target = "editais_rastreados")
+      bslib::nav_hide(id = "main_tabs", target = "logs_auditoria")
+    } else {
+      bslib::nav_show(id = "main_tabs", target = "buscas_salvas")
+      bslib::nav_show(id = "main_tabs", target = "editais_rastreados")
+      bslib::nav_show(id = "main_tabs", target = "logs_auditoria")
+    }
+  })
+
+  # Evento de autenticação no Supabase (Login)
+  observeEvent(input$btn_login_submit, {
+    btn_data <- input$btn_login_submit
+    email <- trimws(as.character(if (is.list(btn_data) && !is.null(btn_data$email)) btn_data$email else input$login_email %||% ""))
+    pwd <- as.character(if (is.list(btn_data) && !is.null(btn_data$password)) btn_data$password else input$login_password %||% "")
+
+    if (!nzchar(email) || !nzchar(pwd)) {
+      rv$login_error <- "Por favor, preencha seu e-mail institucional e senha."
+      session$sendCustomMessage("login_failed", list(message = rv$login_error))
+      return()
+    }
+
+    shiny::withProgress(message = "Autenticando no Supabase...", {
+      auth_res <- supabase_authenticate(email, pwd, conn = conn)
+    })
+
+    if (isTRUE(auth_res$success)) {
+      rv$user <- auth_res$user
+      rv$access_token <- auth_res$access_token
+      rv$refresh_token <- auth_res$refresh_token
+      rv$is_dev_diretoria <- isTRUE(auth_res$is_dev)
+      rv$login_error <- NULL
+      rv$signup_success <- NULL
+
+      # Salva a sessão no localStorage do navegador para persistir após F5
+      user_payload <- list(
+        id = as.character(rv$user$id %||% ""),
+        email = as.character(rv$user$email %||% ""),
+        cargo = as.character(rv$user$cargo %||% "leitor"),
+        role = as.character(rv$user$role %||% "authenticated")
+      )
+      session$sendCustomMessage("save_auth_session", list(
+        access_token = rv$access_token,
+        refresh_token = rv$refresh_token,
+        user = user_payload
+      ))
+
+      # Revela a interface do Radar para o usuário autenticado
+      session$sendCustomMessage("set_auth_state", TRUE)
+
+      # Registra login de auditoria no SQLite
+      log_user_access(
+        conn, 
+        rv$user, 
+        action = "LOGIN", 
+        details = sprintf("Login autenticado como %s", get_user_role_label(rv$user, rv$is_dev_diretoria, conn = conn))
+      )
+
+      showNotification(sprintf("Bem-vindo(a), %s!", rv$user$email %||% "Usuário"), type = "message")
+      bslib::nav_select(id = "main_tabs", selected = "Resultados")
+    } else {
+      rv$login_error <- auth_res$message
+      session$sendCustomMessage("login_failed", list(message = auth_res$message))
+      try(showNotification(auth_res$message, type = "error", duration = 6), silent = TRUE)
+    }
+  })
+
+  # Evento de cadastro de novo usuário no Supabase (Criar Conta)
+  observeEvent(input$btn_signup_submit, {
+    btn_data <- input$btn_signup_submit
+    email <- trimws(as.character(if (is.list(btn_data) && !is.null(btn_data$email)) btn_data$email else input$signup_email %||% ""))
+    pwd <- as.character(if (is.list(btn_data) && !is.null(btn_data$password)) btn_data$password else input$signup_password %||% "")
+    pwd_conf <- as.character(if (is.list(btn_data) && !is.null(btn_data$password_confirm)) btn_data$password_confirm else input$signup_password_confirm %||% "")
+
+    if (!nzchar(email) || !nzchar(pwd)) {
+      rv$login_error <- "Por favor, preencha o e-mail institucional e defina uma senha."
+      rv$signup_success <- NULL
+      session$sendCustomMessage("signup_failed", list(message = rv$login_error))
+      return()
+    }
+
+    if (!identical(pwd, pwd_conf)) {
+      rv$login_error <- "As senhas digitadas não coincidem. Por favor, verifique."
+      rv$signup_success <- NULL
+      session$sendCustomMessage("signup_failed", list(message = rv$login_error))
+      return()
+    }
+
+    if (nchar(pwd) < 6) {
+      rv$login_error <- "A senha deve conter no mínimo 6 caracteres."
+      rv$signup_success <- NULL
+      session$sendCustomMessage("signup_failed", list(message = rv$login_error))
+      return()
+    }
+
+    shiny::withProgress(message = "Cadastrando usuário no Supabase...", {
+      signup_res <- supabase_sign_up(email, pwd)
+    })
+
+    if (isTRUE(signup_res$success)) {
+      rv$login_error <- NULL
+      
+      # Registra evento de auditoria no SQLite
+      log_user_access(
+        conn, 
+        signup_res$user %||% list(email = email), 
+        action = "CADASTRO", 
+        details = "Novo usuário registrado na plataforma via Supabase Auth"
+      )
+
+      if (isTRUE(signup_res$auto_login) && !is.null(signup_res$access_token)) {
+        rv$user <- signup_res$user
+        rv$access_token <- signup_res$access_token
+        rv$refresh_token <- signup_res$refresh_token
+        rv$is_dev_diretoria <- supabase_is_dev_or_diretoria(rv$user, access_token = rv$access_token, conn = conn)
+        rv$signup_success <- NULL
+
+        user_payload <- list(
+          id = as.character(rv$user$id %||% ""),
+          email = as.character(rv$user$email %||% ""),
+          cargo = as.character(rv$user$cargo %||% "leitor"),
+          role = as.character(rv$user$role %||% "authenticated")
+        )
+        session$sendCustomMessage("save_auth_session", list(
+          access_token = rv$access_token,
+          refresh_token = rv$refresh_token,
+          user = user_payload
+        ))
+        session$sendCustomMessage("set_auth_state", TRUE)
+        showNotification(sprintf("Conta criada com sucesso! Bem-vindo(a), %s!", email), type = "message")
+        bslib::nav_select(id = "main_tabs", selected = "Resultados")
+      } else {
+        rv$signup_success <- signup_res$message
+        showNotification(signup_res$message, type = "message", duration = 8)
+      }
+    } else {
+      rv$login_error <- signup_res$message
+      rv$signup_success <- NULL
+      session$sendCustomMessage("signup_failed", list(message = signup_res$message))
+      try(showNotification(signup_res$message, type = "error", duration = 6), silent = TRUE)
+    }
+  })
+
+  # Evento de solicitação de recuperação de senha (Esqueci a Senha)
+  observeEvent(input$btn_recovery_submit, {
+    btn_data <- input$btn_recovery_submit
+    email <- trimws(as.character(if (is.list(btn_data) && !is.null(btn_data$email)) btn_data$email else input$recovery_email %||% ""))
+
+    if (!nzchar(email)) {
+      session$sendCustomMessage("recovery_failed", list(message = "Por favor, preencha seu e-mail institucional."))
+      return()
+    }
+
+    shiny::withProgress(message = "Enviando link de recuperação...", {
+      rec_res <- supabase_request_password_reset(email)
+    })
+
+    if (isTRUE(rec_res$success)) {
+      rv$login_error <- NULL
+      log_user_access(
+        conn,
+        list(email = email),
+        action = "RECUPERAR_SENHA",
+        details = "Solicitação de link de recuperação de senha enviada"
+      )
+      session$sendCustomMessage("recovery_success", list(message = rec_res$message))
+      showNotification("Link de recuperação enviado com sucesso! Verifique sua caixa de entrada.", type = "message", duration = 8)
+    } else {
+      session$sendCustomMessage("recovery_failed", list(message = rec_res$message))
+      try(showNotification(rec_res$message, type = "error", duration = 6), silent = TRUE)
+    }
+  })
+
+  # Evento de redefinição de senha com token de recuperação
+  observeEvent(input$btn_reset_password_submit, {
+    btn_data <- input$btn_reset_password_submit
+    pwd <- as.character(if (is.list(btn_data) && !is.null(btn_data$password)) btn_data$password else input$reset_password_new %||% "")
+    access_token <- as.character(if (is.list(btn_data) && !is.null(btn_data$access_token)) btn_data$access_token else "")
+
+    if (!nzchar(pwd)) {
+      session$sendCustomMessage("reset_password_failed", list(message = "Por favor, defina uma nova senha."))
+      return()
+    }
+
+    if (nchar(pwd) < 6) {
+      session$sendCustomMessage("reset_password_failed", list(message = "A senha deve conter no mínimo 6 caracteres."))
+      return()
+    }
+
+    if (!nzchar(access_token)) {
+      session$sendCustomMessage("reset_password_failed", list(message = "Token de recuperação ausente ou expirado. Por favor, solicite um novo link."))
+      return()
+    }
+
+    shiny::withProgress(message = "Atualizando senha no Supabase...", {
+      update_res <- supabase_update_password(access_token, pwd)
+    })
+
+    if (isTRUE(update_res$success)) {
+      rv$login_error <- NULL
+      # Tenta obter dados do usuário para registrar auditoria
+      user_res <- supabase_get_user(access_token)
+      user_info <- if (isTRUE(user_res$success)) user_res$user else list(email = "recuperado")
+
+      log_user_access(
+        conn,
+        user_info,
+        action = "RECUPERAR_SENHA",
+        details = "Senha redefinida com sucesso via link de recuperação"
+      )
+
+      session$sendCustomMessage("reset_password_success", list(
+        message = "Sua senha foi redefinida com sucesso! Você já pode entrar utilizando suas novas credenciais."
+      ))
+      showNotification("Senha redefinida com sucesso! Entre com sua nova senha.", type = "message", duration = 8)
+    } else {
+      session$sendCustomMessage("reset_password_failed", list(message = update_res$message))
+      try(showNotification(update_res$message, type = "error", duration = 6), silent = TRUE)
+    }
+  })
+
+  # Restauração automática de sessão persistente ao atualizar a página (F5)
+  observeEvent(input$restore_auth_session, {
+    session_data <- input$restore_auth_session
+    if (!is.list(session_data)) return()
+    
+    access_tok <- session_data$access_token
+    refresh_tok <- session_data$refresh_token
+    user_email <- session_data$user$email %||% ""
+    has_tokens <- (nzchar(as.character(access_tok %||% "")) || nzchar(as.character(refresh_tok %||% "")))
+    has_user <- nzchar(as.character(user_email))
+    
+    if (!has_tokens && !has_user) {
+      session$sendCustomMessage("clear_auth_session", list())
+      session$sendCustomMessage("restore_auth_failed", list())
+      return()
+    }
+    
+    if (!is.null(isolate(rv$user))) return()
+    
+    restored <- tryCatch({
+      supabase_restore_session(session_data, conn = conn)
+    }, error = function(e) list(success = FALSE, is_invalid = FALSE))
+    
+    if (isTRUE(restored$success)) {
+      rv$user <- restored$user
+      rv$access_token <- restored$access_token
+      rv$refresh_token <- restored$refresh_token
+      rv$is_dev_diretoria <- isTRUE(restored$is_dev)
+      rv$login_error <- NULL
+      rv$signup_success <- NULL
+      
+      # Se os tokens foram renovados via refresh_token, atualiza no localStorage
+      if (isTRUE(restored$updated)) {
+        user_payload <- list(
+          id = as.character(rv$user$id %||% ""),
+          email = as.character(rv$user$email %||% ""),
+          cargo = as.character(rv$user$cargo %||% "leitor"),
+          role = as.character(rv$user$role %||% "authenticated")
+        )
+        session$sendCustomMessage("save_auth_session", list(
+          access_token = rv$access_token,
+          refresh_token = rv$refresh_token,
+          user = user_payload
+        ))
+      }
+      
+      session$sendCustomMessage("set_auth_state", TRUE)
+      bslib::nav_select(id = "main_tabs", selected = "Resultados")
+      log_user_access(
+        conn, 
+        rv$user, 
+        action = "SESSAO_RESTAURADA", 
+        details = "Sessão persistente restaurada automaticamente no navegador"
+      )
+    } else if (isTRUE(restored$is_invalid)) {
+      session$sendCustomMessage("clear_auth_session", list())
+      session$sendCustomMessage("restore_auth_failed", list())
+    } else {
+      session$sendCustomMessage("restore_auth_failed", list())
+    }
+  })
+
+  # Evento de logout
+  observeEvent(input$btn_header_logout, {
+    if (!is.null(rv$user)) {
+      log_user_access(conn, rv$user, action = "LOGOUT", details = "Sessão encerrada pelo usuário")
+      try(supabase_sign_out(rv$access_token), silent = TRUE)
+    }
+    rv$user <- NULL
+    rv$access_token <- NULL
+    rv$refresh_token <- NULL
+    rv$is_dev_diretoria <- FALSE
+    rv$login_error <- NULL
+    rv$signup_success <- NULL
+    session$sendCustomMessage("clear_auth_session", list())
+    session$sendCustomMessage("set_auth_state", FALSE)
+    updateTextInput(session, "login_email", value = "")
+    updateTextInput(session, "login_password", value = "")
+    updateTextInput(session, "signup_email", value = "")
+    updateTextInput(session, "signup_password", value = "")
+    updateTextInput(session, "signup_password_confirm", value = "")
+    showNotification("Você encerrou sua sessão com sucesso.", type = "message")
+  })
 
   # Reactive values para rastreamento de progresso de coleta
   progress_rv <- reactiveValues(
@@ -294,7 +1151,7 @@ server <- function(input, output, session) {
 
   # Leitor reativo de status/logs da coleta em segundo plano (polling a cada 1.5s)
   observe({
-    req(progress_rv$status %in% c("running", "done", "error"))
+    req(progress_rv$status %in% c("running", "done", "error", "warning"))
     
     # Polling contínuo enquanto status == running
     if (progress_rv$status == "running") {
@@ -315,6 +1172,8 @@ server <- function(input, output, session) {
         progress_rv$phase <- status_data$phase %||% "Scraping"
         if (identical(status_data$status, "done")) {
           progress_rv$status <- "done"
+        } else if (identical(status_data$status, "warning")) {
+          progress_rv$status <- "warning"
         } else if (identical(status_data$status, "error")) {
           progress_rv$status <- "error"
         }
@@ -331,6 +1190,7 @@ server <- function(input, output, session) {
     # Detectar quando o processo background terminou
     proc <- rv$bg_process
     if (!is.null(proc) && !proc$is_alive()) {
+      .GlobalEnv$.global_scraping_active <- FALSE
       result <- tryCatch(proc$get_result(), error = function(e) e)
       rv$bg_process <- NULL
       
@@ -344,13 +1204,21 @@ server <- function(input, output, session) {
         log_progress(paste("Erro fatal:", conditionMessage(result)), "Erro")
         showNotification(paste("Falha na coleta em segundo plano:", conditionMessage(result)), type = "error", duration = 10)
       } else {
-        # Coleta finalizada com sucesso
+        # Coleta finalizada (sucesso ou warning quando 0 inseridos)
         removeNotification("bg_collect_notif")
         rv$collecting <- FALSE
         updateActionButton(session, "btn_collect_official", label = "Atualizar base")
-        progress_rv$status <- "done"
+        if (identical(result$inserted_now %||% 0L, 0L)) {
+          progress_rv$status <- "warning"
+          progress_rv$detail <- "Coleta finalizada — nenhum registro novo. Verifique filtros/ano ou logs."
+        } else {
+          progress_rv$status <- "done"
+          progress_rv$detail <- "Coleta concluída! Gravando no banco de dados..."
+        }
         progress_rv$percentage <- 100
-        progress_rv$detail <- "Coleta concluída com sucesso!"
+        
+        # Os dados já foram gravados diretamente no banco pelo processo filho
+        progress_rv$detail <- "Base atualizada no banco de dados!"
         rv$last_collect_summary <- result
         refresh_data(notify = TRUE)
         
@@ -378,6 +1246,7 @@ server <- function(input, output, session) {
     pct <- progress_rv$percentage
     color_class <- if (progress_rv$phase == "IA") "bg-info" else "bg-primary"
     if (progress_rv$status == "done") color_class <- "bg-success"
+    if (progress_rv$status == "warning") color_class <- "bg-warning"
     if (progress_rv$status == "error") color_class <- "bg-danger"
     
     tags$div(
@@ -394,6 +1263,8 @@ server <- function(input, output, session) {
       badge_style <- "background-color: #0ea5e9; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85rem;"
     } else if (phase == "Concluído") {
       badge_style <- "background-color: #22c55e; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85rem;"
+    } else if (phase == "Atenção") {
+      badge_style <- "background-color: #eab308; color: #422006; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85rem;"
     }
     tags$span(style = badge_style, sprintf("Fase Atual: %s", phase))
   })
@@ -401,8 +1272,28 @@ server <- function(input, output, session) {
   output$modal_log_text <- renderText(progress_rv$logs)
   
   output$progress_modal_footer <- renderUI({
-    if (progress_rv$status %in% c("done", "error")) {
-      actionButton("btn_close_progress_modal", "Concluir", class = "btn-success")
+    if (progress_rv$status == "done") {
+      tagList(
+        tags$div(
+          style = "display: flex; gap: 10px; align-items: center;",
+          tags$span(style = "font-weight: 600; color: #22c55e;", "Coleta concluída!"),
+          downloadButton("btn_modal_export_xlsx", "Baixar XLSX", class = "btn-sm btn-success"),
+          downloadButton("btn_modal_export_csv", "Baixar CSV", class = "btn-sm btn-primary"),
+          actionButton("btn_close_progress_modal", "Concluir", class = "btn-outline-secondary")
+        )
+      )
+    } else if (progress_rv$status == "warning") {
+      tagList(
+        tags$div(
+          style = "display: flex; gap: 10px; align-items: center; flex-wrap: wrap;",
+          tags$span(style = "font-weight: 600; color: #a16207; background:#fef9c3; padding:4px 8px; border-radius:4px;", "Coleta finalizada — nenhum registro novo nesta rodada."),
+          downloadButton("btn_modal_export_xlsx", "Baixar XLSX", class = "btn-sm btn-success"),
+          downloadButton("btn_modal_export_csv", "Baixar CSV", class = "btn-sm btn-primary"),
+          actionButton("btn_close_progress_modal", "Concluir", class = "btn-outline-secondary")
+        )
+      )
+    } else if (progress_rv$status == "error") {
+      actionButton("btn_close_progress_modal", "Fechar", class = "btn-danger")
     } else {
       tagList(
         actionButton("btn_minimize_progress_modal", "Minimizar (Rodar em 2º Plano)", class = "btn-outline-secondary"),
@@ -434,7 +1325,7 @@ server <- function(input, output, session) {
         tags$pre(
           style = "height: 250px; overflow-y: auto; background-color: #0f172a; color: #38bdf8; border: 1px solid #1e293b; border-radius: 6px; padding: 12px; font-family: 'Courier New', monospace; font-size: 0.85rem; white-space: pre-wrap; margin-bottom: 0;",
           textOutput("modal_log_text")
-        ),
+        )
       ),
       footer = uiOutput("progress_modal_footer")
     ))
@@ -450,16 +1341,54 @@ server <- function(input, output, session) {
     showNotification("Coleta continua em execução em segundo plano.", type = "message")
   })
 
-  # Validação de API Key no startup do Shiny
+  # Export handlers for modal after collection
+  output$btn_modal_export_xlsx <- downloadHandler(
+    filename = function() {
+      generate_export_filename("quiiin_coleta", "xlsx")
+    },
+    content = function(file) {
+      data <- filtered_results()
+      export_data <- prepare_export_data(data)
+      writexl::write_xlsx(export_data, file)
+    }
+  )
+
+  output$btn_modal_export_csv <- downloadHandler(
+    filename = function() {
+      generate_export_filename("quiiin_coleta", "csv")
+    },
+    content = function(file) {
+      data <- filtered_results()
+      export_data <- prepare_export_data(data)
+      write.csv(export_data, file, row.names = FALSE, fileEncoding = "UTF-8")
+    }
+  )
+
+  # Validação de API Key no startup do Shiny (somente após login, diferida para não travar a UI)
   observe({
+    req(rv$user)
     key_ok <- validate_ai_config()
     if (!key_ok) {
       showNotification(
-        "Aviso de IA Desativada: Nenhuma chave de API de IA (Gemini, OpenAI, Anthropic, Groq, OpenRouter, DeepSeek) foi configurada. O enriquecimento e auditoria de editais com IA estarão desativados. Consulte o README.md para obter instruções de configuração.",
+        "Aviso de IA Desativada: Nenhuma chave de API de IA (Gemini, OpenAI, Nvidia, Anthropic, Groq, OpenRouter, DeepSeek, Bluesminds) foi configurada. O enriquecimento e auditoria de editais com IA estarão desativados. Consulte o README.md para obter instruções de configuração.",
         type = "warning",
         duration = NULL,
         id = "ai_missing_warning"
       )
+    } else {
+      ai_session <- session
+      later::later(function() {
+        if (!is.null(ai_session) && isTRUE(ai_session$isClosed())) return()
+        ai_health <- tryCatch(ai_healthcheck(timeout_sec = 3), error = function(e) list(ok = FALSE, error = e$message))
+        if (!isTRUE(ai_health$ok)) {
+          showNotification(
+            paste("Aviso: IA indisponível —", ai_health$error, ". Enriquecimento desativado."),
+            type = "warning", duration = 8, id = "ai_health_warning"
+          )
+        } else {
+          message(sprintf("IA saudável: %s (%s)", ai_health$provider, ai_health$model))
+        }
+      }, 0.5)
     }
   })
 
@@ -492,9 +1421,9 @@ server <- function(input, output, session) {
 
   check_and_alert_failures <- function(since_time) {
     req(conn)
-    query <- "SELECT DISTINCT fonte FROM logs_coleta WHERE status_execucao = 'erro' AND data_execucao >= ?"
+    query <- "SELECT DISTINCT fonte FROM logs_coleta WHERE status_execucao IN ('erro', 'parcial') AND data_execucao >= ?"
     failed_sids <- tryCatch({
-      DBI::dbGetQuery(conn, query, params = list(as.character(since_time)))$fonte
+      db_qry(conn, query, params = list(as.character(since_time)))$fonte
     }, error = function(e) character())
     
     if (length(failed_sids) > 0) {
@@ -529,59 +1458,19 @@ server <- function(input, output, session) {
       }
     }
     
-    # Se for busca ativa (save_history = TRUE), aciona a coleta dinâmica de fontes correspondentes
-    if (isTRUE(save_history) && !is.null(conn)) {
-      start_time <- Sys.time()
-      region <- input$region_filter
-      available_sources <- rv$sources |> dplyr::filter(!(.data$id_fonte %in% c("facepe", "fapesb")))
-      if (region == "Brasileiras") {
-        available_sources <- available_sources |> dplyr::filter(pais == "Brasil")
-      } else if (region == "Europeias") {
-        available_sources <- available_sources |> dplyr::filter(pais %in% c("União Europeia", "Alemanha", "Reino Unido", "Suécia", "Bélgica", "França", "Suíça", "Europa", "Itália", "Espanha", "Holanda"))
-      } else {
-        available_sources <- available_sources |> dplyr::filter(pais == "Brasil" | pais %in% c("União Europeia", "Alemanha", "Reino Unido", "Suécia", "Bélgica", "França", "Suíça", "Europa", "Itália", "Espanha", "Holanda"))
-      }
-      
-      source_ids_to_collect <- available_sources$id_fonte
-      
-      if (length(source_ids_to_collect) > 0) {
-        shiny::withProgress(message = "Pesquisando novas oportunidades na web...", value = 0, {
-          progress_cb_shiny <- function(step, total, detail) {
-            shiny::setProgress(value = step / total, detail = detail)
-          }
-          
-          tryCatch({
-            collect_all_sources(
-              conn = conn,
-              source_ids = source_ids_to_collect,
-              max_pages = 1L,
-              max_records_per_source = 3L,
-              use_ai = FALSE, # Sem IA na busca dinâmica rápida
-              export_dir = export_dir,
-              log_path = log_path,
-              progress_cb = progress_cb_shiny,
-              do_export = FALSE
-            )
-          }, error = function(e) {
-            # Ignora erros de scraping para seguir a busca
-          })
-        })
-        
-        # Alerta se houver falhas durante a busca sob demanda
-        check_and_alert_failures(start_time)
-      }
-    }
-    
-    # Atualiza a base de dados na UI
+    # Atualiza a base de dados na UI para sincronismo
     refresh_data()
     
     rv$current_query <- query_text
+    interest_sig(tryCatch(collect_interest_signature(conn, query_text), error = function(e) NULL))
     if (save_history && !is.null(conn)) save_search_record(conn, rv$current_query, build_filters_json())
     invisible(TRUE)
   }
 
   observeEvent(input$btn_search, {
+    req(rv$user)
     execute_search(input$search_query)
+    log_user_access(conn, rv$user, action = "BUSCA", details = sprintf("Consulta: '%s'", input$search_query %||% ""))
   })
 
   observeEvent(input$btn_advanced, {
@@ -638,9 +1527,11 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$btn_save_search, {
+    current_campus <- if (length(input$filter_campus) > 0) input$filter_campus[[1]] else "Sede e Park"
     showModal(modalDialog(
       title = "Salvar busca atual",
       textInput("save_search_name", "Nome da busca", value = paste0("Busca ", format(Sys.time(), "%d/%m %H:%M"))),
+      selectInput("save_search_campus", "Campus associado", choices = c("Aeroespacial", "Sertão", "Mar", "Digital", "Sede e Park"), selected = current_campus),
       checkboxInput("save_search_alert", "Preparar alerta semanal", value = TRUE),
       footer = tagList(modalButton("Cancelar"), actionButton("confirm_save_search", "Salvar", class = "btn-primary"))
     ))
@@ -649,26 +1540,40 @@ server <- function(input, output, session) {
   observeEvent(input$confirm_save_search, {
     req(conn)
     payload <- jsonlite::toJSON(rv$advanced_filters, auto_unbox = TRUE, null = "null")
-    save_named_search(conn, input$save_search_name %||% "Busca sem nome", input$search_query %||% "", payload, as.integer(isTRUE(input$save_search_alert)))
+    save_named_search(
+      conn,
+      input$save_search_name %||% "Busca sem nome",
+      input$search_query %||% "",
+      payload,
+      as.integer(isTRUE(input$save_search_alert)),
+      campus = input$save_search_campus %||% "Todos"
+    )
     removeModal()
     refresh_data()
     showNotification("Busca salva com sucesso.", type = "message")
   })
 
   observeEvent(input$btn_collect_official, {
+    req(rv$user)
+    if (!isTRUE(rv$is_dev_diretoria)) {
+      showNotification("Acesso negado: apenas a Diretoria pode atualizar a base.", type = "error")
+      return()
+    }
     if (isTRUE(rv$collecting)) {
       show_progress_modal()
       return()
     }
     region <- input$region_filter
-    available_sources <- rv$sources |> dplyr::filter(!(.data$id_fonte %in% c("facepe", "fapesb")))
+    available_sources <- rv$sources
     
     if (region == "Brasileiras") {
       available_sources <- available_sources |> dplyr::filter(pais == "Brasil")
     } else if (region == "Europeias") {
-      available_sources <- available_sources |> dplyr::filter(pais %in% c("União Europeia", "Alemanha", "Reino Unido", "Suécia", "Bélgica", "França", "Suíça", "Europa", "Itália", "Espanha", "Holanda"))
+      available_sources <- available_sources |> dplyr::filter(pais %in% c("União Europeia", "Alemanha", "Europa"))
+    } else if (region == "Internacionais") {
+      available_sources <- available_sources |> dplyr::filter(pais != "Brasil")
     } else {
-      available_sources <- available_sources |> dplyr::filter(pais == "Brasil" | pais %in% c("União Europeia", "Alemanha", "Reino Unido", "Suécia", "Bélgica", "França", "Suíça", "Europa", "Itália", "Espanha", "Holanda"))
+      available_sources <- available_sources
     }
     
     choices <- stats::setNames(available_sources$id_fonte, paste0(available_sources$sigla, " — ", available_sources$nome_fonte))
@@ -683,7 +1588,7 @@ server <- function(input, output, session) {
       bslib::layout_columns(
         col_widths = c(4, 4, 4),
         numericInput("collect_max_pages", "Máx. páginas por fonte", value = 5, min = 1, max = 50),
-        numericInput("collect_max_records", "Máx. registros por fonte", value = 50, min = 1, max = 500),
+        numericInput("collect_max_records", "Máx. registros por fonte", value = 15, min = 1, max = 500),
         checkboxInput("collect_use_ai", "Usar IA para enriquecimento", value = ai_available())
       ),
       checkboxInput("collect_export", "Salvar CSV, RDS e XLSX ao final", value = TRUE),
@@ -692,11 +1597,21 @@ server <- function(input, output, session) {
   })
 
   observeEvent(input$confirm_collect_official, {
-    req(conn)
+    req(rv$user)
+    if (!isTRUE(rv$is_dev_diretoria)) {
+      showNotification("Acesso negado: apenas a Diretoria pode atualizar a base.", type = "error")
+      return()
+    }
+    if (is.null(conn)) {
+      showNotification("Erro: Conexão com o banco de dados indisponível.", type = "error")
+      return()
+    }
     removeModal()
 
-    if (isTRUE(rv$collecting)) {
-      showNotification("A coleta de dados ja esta em andamento em segundo plano.", type = "warning")
+    log_user_access(conn, rv$user, action = "ATUALIZAR_BASE", details = sprintf("Coleta iniciada para %d fontes", length(input$collect_sources)))
+
+    if (isTRUE(rv$collecting) || isTRUE(.GlobalEnv$.global_scraping_active)) {
+      showNotification("A coleta de dados já está em andamento em segundo plano por outro processo.", type = "warning")
       return()
     }
 
@@ -720,6 +1635,7 @@ server <- function(input, output, session) {
     }, silent = TRUE)
 
     rv$collecting <- TRUE
+    .GlobalEnv$.global_scraping_active <- TRUE
     rv$bg_start_time <- Sys.time()
     updateActionButton(session, "btn_collect_official", label = "Coletando...")
     showNotification("Coleta iniciada. Acompanhe pelo modal de progresso.", type = "message", id = "bg_collect_notif", duration = 8)
@@ -735,11 +1651,15 @@ server <- function(input, output, session) {
       log_path_bg     = log_path,
       do_export_bg    = isTRUE(input$collect_export),
       db_path_bg      = db_path,
+      helper_files_bg = COLLECTOR_HELPER_FILES,
       status_file_bg  = normalizePath(status_file, winslash = "/", mustWork = FALSE),
       log_file_bg     = normalizePath(log_file, winslash = "/", mustWork = FALSE),
+      database_url_bg = if (exists(".pg_remote_unavailable") && isTRUE(.pg_remote_unavailable)) "" else Sys.getenv("DATABASE_URL"),
       ai_env_vars     = list(
+        BLUESMINDS_API_KEY= Sys.getenv("BLUESMINDS_API_KEY"),
         GEMINI_API_KEY    = Sys.getenv("GEMINI_API_KEY"),
         OPENAI_API_KEY    = Sys.getenv("OPENAI_API_KEY"),
+        NVIDIA_API_KEY    = Sys.getenv("NVIDIA_API_KEY"),
         ANTHROPIC_API_KEY = Sys.getenv("ANTHROPIC_API_KEY"),
         GROQ_API_KEY      = Sys.getenv("GROQ_API_KEY"),
         OPENROUTER_API_KEY= Sys.getenv("OPENROUTER_API_KEY"),
@@ -747,7 +1667,8 @@ server <- function(input, output, session) {
         AI_PROVIDER       = Sys.getenv("AI_PROVIDER"),
         AI_MODEL          = Sys.getenv("AI_MODEL"),
         AI_API_KEY        = Sys.getenv("AI_API_KEY"),
-        AI_API_URL        = Sys.getenv("AI_API_URL")
+        AI_API_URL        = Sys.getenv("AI_API_URL"),
+        EU_API_PROXY_URL  = Sys.getenv("EU_API_PROXY_URL")
       )
     )
 
@@ -757,7 +1678,8 @@ server <- function(input, output, session) {
     rv$bg_process <- callr::r_bg(
       func = function(app_dir_bg, source_ids_bg, max_pages_bg, max_records_bg,
                       use_ai_bg, export_dir_bg, log_path_bg, do_export_bg,
-                      db_path_bg, status_file_bg, log_file_bg, ai_env_vars) {
+                      db_path_bg, helper_files_bg, status_file_bg, log_file_bg,
+                      database_url_bg, ai_env_vars) {
         
         # Configura biblioteca local no processo filho
         local_libs_bg <- file.path(app_dir_bg, "R_libs")
@@ -782,15 +1704,24 @@ server <- function(input, output, session) {
           }
         }
 
-        # Carrega os helpers do app
-        source(file.path(app_dir_bg, "R", "helpers_utils.R"), local = TRUE, encoding = "UTF-8")
-        source(file.path(app_dir_bg, "R", "helpers_db.R"),    local = TRUE, encoding = "UTF-8")
-        source(file.path(app_dir_bg, "R", "helpers_text.R"),  local = TRUE, encoding = "UTF-8")
-        source(file.path(app_dir_bg, "R", "helpers_ai.R"),    local = TRUE, encoding = "UTF-8")
-        source(file.path(app_dir_bg, "R", "helpers_collect.R"),local = TRUE, encoding = "UTF-8")
+        # Propaga DATABASE_URL para o processo filho (garantia explícita do
+        # contrato com o callr, mesmo que o ambiente do processo pai mude)
+        if (nzchar(database_url_bg)) {
+          Sys.setenv(DATABASE_URL = database_url_bg)
+        }
 
-        # Conexão SQLite própria do processo filho
-        bg_conn <- DBI::dbConnect(RSQLite::SQLite(), db_path_bg)
+        # Carrega os helpers do app — lista única de módulos do pipeline de coleta
+        # (inclui helpers_status.R: coletores dependem de status_today via helpers de datas)
+        for (helper_file_bg in helper_files_bg) {
+          helper_path_bg <- file.path(app_dir_bg, helper_file_bg)
+          if (!file.exists(helper_path_bg)) {
+            stop(sprintf("Helper do pipeline de coleta ausente no bg-job: %s", helper_path_bg), call. = FALSE)
+          }
+          source(helper_path_bg, local = TRUE, encoding = "UTF-8")
+        }
+
+        # Conexão própria do processo filho: Postgres (DATABASE_URL) ou SQLite local
+        bg_conn <- conectar_banco(db_path_bg)
         on.exit(DBI::dbDisconnect(bg_conn), add = TRUE)
 
         collect_all_sources(
@@ -808,11 +1739,15 @@ server <- function(input, output, session) {
         )
       },
       args = bg_args,
+      stdout = file.path(app_dir, "logs", "collection_stdout.log"),
+      stderr = file.path(app_dir, "logs", "collection_stderr.log"),
       supervise = TRUE
     )
+    bg_proc_ref <<- rv$bg_process
   })
 
   base_results <- reactive({
+    req(rv$user)
     df <- rv$opportunities
     if (nrow(df) == 0) return(df)
     query <- rv$current_query
@@ -820,44 +1755,293 @@ server <- function(input, output, session) {
       df <- tryCatch(apply_boolean_search(df, query, text_cols = c("titulo", "subtitulo", "descricao_resumida", "descricao_completa", "palavras_chave", "area_tematica", "elegibilidade")), error = function(e) df)
     }
     df <- apply_structured_filters(df, rv$advanced_filters)
-    compute_adherence_score(df, conn, query)
+    compute_adherence_score(df, conn, query, signature = interest_sig())
   })
 
   filtered_results <- reactive({
+    if (is.null(rv$user)) return(tibble::tibble())
     df <- base_results()
     if (nrow(df) == 0) return(df)
     
-    # Filtro regional
+    # Status derivado em renderização (BUG-01): nunca ler status_oportunidade congelado
+    df$derived_status <- derive_status_df(df)
+
+    # Filtro regional — Ambas = literalmente todas (sem filtro), Internacionais = todas não-brasileiras
     region <- input$region_filter
     if (region == "Brasileiras") {
       df <- df |> dplyr::filter(pais_origem == "Brasil")
     } else if (region == "Europeias") {
-      df <- df |> dplyr::filter(pais_origem %in% c("União Europeia", "Alemanha", "Reino Unido", "Suécia", "Bélgica", "França", "Suíça", "Europa", "Itália", "Espanha", "Holanda"))
+      df <- df |> dplyr::filter(pais_origem %in% c("União Europeia", "Alemanha", "Europa"))
+    } else if (region == "Internacionais") {
+      df <- df |> dplyr::filter(pais_origem != "Brasil")
     } else {
-      # Ambas (Mantém brasileiras e europeias)
-      df <- df |> dplyr::filter(pais_origem == "Brasil" | pais_origem %in% c("União Europeia", "Alemanha", "Reino Unido", "Suécia", "Bélgica", "França", "Suíça", "Europa", "Itália", "Espanha", "Holanda"))
+      # Ambas — literalmente todas as origens, inclusivo a futuras (EUA, Canadá, etc.)
+      df <- df
+    }
+
+    # Filtros Rápidos do Sidebar
+    if (length(input$filter_campus) > 0 && !"Todos" %in% input$filter_campus) {
+      sel_campi <- input$filter_campus
+      df <- df |> dplyr::filter(vapply(seq_len(dplyr::n()), function(i) {
+        rec_c <- df$campus[[i]] %||% ""
+        ttl_i <- df$titulo[[i]] %||% ""
+        area_i <- df$area_tematica[[i]] %||% ""
+        kw_i <- df$palavras_chave[[i]] %||% ""
+        comb_text <- paste(rec_c, ttl_i, area_i, kw_i)
+        any(vapply(sel_campi, function(sc) {
+          grepl(sc, comb_text, ignore.case = TRUE)
+        }, logical(1)))
+      }, logical(1)))
+    }
+    if (length(input$filter_funder) > 0) {
+      df <- df |> dplyr::filter(entidade %in% input$filter_funder)
+    }
+    if (length(input$filter_area) > 0) {
+      df <- df |> dplyr::filter(area_tematica %in% input$filter_area)
+    }
+    if (length(input$filter_status) > 0) {
+      df <- df |> dplyr::filter(derived_status %in% tolower(gsub(" ", "_", input$filter_status)))
+    }
+    if (length(input$filter_type) > 0) {
+      df <- df |> dplyr::filter(tipo_oportunidade %in% input$filter_type)
+    }
+    if (length(input$filter_language) > 0) {
+      df <- df |> dplyr::filter(idioma %in% input$filter_language)
+    }
+
+    # Filtro de Aderência Naval & Offshore do Sidebar
+    if (!is.null(input$filter_naval_level) && input$filter_naval_level != "Todas") {
+      if (!"aderencia_naval_nivel" %in% names(df)) df$aderencia_naval_nivel <- NA_character_
+      if (!"aderencia_naval_justificativa" %in% names(df)) df$aderencia_naval_justificativa <- NA_character_
+      if (!"ideia_projeto_consorcio" %in% names(df)) df$ideia_projeto_consorcio <- NA_character_
+
+      for (i in seq_len(nrow(df))) {
+        if (is.na(df$aderencia_naval_nivel[[i]]) || !nzchar(df$aderencia_naval_nivel[[i]] %||% "")) {
+          eval_res <- evaluate_naval_offshore_adherence(
+            titulo = df$titulo[[i]],
+            descricao = df$descricao_resumida[[i]],
+            texto_bruto = df$texto_bruto[[i]],
+            entidade = df$entidade[[i]],
+            use_ai = FALSE
+          )
+          df$aderencia_naval_nivel[[i]] <- eval_res$aderencia_naval_nivel %||% "Baixa"
+          df$aderencia_naval_justificativa[[i]] <- eval_res$aderencia_naval_justificativa %||% ""
+          df$ideia_projeto_consorcio[[i]] <- eval_res$ideia_projeto_consorcio %||% NA_character_
+        }
+      }
+      df <- df |> dplyr::filter(aderencia_naval_nivel == input$filter_naval_level)
+    }
+
+    # Filtro de Aderência Sertão & Agro do Sidebar
+    if (!is.null(input$filter_sertao_level) && input$filter_sertao_level != "Todas") {
+      if (!"aderencia_sertao_nivel" %in% names(df)) df$aderencia_sertao_nivel <- NA_character_
+      for (i in seq_len(nrow(df))) {
+        if (is.na(df$aderencia_sertao_nivel[[i]]) || !nzchar(df$aderencia_sertao_nivel[[i]] %||% "")) {
+          eval_res <- evaluate_sertao_adherence(
+            titulo = df$titulo[[i]], descricao = df$descricao_resumida[[i]],
+            texto_bruto = df$texto_bruto[[i]], entidade = df$entidade[[i]], use_ai = FALSE
+          )
+          df$aderencia_sertao_nivel[[i]] <- eval_res$aderencia_sertao_nivel %||% "Baixa"
+        }
+      }
+      df <- df |> dplyr::filter(aderencia_sertao_nivel == input$filter_sertao_level)
+    }
+
+    # Filtro de Aderência Aeroespacial & Defesa do Sidebar
+    if (!is.null(input$filter_aero_level) && input$filter_aero_level != "Todas") {
+      if (!"aderencia_aero_nivel" %in% names(df)) df$aderencia_aero_nivel <- NA_character_
+      for (i in seq_len(nrow(df))) {
+        if (is.na(df$aderencia_aero_nivel[[i]]) || !nzchar(df$aderencia_aero_nivel[[i]] %||% "")) {
+          eval_res <- evaluate_aero_adherence(
+            titulo = df$titulo[[i]], descricao = df$descricao_resumida[[i]],
+            texto_bruto = df$texto_bruto[[i]], entidade = df$entidade[[i]], use_ai = FALSE
+          )
+          df$aderencia_aero_nivel[[i]] <- eval_res$aderencia_aero_nivel %||% "Baixa"
+        }
+      }
+      df <- df |> dplyr::filter(aderencia_aero_nivel == input$filter_aero_level)
+    }
+
+    # Filtro de Aderência Digital & IA do Sidebar
+    if (!is.null(input$filter_digital_level) && input$filter_digital_level != "Todas") {
+      if (!"aderencia_digital_nivel" %in% names(df)) df$aderencia_digital_nivel <- NA_character_
+      for (i in seq_len(nrow(df))) {
+        if (is.na(df$aderencia_digital_nivel[[i]]) || !nzchar(df$aderencia_digital_nivel[[i]] %||% "")) {
+          eval_res <- evaluate_digital_adherence(
+            titulo = df$titulo[[i]], descricao = df$descricao_resumida[[i]],
+            texto_bruto = df$texto_bruto[[i]], entidade = df$entidade[[i]], use_ai = FALSE
+          )
+          df$aderencia_digital_nivel[[i]] <- eval_res$aderencia_digital_nivel %||% "Baixa"
+        }
+      }
+      df <- df |> dplyr::filter(aderencia_digital_nivel == input$filter_digital_level)
+    }
+
+    # Filtro de Aderência Park & Manufatura do Sidebar
+    if (!is.null(input$filter_park_level) && input$filter_park_level != "Todas") {
+      if (!"aderencia_park_nivel" %in% names(df)) df$aderencia_park_nivel <- NA_character_
+      for (i in seq_len(nrow(df))) {
+        if (is.na(df$aderencia_park_nivel[[i]]) || !nzchar(df$aderencia_park_nivel[[i]] %||% "")) {
+          eval_res <- evaluate_park_adherence(
+            titulo = df$titulo[[i]], descricao = df$descricao_resumida[[i]],
+            texto_bruto = df$texto_bruto[[i]], entidade = df$entidade[[i]], use_ai = FALSE
+          )
+          df$aderencia_park_nivel[[i]] <- eval_res$aderencia_park_nivel %||% "Baixa"
+        }
+      }
+      df <- df |> dplyr::filter(aderencia_park_nivel == input$filter_park_level)
     }
     
     dplyr::arrange(df, dplyr::desc(score_aderencia), parse_date_safe(data_limite))
   })
 
-  output$total_editais <- renderText(nrow(filtered_results()))
-  output$total_fontes <- renderText(if (nrow(filtered_results()) == 0) 0 else dplyr::n_distinct(filtered_results()$entidade))
-  output$total_urgentes <- renderText(sum(days_to_deadline(filtered_results()$data_limite) <= 14 & days_to_deadline(filtered_results()$data_limite) >= 0, na.rm = TRUE))
+  # Atualizador dinâmico de escolhas dos filtros no sidebar (blindado contra loops de reatividade)
+  observeEvent(rv$opportunities, {
+    opps <- rv$opportunities
+    req(nrow(opps) > 0)
+    
+    # Campi
+    campus_choices <- c(
+      "🚀 Aeroespacial" = "Aeroespacial",
+      "🌾 Sertão" = "Sertão",
+      "🌊 Mar" = "Mar",
+      "💻 Digital" = "Digital",
+      "<img src='logos/logo.png' height='14px' style='vertical-align: middle; margin-right: 4px;'> Sede e Park" = "Sede e Park"
+    )
+    updateSelectizeInput(session, "filter_campus", choices = campus_choices, selected = isolate(input$filter_campus))
+
+    # Financiador
+    funder_choices <- sort(unique(opps$entidade))
+    updateSelectizeInput(session, "filter_funder", choices = funder_choices, selected = isolate(input$filter_funder))
+    
+    # Área Temática
+    area_choices <- sort(unique(opps$area_tematica[!is.na(opps$area_tematica) & opps$area_tematica != ""]))
+    updateSelectizeInput(session, "filter_area", choices = area_choices, selected = isolate(input$filter_area))
+    
+    # Status (derivado em render — BUG-01)
+    status_choices <- unique(derive_status_df(opps))
+    status_choices <- status_choices[status_choices != "" & !is.na(status_choices) & status_choices != "desconhecido"]
+    status_display <- setNames(status_choices, status_display_label(status_choices))
+    updateSelectizeInput(session, "filter_status", choices = status_display, selected = isolate(input$filter_status))
+    
+    # Tipo de Oportunidade
+    type_choices <- sort(unique(opps$tipo_oportunidade[!is.na(opps$tipo_oportunidade) & opps$tipo_oportunidade != ""]))
+    updateSelectizeInput(session, "filter_type", choices = type_choices, selected = isolate(input$filter_type))
+    
+    # Idioma
+    lang_choices <- sort(unique(opps$idioma[!is.na(opps$idioma) & opps$idioma != ""]))
+    lang_display <- setNames(lang_choices, toupper(lang_choices))
+    updateSelectizeInput(session, "filter_language", choices = lang_display, selected = isolate(input$filter_language))
+  }, ignoreNULL = TRUE)
+
+  # Evento para limpar todos os filtros rápidos do sidebar
+  observeEvent(input$btn_clear_filters, {
+    updateSelectizeInput(session, "filter_campus", selected = character(0))
+    updateSelectizeInput(session, "filter_funder", selected = character(0))
+    updateSelectizeInput(session, "filter_area", selected = character(0))
+    updateSelectizeInput(session, "filter_status", selected = character(0))
+    updateSelectizeInput(session, "filter_type", selected = character(0))
+    updateSelectizeInput(session, "filter_language", selected = character(0))
+    updateSelectInput(session, "filter_naval_level", selected = "Todas")
+    updateSelectInput(session, "filter_sertao_level", selected = "Todas")
+    updateSelectInput(session, "filter_aero_level", selected = "Todas")
+    updateSelectInput(session, "filter_digital_level", selected = "Todas")
+    updateSelectInput(session, "filter_park_level", selected = "Todas")
+  })
+
+  # Renderizador de status persistente no header da aplicação (inclui autenticação e perfil)
+  output$header_status <- renderUI({
+    req(rv$user)
+    render_header_user_bar(
+      user = rv$user,
+      is_dev = rv$is_dev_diretoria,
+      drive_status = rv$drive_status,
+      scraping_status = progress_rv$status
+    )
+  })
+
+  # Botão Atualizar Base (exclusivo para desenvolvedores / diretoria)
+  output$btn_collect_container <- renderUI({
+    if (isTRUE(rv$is_dev_diretoria)) {
+      actionButton("btn_collect_official", "Atualizar base", class = "btn-success", icon = icon("sync"))
+    } else {
+      NULL
+    }
+  })
+
+  # Clique no status do header abre o modal se houver coleta rodando
+  observeEvent(input$click_header_status, {
+    if (progress_rv$status == "running" || progress_rv$status == "done" || progress_rv$status == "error") {
+      show_progress_modal()
+    } else {
+      showNotification("A base está atualizada e conectada ao banco de dados.", type = "message")
+    }
+  })
+
+  # Exibe modal informativo de sintaxe de busca
+  observeEvent(input$click_search_help, {
+    showModal(modalDialog(
+      title = span(style = "font-weight: bold; color: #004691; display: flex; align-items: center; gap: 6px;", 
+                   tags$i(class = "fa fa-lightbulb text-warning"), "Guia de Busca Booleana"),
+      easyClose = TRUE,
+      p("A barra de busca suporta termos e expressões complexas utilizando operadores booleanos:"),
+      tags$ul(
+        tags$li(tags$strong("AND:"), " Ambos os termos devem estar presentes. Ex: ", tags$code("saúde AND tecnologia")),
+        tags$li(tags$strong("OR:"), " Pelo menos um dos termos deve estar presente. Ex: ", tags$code("computação OR eletrônica")),
+        tags$li(tags$strong("NOT:"), " Exclui termos indesejados. Ex: ", tags$code("inovação NOT veterinária")),
+        tags$li(tags$strong("Aspas (\" \"):"), " Busca exata. Ex: ", tags$code("\"inteligência artificial\"")),
+        tags$li(tags$strong("Parênteses (( )):"), " Organiza a prioridade. Ex: ", tags$code("(sensores OR robótica) AND saúde"))
+      ),
+      p(style = "color: #64748b; font-size: 0.85rem; margin-top: 10px;", "Aviso: Operadores lógicos (AND, OR, NOT) devem ser escritos em maiúsculo."),
+      footer = modalButton("Entendi")
+    ))
+  })
+
+  output$total_editais <- renderText({
+    if (is.null(rv$user)) return("—")
+    as.character(nrow(filtered_results()))
+  })
+  output$total_fontes <- renderText({
+    if (is.null(rv$user)) return("—")
+    df <- filtered_results()
+    if (nrow(df) == 0 || !"entidade" %in% names(df)) "0" else as.character(dplyr::n_distinct(df$entidade))
+  })
+  output$total_urgentes <- renderText({
+    if (is.null(rv$user)) return("—")
+    df <- filtered_results()
+    if (nrow(df) == 0 || !"data_limite" %in% names(df)) "0" else as.character(count_urgent_status(df$data_limite, df$data_abertura, df$texto_bruto))
+  })
   output$ultima_coleta <- renderText({
-    if (nrow(rv$logs) == 0) return("-")
-    latest <- max(parse_datetime_safe(rv$logs$data_execucao), na.rm = TRUE)
+    if (is.null(rv$user)) return("—")
+    dates_logs <- if (nrow(rv$logs) > 0 && "data_execucao" %in% names(rv$logs)) parse_datetime_safe(rv$logs$data_execucao) else as.POSIXct(character())
+    dates_opps <- if (nrow(rv$opportunities) > 0 && "data_hora_coleta" %in% names(rv$opportunities)) parse_datetime_safe(rv$opportunities$data_hora_coleta) else as.POSIXct(character())
+    all_dates <- c(dates_logs, dates_opps)
+    all_dates <- all_dates[!is.na(all_dates)]
+    if (length(all_dates) == 0) return("-")
+    latest <- max(all_dates, na.rm = TRUE)
     if (!is.finite(as.numeric(latest))) return("-")
     format(latest, "%d/%m/%Y %H:%M")
   })
 
   output$collection_status_ui <- renderUI({
-    tags$div(class = "mini-kpi", h5("Coleta"), p(rv$last_collect_summary$msg %||% "Base pronta."))
+    req(rv$user)
+    summary <- rv$last_collect_summary
+    msg <- summary$msg %||% "Base pronta."
+    inserted <- summary$inserted_now %||% NULL
+    total <- summary$n_records %||% NULL
+    detail <- if (!is.null(inserted) && !is.null(total)) {
+      sprintf("%s — %s novos nesta rodada | %s totais na base", msg, inserted, total)
+    } else {
+      msg
+    }
+    tags$div(class = "mini-kpi", h5("Coleta"), p(detail))
   })
   output$source_counter_ui <- renderUI({
+    req(rv$user)
     tags$div(class = "mini-kpi", h5("Fontes"), p(sprintf("%s fontes configuradas", nrow(rv$sources))))
   })
   output$export_status_ui <- renderUI({
+    req(rv$user)
     exp <- rv$last_collect_summary$exports
     warn <- rv$last_collect_summary$export_warnings %||% character()
     msg <- if (is.null(exp) || length(exp) == 0) "Ainda sem exportações na sessão" else paste(basename(exp), collapse = " | ")
@@ -865,40 +2049,115 @@ server <- function(input, output, session) {
   })
 
   output$results_table <- renderDT({
+    req(rv$user)
     df <- filtered_results()
     if (nrow(df) == 0) {
       shown <- tibble::tibble(
-        ID = character(), Título = character(), Financiador = character(), País = character(),
-        Prazo = character(), Tipo = character(), Área = character(), Resumo = character(),
-        `Palavras-chave` = character(), Score = character(), Status = character(), Link = character(), Rastrear = character()
+        ID = character(),
+        Título = character(),
+        Campus = character(),
+        Financiador = factor(),
+        `Aderência <i class='fa fa-info-circle text-info' title='Afinidade semântica calculada dinamicamente com base nos termos de busca.'></i>` = character(),
+        Prazo = character(),
+        Status = factor(),
+        `Qualidade <i class='fa fa-shield-halved text-info' title='Score de qualidade dos metadados extraídos.'></i>` = character(),
+        Ações = character()
       )
     } else {
+      # Defensivo: bancos antigos podem não ter a coluna campus (migração ausente);
+      # campus_badge_html trata NA/vazio com o badge padrão "Sede e Park".
+      campus_vec <- if ("campus" %in% names(df)) df$campus else rep(NA_character_, nrow(df))
       shown <- df |>
         dplyr::mutate(
+          Campus = vapply(campus_vec, campus_badge_html, character(1)),
+          Aderência = vapply(score_aderencia, score_bar_html, character(1)),
           Prazo = format_date_br(data_limite),
-          Status = vapply(status_oportunidade, badge_status_html, character(1)),
-          Score = vapply(score_aderencia, score_bar_html, character(1)),
-          Link = vapply(dplyr::coalesce(link_detalhe, link_origem), link_html, character(1), label = "Abrir"),
-          Rastrear = vapply(id_registro, make_click_button, character(1), label = "Rastrear")
+          `Qualidade <i class='fa fa-shield-halved text-info' title='Score de qualidade dos metadados extraídos.'></i>` = vapply(seq_len(nrow(df)), function(i) {
+            q <- compute_data_quality_score(list(
+              data_limite = if (length(df$data_limite) >= i) df$data_limite[[i]] else NA,
+              data_publicacao = if (length(df$data_publicacao) >= i) df$data_publicacao[[i]] else NA,
+              titulo = if (length(df$titulo) >= i) df$titulo[[i]] else NA
+            ))
+            quality_badge_html(q)
+          }, character(1)),
+          Status = as.factor(status_display_label(derived_status)),
+          Financiador = as.factor(entidade),
+          Título = stringr::str_trunc(titulo, 90),
+          Ações = vapply(id_registro, make_actions_html, character(1))
         ) |>
         dplyr::transmute(
           ID = id_registro,
-          Título = titulo,
-          Financiador = entidade,
-          País = pais_origem,
+          Título,
+          Campus,
+          Financiador,
+          `Aderência <i class='fa fa-info-circle text-info' title='Afinidade semântica calculada dinamicamente com base nos termos de busca.'></i>` = Aderência,
           Prazo,
-          Tipo = tipo_oportunidade,
-          Área = area_tematica,
-          Resumo = stringr::str_trunc(descricao_resumida, 180),
-          `Palavras-chave` = palavras_chave,
-          Score,
           Status,
-          Link,
-          Rastrear
+          `Qualidade <i class='fa fa-shield-halved text-info' title='Score de qualidade dos metadados extraídos.'></i>`,
+          Ações
         )
     }
-    DT::datatable(shown, escape = FALSE, options = list(pageLength = 10, scrollX = TRUE, language = list(emptyTable = "Nenhum resultado encontrado.")))
+    DT::datatable(
+      shown, 
+      escape = FALSE, 
+      rownames = FALSE,
+      filter = "none", 
+      options = list(
+        pageLength = 10, 
+        scrollX = TRUE, 
+        searching = FALSE,
+        language = list(emptyTable = "Nenhum resultado encontrado."),
+        columnDefs = list(
+          list(targets = 0, visible = FALSE),
+          list(
+            targets = 6,
+            render = DT::JS("
+              function(data, type, row, meta) {
+                if (type === 'display') {
+                  var status = (data || 'Desconhecido').toLowerCase();
+                  var cls = 'badge-soft-neutral';
+                  if (status === 'aberto') cls = 'badge-soft-open';
+                  else if (status === 'encerrando') cls = 'badge-soft-warning';
+                  else if (status === 'em breve') cls = 'badge-soft-info';
+                  else if (status === 'encerrado') cls = 'badge-soft-closed';
+                  return \"<span class='status-badge \" + cls + \"'>\" + data + \"</span>\";
+                }
+                return data;
+              }
+            ")
+          ),
+          list(targets = c(0, 8), searchable = FALSE, orderable = FALSE)
+        )
+      )
+    )
   }, server = FALSE)
+
+  # Export handlers for results table
+  output$btn_export_xlsx <- downloadHandler(
+    filename = function() {
+      generate_export_filename("quiiin_export", "xlsx")
+    },
+    content = function(file) {
+      req(rv$user)
+      log_user_access(conn, rv$user, action = "EXPORTAR", details = "Exportação de dados em XLSX")
+      data <- filtered_results()
+      export_data <- prepare_export_data(data)
+      writexl::write_xlsx(export_data, file)
+    }
+  )
+
+  output$btn_export_csv <- downloadHandler(
+    filename = function() {
+      generate_export_filename("quiiin_export", "csv")
+    },
+    content = function(file) {
+      req(rv$user)
+      log_user_access(conn, rv$user, action = "EXPORTAR", details = "Exportação de dados em CSV")
+      data <- filtered_results()
+      export_data <- prepare_export_data(data)
+      write.csv(export_data, file, row.names = FALSE, fileEncoding = "UTF-8")
+    }
+  )
 
   observeEvent(input$row_action, {
     rv$selected_tracked_id <- input$row_action$id
@@ -907,7 +2166,1009 @@ server <- function(input, output, session) {
     showNotification("Edital adicionado à lista de rastreamento.", type = "message")
   })
 
+  # Modal de detalhes — função única usada por clique, deep-link e retry (MH-04)
+  show_opportunity_modal <- function(id) {
+    req(id)
+    opp <- rv$opportunities |> dplyr::filter(id_registro == id)
+    if (nrow(opp) == 0) return()
+
+    # Score derivado da MESMA assinatura usada na lista (MH-01/BUG-04)
+    opp_scored <- tryCatch(
+      compute_adherence_score(opp, conn, rv$current_query, signature = interest_sig()),
+      error = function(e) opp
+    )
+    dynamic_score <- if ("score_aderencia" %in% names(opp_scored)) opp_scored$score_aderencia[[1]] %||% 0 else 0
+
+    # Status derivado em render (BUG-01/11)
+    derived_status <- derive_status_df(opp)[[1]]
+
+    # Proveniência de enriquecimento (blindada para bancos pré-migração)
+    enrich_status <- tryCatch(opp$enrichment_status[[1]] %||% NA_character_, error = function(e) NA_character_)
+    enrich_model <- tryCatch(opp$enrichment_model[[1]] %||% NA_character_, error = function(e) NA_character_)
+    enrich_at <- tryCatch(opp$enrichment_at[[1]] %||% NA_character_, error = function(e) NA_character_)
+    enrich_error <- tryCatch(opp$enrichment_error[[1]] %||% NA_character_, error = function(e) NA_character_)
+
+    # Qualidade de dados (MH-02)
+    quality_score <- compute_data_quality_score(
+      list(
+        titulo = if ("titulo" %in% names(opp)) opp$titulo[[1]] else NA,
+        data_limite = if ("data_limite" %in% names(opp)) opp$data_limite[[1]] else NA,
+        data_publicacao = if ("data_publicacao" %in% names(opp)) opp$data_publicacao[[1]] else NA
+      )
+    )
+
+    # Termos casados entre assinatura e registro (BUG-04)
+    matched_terms <- tryCatch(
+      {
+        matched_keywords(
+          interest_sig(),
+          paste(opp$titulo[[1]], opp$subtitulo[[1]] %||% "", opp$palavras_chave[[1]] %||% "", opp$descricao_resumida[[1]] %||% "", collapse = " "),
+          keywords_extra = extract_query_terms(rv$current_query)
+        )
+      },
+      error = function(e) character()
+    )
+
+    # Avaliação de Aderência Naval & Offshore
+    naval_eval <- list(
+      aderencia_naval_nivel = tryCatch(opp$aderencia_naval_nivel[[1]] %||% NA_character_, error = function(e) NA_character_),
+      aderencia_naval_justificativa = tryCatch(opp$aderencia_naval_justificativa[[1]] %||% NA_character_, error = function(e) NA_character_),
+      ideia_projeto_consorcio = tryCatch(opp$ideia_projeto_consorcio[[1]] %||% NA_character_, error = function(e) NA_character_)
+    )
+    if (is.na(naval_eval$aderencia_naval_nivel) || !nzchar(naval_eval$aderencia_naval_nivel %||% "")) {
+      naval_eval <- evaluate_naval_offshore_adherence(
+        titulo = opp$titulo[[1]],
+        descricao = opp$descricao_resumida[[1]],
+        texto_bruto = opp$texto_bruto[[1]],
+        entidade = opp$entidade[[1]],
+        use_ai = FALSE
+      )
+    }
+
+    # Exibir Modal Dialog com detalhes estruturados
+    showModal(modalDialog(
+      title = tags$div(
+        style = "display: flex; justify-content: space-between; align-items: center; width: 100%;",
+        tags$h3(style = "margin: 0; color: #004691; font-weight: 800; font-size: 1.4rem; white-space: normal; line-height: 1.3; text-align: left;", opp$titulo[[1]]),
+        tags$button(
+          type = "button",
+          class = "btn-close",
+          `data-bs-dismiss` = "modal",
+          `aria-label` = "Close",
+          style = "margin-left: 15px;"
+        )
+      ),
+      size = "l",
+      easyClose = TRUE,
+      footer = modalButton("Fechar"),
+      
+      # Modal Body
+      tags$div(
+        style = "padding: 15px 0; font-family: 'Inter', sans-serif;",
+
+        # Banner de proveniência de enriquecimento (BUG-02/08, MH-04)
+        if (!is.na(enrich_status) && enrich_status == "falha") {
+          tags$div(
+            class = "alert alert-warning",
+            style = "margin-bottom: 20px;",
+            tags$strong("Enriquecimento IA falhou"),
+            tags$p("Exibindo dados extraídos heuristicamente.", style = "margin: 4px 0;"),
+            tags$small(sprintf("Erro: %s", enrich_error %||% "IA indisponível")),
+            tags$div(
+              style = "margin-top: 8px;",
+              actionButton("btn_retry_enrichment", "Tentar novamente", class = "btn-sm btn-outline-warning")
+            )
+          )
+        } else if (!is.na(enrich_status) && nzchar(enrich_status)) {
+          tags$div(
+            class = "alert alert-success",
+            style = "margin-bottom: 20px; padding: 10px 14px;",
+            tags$strong("Enriquecido por IA"),
+            tags$small(sprintf(" Modelo: %s | %s", enrich_model %||% "-", enrich_at %||% "-"))
+          )
+        },
+        
+        # Financiador e Subtítulo
+        tags$div(
+          style = "margin-bottom: 25px; border-left: 4px solid #e30613; padding-left: 15px;",
+          tags$span(style = "font-size: 0.85rem; text-transform: uppercase; font-weight: 700; color: #e30613; letter-spacing: 0.5px;", "Entidade Financiadora"),
+          tags$h4(style = "margin: 2px 0 0 0; color: #0f172a; font-weight: 700; font-size: 1.2rem;", opp$entidade[[1]]),
+          if (!is.na(opp$subtitulo[[1]]) && nzchar(opp$subtitulo[[1]])) {
+            tags$div(style = "font-style: italic; margin-top: 5px; font-size: 0.95rem; color: #475569;", opp$subtitulo[[1]])
+          }
+        ),
+
+        # 2-Column Responsive Layout
+        tags$div(
+          class = "row",
+          # Coluna Esquerda (7 colunas)
+          tags$div(
+            class = "col-md-7", style = "margin-bottom: 20px;",
+            # Score de Aderência e Palavras-chave
+            tags$div(
+              style = "margin-bottom: 25px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 15px;",
+              tags$h5(style = "color: #1e40af; font-weight: 700; margin-bottom: 12px; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.5px;", "Análise de Afinidade (IA)"),
+              tags$div(
+                style = "margin-bottom: 10px;",
+                tags$strong("Aderência Geral:"),
+                HTML(score_bar_html(dynamic_score))
+              ),
+              if (nzchar(quality_badge_html(quality_score))) {
+                tags$div(
+                  style = "margin-bottom: 10px;",
+                  HTML(quality_badge_html(quality_score))
+                )
+              },
+              if (length(matched_terms) > 0L) {
+                tags$div(
+                  style = "margin-bottom: 10px;",
+                  tags$strong("Termos casados:"),
+                  tags$div(
+                    style = "margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px;",
+                    HTML(paste0(
+                      vapply(matched_terms, function(mt) {
+                        sprintf("<span class='status-badge badge-soft-open' style='text-transform: none; font-size: 0.7rem;'>%s</span>", htmltools::htmlEscape(mt))
+                      }, character(1)),
+                      collapse = ""
+                    ))
+                  )
+                )
+              },
+              tags$div(
+                style = "margin-bottom: 10px;",
+                tags$strong("Palavras-chave Identificadas:"),
+                tags$div(
+                  style = "margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px;",
+                  HTML(paste0(
+                    vapply(safe_split(opp$palavras_chave[[1]]), function(kw) {
+                      sprintf("<span class='status-badge badge-soft-info' style='text-transform: none; font-size: 0.7rem;'>%s</span>", htmltools::htmlEscape(kw))
+                    }, character(1)),
+                    collapse = ""
+                  ))
+                )
+              )
+            ),
+            # Avaliação de Aderência para Núcleo Naval & Offshore de PD&I
+            tags$div(
+              style = "margin-bottom: 25px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px;",
+              tags$div(
+                style = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;",
+                tags$h5(style = "color: #166534; font-weight: 700; margin: 0; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.5px;", "⚓ Núcleo Naval & Offshore de PD&I"),
+                tags$span(
+                  style = sprintf("background: %s; color: white; padding: 4px 10px; border-radius: 12px; font-weight: bold; font-size: 0.8rem;",
+                                  if (identical(naval_eval$aderencia_naval_nivel, "Muito alta")) "#15803d"
+                                  else if (identical(naval_eval$aderencia_naval_nivel, "Alta")) "#16a34a"
+                                  else if (identical(naval_eval$aderencia_naval_nivel, "Média")) "#d97706"
+                                  else "#64748b"),
+                  paste("Aderência:", naval_eval$aderencia_naval_nivel %||% "Baixa")
+                )
+              ),
+              tags$p(style = "color: #15803d; font-size: 0.92rem; line-height: 1.5; margin-bottom: 8px;", naval_eval$aderencia_naval_justificativa %||% "Sem dados."),
+              if (!is.null(naval_eval$ideia_projeto_consorcio) && !is.na(naval_eval$ideia_projeto_consorcio) && nzchar(naval_eval$ideia_projeto_consorcio %||% "")) {
+                tags$div(
+                  style = "background: #ffffff; border-left: 4px solid #16a34a; padding: 10px; border-radius: 4px; font-size: 0.88rem; color: #166534; margin-top: 10px;",
+                  tags$strong("💡 Ideia Inicial de Projeto & Consórcio Recomendado:"),
+                  tags$div(style = "margin-top: 4px; font-weight: 500;", naval_eval$ideia_projeto_consorcio)
+                )
+              }
+            ),
+            # Objeto de Financiamento (Resumo da IA)
+            tags$div(
+              style = "margin-bottom: 25px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);",
+              tags$h5(style = "color: #004691; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; font-weight: 700; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 0.5px;", "Objeto de Financiamento"),
+              tags$div(
+                style = "font-size: 0.95rem; line-height: 1.7; color: #1e293b; white-space: pre-wrap; text-align: justify;",
+                {
+                  resumo <- opp$descricao_resumida[[1]]
+                  if (is.null(resumo) || is.na(resumo) || !nzchar(trimws(resumo)) || identical(resumo, "Resumo não disponível.")) {
+                    "Resumo não disponível. Acesse o portal de origem para mais detalhes."
+                  } else {
+                    resumo
+                  }
+                }
+              )
+            ),
+            # Links de Referência
+            tags$div(
+              style = "margin-bottom: 25px;",
+              tags$h5(style = "color: #004691; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; font-weight: 700; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 0.5px;", "Documentos e Links Oficiais"),
+              tags$div(
+                style = "margin-top: 10px; display: flex; flex-direction: column; gap: 8px; font-size: 0.95rem;",
+                if (!is.na(opp$link_origem[[1]]) && nzchar(opp$link_origem[[1]])) {
+                  tags$div(tags$strong("Portal da Oportunidade: "), tags$a(href = opp$link_origem[[1]], target = "_blank", style = "color: #004691; font-weight: 600;", "Acessar Portal de Origem ↗"))
+                },
+                if (!is.na(opp$link_detalhe[[1]]) && nzchar(opp$link_detalhe[[1]])) {
+                  tags$div(tags$strong("Página de Detalhes: "), tags$a(href = opp$link_detalhe[[1]], target = "_blank", style = "color: #004691; font-weight: 600;", "Acessar Edital Completo ↗"))
+                },
+                if (!is.na(opp$link_documento_pdf[[1]]) && nzchar(opp$link_documento_pdf[[1]])) {
+                  tags$div(tags$strong("Documento de Diretrizes (PDF): "), tags$a(href = opp$link_documento_pdf[[1]], target = "_blank", style = "color: #e30613; font-weight: 600;", "Baixar Edital em PDF 📥"))
+                }
+              )
+            )
+          ),
+          
+          # Coluna Direita (5 colunas)
+          tags$div(
+            class = "col-md-5", style = "margin-bottom: 20px;",
+            # Destaque de Elegibilidade (Vermelho/Laranja claro)
+            tags$div(
+              style = "margin-bottom: 20px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);",
+              tags$h5(style = "color: #c2410c; margin-top: 0; margin-bottom: 12px; font-weight: 700; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;", 
+                       tags$i(class = "fa fa-user-shield"), "Elegibilidade"),
+              tags$div(
+                style = "font-size: 0.95rem; font-weight: 700; color: #7c2d12; line-height: 1.5; white-space: pre-wrap;",
+                opp$elegibilidade[[1]] %||% "Não especificada."
+              )
+            ),
+            # Ficha Técnica Rápida
+            tags$div(
+              style = "background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px;",
+              tags$h5(style = "color: #475569; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; font-weight: 700; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 15px; margin-top: 0;", "Ficha Rápida"),
+              tags$div(
+                style = "display: flex; flex-direction: column; gap: 15px;",
+                tags$div(
+                  tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Campus SENAI CIMATEC"),
+                  tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", HTML(campus_badge_html(opp$campus[[1]] %||% "Geral / Multicampi")))
+                ),
+                tags$div(
+                  tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Status"),
+                  tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", HTML(badge_status_html(derived_status)))
+                ),
+                tags$div(
+                  tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Prazo Limite"),
+                  tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", format_date_br(opp$data_limite[[1]]))
+                ),
+                tags$div(
+                  tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Área Temática"),
+                  tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", opp$area_tematica[[1]] %||% "-")
+                ),
+                tags$div(
+                  tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Tipo de Oportunidade"),
+                  tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", opp$tipo_oportunidade[[1]] %||% "-")
+                ),
+                if (!is.na(opp$modalidade[[1]]) && nzchar(opp$modalidade[[1]])) {
+                  tags$div(
+                    tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Modalidade de Fomento"),
+                    tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", opp$modalidade[[1]])
+                  )
+                },
+                if (!is.na(opp$publico_alvo[[1]]) && nzchar(opp$publico_alvo[[1]])) {
+                  tags$div(
+                    tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Público-Alvo"),
+                    tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", opp$publico_alvo[[1]])
+                  )
+                },
+                if (!is.na(opp$nivel_academico[[1]]) && nzchar(opp$nivel_academico[[1]])) {
+                  tags$div(
+                    tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Nível Acadêmico"),
+                    tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", opp$nivel_academico[[1]])
+                  )
+                },
+                if (!is.na(opp$data_abertura[[1]]) && nzchar(opp$data_abertura[[1]])) {
+                  tags$div(
+                    tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Data de Abertura"),
+                    tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", format_date_br(opp$data_abertura[[1]]))
+                  )
+                },
+                if (!is.na(opp$data_encerramento[[1]]) && nzchar(opp$data_encerramento[[1]])) {
+                  tags$div(
+                    tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Data de Encerramento"),
+                    tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", format_date_br(opp$data_encerramento[[1]]))
+                  )
+                },
+                tags$div(
+                  tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "País de Origem"),
+                  tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", opp$pais_origem[[1]] %||% "-")
+                ),
+                tags$div(
+                  tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Orçamento Estimado"),
+                  tags$div(
+                    style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;",
+                    if (!is.na(opp$valor_financiado[[1]])) {
+                      paste(opp$moeda[[1]] %||% "", format(opp$valor_financiado[[1]], big.mark = ".", decimal.mark = ","))
+                    } else {
+                      "Ver documentação oficial"
+                    }
+                  )
+                )
+              )
+            )
+          )
+        ),
+        
+        # Texto Bruto Coletado (Auditoria) - Colapsável
+        tags$div(
+          style = "margin-top: 25px; margin-bottom: 10px;",
+          tags$h5(
+            style = "color: #64748b; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; font-weight: 700; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.5px; display: flex; justify-content: space-between; align-items: center;",
+            "Conteúdo Bruto (Auditoria)",
+            tags$button(
+              id = "toggle_raw_text_btn",
+              class = "btn btn-sm btn-outline-secondary",
+              style = "padding: 2px 8px; font-size: 0.75rem;",
+              onclick = "var x = document.getElementById('modal_raw_text_div'); if(x.style.display === 'none'){x.style.display = 'block'; this.innerText = 'Ocultar Texto';}else{x.style.display = 'none'; this.innerText = 'Mostrar Texto';}",
+              "Mostrar Texto"
+            )
+          ),
+          tags$div(
+            id = "modal_raw_text_div",
+            style = "display: none; max-height: 200px; overflow-y: auto; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; font-family: monospace; font-size: 0.8rem; white-space: pre-wrap; color: #475569; margin-top: 10px;",
+            opp$texto_bruto[[1]] %||% "Nenhum texto bruto disponível para este edital."
+          )
+        )
+      )
+    ))
+  }
+
+  observeEvent(input$row_view, {
+    req(input$row_view$id)
+    rv$selected_tracked_id <- input$row_view$id
+    show_opportunity_modal(input$row_view$id)
+  })
+
+  # Retry de enriquecimento do modal (E2E-06)
+  observeEvent(input$btn_retry_enrichment, {
+    req(rv$selected_tracked_id)
+    view_id <- rv$selected_tracked_id
+    opp <- tryCatch(rv$opportunities |> dplyr::filter(id_registro == view_id), error = function(e) tibble::tibble())
+    if (nrow(opp) == 0) return()
+    updated <- tryCatch(
+      {
+        withProgress(message = "Reenriquecendo com IA...", value = 0.8, {
+          enrich_record_with_ai(opp, log_path = log_path)
+        })
+      },
+      error = function(e) opp
+    )
+    if (nrow(updated) > 0L && !is.null(conn)) {
+      try(upsert_opportunities(conn, updated), silent = TRUE)
+    }
+    refresh_data()
+    showNotification(sprintf("Enriquecimento atualizado (status: %s). Reabra o modal para ver o banner.", updated$enrichment_status[[1]] %||% "?"), type = "message")
+  })
+
+  # Deep-link por ?id=<id_registro> (MH-04/E2E-05)
+  observeEvent(session$clientData$url_search, {
+    qs <- session$clientData$url_search
+    req(nzchar(qs))
+    m <- regmatches(qs, regexec("[?&]id=([^&#]+)", qs))[[1]]
+    if (length(m) == 2L && !isTRUE(rv$deep_link_opened)) {
+      rv$deep_link_opened <- TRUE
+      id_dec <- utils::URLdecode(m[2])
+      if (id_dec %in% rv$opportunities$id_registro) {
+        rv$selected_tracked_id <- id_dec
+        show_opportunity_modal(id_dec)
+      } else {
+        showNotification("Oportunidade do deep-link não encontrada na base.", type = "warning", duration = 6)
+      }
+    }
+  })
+
+  # ─── SERVIDOR: Aba Núcleo Naval & Offshore ──────────────────────────────
+  naval_filtered_results <- reactive({
+    req(rv$user)
+    df <- base_results()
+    if (nrow(df) == 0) return(df)
+    
+    # Garantir avaliação naval em todos os registros
+    if (!"aderencia_naval_nivel" %in% names(df)) df$aderencia_naval_nivel <- NA_character_
+    if (!"aderencia_naval_justificativa" %in% names(df)) df$aderencia_naval_justificativa <- NA_character_
+    if (!"ideia_projeto_consorcio" %in% names(df)) df$ideia_projeto_consorcio <- NA_character_
+
+    for (i in seq_len(nrow(df))) {
+      if (is.na(df$aderencia_naval_nivel[[i]]) || !nzchar(df$aderencia_naval_nivel[[i]] %||% "")) {
+        eval_res <- evaluate_naval_offshore_adherence(
+          titulo = df$titulo[[i]],
+          descricao = df$descricao_resumida[[i]],
+          texto_bruto = df$texto_bruto[[i]],
+          entidade = df$entidade[[i]],
+          use_ai = FALSE
+        )
+        df$aderencia_naval_nivel[[i]] <- eval_res$aderencia_naval_nivel %||% "Baixa"
+        df$aderencia_naval_justificativa[[i]] <- eval_res$aderencia_naval_justificativa %||% ""
+        df$ideia_projeto_consorcio[[i]] <- eval_res$ideia_projeto_consorcio %||% NA_character_
+      }
+    }
+    
+    # Filtro por nível de aderência
+    if (!is.null(input$naval_level_tab_filter) && input$naval_level_tab_filter != "Todos os Níveis") {
+      df <- df |> dplyr::filter(aderencia_naval_nivel == input$naval_level_tab_filter)
+    }
+    
+    # Filtro por eixo temático
+    if (!is.null(input$naval_theme_filter) && input$naval_theme_filter != "Todos os Eixos") {
+      theme_query <- tolower(normalize_text(input$naval_theme_filter))
+      df <- df |> dplyr::filter(vapply(seq_len(dplyr::n()), function(i) {
+        comb <- tolower(normalize_text(paste(df$titulo[[i]], df$descricao_resumida[[i]], df$aderencia_naval_justificativa[[i]])))
+        grepl(theme_query, comb, fixed = TRUE)
+      }, logical(1)))
+    }
+    
+    df |> dplyr::mutate(
+      naval_rank = dplyr::case_when(
+        aderencia_naval_nivel == "Muito alta" ~ 1,
+        aderencia_naval_nivel == "Alta" ~ 2,
+        aderencia_naval_nivel == "Média" ~ 3,
+        TRUE ~ 4
+      )
+    ) |> dplyr::arrange(naval_rank, parse_date_safe(data_limite))
+  })
+
+  output$naval_results_table <- renderDT({
+    req(rv$user)
+    df <- naval_filtered_results()
+    if (nrow(df) == 0) {
+      return(DT::datatable(tibble::tibble(Mensagem = "Nenhuma oportunidade cadastrada para os filtros navais selecionados."), options = list(dom = 't')))
+    }
+    
+    shown <- df |>
+      dplyr::mutate(
+        Prazo = format_date_br(data_limite),
+        Financiador = as.factor(entidade),
+        Título = stringr::str_trunc(titulo, 70),
+        Aderência = aderencia_naval_nivel,
+        `Análise & Justificativa` = stringr::str_trunc(aderencia_naval_justificativa %||% "Sem análise", 90),
+        `💡 Ideia de Projeto / Consórcio` = ifelse(!is.na(ideia_projeto_consorcio) & nzchar(ideia_projeto_consorcio %||% ""), stringr::str_trunc(ideia_projeto_consorcio, 90), "Ver edital"),
+        Ações = vapply(id_registro, make_actions_html, character(1))
+      ) |>
+      dplyr::transmute(
+        ID = id_registro,
+        Título,
+        Financiador,
+        Aderência,
+        `Análise & Justificativa`,
+        `💡 Ideia de Projeto / Consórcio`,
+        Prazo,
+        Ações
+      )
+    
+    DT::datatable(
+      shown,
+      escape = FALSE,
+      rownames = FALSE,
+      options = list(
+        pageLength = 10,
+        scrollX = TRUE,
+        language = list(emptyTable = "Nenhuma oportunidade naval encontrada."),
+        columnDefs = list(
+          list(targets = 0, visible = FALSE),
+          list(
+            targets = 3,
+            render = DT::JS("
+              function(data, type, row, meta) {
+                if (type === 'display') {
+                  var level = (data || 'Baixa').toLowerCase();
+                  var cls = 'badge-soft-neutral';
+                  if (level === 'muito alta') cls = 'badge-soft-open';
+                  else if (level === 'alta') cls = 'badge-soft-info';
+                  else if (level === 'média' || level === 'media') cls = 'badge-soft-warning';
+                  return \"<span class='status-badge \" + cls + \"'>\" + data + \"</span>\";
+                }
+                return data;
+              }
+            ")
+          )
+        )
+      )
+    )
+  }, server = FALSE)
+
+  # --- TAB CIMATEC SERTÃO ---
+  sertao_filtered_results <- reactive({
+    req(rv$user)
+    df <- base_results()
+    if (nrow(df) == 0) return(df)
+    
+    if (!"aderencia_sertao_nivel" %in% names(df)) df$aderencia_sertao_nivel <- NA_character_
+    if (!"aderencia_sertao_justificativa" %in% names(df)) df$aderencia_sertao_justificativa <- NA_character_
+    if (!"ideia_projeto_sertao" %in% names(df)) df$ideia_projeto_sertao <- NA_character_
+
+    for (i in seq_len(nrow(df))) {
+      if (is.na(df$aderencia_sertao_nivel[[i]]) || !nzchar(df$aderencia_sertao_nivel[[i]] %||% "")) {
+        eval_res <- evaluate_sertao_adherence(
+          titulo = df$titulo[[i]],
+          descricao = df$descricao_resumida[[i]],
+          texto_bruto = df$texto_bruto[[i]],
+          entidade = df$entidade[[i]],
+          use_ai = FALSE
+        )
+        df$aderencia_sertao_nivel[[i]] <- eval_res$aderencia_sertao_nivel %||% "Baixa"
+        df$aderencia_sertao_justificativa[[i]] <- eval_res$aderencia_sertao_justificativa %||% ""
+        df$ideia_projeto_sertao[[i]] <- eval_res$ideia_projeto_sertao %||% NA_character_
+      }
+    }
+    
+    if (!is.null(input$sertao_level_tab_filter) && input$sertao_level_tab_filter != "Todos os Níveis") {
+      df <- df |> dplyr::filter(aderencia_sertao_nivel == input$sertao_level_tab_filter)
+    }
+    
+    if (!is.null(input$sertao_theme_filter) && input$sertao_theme_filter != "Todos os Eixos") {
+      theme_query <- tolower(normalize_text(input$sertao_theme_filter))
+      df <- df |> dplyr::filter(vapply(seq_len(dplyr::n()), function(i) {
+        comb <- tolower(normalize_text(paste(df$titulo[[i]], df$descricao_resumida[[i]], df$aderencia_sertao_justificativa[[i]])))
+        grepl(theme_query, comb, fixed = TRUE)
+      }, logical(1)))
+    }
+    
+    df |> dplyr::mutate(
+      sertao_rank = dplyr::case_when(
+        aderencia_sertao_nivel == "Muito alta" ~ 1,
+        aderencia_sertao_nivel == "Alta" ~ 2,
+        aderencia_sertao_nivel == "Média" ~ 3,
+        TRUE ~ 4
+      )
+    ) |> dplyr::arrange(sertao_rank, parse_date_safe(data_limite))
+  })
+
+  output$sertao_results_table <- renderDT({
+    req(rv$user)
+    df <- sertao_filtered_results()
+    if (nrow(df) == 0) {
+      return(DT::datatable(tibble::tibble(Mensagem = "Nenhuma oportunidade encontrada para os filtros do CIMATEC Sertão."), options = list(dom = 't')))
+    }
+    
+    shown <- df |>
+      dplyr::mutate(
+        Prazo = format_date_br(data_limite),
+        Financiador = as.factor(entidade),
+        Título = stringr::str_trunc(titulo, 70),
+        Aderência = aderencia_sertao_nivel,
+        `Análise & Justificativa` = stringr::str_trunc(aderencia_sertao_justificativa %||% "Sem análise", 90),
+        `💡 Ideia de Projeto / Consórcio` = ifelse(!is.na(ideia_projeto_sertao) & nzchar(ideia_projeto_sertao %||% ""), stringr::str_trunc(ideia_projeto_sertao, 90), "Ver edital"),
+        Ações = vapply(id_registro, make_actions_html, character(1))
+      ) |>
+      dplyr::transmute(
+        ID = id_registro,
+        Título,
+        Financiador,
+        Aderência,
+        `Análise & Justificativa`,
+        `💡 Ideia de Projeto / Consórcio`,
+        Prazo,
+        Ações
+      )
+    
+    DT::datatable(
+      shown,
+      escape = FALSE,
+      rownames = FALSE,
+      options = list(
+        pageLength = 10,
+        scrollX = TRUE,
+        language = list(emptyTable = "Nenhuma oportunidade encontrada para o CIMATEC Sertão."),
+        columnDefs = list(
+          list(targets = 0, visible = FALSE),
+          list(
+            targets = 3,
+            render = DT::JS("
+              function(data, type, row, meta) {
+                if (type === 'display') {
+                  var level = (data || 'Baixa').toLowerCase();
+                  var cls = 'badge-soft-neutral';
+                  if (level === 'muito alta') cls = 'badge-soft-open';
+                  else if (level === 'alta') cls = 'badge-soft-info';
+                  else if (level === 'média' || level === 'media') cls = 'badge-soft-warning';
+                  return \"<span class='status-badge \" + cls + \"'>\" + data + \"</span>\";
+                }
+                return data;
+              }
+            ")
+          )
+        )
+      )
+    )
+  }, server = FALSE)
+
+  # --- TAB CIMATEC AEROESPACIAL ---
+  aero_filtered_results <- reactive({
+    req(rv$user)
+    df <- base_results()
+    if (nrow(df) == 0) return(df)
+    
+    if (!"aderencia_aero_nivel" %in% names(df)) df$aderencia_aero_nivel <- NA_character_
+    if (!"aderencia_aero_justificativa" %in% names(df)) df$aderencia_aero_justificativa <- NA_character_
+    if (!"ideia_projeto_aero" %in% names(df)) df$ideia_projeto_aero <- NA_character_
+
+    for (i in seq_len(nrow(df))) {
+      if (is.na(df$aderencia_aero_nivel[[i]]) || !nzchar(df$aderencia_aero_nivel[[i]] %||% "")) {
+        eval_res <- evaluate_aero_adherence(
+          titulo = df$titulo[[i]],
+          descricao = df$descricao_resumida[[i]],
+          texto_bruto = df$texto_bruto[[i]],
+          entidade = df$entidade[[i]],
+          use_ai = FALSE
+        )
+        df$aderencia_aero_nivel[[i]] <- eval_res$aderencia_aero_nivel %||% "Baixa"
+        df$aderencia_aero_justificativa[[i]] <- eval_res$aderencia_aero_justificativa %||% ""
+        df$ideia_projeto_aero[[i]] <- eval_res$ideia_projeto_aero %||% NA_character_
+      }
+    }
+    
+    if (!is.null(input$aero_level_tab_filter) && input$aero_level_tab_filter != "Todos os Níveis") {
+      df <- df |> dplyr::filter(aderencia_aero_nivel == input$aero_level_tab_filter)
+    }
+    
+    if (!is.null(input$aero_theme_filter) && input$aero_theme_filter != "Todos os Eixos") {
+      theme_query <- tolower(normalize_text(input$aero_theme_filter))
+      df <- df |> dplyr::filter(vapply(seq_len(dplyr::n()), function(i) {
+        comb <- tolower(normalize_text(paste(df$titulo[[i]], df$descricao_resumida[[i]], df$aderencia_aero_justificativa[[i]])))
+        grepl(theme_query, comb, fixed = TRUE)
+      }, logical(1)))
+    }
+    
+    df |> dplyr::mutate(
+      aero_rank = dplyr::case_when(
+        aderencia_aero_nivel == "Muito alta" ~ 1,
+        aderencia_aero_nivel == "Alta" ~ 2,
+        aderencia_aero_nivel == "Média" ~ 3,
+        TRUE ~ 4
+      )
+    ) |> dplyr::arrange(aero_rank, parse_date_safe(data_limite))
+  })
+
+  output$aero_results_table <- renderDT({
+    req(rv$user)
+    df <- aero_filtered_results()
+    if (nrow(df) == 0) {
+      return(DT::datatable(tibble::tibble(Mensagem = "Nenhuma oportunidade encontrada para os filtros do CIMATEC Aeroespacial."), options = list(dom = 't')))
+    }
+    
+    shown <- df |>
+      dplyr::mutate(
+        Prazo = format_date_br(data_limite),
+        Financiador = as.factor(entidade),
+        Título = stringr::str_trunc(titulo, 70),
+        Aderência = aderencia_aero_nivel,
+        `Análise & Justificativa` = stringr::str_trunc(aderencia_aero_justificativa %||% "Sem análise", 90),
+        `💡 Ideia de Projeto / Consórcio` = ifelse(!is.na(ideia_projeto_aero) & nzchar(ideia_projeto_aero %||% ""), stringr::str_trunc(ideia_projeto_aero, 90), "Ver edital"),
+        Ações = vapply(id_registro, make_actions_html, character(1))
+      ) |>
+      dplyr::transmute(
+        ID = id_registro,
+        Título,
+        Financiador,
+        Aderência,
+        `Análise & Justificativa`,
+        `💡 Ideia de Projeto / Consórcio`,
+        Prazo,
+        Ações
+      )
+    
+    DT::datatable(
+      shown,
+      escape = FALSE,
+      rownames = FALSE,
+      options = list(
+        pageLength = 10,
+        scrollX = TRUE,
+        language = list(emptyTable = "Nenhuma oportunidade encontrada para o CIMATEC Aeroespacial."),
+        columnDefs = list(
+          list(targets = 0, visible = FALSE),
+          list(
+            targets = 3,
+            render = DT::JS("
+              function(data, type, row, meta) {
+                if (type === 'display') {
+                  var level = (data || 'Baixa').toLowerCase();
+                  var cls = 'badge-soft-neutral';
+                  if (level === 'muito alta') cls = 'badge-soft-open';
+                  else if (level === 'alta') cls = 'badge-soft-info';
+                  else if (level === 'média' || level === 'media') cls = 'badge-soft-warning';
+                  return \"<span class='status-badge \" + cls + \"'>\" + data + \"</span>\";
+                }
+                return data;
+              }
+            ")
+          )
+        )
+      )
+    )
+  }, server = FALSE)
+
+  # --- TAB CIMATEC DIGITAL ---
+  digital_filtered_results <- reactive({
+    req(rv$user)
+    df <- base_results()
+    if (nrow(df) == 0) return(df)
+    
+    if (!"aderencia_digital_nivel" %in% names(df)) df$aderencia_digital_nivel <- NA_character_
+    if (!"aderencia_digital_justificativa" %in% names(df)) df$aderencia_digital_justificativa <- NA_character_
+    if (!"ideia_projeto_digital" %in% names(df)) df$ideia_projeto_digital <- NA_character_
+
+    for (i in seq_len(nrow(df))) {
+      if (is.na(df$aderencia_digital_nivel[[i]]) || !nzchar(df$aderencia_digital_nivel[[i]] %||% "")) {
+        eval_res <- evaluate_digital_adherence(
+          titulo = df$titulo[[i]],
+          descricao = df$descricao_resumida[[i]],
+          texto_bruto = df$texto_bruto[[i]],
+          entidade = df$entidade[[i]],
+          use_ai = FALSE
+        )
+        df$aderencia_digital_nivel[[i]] <- eval_res$aderencia_digital_nivel %||% "Baixa"
+        df$aderencia_digital_justificativa[[i]] <- eval_res$aderencia_digital_justificativa %||% ""
+        df$ideia_projeto_digital[[i]] <- eval_res$ideia_projeto_digital %||% NA_character_
+      }
+    }
+    
+    if (!is.null(input$digital_level_tab_filter) && input$digital_level_tab_filter != "Todos os Níveis") {
+      df <- df |> dplyr::filter(aderencia_digital_nivel == input$digital_level_tab_filter)
+    }
+    
+    if (!is.null(input$digital_theme_filter) && input$digital_theme_filter != "Todos os Eixos") {
+      theme_query <- tolower(normalize_text(input$digital_theme_filter))
+      df <- df |> dplyr::filter(vapply(seq_len(dplyr::n()), function(i) {
+        comb <- tolower(normalize_text(paste(df$titulo[[i]], df$descricao_resumida[[i]], df$aderencia_digital_justificativa[[i]])))
+        grepl(theme_query, comb, fixed = TRUE)
+      }, logical(1)))
+    }
+    
+    df |> dplyr::mutate(
+      digital_rank = dplyr::case_when(
+        aderencia_digital_nivel == "Muito alta" ~ 1,
+        aderencia_digital_nivel == "Alta" ~ 2,
+        aderencia_digital_nivel == "Média" ~ 3,
+        TRUE ~ 4
+      )
+    ) |> dplyr::arrange(digital_rank, parse_date_safe(data_limite))
+  })
+
+  output$digital_results_table <- renderDT({
+    req(rv$user)
+    df <- digital_filtered_results()
+    if (nrow(df) == 0) {
+      return(DT::datatable(tibble::tibble(Mensagem = "Nenhuma oportunidade encontrada para os filtros do CIMATEC Digital."), options = list(dom = 't')))
+    }
+    
+    shown <- df |>
+      dplyr::mutate(
+        Prazo = format_date_br(data_limite),
+        Financiador = as.factor(entidade),
+        Título = stringr::str_trunc(titulo, 70),
+        Aderência = aderencia_digital_nivel,
+        `Análise & Justificativa` = stringr::str_trunc(aderencia_digital_justificativa %||% "Sem análise", 90),
+        `💡 Ideia de Projeto / Consórcio` = ifelse(!is.na(ideia_projeto_digital) & nzchar(ideia_projeto_digital %||% ""), stringr::str_trunc(ideia_projeto_digital, 90), "Ver edital"),
+        Ações = vapply(id_registro, make_actions_html, character(1))
+      ) |>
+      dplyr::transmute(
+        ID = id_registro,
+        Título,
+        Financiador,
+        Aderência,
+        `Análise & Justificativa`,
+        `💡 Ideia de Projeto / Consórcio`,
+        Prazo,
+        Ações
+      )
+    
+    DT::datatable(
+      shown,
+      escape = FALSE,
+      rownames = FALSE,
+      options = list(
+        pageLength = 10,
+        scrollX = TRUE,
+        language = list(emptyTable = "Nenhuma oportunidade encontrada para o CIMATEC Digital."),
+        columnDefs = list(
+          list(targets = 0, visible = FALSE),
+          list(
+            targets = 3,
+            render = DT::JS("
+              function(data, type, row, meta) {
+                if (type === 'display') {
+                  var level = (data || 'Baixa').toLowerCase();
+                  var cls = 'badge-soft-neutral';
+                  if (level === 'muito alta') cls = 'badge-soft-open';
+                  else if (level === 'alta') cls = 'badge-soft-info';
+                  else if (level === 'média' || level === 'media') cls = 'badge-soft-warning';
+                  return \"<span class='status-badge \" + cls + \"'>\" + data + \"</span>\";
+                }
+                return data;
+              }
+            ")
+          )
+        )
+      )
+    )
+  }, server = FALSE)
+
+  # --- TAB CIMATEC PARK & SEDE ---
+  park_filtered_results <- reactive({
+    req(rv$user)
+    df <- base_results()
+    if (nrow(df) == 0) return(df)
+    
+    if (!"aderencia_park_nivel" %in% names(df)) df$aderencia_park_nivel <- NA_character_
+    if (!"aderencia_park_justificativa" %in% names(df)) df$aderencia_park_justificativa <- NA_character_
+    if (!"ideia_projeto_park" %in% names(df)) df$ideia_projeto_park <- NA_character_
+
+    for (i in seq_len(nrow(df))) {
+      if (is.na(df$aderencia_park_nivel[[i]]) || !nzchar(df$aderencia_park_nivel[[i]] %||% "")) {
+        eval_res <- evaluate_park_adherence(
+          titulo = df$titulo[[i]],
+          descricao = df$descricao_resumida[[i]],
+          texto_bruto = df$texto_bruto[[i]],
+          entidade = df$entidade[[i]],
+          use_ai = FALSE
+        )
+        df$aderencia_park_nivel[[i]] <- eval_res$aderencia_park_nivel %||% "Baixa"
+        df$aderencia_park_justificativa[[i]] <- eval_res$aderencia_park_justificativa %||% ""
+        df$ideia_projeto_park[[i]] <- eval_res$ideia_projeto_park %||% NA_character_
+      }
+    }
+    
+    if (!is.null(input$park_level_tab_filter) && input$park_level_tab_filter != "Todos os Níveis") {
+      df <- df |> dplyr::filter(aderencia_park_nivel == input$park_level_tab_filter)
+    }
+    
+    if (!is.null(input$park_theme_filter) && input$park_theme_filter != "Todos os Eixos") {
+      theme_query <- tolower(normalize_text(input$park_theme_filter))
+      df <- df |> dplyr::filter(vapply(seq_len(dplyr::n()), function(i) {
+        comb <- tolower(normalize_text(paste(df$titulo[[i]], df$descricao_resumida[[i]], df$aderencia_park_justificativa[[i]])))
+        grepl(theme_query, comb, fixed = TRUE)
+      }, logical(1)))
+    }
+    
+    df |> dplyr::mutate(
+      park_rank = dplyr::case_when(
+        aderencia_park_nivel == "Muito alta" ~ 1,
+        aderencia_park_nivel == "Alta" ~ 2,
+        aderencia_park_nivel == "Média" ~ 3,
+        TRUE ~ 4
+      )
+    ) |> dplyr::arrange(park_rank, parse_date_safe(data_limite))
+  })
+
+  output$park_results_table <- renderDT({
+    req(rv$user)
+    df <- park_filtered_results()
+    if (nrow(df) == 0) {
+      return(DT::datatable(tibble::tibble(Mensagem = "Nenhuma oportunidade encontrada para os filtros do CIMATEC Park & Sede."), options = list(dom = 't')))
+    }
+    
+    shown <- df |>
+      dplyr::mutate(
+        Prazo = format_date_br(data_limite),
+        Financiador = as.factor(entidade),
+        Título = stringr::str_trunc(titulo, 70),
+        Aderência = aderencia_park_nivel,
+        `Análise & Justificativa` = stringr::str_trunc(aderencia_park_justificativa %||% "Sem análise", 90),
+        `💡 Ideia de Projeto / Consórcio` = ifelse(!is.na(ideia_projeto_park) & nzchar(ideia_projeto_park %||% ""), stringr::str_trunc(ideia_projeto_park, 90), "Ver edital"),
+        Ações = vapply(id_registro, make_actions_html, character(1))
+      ) |>
+      dplyr::transmute(
+        ID = id_registro,
+        Título,
+        Financiador,
+        Aderência,
+        `Análise & Justificativa`,
+        `💡 Ideia de Projeto / Consórcio`,
+        Prazo,
+        Ações
+      )
+    
+    DT::datatable(
+      shown,
+      escape = FALSE,
+      rownames = FALSE,
+      options = list(
+        pageLength = 10,
+        scrollX = TRUE,
+        language = list(emptyTable = "Nenhuma oportunidade encontrada para o CIMATEC Park & Sede."),
+        columnDefs = list(
+          list(targets = 0, visible = FALSE),
+          list(
+            targets = 3,
+            render = DT::JS("
+              function(data, type, row, meta) {
+                if (type === 'display') {
+                  var level = (data || 'Baixa').toLowerCase();
+                  var cls = 'badge-soft-neutral';
+                  if (level === 'muito alta') cls = 'badge-soft-open';
+                  else if (level === 'alta') cls = 'badge-soft-info';
+                  else if (level === 'média' || level === 'media') cls = 'badge-soft-warning';
+                  return \"<span class='status-badge \" + cls + \"'>\" + data + \"</span>\";
+                }
+                return data;
+              }
+            ")
+          )
+        )
+      )
+    )
+  }, server = FALSE)
+
+  # ─── SERVIDOR: Aba Boletins & Relatórios ──────────────────────────────────
+  weekly_bulletin_data <- reactiveVal(NULL)
+  monthly_review_data <- reactiveVal(NULL)
+
+  observeEvent(rv$opportunities, {
+    req(nrow(rv$opportunities) > 0)
+    if (is.null(weekly_bulletin_data())) {
+      try({
+        res_wb <- generate_weekly_bulletin(conn)
+        weekly_bulletin_data(res_wb)
+      }, silent = TRUE)
+    }
+    if (is.null(monthly_review_data())) {
+      try({
+        res_mr <- generate_monthly_review(conn)
+        monthly_review_data(res_mr)
+      }, silent = TRUE)
+    }
+  }, ignoreNULL = TRUE)
+
+  observeEvent(input$btn_generate_weekly, {
+    withProgress(message = "Gerando Boletim Semanal...", value = 0.5, {
+      res <- tryCatch(generate_weekly_bulletin(conn), error = function(e) {
+        showNotification(paste("Erro ao gerar boletim:", e$message), type = "error", duration = 10)
+        NULL
+      })
+      if (!is.null(res)) {
+        weekly_bulletin_data(res)
+        showNotification("Boletim Semanal atualizado com sucesso!", type = "message")
+      }
+    })
+  })
+
+  observeEvent(input$btn_generate_monthly, {
+    withProgress(message = "Gerando Revisão Mensal...", value = 0.5, {
+      res <- tryCatch(generate_monthly_review(conn), error = function(e) {
+        showNotification(paste("Erro ao gerar revisão mensal:", e$message), type = "error", duration = 10)
+        NULL
+      })
+      if (!is.null(res)) {
+        monthly_review_data(res)
+        showNotification("Revisão Mensal atualizada com sucesso!", type = "message")
+      }
+    })
+  })
+
+  output$weekly_bulletin_preview_ui <- renderUI({
+    res <- weekly_bulletin_data()
+    if (is.null(res)) return(tags$p("Clique em 'Atualizar Boletim' para visualizar."))
+    HTML(res$html)
+  })
+
+  output$monthly_review_preview_ui <- renderUI({
+    res <- monthly_review_data()
+    if (is.null(res)) return(tags$p("Clique em 'Atualizar Revisão Mensal' para visualizar."))
+    HTML(res$html)
+  })
+
+  output$btn_dl_weekly_html <- downloadHandler(
+    filename = function() sprintf("boletim_semanal_%s.html", format(Sys.Date(), "%Y%m%d")),
+    content = function(file) {
+      res <- weekly_bulletin_data()
+      writeLines(res$html %||% "<p>Sem dados.</p>", file, useBytes = TRUE)
+    }
+  )
+
+  output$btn_dl_weekly_md <- downloadHandler(
+    filename = function() sprintf("boletim_semanal_%s.md", format(Sys.Date(), "%Y%m%d")),
+    content = function(file) {
+      res <- weekly_bulletin_data()
+      writeLines(res$markdown %||% "Sem dados.", file, useBytes = TRUE)
+    }
+  )
+
+  output$btn_dl_monthly_html <- downloadHandler(
+    filename = function() sprintf("revisao_mensal_%s.html", format(Sys.Date(), "%Y%m%d")),
+    content = function(file) {
+      res <- monthly_review_data()
+      writeLines(res$html %||% "<p>Sem dados.</p>", file, useBytes = TRUE)
+    }
+  )
+
+  output$btn_dl_monthly_md <- downloadHandler(
+    filename = function() sprintf("revisao_mensal_%s.md", format(Sys.Date(), "%Y%m%d")),
+    content = function(file) {
+      res <- monthly_review_data()
+      writeLines(res$markdown %||% "Sem dados.", file, useBytes = TRUE)
+    }
+  )
+
   output$funders_plot <- renderPlotly({
+    req(rv$user)
     df <- filtered_results() |>
       dplyr::count(entidade, sort = TRUE) |>
       dplyr::slice_head(n = 15)
@@ -919,9 +3180,10 @@ server <- function(input, output, session) {
   })
 
   output$funders_table <- renderDT({
+    req(rv$user)
     df <- filtered_results() |>
       dplyr::count(entidade, pais_origem, tipo_oportunidade, sort = TRUE, name = "n_editais")
-    DT::datatable(df, options = list(pageLength = 10, scrollX = TRUE))
+    DT::datatable(df, options = list(pageLength = 10, scrollX = TRUE, language = list(emptyTable = "Nenhum dado disponível.")))
   }, server = FALSE)
 
   output$funder_profile <- renderUI({
@@ -942,6 +3204,7 @@ server <- function(input, output, session) {
   })
 
   output$themes_plot <- renderPlotly({
+    req(rv$user)
     df <- simple_keyword_frequency(filtered_results(), top_n = 20)
     p <- ggplot2::ggplot(df, ggplot2::aes(x = reorder(term, n), y = n)) +
       ggplot2::geom_col() +
@@ -951,6 +3214,7 @@ server <- function(input, output, session) {
   })
 
   output$theme_funder_plot <- renderPlotly({
+    req(rv$user)
     df <- filtered_results() |>
       dplyr::count(area_tematica, entidade, sort = TRUE) |>
       dplyr::slice_head(n = 20)
@@ -962,40 +3226,145 @@ server <- function(input, output, session) {
   })
 
   output$keywords_table <- renderDT({
+    req(rv$user)
     DT::datatable(simple_keyword_frequency(filtered_results(), top_n = 50), options = list(pageLength = 10))
   })
 
-  output$saved_searches_table <- renderDT({
+  filtered_saved_searches <- reactive({
     df <- rv$saved_searches
-    if (nrow(df) == 0) {
-      shown <- tibble::tibble(id = integer(), nome_busca = character(), query_text = character(), alerta_ativo = integer(), created_at = character(), last_run_at = character())
-    } else {
-      shown <- df |>
-        dplyr::select(id, nome_busca, query_text, alerta_ativo, created_at, last_run_at)
+    if (nrow(df) == 0) return(df)
+    sel_campi <- input$filter_campus
+    if (length(sel_campi) == 0) {
+      return(df)
     }
-    DT::datatable(shown, escape = FALSE, options = list(pageLength = 10, scrollX = TRUE, language = list(emptyTable = "Nenhuma busca salva.")), selection = "single")
+    df |> dplyr::filter(vapply(seq_len(dplyr::n()), function(i) {
+      c_val <- if ("campus" %in% names(df)) df$campus[[i]] %||% "Todos" else "Todos"
+      any(vapply(sel_campi, function(sc) {
+        grepl(sc, c_val, ignore.case = TRUE)
+      }, logical(1)))
+    }, logical(1)))
+  })
+
+  observeEvent(input$query_copied_notify, {
+    showNotification("Consulta copiada para a área de transferência!", type = "message", duration = 3)
+  })
+
+  output$saved_searches_table <- renderDT({
+    req(rv$user)
+    req(isTRUE(rv$is_dev_diretoria))
+    df <- filtered_saved_searches()
+    if (nrow(df) == 0) {
+      shown <- tibble::tibble(
+        ID = integer(),
+        Nome = character(),
+        Campus = character(),
+        Consulta = character(),
+        Alerta = character(),
+        `Criada em` = character(),
+        `Última execução` = character()
+      )
+    } else {
+      campus_vec <- if ("campus" %in% names(df)) df$campus else rep("Todos", nrow(df))
+      shown <- df |>
+        dplyr::mutate(
+          Campus = vapply(campus_vec %||% "Todos", campus_badge_html, character(1)),
+          Consulta = vapply(query_text, function(q) {
+            q_esc <- htmltools::htmlEscape(q)
+            sprintf(
+              '<div style="display: flex; align-items: center; gap: 8px;">
+                <div style="max-height: 55px; width: 440px; min-width: 220px; overflow-y: auto; font-size: 0.78rem; font-family: monospace; white-space: pre-wrap; word-break: break-word; background: #f8f9fa; padding: 4px 8px; border-radius: 4px; border: 1px solid #dee2e6; flex-grow: 1;">
+                  %s
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" style="padding: 2px 8px; font-size: 0.75rem; white-space: nowrap; height: 30px;" onclick="navigator.clipboard.writeText(this.getAttribute(\'data-query\')); Shiny.setInputValue(\'query_copied_notify\', Math.random());" data-query="%s" title="Copiar consulta">
+                  <i class="fa-regular fa-copy"></i> Copiar
+                </button>
+              </div>',
+              q_esc,
+              q_esc
+            )
+          }, character(1))
+        ) |>
+        dplyr::transmute(
+          ID = id,
+          Nome = nome_busca,
+          Campus,
+          Consulta,
+          Alerta = dplyr::if_else(as.integer(alerta_ativo) == 1L, "Sim", "Não", missing = "Não"),
+          `Criada em` = created_at,
+          `Última execução` = last_run_at
+        )
+    }
+    DT::datatable(
+      shown,
+      escape = FALSE,
+      options = list(
+        pageLength = 10,
+        autoWidth = FALSE,
+        columnDefs = list(
+          list(orderable = FALSE, targets = 3)
+        ),
+        language = list(emptyTable = "Nenhuma busca salva encontrada para o campus selecionado.")
+      ),
+      selection = "none"
+    )
   }, server = FALSE)
 
-  observeEvent(input$saved_searches_table_rows_selected, {
-    idx <- input$saved_searches_table_rows_selected
-    if (length(idx) == 1) {
-      row <- rv$saved_searches[idx, , drop = FALSE]
+  observeEvent(input$run_saved_search_id, {
+    id_to_run <- as.integer(input$run_saved_search_id)
+    req(!is.na(id_to_run))
+    row <- rv$saved_searches |> dplyr::filter(id == id_to_run)
+    if (nrow(row) > 0) {
       updateTextInput(session, "search_query", value = row$query_text[[1]])
       execute_search(row$query_text[[1]], save_history = FALSE)
       if (!is.null(conn)) mark_saved_search_run(conn, row$id[[1]])
-      refresh_data()
+      now_str <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+      idx_match <- which(rv$saved_searches$id == id_to_run)
+      if (length(idx_match) > 0) {
+        rv$saved_searches$last_run_at[idx_match] <- now_str
+      }
+      bslib::nav_select(id = "main_tabs", selected = "Resultados", session = session)
+      showNotification(paste0("Busca '", row$nome_busca[[1]], "' executada com sucesso!"), type = "message", duration = 4)
     }
   })
 
   output$tracked_table <- renderDT({
+    req(rv$user)
+    req(isTRUE(rv$is_dev_diretoria))
     if (nrow(rv$tracked) == 0) {
       df <- tibble::tibble(id = character(), Título = character(), Financiador = character(), Prazo = character(), Status = character(), Observações = character())
     } else {
       df <- rv$tracked |>
         dplyr::left_join(rv$opportunities, by = c("id_oportunidade" = "id_registro")) |>
-        dplyr::transmute(id = id_oportunidade, Título = titulo, Financiador = entidade, Prazo = format_date_br(data_limite), Status = status_usuario, Observações = observacoes)
+        dplyr::transmute(id = id_oportunidade, Título = titulo, Financiador = entidade, Prazo = format_date_br(data_limite), Status = tools::toTitleCase(status_usuario), Observações = observacoes.x)
     }
-    DT::datatable(df, options = list(pageLength = 8, scrollX = TRUE, language = list(emptyTable = "Nenhum edital rastreado.")), selection = "single")
+    DT::datatable(
+      df,
+      options = list(
+        pageLength = 8,
+        scrollX = TRUE,
+        language = list(emptyTable = "Nenhum edital rastreado."),
+        columnDefs = list(
+          list(
+            targets = 4,
+            render = DT::JS("
+              function(data, type, row, meta) {
+                if (type === 'display') {
+                  var s = (data || '').toLowerCase();
+                  var cls = 'badge-soft-neutral';
+                  if (s === 'avaliar') cls = 'badge-soft-neutral';
+                  else if (s === 'prioritário' || s === 'prioritario') cls = 'badge-soft-warning';
+                  else if (s === 'submetido') cls = 'badge-soft-info';
+                  else if (s === 'descartado') cls = 'badge-soft-closed';
+                  return \"<span class='status-badge \" + cls + \"'>\" + data + \"</span>\";
+                }
+                return data;
+              }
+            ")
+          )
+        )
+      ),
+      selection = "single"
+    )
   }, server = FALSE)
 
   observeEvent(input$tracked_table_rows_selected, {
@@ -1081,15 +3450,33 @@ server <- function(input, output, session) {
   })
 
   output$recommended_table <- renderDT({
-    df <- recommend_opportunities(conn, filtered_results(), rv$current_query, top_n = 15)
+    df <- recommend_opportunities(conn, filtered_results(), rv$current_query, top_n = 15, signature = interest_sig())
     if (nrow(df) == 0) {
-      shown <- tibble::tibble(Título = character(), Financiador = character(), Score = numeric(), Prazo = character(), Tipo = character(), Link = character())
+      shown <- tibble::tibble(Título = character(), Financiador = factor(), Score = numeric(), Prazo = character(), Tipo = factor(), Link = character(), Visualizar = character())
     } else {
       shown <- df |>
-        dplyr::mutate(Link = vapply(dplyr::coalesce(link_detalhe, link_origem), link_html, character(1), label = "Abrir")) |>
-        dplyr::transmute(Título = titulo, Financiador = entidade, Score = score_aderencia, Prazo = format_date_br(data_limite), Tipo = tipo_oportunidade, Link)
+        dplyr::mutate(
+          Link = vapply(dplyr::coalesce(link_detalhe, link_origem), link_html, character(1), label = "Abrir"),
+          Visualizar = vapply(id_registro, make_view_button, character(1)),
+          Financiador = as.factor(entidade),
+          Tipo = as.factor(tools::toTitleCase(tolower(dplyr::coalesce(tipo_oportunidade, "não especificado"))))
+        ) |>
+        dplyr::transmute(Título = titulo, Financiador, Score = score_aderencia, Prazo = format_date_br(data_limite), Tipo, Link, Visualizar)
     }
-    DT::datatable(shown, escape = FALSE, options = list(pageLength = 10, scrollX = TRUE, language = list(emptyTable = "Nenhuma recomendação disponível.")))
+    DT::datatable(
+      shown, 
+      escape = FALSE, 
+      rownames = FALSE,
+      filter = "top", 
+      options = list(
+        pageLength = 10, 
+        scrollX = TRUE, 
+        language = list(emptyTable = "Nenhuma recomendação disponível."),
+        columnDefs = list(
+          list(targets = c(0, 2, 3, 5, 6), searchable = FALSE)
+        )
+      )
+    )
   }, server = FALSE)
 
   output$profile_summary <- renderUI({
@@ -1130,8 +3517,148 @@ server <- function(input, output, session) {
   }, server = FALSE)
 
   output$logs_table <- renderDT({
-    DT::datatable(rv$logs |> dplyr::arrange(dplyr::desc(parse_datetime_safe(data_execucao))), options = list(pageLength = 15, scrollX = TRUE))
+    req(rv$user)
+    req(isTRUE(rv$is_dev_diretoria))
+    DT::datatable(rv$logs |> dplyr::arrange(dplyr::desc(parse_datetime_safe(data_execucao))), options = list(pageLength = 15, scrollX = TRUE, language = list(emptyTable = "Nenhum log registrado.")))
   }, server = FALSE)
+
+  output$user_access_logs_table <- renderDT({
+    req(rv$user)
+    req(isTRUE(rv$is_dev_diretoria))
+    logs_df <- get_user_access_logs(conn, limit = 500)
+    if (nrow(logs_df) == 0) {
+      shown <- tibble::tibble(
+        `Data/Hora` = character(),
+        `E-mail` = character(),
+        Perfil = character(),
+        Ação = character(),
+        Detalhes = character()
+      )
+    } else {
+      shown <- logs_df |>
+        dplyr::transmute(
+          `Data/Hora` = timestamp,
+          `E-mail` = email,
+          Perfil = dplyr::if_else(role == "diretoria/dev", "Diretoria", "Usuário"),
+          Ação = action,
+          Detalhes = details
+        )
+    }
+    DT::datatable(
+      shown, 
+      options = list(pageLength = 15, scrollX = TRUE, language = list(emptyTable = "Nenhum registro de acesso encontrado.")), 
+      rownames = FALSE
+    )
+  }, server = FALSE)
+
+  perm_trigger <- reactiveVal(Sys.time())
+
+  observeEvent(input$btn_refresh_perm_table, {
+    perm_trigger(Sys.time())
+    showNotification("Lista de usuários atualizada com sucesso.", type = "message")
+  })
+
+  output$user_permissions_table <- renderDT({
+    req(rv$user)
+    req(isTRUE(rv$is_dev_diretoria))
+    perm_trigger()
+    
+    # 1. Tenta buscar em tempo real os perfis cadastrados no Supabase (Opção 3)
+    sb_profiles <- tryCatch({
+      supabase_get_all_profiles(access_token = rv$access_token)
+    }, error = function(e) tibble::tibble())
+    
+    if (nrow(sb_profiles) > 0) {
+      shown <- sb_profiles |>
+        dplyr::transmute(
+          `E-mail` = email,
+          `Cargo (Supabase)` = cargo,
+          `Acesso no Radar` = dplyr::if_else(
+            tolower(cargo) %in% c("diretoria", "dev", "developer", "desenvolvedor", "admin", "administrador", "curador"),
+            "Diretoria (Acesso Total)",
+            "Leitor (Editais apenas)"
+          ),
+          `Origem` = "Supabase (Table Editor)",
+          `Cadastrado em` = format(parse_datetime_safe(criado_em), "%d/%m/%Y %H:%M")
+        )
+      return(DT::datatable(
+        shown,
+        rownames = FALSE,
+        options = list(pageLength = 10, scrollX = TRUE, language = list(emptyTable = "Nenhum usuário cadastrado no Supabase."))
+      ))
+    }
+    
+    # Fallback: banco SQLite local
+    df <- get_user_permissions(conn)
+    if (nrow(df) == 0) {
+      shown <- tibble::tibble(
+        `E-mail` = character(),
+        `Nível` = character(),
+        `Atualizado em` = character(),
+        `Ação` = character()
+      )
+    } else {
+      shown <- df |>
+        dplyr::mutate(
+          `Ação` = vapply(email, function(em) {
+            sprintf("<button class='btn btn-sm btn-outline-danger' style='padding: 2px 8px; font-size: 0.72rem;' onclick=\"Shiny.setInputValue('btn_remove_perm_email', '%s', {priority: 'event'})\"><i class='fa fa-trash'></i> Remover</button>", em)
+          }, character(1))
+        ) |>
+        dplyr::transmute(
+          `E-mail` = email,
+          `Nível` = dplyr::if_else(role %in% c("diretoria", "dev", "admin"), "Diretoria", "Leitor"),
+          `Atualizado em` = updated_at,
+          `Ação`
+        )
+    }
+    DT::datatable(
+      shown, 
+      escape = FALSE, 
+      rownames = FALSE, 
+      options = list(pageLength = 8, scrollX = TRUE, language = list(emptyTable = "Nenhuma permissão configurada."))
+    )
+  }, server = FALSE)
+
+  observeEvent(input$btn_save_permission, {
+    req(rv$user)
+    if (!isTRUE(rv$is_dev_diretoria)) return()
+    em <- trimws(input$perm_user_email %||% "")
+    role <- input$perm_user_role %||% "usuario"
+    if (!nzchar(em)) {
+      showNotification("Por favor, informe o e-mail do usuário.", type = "warning")
+      return()
+    }
+    set_user_permission(conn, em, role)
+    log_user_access(conn, rv$user, action = "ALTERAR_PERMISSAO", details = sprintf("Definiu '%s' como '%s'", em, role))
+    showNotification(sprintf("Permissão de '%s' atualizada para '%s' com sucesso.", em, role), type = "message")
+    updateTextInput(session, "perm_user_email", value = "")
+    perm_trigger(Sys.time())
+  })
+
+  observeEvent(input$btn_remove_perm_email, {
+    req(rv$user)
+    if (!isTRUE(rv$is_dev_diretoria)) return()
+    em <- input$btn_remove_perm_email
+    req(em)
+    remove_user_permission(conn, em)
+    log_user_access(conn, rv$user, action = "REMOVER_PERMISSAO", details = sprintf("Removeu permissão de '%s'", em))
+    showNotification(sprintf("Permissão específica de '%s' removida.", em), type = "message")
+    perm_trigger(Sys.time())
+  })
+
+  # Otimização de performance: suspende saídas pesadas em abas ocultas até serem ativadas pelo usuário
+  try({
+    outputOptions(output, "user_permissions_table", suspendWhenHidden = TRUE)
+    outputOptions(output, "user_access_logs_table", suspendWhenHidden = TRUE)
+    outputOptions(output, "logs_table", suspendWhenHidden = TRUE)
+    outputOptions(output, "saved_searches_table", suspendWhenHidden = TRUE)
+    outputOptions(output, "tracked_table", suspendWhenHidden = TRUE)
+    outputOptions(output, "funders_plot", suspendWhenHidden = TRUE)
+    outputOptions(output, "funders_table", suspendWhenHidden = TRUE)
+    outputOptions(output, "themes_plot", suspendWhenHidden = TRUE)
+    outputOptions(output, "theme_funder_plot", suspendWhenHidden = TRUE)
+    outputOptions(output, "keywords_table", suspendWhenHidden = TRUE)
+  }, silent = TRUE)
 }
 
 shiny::shinyApp(ui, server)

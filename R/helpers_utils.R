@@ -1,26 +1,39 @@
-
 `%||%` <- function(x, y) {
-  if (is.null(x)) return(y)
-  if (length(x) == 0) return(y)
-  if (is.function(x)) return(y)
-  if (all(is.na(x))) return(y)
+  if (is.null(x)) {
+    return(y)
+  }
+  if (length(x) == 0) {
+    return(y)
+  }
+  if (is.function(x)) {
+    return(y)
+  }
+  if (all(is.na(x))) {
+    return(y)
+  }
   if (is.character(x)) {
     xx <- trimws(x)
     xx[is.na(xx)] <- ""
-    if (!any(nzchar(xx))) return(y)
+    if (!any(nzchar(xx))) {
+      return(y)
+    }
   }
   x
 }
 
 
 ensure_dir <- function(path) {
-  if (is.null(path) || !nzchar(path)) return(invisible(path))
+  if (is.null(path) || !nzchar(path)) {
+    return(invisible(path))
+  }
   if (!dir.exists(path)) dir.create(path, recursive = TRUE, showWarnings = FALSE)
   invisible(path)
 }
 
 safe_split <- function(x, pattern = "[;,|]+") {
-  if (length(x) == 0 || is.null(x) || all(is.na(x))) return(character())
+  if (length(x) == 0 || is.null(x) || all(is.na(x))) {
+    return(character())
+  }
   out <- unlist(strsplit(paste(stats::na.omit(as.character(x)), collapse = ";"), pattern, perl = TRUE), use.names = FALSE)
   out <- trimws(out)
   out[nzchar(out)]
@@ -41,7 +54,9 @@ sanitize_id <- function(x) {
 }
 
 normalize_text <- function(x) {
-  if (is.function(x)) return("")
+  if (is.function(x)) {
+    return("")
+  }
   x <- x %||% ""
   x <- stringi::stri_trans_general(as.character(x), "Latin-ASCII")
   x <- tolower(x)
@@ -50,7 +65,9 @@ normalize_text <- function(x) {
 }
 
 normalize_ws <- function(x) {
-  if (is.function(x)) return("")
+  if (is.function(x)) {
+    return("")
+  }
   x <- x %||% ""
   x <- as.character(x)
   # Normaliza espaços Unicode comuns em páginas web, incluindo NBSP.
@@ -62,21 +79,30 @@ normalize_ws <- function(x) {
 
 
 null_if_empty <- function(v) {
-  if (is.function(v)) return(NA_character_)
-  if (is.null(v)) return(NA_character_)
-  if (length(v) == 0) return(NA_character_)
+  if (is.function(v)) {
+    return(NA_character_)
+  }
+  if (is.null(v)) {
+    return(NA_character_)
+  }
+  if (length(v) == 0) {
+    return(v)
+  }
 
   out <- tryCatch(as.character(v), error = function(e) rep(NA_character_, length(v)))
-  if (length(out) == 0) return(NA_character_)
+  if (length(out) == 0) {
+    return(out)
+  }
   out <- normalize_ws(out)
   out[is.na(out) | !nzchar(out)] <- NA_character_
-  if (length(out) == 1) return(out[[1]])
   out
 }
 
 
 safe_numeric <- function(x) {
-  if (is.null(x) || length(x) == 0) return(NA_real_)
+  if (is.null(x) || length(x) == 0) {
+    return(NA_real_)
+  }
   x <- normalize_ws(as.character(x))
   x <- stringi::stri_replace_all_fixed(x, c(" ", " ", " "), " ", vectorize_all = FALSE)
   x <- gsub("(?<=\\d)\\.(?=\\d{3}(\\D|$))", "", x, perl = TRUE)
@@ -86,26 +112,61 @@ safe_numeric <- function(x) {
 }
 
 parse_date_safe <- function(x) {
-  if (inherits(x, "Date")) return(x)
-  if (inherits(x, "POSIXct")) return(as.Date(x))
-  if (length(x) == 0 || all(is.na(x))) return(as.Date(rep(NA, length(x))))
+  if (inherits(x, "Date")) {
+    return(x)
+  }
+  if (inherits(x, "POSIXct")) {
+    return(as.Date(x))
+  }
+  if (length(x) == 0 || all(is.na(x))) {
+    return(as.Date(rep(NA, length(x))))
+  }
   x <- as.character(x)
   x[!nzchar(trimws(x))] <- NA_character_
-  out <- suppressWarnings(lubridate::ymd(x, quiet = TRUE))
+  cand_ymd <- suppressWarnings(lubridate::ymd(x, quiet = TRUE))
+  cand_dmy <- suppressWarnings(lubridate::dmy(x, quiet = TRUE))
+  cand_mdy <- suppressWarnings(lubridate::mdy(x, quiet = TRUE))
+  out <- cand_ymd
   idx <- is.na(out)
-  if (any(idx)) out[idx] <- suppressWarnings(lubridate::dmy(x[idx], quiet = TRUE))
+  if (any(idx)) out[idx] <- cand_dmy[idx]
   idx <- is.na(out)
-  if (any(idx)) out[idx] <- suppressWarnings(lubridate::mdy(x[idx], quiet = TRUE))
+  if (any(idx)) out[idx] <- cand_mdy[idx]
   idx <- is.na(out)
   if (any(idx)) out[idx] <- as.Date(suppressWarnings(lubridate::ymd_hms(x[idx], quiet = TRUE)))
   idx <- is.na(out)
   if (any(idx)) out[idx] <- as.Date(suppressWarnings(lubridate::dmy_hms(x[idx], quiet = TRUE)))
-  as.Date(out)
+  out <- as.Date(out)
+  # Ambiguidade de formato (BUG-13): mais de um formato (DD/MM vs MM/DD vs YYYY/MM/DD)
+  # produz uma data válida e distinta -> marcamos confiança baixa e auditamos.
+  ambiguous <- vapply(seq_along(out), function(i) {
+    if (is.na(out[[i]])) {
+      return(FALSE)
+    }
+    vals <- unique(c(
+      if (!is.na(cand_ymd[[i]])) cand_ymd[[i]],
+      if (!is.na(cand_dmy[[i]])) cand_dmy[[i]],
+      if (!is.na(cand_mdy[[i]])) cand_mdy[[i]],
+      if (!is.na(out[[i]])) out[[i]]
+    ))
+    length(vals) >= 2L
+  }, logical(1))
+  if (any(ambiguous)) {
+    attr(out, "confidence") <- "low"
+    log_path_def <- file.path(getwd(), "logs", "funding_collection.log")
+    for (i in which(ambiguous)) {
+      try(log_write(log_path_def, "WARN", sprintf("Ambiguidade de data: '%s'", x[[i]])), silent = TRUE)
+    }
+  }
+  out
 }
 
 parse_datetime_safe <- function(x) {
-  if (inherits(x, "POSIXct")) return(x)
-  if (length(x) == 0 || all(is.na(x))) return(as.POSIXct(rep(NA, length(x)), origin = "1970-01-01", tz = "UTC"))
+  if (inherits(x, "POSIXct")) {
+    return(x)
+  }
+  if (length(x) == 0 || all(is.na(x))) {
+    return(as.POSIXct(rep(NA, length(x)), origin = "1970-01-01", tz = "UTC"))
+  }
   x <- as.character(x)
   x[!nzchar(trimws(x))] <- NA_character_
   out <- suppressWarnings(lubridate::ymd_hms(x, quiet = TRUE, tz = "UTC"))
@@ -128,49 +189,28 @@ days_to_deadline <- function(x) {
   as.integer(x - Sys.Date())
 }
 
-classify_status <- function(deadline = NA, start = NA, end = NA, text = NULL) {
-  dl <- parse_date_safe(deadline)
-  st <- parse_date_safe(start)
-  en <- parse_date_safe(end)
-  txt <- as.character(text %||% NA_character_)
-  n <- max(length(dl), length(st), length(en), length(txt), 1L)
-  dl <- rep_len(dl, n)
-  st <- rep_len(st, n)
-  en <- rep_len(en, n)
-  txt <- rep_len(txt, n)
-
-  out <- vapply(seq_len(n), function(i) {
-    txt_i <- normalize_text(txt[[i]] %||% "")
-    dl_i <- dl[[i]]
-    en_i <- en[[i]]
-    st_i <- st[[i]]
-    ref <- if (!is.na(dl_i)) dl_i else en_i
-    today <- Sys.Date()
-    if (!is.na(ref)) {
-      diff_days <- as.integer(ref - today)
-      return(dplyr::case_when(
-        diff_days < 0 ~ "encerrado",
-        diff_days <= 14 ~ "encerrando",
-        !is.na(st_i) && st_i > today ~ "em breve",
-        TRUE ~ "aberto"
-      ))
-    }
-    if (grepl("encerrad|closed|finalizad|expired", txt_i, ignore.case = TRUE)) return("encerrado")
-    if (grepl("open|abert|ongoing|em andamento", txt_i, ignore.case = TRUE)) return("aberto")
-    if (grepl("coming soon|em breve|upcoming", txt_i, ignore.case = TRUE)) return("em breve")
-    "indefinido"
-  }, character(1))
-  out
+classify_status <- function(deadline = NA, start = NA, end = NA, text = NULL, today = NULL,
+                            status_oficial = NA) {
+  # Regra temporal única (R04): delega SEMPRE ao resolvedor de helpers_status.R.
+  # `text` é aceito por compatibilidade, mas texto livre não é evidência de estado.
+  dl <- as.character(parse_date_safe(deadline))
+  en <- as.character(parse_date_safe(end))
+  ref <- ifelse(is.na(dl), en, dl)
+  derive_status(data_limite = ref, data_abertura = as.character(parse_date_safe(start)),
+                today = today, status_oficial = status_oficial)
 }
 
 normalize_country <- function(x) {
-  if (is.na(x) || !nzchar(trimws(x))) return(NA_character_)
+  if (is.na(x) || !nzchar(trimws(x))) {
+    return(NA_character_)
+  }
   key <- normalize_text(x)
   dict <- c(
     "brazil" = "Brasil", "brasil" = "Brasil", "brazilian" = "Brasil",
     "united states" = "Estados Unidos", "usa" = "Estados Unidos", "u.s." = "Estados Unidos",
     "canada" = "Canadá", "germany" = "Alemanha", "deutschland" = "Alemanha",
     "france" = "França", "european union" = "União Europeia", "eu" = "União Europeia",
+    "uniao europeia" = "União Europeia",
     "international" = "Internacional", "global" = "Internacional", "multicountry" = "Internacional",
     "united kingdom" = "Reino Unido"
   )
@@ -180,12 +220,22 @@ normalize_country <- function(x) {
 infer_language_simple <- function(text) {
   vals <- as.character(text %||% NA_character_)
   vapply(vals, function(one) {
-    if (length(one) == 0 || is.na(one)) return(NA_character_)
+    if (length(one) == 0 || is.na(one)) {
+      return(NA_character_)
+    }
     txt <- normalize_text(substr(one, 1, 3000))
-    if (!length(txt) || is.na(txt) || !nzchar(txt)) return(NA_character_)
-    if (grepl("\\b(edital|chamada|fomento|bolsa|auxilio|inscricoes|prazo)\\b", txt, perl = TRUE, ignore.case = TRUE)) return("pt")
-    if (grepl("\\b(call|grant|funding|scholarship|deadline|eligibility)\\b", txt, perl = TRUE, ignore.case = TRUE)) return("en")
-    if (grepl("\\b(convocatoria|subvencion|beca|financiacion)\\b", txt, perl = TRUE, ignore.case = TRUE)) return("es")
+    if (!length(txt) || is.na(txt) || !nzchar(txt)) {
+      return(NA_character_)
+    }
+    if (grepl("\\b(edital|chamada|fomento|bolsa|auxilio|inscricoes|prazo)\\b", txt, perl = TRUE, ignore.case = TRUE)) {
+      return("pt")
+    }
+    if (grepl("\\b(call|grant|funding|scholarship|deadline|eligibility)\\b", txt, perl = TRUE, ignore.case = TRUE)) {
+      return("en")
+    }
+    if (grepl("\\b(convocatoria|subvencion|beca|financiacion)\\b", txt, perl = TRUE, ignore.case = TRUE)) {
+      return("es")
+    }
     NA_character_
   }, character(1))
 }
@@ -214,24 +264,33 @@ infer_type_from_text <- function(text) {
 
 extract_keywords_simple <- function(text, top_n = 8) {
   txt <- normalize_text(text %||% "")
-  if (!nzchar(txt)) return(NA_character_)
+  if (!nzchar(txt)) {
+    return(NA_character_)
+  }
   tokens <- unlist(strsplit(txt, "[^a-z0-9]+", perl = TRUE), use.names = FALSE)
   tokens <- tokens[nchar(tokens) >= 4]
   stopwords <- unique(c(
     funding_lexicon(),
-    "para", "with", "from", "that", "this", "will", "have", "your", "than",
-    "instituicao", "instituicao", "proposal", "proposals", "application", "applications",
-    "research", "programa", "program", "state", "fapes", "cnpq", "capes", "finep"
+    # Pronomes, preposições, verbos e termos comuns de conexão
+    "para", "with", "from", "that", "this", "will", "have", "your", "than", "como", "mais", "para", "com", "uma", "mais", "será", "pelo", "pela", "sobre", "entre", "onde", "quem", "seus", "suas",
+    # Palavras administrativas/procedimentais genéricas em português
+    "projeto", "projetos", "recurso", "recursos", "proposta", "propostas", "instituicao", "instituicoes", "instituição", "instituições", "bolsa", "bolsas", "execucao", "execução", "inovacao", "inovação", "proponente", "proponentes", "desenvolvimento", "desenvolvimentos", "tecnologia", "tecnologias", "apoio", "pesquisa", "pesquisas", "cientifico", "científico", "ciencia", "ciência", "chamada", "chamadas", "publica", "pública", "publico", "público", "fomento", "fomentos", "financiar", "financiamento", "financiamentos", "paragrafo", "parágrafo", "documento", "documentos", "beneficiaria", "beneficiária", "prazo", "prazos", "valor", "valores", "edital", "editais", "anexo", "anexos", "artigo", "artigos", "inciso", "incisos", "lei", "leis", "portaria", "portarias", "decreto", "decretos", "resolucao", "resolução", "pagina", "página", "paginas", "páginas", "site", "sites", "web", "link", "links", "email", "e-mail", "telefone", "telefones", "endereco", "endereço", "candidato", "candidatos", "candidatura", "candidaturas", "submissao", "submissão", "formulario", "formulário", "anual", "mensal", "diario", "diário", "devera", "deverá", "cada", "despesas", "despesa", "cientifica", "científica", "cooperacao", "cooperação", "sendo", "pode", "devem", "serao", "serão", "sobre", "pelas", "pelos", "caso", "seria", "serian", "seriam", "esta", "está", "estao", "estão",
+    # Palavras administrativas genéricas em inglês
+    "proposal", "proposals", "application", "applications", "research", "researches", "programa", "program", "programs", "state", "fapes", "cnpq", "capes", "finep", "funding", "fundings", "grant", "grants", "scholarship", "scholarships", "fellowship", "fellowships", "award", "awards", "call", "calls", "deadline", "deadlines", "eligible", "eligibility", "institution", "institutions", "candidate", "candidates", "submission", "submissions", "form", "forms", "annex", "annexes", "guideline", "guidelines", "notice", "notices", "budget", "budgets", "cost", "costs", "partner", "partners", "project", "projects", "support", "supports", "development", "developments"
   ))
   tokens <- tokens[!(tokens %in% normalize_text(stopwords))]
-  if (length(tokens) == 0) return(NA_character_)
+  if (length(tokens) == 0) {
+    return(NA_character_)
+  }
   freq <- sort(table(tokens), decreasing = TRUE)
   paste(names(freq)[seq_len(min(top_n, length(freq)))], collapse = "; ")
 }
 
 parse_money_text <- function(text) {
   txt <- normalize_ws(text %||% "")
-  if (!nzchar(txt)) return(list(value = NA_real_, currency = NA_character_))
+  if (!nzchar(txt)) {
+    return(list(value = NA_real_, currency = NA_character_))
+  }
   currency <- dplyr::case_when(
     grepl("R\\$|reais|brl", txt, ignore.case = TRUE) ~ "BRL",
     grepl("US\\$|usd|dollars?", txt, ignore.case = TRUE) ~ "USD",
@@ -241,7 +300,7 @@ parse_money_text <- function(text) {
     TRUE ~ NA_character_
   )
   value <- suppressWarnings({
-    m <- stringr::str_extract(txt, "(R\\$|US\\$|USD|EUR|€|CAD|GBP|£)?\\s*[0-9][0-9\\., ]+")
+    m <- stringr::str_extract(txt, "(R\\$|US\\$|USD|EUR|€|CAD|GBP|£)\\s*[0-9][0-9\\., ]+")
     safe_numeric(m)
   })
   list(value = value, currency = currency)
@@ -251,21 +310,67 @@ extract_dates_from_text <- function(text) {
   txt <- text %||% ""
   pats <- c(
     "\\b\\d{1,2}/\\d{1,2}/\\d{4}\\b",
+    "\\b\\d{1,2}/\\d{1,2}/\\d{2}\\b",
     "\\b\\d{4}-\\d{2}-\\d{2}\\b",
-    "\\b\\d{1,2} de [A-Za-zçãéíóúâêô]+ de \\d{4}\\b"
+    "\\b\\d{1,2}\\.\\d{1,2}\\.\\d{4}\\b",
+    "\\b\\d{1,2}º?\\s+de\\s+[A-Za-zçãéíóúâêô]+(?:\\s+de)?\\s+\\d{4}\\b",
+    "\\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\s+\\d{1,2},\\s*\\d{4}\\b",
+    "\\b[A-Za-zçãéíóúâêô]+\\s*/\\s*\\d{4}\\b"
   )
   hits <- unique(unlist(lapply(pats, function(p) stringr::str_extract_all(txt, stringr::regex(p, ignore_case = TRUE))[[1]]), use.names = FALSE))
   hits <- hits[nzchar(hits)]
-  if (length(hits) == 0) return(as.Date(character()))
+  if (length(hits) == 0) {
+    return(as.Date(character()))
+  }
   month_map <- c(
     janeiro = "01", fevereiro = "02", marco = "03", março = "03", abril = "04", maio = "05", junho = "06",
-    julho = "07", agosto = "08", setembro = "09", outubro = "10", novembro = "11", dezembro = "12"
+    julho = "07", agosto = "08", setembro = "09", outubro = "10", novembro = "11", dezembro = "12",
+    jan = "01", fev = "02", mar = "03", abr = "04", mai = "05", jun = "06",
+    jul = "07", ago = "08", set = "09", out = "10", nov = "11", dez = "12",
+    sept = "09", oct = "10", dec = "12",
+    january = "01", february = "02", march = "03", april = "04", may = "05", june = "06",
+    july = "07", august = "08", september = "09", october = "10", november = "11", december = "12"
   )
   normalize_pt_date <- function(x) {
+    x <- trimws(x)
+    # Formato longo EN: "September 17, 2026" ou "October 19, 2026"
+    en_m <- regmatches(x, regexec("([A-Za-z]+)\\s+(\\d{1,2}),\\s*(\\d{4})", x))[[1]]
+    if (length(en_m) == 4) {
+      mo_key <- tolower(en_m[2])
+      if (mo_key %in% names(month_map)) {
+        return(sprintf("%s-%s-%02d", en_m[4], month_map[[mo_key]], as.integer(en_m[3])))
+      }
+    }
     key <- normalize_text(x)
-    if (!grepl(" de ", key, fixed = TRUE)) return(x)
-    m <- regmatches(key, regexec("(\\d{1,2}) de ([a-zçãéíóúâêô]+) de (\\d{4})", key))[[1]]
-    if (length(m) == 4) sprintf("%s-%s-%02d", m[4], month_map[[m[3]]] %||% "01", as.integer(m[2])) else x
+    # Formato ordinal: "1º de setembro de 2026" -> normalizar para "1 de setembro de 2026"
+    key <- gsub("º", "", key, fixed = TRUE)
+    key <- trimws(key)
+    # Formato "Mes/YYYY" -> dia 15
+    month_year_match <- regmatches(key, regexec("^([a-zçãéíóúâêô]+)\\s*/?\\s*(\\d{4})$", key))[[1]]
+    if (length(month_year_match) == 3) {
+      mo_key <- month_year_match[2]
+      if (mo_key %in% names(month_map)) {
+        return(sprintf("%s-%s-15", month_year_match[3], month_map[[mo_key]]))
+      }
+    }
+    # Formato longo PT: "1 de setembro de 2026"
+    if (grepl(" de ", key, fixed = TRUE)) {
+      m <- regmatches(key, regexec("(\\d{1,2})\\s+de\\s+([a-zçãéíóúâêô]+)\\s+de\\s*(\\d{4})", key))[[1]]
+      if (length(m) == 4) {
+        mo_key <- m[3]
+        if (mo_key %in% names(month_map)) {
+          return(sprintf("%s-%s-%02d", m[4], month_map[[mo_key]], as.integer(m[2])))
+        }
+      }
+    }
+    # Formato DD.MM.YYYY
+    if (grepl("\\.", x, fixed = TRUE)) {
+      partes <- strsplit(x, "\\.")[[1]]
+      if (length(partes) == 3 && nchar(partes[3]) == 4) {
+        return(sprintf("%s-%s-%s", partes[3], partes[2], partes[1]))
+      }
+    }
+    x
   }
   parse_date_safe(vapply(hits, normalize_pt_date, character(1)))
 }
@@ -273,37 +378,66 @@ extract_dates_from_text <- function(text) {
 make_hash <- function(...) digest::digest(paste(..., collapse = "||"), algo = "xxhash64")
 
 safe_html_text <- function(node) {
-  if (is.null(node) || length(node) == 0 || inherits(node, "xml_missing")) return(NA_character_)
+  if (is.null(node) || length(node) == 0 || inherits(node, "xml_missing")) {
+    return(NA_character_)
+  }
   if (inherits(node, "xml_nodeset")) {
-    if (length(node) == 0) return(NA_character_)
+    if (length(node) == 0) {
+      return(NA_character_)
+    }
     node <- node[[1]]
   }
-  out <- tryCatch(rvest::html_text2(node, preserve_nbsp = FALSE), error = function(e) NA_character_)
+  # Clone para evitar mutação indesejada do DOM original
+  node_copy <- tryCatch(xml2::xml_clone(node), error = function(e) node)
+  try(
+    {
+      xml2::xml_remove(xml2::xml_find_all(node_copy, ".//script|.//style|.//iframe|.//noscript|.//svg"))
+    },
+    silent = TRUE
+  )
+  out <- tryCatch(rvest::html_text2(node_copy, preserve_nbsp = FALSE), error = function(e) NA_character_)
   normalize_ws(out)
 }
 
 safe_attr <- function(node, attr) {
-  if (inherits(node, "xml_missing") || length(node) == 0 || is.null(node)) return(NA_character_)
+  if (inherits(node, "xml_missing") || length(node) == 0 || is.null(node)) {
+    return(NA_character_)
+  }
   val <- rvest::html_attr(node, attr)
-  if (length(val) == 0) return(NA_character_)
+  if (length(val) == 0) {
+    return(NA_character_)
+  }
   val
 }
 
 resolve_url <- function(base_url, href) {
-  if (is.null(href) || length(href) == 0) return(NA_character_)
+  if (is.null(href) || length(href) == 0) {
+    return(NA_character_)
+  }
   href <- as.character(href[[1]])
-  if (is.na(href)) return(NA_character_)
+  if (is.na(href)) {
+    return(NA_character_)
+  }
   href <- trimws(href)
-  if (!nzchar(href)) return(NA_character_)
-  if (grepl("^(javascript:|mailto:|tel:)", href, ignore.case = TRUE)) return(NA_character_)
-  if (grepl("^https?://", href, ignore.case = TRUE)) return(href)
+  if (!nzchar(href)) {
+    return(NA_character_)
+  }
+  if (grepl("^(javascript:|mailto:|tel:)", href, ignore.case = TRUE)) {
+    return(NA_character_)
+  }
+  if (grepl("^https?://", href, ignore.case = TRUE)) {
+    return(href)
+  }
   if (grepl("^//", href)) {
     scheme <- tryCatch(xml2::url_parse(base_url)$scheme, error = function(e) "https")
     scheme <- if (is.null(scheme) || !nzchar(scheme)) "https" else scheme
     return(paste0(scheme, ":", href))
   }
-  out <- tryCatch(xml2::url_absolute(href, base_url), error = function(e) NA_character_)
-  if (length(out) == 0 || is.na(out) || !nzchar(out)) return(NA_character_)
+  href_enc <- tryCatch(utils::URLencode(href, repeated = FALSE), error = function(e) href)
+  out <- tryCatch(xml2::url_absolute(href_enc, base_url), error = function(e) NA_character_)
+  if (length(out) == 0 || is.na(out) || !nzchar(out)) {
+    return(NA_character_)
+  }
   out
 }
 
@@ -316,7 +450,9 @@ pick_first_nonempty <- function(...) {
     if (length(vv) == 0) next
     vv <- normalize_ws(vv)
     vv <- vv[!is.na(vv) & nzchar(vv)]
-    if (length(vv) > 0) return(vv[[1]])
+    if (length(vv) > 0) {
+      return(vv[[1]])
+    }
   }
   NA_character_
 }
@@ -329,9 +465,13 @@ extract_pdf_links <- function(html, base_url) {
 }
 
 nearest_block_text <- function(node, max_levels = 4) {
-  if (is.null(node) || length(node) == 0 || inherits(node, "xml_missing")) return(NA_character_)
+  if (is.null(node) || length(node) == 0 || inherits(node, "xml_missing")) {
+    return(NA_character_)
+  }
   if (inherits(node, "xml_nodeset")) {
-    if (length(node) == 0) return(NA_character_)
+    if (length(node) == 0) {
+      return(NA_character_)
+    }
     node <- node[[1]]
   }
   cur <- node
@@ -349,24 +489,40 @@ nearest_block_text <- function(node, max_levels = 4) {
 }
 
 log_write <- function(log_path, level = "INFO", message = "") {
+  if (is.null(log_path) || !nzchar(as.character(log_path %||% ""))) {
+    message_flat <- gsub("[\r\n]+", " | ", as.character(message %||% ""))
+    line <- sprintf("[%s] [%s] %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), level, message_flat)
+    message(line)
+    return(invisible(line))
+  }
   ensure_dir(dirname(log_path))
-  line <- sprintf("[%s] [%s] %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), level, message)
+  message_flat <- gsub("[\r\n]+", " | ", as.character(message %||% ""))
+  line <- sprintf("[%s] [%s] %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), level, message_flat)
   cat(line, file = log_path, append = TRUE, sep = "\n")
   message(line)
   invisible(line)
 }
 
 badge_status_html <- function(status) {
-  status <- tolower(status %||% "indefinido")
-  class_name <- switch(
-    status,
+  status <- tolower(status %||% "desconhecido")
+  class_name <- switch(status,
     "aberto" = "badge-soft-open",
     "encerrando" = "badge-soft-warning",
     "em breve" = "badge-soft-info",
+    "em_breve" = "badge-soft-info",
     "encerrado" = "badge-soft-closed",
+    "cancelado" = "badge-soft-closed",
+    "suspenso" = "badge-soft-warning",
+    "em_julgamento" = "badge-soft-info",
     "badge-soft-neutral"
   )
-  sprintf("<span class='status-badge %s'>%s</span>", class_name, tools::toTitleCase(status))
+  label <- switch(status,
+    "em_breve" = "Em breve",
+    "em_julgamento" = "Em julgamento",
+    "desconhecido" = "A verificar",
+    tools::toTitleCase(status)
+  )
+  sprintf("<span class='status-badge %s'>%s</span>", class_name, label)
 }
 
 score_bar_html <- function(score) {
@@ -381,8 +537,549 @@ make_click_button <- function(id_value, label = "Rastrear", class = "btn btn-sm 
   )
 }
 
+make_view_button <- function(id_value, label = "🔍", class = "btn btn-sm btn-outline-info action-view-btn") {
+  sprintf(
+    "<button class='%s' data-id='%s' onclick=\"Shiny.setInputValue('row_view', {id: '%s', nonce: Math.random()}, {priority: 'event'})\">%s</button>",
+    class, id_value, id_value, label
+  )
+}
+
+make_actions_html <- function(id_value) {
+  btn_view <- sprintf(
+    "<button class='btn btn-sm btn-outline-primary action-view-btn' style='padding: 2px 8px; font-size: 0.75rem;' onclick=\"Shiny.setInputValue('row_view', {id: '%s', nonce: Math.random()}, {priority: 'event'})\"><i class='fa fa-eye'></i> Visualizar</button>",
+    id_value
+  )
+  btn_track <- sprintf(
+    "<button class='btn btn-sm btn-success action-link-btn' style='padding: 2px 8px; font-size: 0.75rem;' onclick=\"Shiny.setInputValue('row_action', {id: '%s', nonce: Math.random()}, {priority: 'event'})\"><i class='fa fa-map-marker-alt'></i> Rastrear</button>",
+    id_value
+  )
+  sprintf("<div style='display: flex; gap: 4px; white-space: nowrap;'>%s%s</div>", btn_view, btn_track)
+}
+
+calculate_dynamic_adherence <- function(query, keywords, summary, title = "", subtitle = "", default_score = 0) {
+  if (is.null(query) || !nzchar(trimws(query))) {
+    return(as.integer(default_score %||% 0))
+  }
+
+  # Normalize and clean the query string
+  query_clean <- tolower(query)
+  # Remove boolean logic symbols and punctuation
+  query_clean <- gsub("[()\"':;,!?|]", " ", query_clean)
+  query_clean <- gsub("\\b(and|or|not|&&|\\|\\||!)\\b", " ", query_clean, perl = TRUE)
+
+  # Split into unique terms
+  words <- unlist(strsplit(query_clean, "\\s+"))
+  words <- unique(trimws(words))
+  words <- words[nzchar(words) & nchar(words) >= 3]
+
+  if (length(words) == 0) {
+    return(as.integer(default_score %||% 0))
+  }
+
+  # Text to search in: title, subtitle, keywords, and summary/object
+  text_to_search <- tolower(paste(
+    title %||% "",
+    subtitle %||% "",
+    keywords %||% "",
+    summary %||% "",
+    collapse = " "
+  ))
+
+  # Count matches
+  matches <- vapply(words, function(w) {
+    w_esc <- gsub("([^a-zA-Z0-9])", "\\\\\\1", w)
+    grepl(paste0("\\b", w_esc, "\\b"), text_to_search, perl = TRUE) || grepl(w, text_to_search, fixed = TRUE)
+  }, logical(1))
+
+  # Calculate match percentage
+  match_ratio <- sum(matches) / length(words)
+  as.integer(round(match_ratio * 100))
+}
+
 link_html <- function(url, label = NULL) {
-  if (is.na(url) || !nzchar(url)) return("-")
+  if (is.na(url) || !nzchar(url)) {
+    return("-")
+  }
   label <- label %||% "Abrir"
   sprintf("<a href='%s' target='_blank' rel='noopener noreferrer'>%s</a>", url, label)
+}
+
+clean_edital_title <- function(title) {
+  if (is.null(title) || is.na(title) || !nzchar(title)) {
+    return(NA_character_)
+  }
+
+  # Se parecer um nome de arquivo (termina com extensões comuns ou não tem espaços e tem extensão)
+  if (grepl("\\.(pdf|docx|xlsx|zip)$", title, ignore.case = TRUE) || !grepl(" ", title)) {
+    # Remove extensão
+    title <- tools::file_path_sans_ext(title)
+    # Substitui underlines e hifens por espaços
+    title <- gsub("[_-]", " ", title)
+    # Insere espaço entre letras minúsculas/números e maiúsculas
+    title <- gsub("([a-z0-9])([A-Z])", "\\1 \\2", title)
+    # Insere espaço entre letras e números
+    title <- gsub("([a-zA-Z])([0-9])", "\\1 \\2", title)
+    title <- gsub("([0-9])([a-zA-Z])", "\\1 \\2", title)
+    # Tenta separar preposições e conjunções em português que possam estar coladas
+    # ex: "FamiliaePoliticas" -> "Familia e Politicas", "PublicasnoBrasil" -> "Publicas no Brasil"
+    title <- gsub("(\\b[A-Za-z]+a)e(\\b|\\s|[A-Z])", "\\1 e \\2", title)
+    title <- gsub("(\\b[A-Za-z]+o)e(\\b|\\s|[A-Z])", "\\1 e \\2", title)
+    title <- gsub("(\\b[A-Za-z]+[a-z])no(\\b|\\s|[A-Z])", "\\1 no \\2", title)
+    title <- gsub("(\\b[A-Za-z]+[a-z])na(\\b|\\s|[A-Z])", "\\1 na \\2", title)
+    title <- gsub("(\\b[A-Za-z]+[a-z])de(\\b|\\s|[A-Z])", "\\1 de \\2", title)
+    title <- gsub("(\\b[A-Za-z]+[a-z])do(\\b|\\s|[A-Z])", "\\1 do \\2", title)
+    title <- gsub("(\\b[A-Za-z]+[a-z])da(\\b|\\s|[A-Z])", "\\1 da \\2", title)
+    title <- gsub("(\\b[A-Za-z]+[a-z])para(\\b|\\s|[A-Z])", "\\1 para \\2", title)
+    title <- gsub("(\\b[A-Za-z]+[a-z])em(\\b|\\s|[A-Z])", "\\1 em \\2", title)
+
+    # Normaliza espaços
+    title <- trimws(gsub("\\s+", " ", title))
+  }
+
+  title
+}
+
+is_current_year_record <- function(pub_date_str, limit_date_str, title, text, is_eu_source = FALSE) {
+  current_year <- as.integer(format(Sys.Date(), "%Y"))
+
+  # Heuristica rapida: se o titulo menciona explicitamente o ano corrente, aceitar
+  year_pattern <- sprintf("\\b%d\\b", current_year)
+  if (grepl(year_pattern, title %||% "")) {
+    return(TRUE)
+  }
+
+  pub_date <- parse_date_safe(pub_date_str)
+  limit_date <- parse_date_safe(limit_date_str)
+
+  pub_year <- if (!is.na(pub_date)) as.integer(format(pub_date, "%Y")) else NA_integer_
+  limit_year <- if (!is.na(limit_date)) as.integer(format(limit_date, "%Y")) else NA_integer_
+
+  # Para fontes EU (HEU/ERC): work programmes sao plurianuais
+  # Aceitar registros com deadline >= ano corrente
+  if (is_eu_source) {
+    if (!is.na(limit_year) && limit_year >= current_year) {
+      return(TRUE)
+    }
+    if (!is.na(pub_year) && pub_year >= current_year) {
+      return(TRUE)
+    }
+    year_pattern_future <- sprintf("\\b(%d|%d)\\b", current_year, current_year + 1)
+    if (grepl(year_pattern_future, title %||% "")) {
+      return(TRUE)
+    }
+    if (grepl(year_pattern_future, text %||% "")) {
+      return(TRUE)
+    }
+    return(TRUE)
+  }
+
+  # Se tiver data limite, valida pelo ano corrente
+  if (!is.na(limit_year)) {
+    if (limit_year == current_year) {
+      return(TRUE)
+    }
+    if (limit_year > current_year) {
+      return(TRUE)
+    }
+  }
+
+  # Se tiver data de publicacao, valida pelo ano corrente
+  if (!is.na(pub_year)) {
+    if (pub_year == current_year) {
+      return(TRUE)
+    }
+    if (pub_year > current_year) {
+      return(TRUE)
+    }
+  }
+
+  # Heuristica: se mencionar o ano corrente no texto
+  if (grepl(year_pattern, text %||% "")) {
+    return(TRUE)
+  }
+
+  # Se mencionar anos passados recentes e nenhum sinal de ano corrente, consideramos edital antigo
+  past_years <- (current_year - 2):(current_year - 1)
+  past_patterns <- paste0("\\b", past_years, "\\b")
+  has_past_year <- any(vapply(past_patterns, function(p) grepl(p, title %||% "") || grepl(p, text %||% ""), logical(1)))
+  if (has_past_year) {
+    return(FALSE)
+  }
+
+  TRUE
+}
+
+# ── Pool rotativo de User-Agents e headers centralizados ──────────────────────
+
+.USER_AGENTS <- c(
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Safari/605.1.15",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0"
+)
+
+get_random_ua <- function() {
+  sample(.USER_AGENTS, 1L)
+}
+
+build_scrape_headers <- function(ua = NULL) {
+  if (is.null(ua)) ua <- get_random_ua()
+  list(
+    `User-Agent` = ua,
+    `Accept` = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    `Accept-Language` = "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+    `Accept-Encoding` = "gzip, deflate, br",
+    `Connection` = "keep-alive",
+    `Upgrade-Insecure-Requests` = "1",
+    `Sec-Fetch-Dest` = "document",
+    `Sec-Fetch-Mode` = "navigate",
+    `Sec-Fetch-Site` = "none",
+    `Sec-Fetch-User` = "?1",
+    `Cache-Control` = "max-age=0"
+  )
+}
+
+# ── Função unificada de preenchimento de campos via IA ────────────────────────
+# NOTA (BUG-02): o antigo contrato com `<<-` gerava "object 'target_df' not found"
+# e o enriquecimento falhava silenciosamente. Agora as funções são puras:
+# recebem df + campos inferidos e DEVOLVEM list(df, inferred).
+
+# Preenche um campo com valor extraído pela IA.
+# @return list(df, inferred) — data.frame atualizado + campos inferidos.
+fill_ai_field <- function(field, value, overwrite = FALSE,
+                          target_df, row_idx = 1L, inferred_fields) {
+  if (is.null(value) || length(value) == 0) {
+    return(list(df = target_df, inferred = inferred_fields))
+  }
+  if (length(value) > 1) {
+    value <- paste(vapply(value, as.character, character(1)), collapse = "; ")
+  } else {
+    value <- as.character(value[[1]])
+  }
+  if (is.na(value) || !nzchar(trimws(value))) {
+    return(list(df = target_df, inferred = inferred_fields))
+  }
+
+  if (field == "palavras_chave") {
+    value <- gsub(",\\s*", "; ", value)
+    value <- gsub(";+", ";", value)
+  }
+
+  if (!field %in% names(target_df)) {
+    target_df[[field]] <- NA_character_
+  }
+
+  current <- target_df[[field]][[row_idx]]
+  if (overwrite || is.null(current) || length(current) == 0 ||
+    is.na(current) || !nzchar(trimws(as.character(current)))) {
+    col <- target_df[[field]]
+    col[[row_idx]] <- value
+    target_df[[field]] <- col
+    inferred_fields <- unique(c(inferred_fields, field))
+  }
+  list(df = target_df, inferred = inferred_fields)
+}
+
+# Aplica todos os campos de IA extraídos a um dataframe.
+# @return list(df, inferred) — use o retorno (nunca confie em <<-).
+apply_ai_fields_to_df <- function(ai, target_df, row_idx, inferred_fields) {
+  st <- list(df = target_df, inferred = inferred_fields)
+  step <- function(field, value, overwrite = FALSE) {
+    st <<- fill_ai_field(field, value, overwrite = overwrite,
+      target_df = st$df, row_idx = row_idx, inferred_fields = st$inferred)
+  }
+
+  step("titulo", ai$titulo_limpo, TRUE)
+  step("descricao_resumida", ai$resumo, TRUE)
+  step("palavras_chave", ai$palavras_chave, TRUE)
+  step("elegibilidade", ai$elegibilidade, FALSE)
+  step("area_tematica", ai$area_tematica, FALSE)
+  step("tipo_oportunidade", ai$tipo_oportunidade, TRUE)
+  # BUG-07: status_oportunidade NUNCA é preenchido por IA — o sistema deriva
+  # por regra temporal (derive_status). O prompt v2 nem retorna esse campo.
+  step("idioma", ai$idioma, TRUE)
+  step("data_limite", ai$data_limite, TRUE)
+  step("data_publicacao", ai$data_publicacao, TRUE)
+  step("observacoes", ai$observacoes, FALSE)
+  step("modalidade", ai$modalidade, TRUE)
+  step("publico_alvo", ai$publico_alvo, TRUE)
+  step("nivel_academico", ai$nivel_academico, TRUE)
+  step("data_abertura", ai$data_abertura, TRUE)
+  step("data_encerramento", ai$data_encerramento, TRUE)
+
+  # valor_financiado e moeda (tipos especiais) — blindado contra vetores (IA retorna array)
+  ai_val_raw <- ai$valor_financiado
+  if (!is.null(ai_val_raw) && length(ai_val_raw) > 0) {
+    v1 <- ai_val_raw[[1]]
+    if (!is.na(v1)) {
+      num <- suppressWarnings(as.numeric(v1))
+      if (!is.na(num)) {
+        if (!identical(st$df$valor_financiado[[row_idx]], num)) {
+          vcol <- st$df$valor_financiado
+          vcol[[row_idx]] <- num
+          st$df$valor_financiado <- vcol
+          st$inferred <- unique(c(st$inferred, "valor_financiado"))
+        }
+      }
+    }
+  }
+  ai_curr_raw <- ai$moeda
+  if (!is.null(ai_curr_raw) && length(ai_curr_raw) > 0) {
+    c1 <- trimws(as.character(ai_curr_raw[[1]]))
+    if (!is.na(c1) && nzchar(c1)) {
+      if (!identical(st$df$moeda[[row_idx]], c1)) {
+        mcol <- st$df$moeda
+        mcol[[row_idx]] <- c1
+        st$df$moeda <- mcol
+        st$inferred <- unique(c(st$inferred, "moeda"))
+      }
+    }
+  }
+
+  invisible(st)
+}
+
+
+# --- Rate Limiting por Domínio ---
+
+extract_domain <- function(url) {
+  parsed <- tryCatch(xml2::url_parse(url), error = function(e) NULL)
+  if (is.null(parsed) || length(parsed$server) == 0 || is.na(parsed$server[[1]]) || !nzchar(parsed$server[[1]])) {
+    return("")
+  }
+  paste0(parsed$server[[1]], if (length(parsed$port) > 0 && !is.na(parsed$port[[1]])) paste0(":", parsed$port[[1]]))
+}
+
+DomainRateLimiter <- R6::R6Class("DomainRateLimiter",
+  public = list(
+    last_request = NULL,
+    min_delay_same = NULL,
+    min_delay_diff = NULL,
+    last_domain = NULL,
+    initialize = function(min_delay_same = 2.0, min_delay_diff = 0.5) {
+      self$last_request <- new.env(parent = emptyenv())
+      self$min_delay_same <- min_delay_same
+      self$min_delay_diff <- min_delay_diff
+      self$last_domain <- ""
+    },
+    wait_if_needed = function(url) {
+      domain <- extract_domain(url)
+      if (!nzchar(domain)) {
+        return(invisible(NULL))
+      }
+
+      now <- as.numeric(Sys.time())
+      last <- now
+      if (exists(domain, envir = self$last_request, inherits = FALSE)) {
+        last <- get(domain, envir = self$last_request, inherits = FALSE)
+      }
+
+      delay <- if (identical(domain, self$last_domain)) self$min_delay_same else self$min_delay_diff
+      elapsed <- now - last
+      if (elapsed < delay) {
+        Sys.sleep(delay - elapsed)
+      }
+
+      assign(domain, as.numeric(Sys.time()), envir = self$last_request)
+      self$last_domain <- domain
+      invisible(NULL)
+    }
+  )
+)
+
+.scrape_rate_limiter <- DomainRateLimiter$new(
+  min_delay_same = as.numeric(Sys.getenv("SCRAPE_DOMAIN_DELAY", "2.0")),
+  min_delay_diff = as.numeric(Sys.getenv("SCRAPE_DIFF_DELAY", "0.5"))
+)
+
+is_plone_search_url <- function(url, current_url = NULL) {
+  if (is.null(url) || !nzchar(url)) return(FALSE)
+  u <- tolower(url)
+  if (grepl("@@search", u, fixed = TRUE)) return(TRUE)
+  if (grepl("/search\\?|/\\?q=|SearchableText=", u)) return(TRUE)
+  if (!is.null(current_url) && nzchar(current_url)) {
+    cu <- tolower(current_url)
+    base_current <- sub("\\?.*", "", cu)
+    base_target <- sub("\\?.*", "", u)
+    if (identical(base_current, base_target)) return(FALSE)
+  }
+  FALSE
+}
+
+extract_inscricoes_dates <- function(text) {
+  txt <- text %||% ""
+  pattern <- "inscri[çc][õo]es?\\s*:\\s*(\\d{1,2}/\\d{1,2}/\\d{4})\\s*a\\s*(\\d{1,2}/\\d{1,2}/\\d{4})"
+  m <- regmatches(txt, regexec(pattern, txt, ignore.case = TRUE))[[1]]
+  if (length(m) == 3) {
+    list(
+      data_abertura = as.character(parse_date_safe(m[2])),
+      data_limite = as.character(parse_date_safe(m[3]))
+    )
+  } else {
+    list(data_abertura = NA_character_, data_limite = NA_character_)
+  }
+}
+
+# ─── Extração contextual de datas (corrige BUG-03) ─────────────────────────────
+# Datas de rodapé / "última atualização" / resultados não podem virar o prazo.
+# Procuramos datas apenas em janelas de ±window chars em torno de keywords de prazo
+# e filtramos por plausibilidade (hoje-2a .. hoje+2a).
+
+extract_dates_contextual <- function(text, window = 120L, log_path = NULL) {
+  txt <- normalize_ws(text %||% "")
+  if (!nzchar(txt)) {
+    return(as.Date(character()))
+  }
+  # "final" isolado foi removido: contaminava com "resultado final" (Q05).
+  keywords <- c("prazo", "deadline", "submiss", "inscri", "until", "due date", "até", "ate")
+  windows <- character()
+  for (kw in keywords) {
+    matches <- gregexpr(paste0("\\b", kw, ".{0,", window, "}"), txt, ignore.case = TRUE, perl = TRUE)[[1]]
+    if (length(matches) == 0L || is.na(matches[[1]])) next
+    for (pos in matches) {
+      start <- max(1L, pos - window)
+      end <- min(nchar(txt), pos + window)
+      windows <- c(windows, substr(txt, start, end))
+    }
+  }
+  if (length(windows) == 0L) {
+    return(as.Date(character()))
+  }
+  # Sentenças rotuladas como resultado/atualização/vigência/publicação não fornecem prazo de submissão.
+  sentences <- unlist(strsplit(windows, "\n|(?<=[[:alnum:])])\\.\\s+(?=[[:upper:]])", perl = TRUE))
+  excl <- "atualiz|resultado|recurso|homologa|divulga|vigencia|publicad|emitid|assinad|impress|gabarito|classificad"
+  sentences <- sentences[!grepl(excl, normalize_text(sentences))]
+  if (length(sentences) == 0L) {
+    return(as.Date(character()))
+  }
+  all_dates <- unique(extract_dates_from_text(paste(sentences, collapse = "\n")))
+  all_dates <- all_dates[!is.na(all_dates)]
+  hoje <- status_today()
+  # Passado de até 10 anos é preservado (evidência histórica de encerramento); futuro limitado a 2 anos.
+  all_dates <- all_dates[all_dates >= (hoje - 3650) & all_dates <= (hoje + 730)]
+  sort(all_dates)
+}
+
+assert_date_plausibility <- function(dates, log_path = NULL) {
+  # Semântica do spec: datas fora de hoje-2a..hoje+2a são descartadas.
+  if (length(dates) == 0L) {
+    return(as.Date(character()))
+  }
+  hoje <- status_today()
+  keep <- dates >= (hoje - 730) & dates <= (hoje + 730)
+  out <- dates[!is.na(keep) & keep]
+  if (!is.null(log_path) && any(!keep | is.na(keep))) {
+    log_write(log_path, "WARN", sprintf("%d data(s) rejeitada(s) por janela de plausibilidade (hoje-2a..hoje+2a).", sum(!keep | is.na(keep))))
+  }
+  out
+}
+
+# Sanity check: ano do título (ex: "Nº 24/2026" -> 2026) vs ano do prazo (±1 ano).
+validate_date_consistency <- function(titulo, data_limite) {
+  if (is.null(titulo) || is.na(titulo) || !nzchar(as.character(titulo))) {
+    return(TRUE)
+  }
+  dl <- parse_date_safe(data_limite)
+  if (length(dl) > 1L) dl <- dl[[1L]]
+  if (is.na(dl)) {
+    return(TRUE)
+  }
+  ano_titulo <- suppressWarnings(as.numeric(stringr::str_extract(as.character(titulo), "\\b20[0-9]{2}\\b")))
+  if (length(ano_titulo) == 0L || is.na(ano_titulo[[1]])) {
+    return(TRUE)
+  }
+  ano_prazo <- as.integer(format(dl, "%Y"))
+  if (is.na(ano_prazo)) {
+    return(TRUE)
+  }
+  abs(ano_titulo[[1]] - ano_prazo) <= 1L
+}
+
+# ─── Camada de Qualidade de Dados (MELHORIA-02) ───────────────────────────────
+
+compute_data_quality_score <- function(record) {
+  score <- 100L
+  flags <- character()
+  titulo <- record$titulo %||% NA_character_
+  dl <- parse_date_safe(record$data_limite %||% NA)
+  if (length(dl) > 1L) dl <- dl[[1L]]
+  dp <- parse_date_safe(record$data_publicacao %||% NA)
+  if (length(dp) > 1L) dp <- dp[[1L]]
+
+  if (is.na(dl)) {
+    score <- max(0L, score - 30L)
+    flags <- c(flags, "sem_data_limite")
+  }
+  if (!is.na(dl) && !isTRUE(validate_date_consistency(titulo, dl))) {
+    score <- max(0L, score - 20L)
+    flags <- c(flags, "data_inconsistente")
+  }
+  if (!is.na(dp) && !is.na(dl) && dp > dl) {
+    score <- max(0L, score - 25L)
+    flags <- c(flags, "pub_depois_prazo")
+  }
+  if (!is.na(dl)) {
+    diff_days <- as.integer(dl - status_today())
+    if (!is.na(diff_days) && (diff_days < -365L || diff_days > 730L)) {
+      score <- max(0L, score - 15L)
+      flags <- c(flags, "prazo_fora_janela")
+    }
+  }
+  list(score = score, flags = unique(flags))
+}
+
+quality_badge_html <- function(quality) {
+  if (is.null(quality)) {
+    return("")
+  }
+  sc <- as.integer(quality$score %||% 100L)
+  if (!is.na(sc) && sc >= 70L) {
+    return("")
+  }
+  flags <- paste(quality$flags %||% character(), collapse = ", ")
+  sprintf(
+    "<span class='badge badge-warning' style='background:#f59e0b; color:#1c1917; border-radius:9999px; padding:2px 8px; font-size:0.7rem;' title='Flags: %s'>Qualidade: %d%%</span>",
+    htmltools::htmlEscape(flags %||% ""),
+    ifelse(is.na(sc), 0L, sc)
+  )
+}
+
+# ─── Categorização e Inferência por Campi (Sertão, Aeroespacial, Mar, Digital, Park) ──
+
+infer_campus_from_record <- function(titulo = "", descricao = "", area_tematica = "", palavras_chave = "", fonte_oficial = "", entidade = "") {
+  # R05: evidência = OBJETO (título/descrição/área/palavras-chave). Fonte, entidade/financiador,
+  # menus e rodapés NÃO são evidência de tema (parâmetros mantidos por compatibilidade, ignorados).
+  # Sem evidência => NA ("Não classificado"); nunca força "Sede e Park".
+  cand <- infer_campus_candidates(titulo, descricao, area_tematica, palavras_chave)
+  if (nrow(cand) == 0L) return(NA_character_)
+  paste(cand$campus, collapse = "; ")
+}
+
+campus_badge_html <- function(campus_str) {
+  if (is.null(campus_str) || length(campus_str) == 0L || is.na(campus_str) || !nzchar(trimws(campus_str))) {
+    return("<span class='badge bg-light text-secondary' style='font-size:0.75rem;' title='Sem evidência temática no objeto do edital'>Não classificado</span>")
+  }
+  parts <- safe_split(campus_str, pattern = "[;,]+")
+  badges <- vapply(parts, function(c_name) {
+    c_clean <- trimws(c_name)
+    if (c_clean == "Aeroespacial") {
+      "<span class='badge' style='background-color:#0284c7; color:white; font-size:0.75rem; margin-right:3px;'>🚀 Aeroespacial</span>"
+    } else if (c_clean == "Sertão") {
+      "<span class='badge' style='background-color:#15803d; color:white; font-size:0.75rem; margin-right:3px;'>🌾 Sertão</span>"
+    } else if (c_clean == "Mar") {
+      "<span class='badge' style='background-color:#0d9488; color:white; font-size:0.75rem; margin-right:3px;'>🌊 Mar</span>"
+    } else if (c_clean == "Digital") {
+      "<span class='badge' style='background-color:#4f46e5; color:white; font-size:0.75rem; margin-right:3px;'>💻 Digital</span>"
+    } else if (c_clean %in% c("Park", "Sede e Park")) {
+      "<span class='badge' style='background-color:#d97706; color:white; font-size:0.75rem; margin-right:3px;'><img src='logos/logo.png' alt='CIMATEC' style='height:12px; margin-right:4px; vertical-align:middle; filter: brightness(0) invert(1);'>Sede e Park</span>"
+    } else {
+      cimatec_icon <- "<img src='logos/logo.png' alt='CIMATEC' style='height:12px; margin-right:4px; vertical-align:middle; filter: brightness(0) invert(1);'>"
+      sprintf("<span class='badge bg-secondary' style='font-size:0.75rem; margin-right:3px;'>%s%s</span>", cimatec_icon, htmltools::htmlEscape(c_clean))
+    }
+  }, character(1))
+  paste(badges, collapse = " ")
 }

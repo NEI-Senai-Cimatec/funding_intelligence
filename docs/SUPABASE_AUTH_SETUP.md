@@ -138,3 +138,18 @@ Todas as ações realizadas pelos usuários logados são registradas no banco de
 - `ATUALIZAR_BASE` (coletas oficiais disparadas)
 
 Desenvolvedores e membros da Diretoria podem acompanhar esses logs em tempo real na aba **Logs** -> sub-aba **Auditoria de Acessos**.
+
+---
+
+## 5. Prevenção de Pausa por Inatividade (Keep-Alive Automático)
+
+Projetos Supabase no plano gratuito (Free Tier) são automaticamente pausados após **7 dias sem requisições**.
+
+Para evitar pausas indesejadas sem exigir que ninguém faça alterações manuais na base de dados, o Radar da Inovação conta com uma rotina automatizada no GitHub Actions:
+
+- **Workflow:** `.github/workflows/keep_alive_supabase.yml`
+- **Frequência:** Executa todos os dias às 06:00 UTC (03:00 Horário de Brasília).
+- **Mecanismo:** Envia uma requisição HTTP via PostgREST para a tabela `public.perfis` e um ping no serviço GoTrue Auth. Isso aciona o PostgreSQL e reseta automaticamente a contagem regressiva de inatividade de 7 dias do Supabase.
+- **Disparo Manual:** Na aba **Actions** do GitHub, selecione **"Manter Supabase Ativo (Keep-Alive)"** e clique em **"Run workflow"** para disparar um ping sob demanda.
+- **Teste Local:** Execute `python tools/test_supabase_ping.py` para testar os endpoints e checar se o projeto está ativo.
+

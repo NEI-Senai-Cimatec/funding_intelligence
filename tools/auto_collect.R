@@ -164,6 +164,42 @@ main_auto_collect <- function(test_mode = FALSE, source_filter = NULL) {
     url = exec_url
   )
 
+  # Se o banco primário for PostgreSQL, espelha para o SQLite local
+  # para que o git commit do GitHub Actions mantenha a base local sincronizada
+  if (db_is_postgres(conn)) {
+    message("[AutoCollect] Espelhando dados do PostgreSQL para funding_intelligence.sqlite...")
+    tryCatch({
+      sqlite_path <- file.path(app_dir, "funding_intelligence.sqlite")
+      sqlite_conn <- DBI::dbConnect(RSQLite::SQLite(), sqlite_path)
+
+      opps_pg <- DBI::dbGetQuery(conn, "SELECT * FROM oportunidades")
+      if (nrow(opps_pg) > 0) {
+        for (col_nm in names(opps_pg)) {
+          if (inherits(opps_pg[[col_nm]], "POSIXt") || inherits(opps_pg[[col_nm]], "Date")) {
+            opps_pg[[col_nm]] <- as.character(opps_pg[[col_nm]])
+          }
+        }
+        DBI::dbWriteTable(sqlite_conn, "oportunidades", opps_pg, overwrite = TRUE)
+        message(sprintf("[AutoCollect] SQLite atualizado com %d oportunidades.", nrow(opps_pg)))
+      }
+
+      logs_pg <- DBI::dbGetQuery(conn, "SELECT * FROM logs_coleta ORDER BY id DESC LIMIT 500")
+      if (nrow(logs_pg) > 0) {
+        for (col_nm in names(logs_pg)) {
+          if (inherits(logs_pg[[col_nm]], "POSIXt") || inherits(logs_pg[[col_nm]], "Date")) {
+            logs_pg[[col_nm]] <- as.character(logs_pg[[col_nm]])
+          }
+        }
+        DBI::dbWriteTable(sqlite_conn, "logs_coleta", logs_pg, overwrite = TRUE)
+      }
+
+      DBI::dbDisconnect(sqlite_conn)
+      message("[AutoCollect] Espelhamento para SQLite concluído com sucesso.")
+    }, error = function(e) {
+      message(sprintf("[AutoCollect] Aviso: falha ao espelhar para SQLite: %s", conditionMessage(e)))
+    })
+  }
+
   message("----------------------------------------------------------------------")
   message(sprintf("[AutoCollect] SUCESSO: %d fontes processadas.", res$sources_processed %||% 0L))
   message(sprintf("[AutoCollect] Novos registros inseridos nesta rodada: %d", res$inserted_now %||% 0L))

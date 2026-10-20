@@ -64,7 +64,7 @@ jobs:
 
       - name: 🔍 Executar Busca Automática de Editais
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL || 'postgresql://neondb_owner:npg_zjkV1DUg0Olb@ep-super-frost-b80ll6q3-pooler.c-14.us-east-1.aws.neon.tech/neondb?sslmode=require' }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL || 'postgresql://postgres.jsystdrhtcoopjkrcwql:1vYLfc1not1S4iTA@aws-0-sa-east-1.pooler.supabase.com:5432/postgres?sslmode=require' }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           AI_PROVIDER: ${{ secrets.AI_PROVIDER || 'gemini' }}
           AI_MODEL: ${{ secrets.AI_MODEL || 'gemini-1.5-flash' }}

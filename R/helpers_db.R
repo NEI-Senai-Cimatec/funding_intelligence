@@ -1009,9 +1009,12 @@ upsert_opportunities <- function(conn, opportunities_df, clear_fields = NULL) {
 
   cols_no_pk <- setdiff(cols, "id_registro")
   numeric_cols <- c("valor_financiado", "valor_teto_projeto", "pagina_coletada", "fluxo_continuo")
+  date_cols <- c("data_publicacao", "data_abertura", "data_limite", "data_encerramento", "data_vigencia_fim")
+  time_cols <- c("data_hora_coleta", "enrichment_at", "validacao_em")
+  non_text_cols <- c(numeric_cols, date_cols, time_cols)
   manual_guard <- c("validacao_status", "validacao_motivo", "validacao_evidencia", "validacao_versao", "validacao_em")
   merge_expr <- function(cn) {
-    new <- if (cn %in% numeric_cols) sprintf("excluded.%s", cn) else sprintf("NULLIF(excluded.%s, '')", cn)
+    new <- if (cn %in% non_text_cols) sprintf("excluded.%s", cn) else sprintf("NULLIF(excluded.%s, '')", cn)
     base <- sprintf("COALESCE(%s, oportunidades.%s)", new, cn)
     if (cn %in% manual_guard && "validacao_motivo" %in% cols) {
       base <- sprintf("CASE WHEN oportunidades.validacao_motivo LIKE 'manual:%%' THEN oportunidades.%s ELSE %s END", cn, base)

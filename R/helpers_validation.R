@@ -150,9 +150,9 @@ SYNTHETIC_TITLES <- c(
                           "attention required! | cloudflare", "just a moment...", "access denied",
                           "403 forbidden", "404 not found", "pagina nao encontrada", "erro 404")
 
-.RE_INNOVATION <- "pesquisa|desenvolvimento|inovac|inovador|\\bp&d|\\bpd&i|\\bpdi\\b|tecnolog|startup|projeto|solucao inovadora|ciencia|cientific|prototip|acelerac"
+.RE_INNOVATION <- "pesquisa|desenvolvimento|inovac|inovador|\\bp&d|\\bpd&i|\\bpdi\\b|tecnolog|startup|projeto|solucao inovadora|ciencia|cientific|prototip|acelerac|research|development|innovat|science|scientific|technolog"
 .RE_CPSI <- "\\bcpsi\\b|contrato publico de solucao inovadora|contratacao de (teste de )?solucao inovadora|teste de solucao inovadora|desafio bndes|lei complementar n.? ?182"
-.RE_CALL_MARKER <- "\\bedital\\b|\\bchamada\\b|chamamento|selecao|processo seletivo|\\bcpsi\\b|\\bdesafio\\b|\\bcall for\\b|programa de aceleracao|subvencao|\\bbolsas?\\b"
+.RE_CALL_MARKER <- "\\bedital\\b|\\bchamada\\b|chamamento|selecao|processo seletivo|\\bcpsi\\b|\\bdesafio\\b|\\bcall for\\b|programa de aceleracao|subvencao|\\bbolsas?\\b|\\bgrant\\b|\\bgrants\\b|\\bfunding\\b|\\bproposal\\b|\\bsolicitation\\b|\\bfellowship\\b|\\baward\\b|\\bprize\\b|\\bcompetition\\b|\\bfoa\\b|\\bnofo\\b|\\btopic\\b|\\bhorizon\\b|\\bproof of concept\\b|\\bpostdoctoral\\b|\\bcollaborat\\w*\\b"
 .RE_BUY <- "\\bpregao\\b|\\blicitacao\\b|dispensa de licitacao|tomada de precos|concorrencia|registro de precos|\\bsrp\\b|aquisicao de|contratacao de empresa|ar condicionado|material de consumo|servicos? de (limpeza|vigilancia|manutencao)"
 .RE_CREDIT <- "internet banking|microcredito|credito rural|credito pessoal|emprestimo|financiamento|cartao|crediamigo|agroamigo|\\bfne\\b|conta corrente|seguros?\\b|investimentos?\\b|consorcio"
 

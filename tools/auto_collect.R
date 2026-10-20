@@ -94,6 +94,7 @@ main_auto_collect <- function(test_mode = FALSE, source_filter = NULL) {
   create_tables(conn)
   seed_sources(conn)
   migrate_enrichment_columns(conn)
+  migrate_br_integrity_columns(conn)
 
   # Registrar log inicial de início de coleta
   log_collection(

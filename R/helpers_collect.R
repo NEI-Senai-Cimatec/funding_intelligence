@@ -53,6 +53,9 @@ register_collector <- function(source_id, fn, description = "") {
 }
 
 get_collector <- function(source_id) {
+  if (exists("resolve_source_aliases", mode = "function")) {
+    source_id <- resolve_source_aliases(source_id)
+  }
   entry <- get0(source_id, envir = .collector_registry, inherits = FALSE)
   if (is.null(entry)) {
     list(fn = collect_generic_official, description = "Generic HTML scraper")
@@ -802,27 +805,53 @@ is_funding_opportunity_heuristics <- function(title, description = "", url = "",
   u_norm <- tolower(url %||% "")
   b_norm <- normalize_text(body_text %||% "")
 
-  # 1. Regras de descarte pelo URL (notícias, institucionais, privacidade, etc.)
+  # 1. Regras de descarte pelo URL (redes sociais, admin/login, notícias, institucionais, privacidade, etc.)
   invalid_url_patterns <- c(
+    "instagram.com", "twitter.com", "x.com", "youtube.com", "youtu.be",
+    "facebook.com", "linkedin.com", "flickr.com", "tiktok.com",
+    "whatsapp.com", "t.me", "spotify.com",
+    "wp-admin", "login.microsoft", "demonstrativo_bolsa", "e-ouv.al.gov.br",
+    "everest.fapemig.br", "sig.fapesc.sc.gov.br", "govdelivery.com",
+    "fapescgov.sharepoint.com", "sbirpartnering.org",
+    "/author/suporte", "/identidade-visual", "/sobre-a-", "/sobre-o-",
+    "/quemsomos", "/quem-somos", "/organograma", "/colaboradores",
+    "/legislacao", "/duvidas-frequentes", "/comosolicitar", "/orgaos-colegiados",
+    "/central-de-ajuda", "/comunicados", "/relatorios", "/localizacao",
+    "/conselho-superior", "/modalidades", "/calendario", "/publicacoes-diario",
+    "/internacionais", "/apresentacao", "/glossario", "/diretoria-e-gerencias",
+    "/topics/energy", "/topics/nuclear", "/topics/increase", "/topics/affordable",
+    "/leadership-organization", "/internships-fellowships", "/doe-affiliated-nobel",
+    "/preparing-proposal", "/proposals-with-international", "/policies/pappg",
+    "research.gov", "/cise/cyber-physical", "/cise/human-centered",
+    "/cise/software-systems", "/cise/center-scale", "/cise/office-advanced",
+    "/cise/computing-ai",
     "/noticias", "/noticia", "/tv-", "/tv/", "/video", "/membros",
     "/regulamentos", "/como-usar", "/archive", "/privacidade",
     "/lgpd", "/politica-de-privacidade", "/contatos", "/fale-conosco",
-    "/equipe", "/quem-somos", "/sobre-nos", "/servicos-ao-cidadao",
+    "/equipe", "/servicos-ao-cidadao",
     "/perguntas-frequentes", "/faq", "/documentos",
     "/institucional", "/financiamento-via-credito",
     "/financiamento-reembolsavel", "retificacao", "retificado",
     "prorrogacao", "aditivo", "errata", "gabarito", "homologacao",
     "perguntas-frequentes", "perguntas_frequentes",
     "nota-de-esclarecimento",
-    "facebook.com/sharer", "facebook.com/share",
-    "twitter.com/share", "twitter.com/intent",
-    "linkedin.com/share", "api.whatsapp.com/send",
     "b_start:int=", "b_start%3Aint%3D"
   )
 
   if (any(vapply(invalid_url_patterns, function(pat) grepl(pat, u_norm, fixed = TRUE), logical(1)))) {
     return(FALSE)
   }
+
+  # Descartar URLs que são apenas raízes de busca/portais gerais sem identificador
+  u_clean <- sub("[?#].*$", "", sub("/+$", "", u_norm))
+  if (u_clean %in% c("https://www.fapema.br/editais", "https://fapemig.br", "https://www.neh.gov/grants",
+                     "https://www.nsf.gov/funding", "https://www.nsf.gov/funding/opportunities",
+                     "https://www.nsf.gov/cise", "https://fapesc.sc.gov.br", "https://www.facepe.br/fomento",
+                     "https://www.energy.gov", "https://softex.br", "https://handson.org.br",
+                     "https://softexamazonia.com.br", "https://brasilitplus.com", "https://www.facepe.br/editais/todos")) {
+    return(FALSE)
+  }
+
   # Anexos são excluídos apenas quando o ÚLTIMO segmento da URL é um anexo avulso (não o edital).
   if (grepl("/anexo[-_a-z0-9]*(\\.[a-z]{3,4})?(\\?.*)?$", u_norm)) {
     return(FALSE)
@@ -858,7 +887,31 @@ is_funding_opportunity_heuristics <- function(title, description = "", url = "",
     "prorrogacoes", "termo aditivo", "errata", "gabarito",
     "esclarecimento", "esclarecimentos", "nota de esclarecimento", "homologacao",
     "oportunidades - finep", "oportunidades de financiamento",
-    "financiamento via credito", "financiamento para inovacao", "a finep"
+    "financiamento via credito", "financiamento para inovacao", "a finep",
+    "instagram", "twitter", "youtube", "facebook", "ouvidoria",
+    "demonstrativo de rendimentos", "modelos e documentos",
+    "resolucoes revogadas", "popularizacao da ciencia", "mais qualificacao",
+    "duvidas frequentes", "colaboradores", "organograma", "legislacao",
+    "apresentacao", "identidade visual", "sobre a fapesc", "sobre a softex",
+    "sobre a fapeal", "sobre a facepe", "glossario", "autor: suporte",
+    "diretoria e gerencias", "divulgacao dos resultados", "chamadas em andamento",
+    "chamadas encerradas", "chamadas abertas", "compras e licitacoes",
+    "comunicados", "plataforma fapesc", "restrito", "relatorios",
+    "localizacao", "conselho superior", "orgaos colegiados", "modalidades",
+    "como solicitar", "calendario", "publicacoes diario oficial",
+    "nacionais/internacionais", "prestadores de servicos", "nobel prize laureates",
+    "internships & fellowships", "funding search", "funding at nsf",
+    "research.gov", "preparing your proposal", "pappg", "vehicle rental",
+    "aluguel de veiculo", "modelo de projeto", "declaracao de reconhecimento",
+    "relacao das inscricoes recebidas", "programas de pos-graduacao que aderiram",
+    "fapemig - fundacao de amparo", "auxilios e bolsas | fapemig", "guias relacionados",
+    "a fapemig", "chamadas abertas de auxilio", "oportunidades | fapemig",
+    "chamadas e editais - fapemig", "brasil it+", "home - handson",
+    "home - softex", "powering today, transforming tomorrow", "the genesis mission",
+    "strategic petroleum reserve", "energy reliability", "energy exports",
+    "nuclear energy", "nuclear security", "increase american energy",
+    "energy innovation", "energy infrastructure", "affordable energy",
+    "fapealoficial", "fapema oficial"
   )
 
   for (pat in invalid_title_patterns) {
@@ -866,6 +919,14 @@ is_funding_opportunity_heuristics <- function(title, description = "", url = "",
       return(FALSE)
     }
   }
+
+  # Títulos exatos ou com limites de palavra que não devem casar substrings de palavras válidas
+  if (t_norm %in% c("admin", "fomento", "resolucoes", "todos | facepe", "todos", "grants", "subscribe")) {
+    return(FALSE)
+  }
+  if (grepl("^resolucoes(\\b|$)", t_norm)) return(FALSE)
+  if (grepl("^portaria\\b", t_norm) && !grepl("edital|chamada", t_norm)) return(FALSE)
+
 
   # Ignorar alteração no título se não for climática
   if (grepl("alteracao", t_norm, fixed = TRUE)) {
@@ -1003,7 +1064,7 @@ extract_listing_candidates <- function(html, base_url, source_row) {
     c(
       "article", ".card", ".cards-item", ".views-row", ".view-content .views-row", ".resultado",
       ".result", ".results-item", ".entry", ".post", ".item", ".media", ".tile", ".callout",
-      ".news-item", ".list-item", ".node", ".content-item", "li", "tr", "section"
+      ".news-item", ".list-item", ".node", ".content-item", "tr", "section"
     ),
     collapse = ", "
   )

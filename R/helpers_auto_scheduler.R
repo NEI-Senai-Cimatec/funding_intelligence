@@ -20,9 +20,9 @@ get_last_successful_collection_time <- function(conn) {
   }, error = function(e) NULL)
 }
 
-is_collection_due <- function(target_wday = 3, target_hour = 14, target_minute = 15) {
+is_collection_due <- function(target_wday = 2, target_hour = 0, target_minute = 0) {
   # wday no lubridate: 1=Dom, 2=Seg, 3=Ter, 4=Qua, 5=Qui, 6=Sex, 7=Sáb
-  # 3 = Terça-feira
+  # 2 = Segunda-feira (00:00 BRT)
   now_brt <- tryCatch(
     lubridate::with_tz(Sys.time(), tzone = "America/Sao_Paulo"),
     error = function(e) Sys.time()
@@ -31,7 +31,7 @@ is_collection_due <- function(target_wday = 3, target_hour = 14, target_minute =
   current_wday <- lubridate::wday(now_brt)
   days_since_target <- (current_wday - target_wday) %% 7
   
-  # Data/hora de referência da última terça-feira às 14:15
+  # Data/hora de referência da última segunda-feira às 00:00
   target_dt <- lubridate::floor_date(now_brt - lubridate::days(days_since_target), "day") +
     lubridate::hours(target_hour) + lubridate::minutes(target_minute)
   
@@ -124,7 +124,7 @@ init_auto_scheduler_daemon <- function(check_interval_sec = 120) {
   
   heartbeat <- function() {
     tryCatch({
-      if (is_collection_due(target_wday = 3, target_hour = 14, target_minute = 15)) {
+      if (is_collection_due(target_wday = 2, target_hour = 0, target_minute = 0)) {
         trigger_background_collection_daemon()
       }
     }, error = function(e) {
@@ -137,5 +137,5 @@ init_auto_scheduler_daemon <- function(check_interval_sec = 120) {
   
   # Primeira verificação 15 segundos após carregar o app
   later::later(heartbeat, 15)
-  message("[Agendador] Daemon interno de coleta recorrente ATIVADO (Terças-feiras às 14:15 BRT, sem fim).")
+  message("[Agendador] Daemon interno de coleta recorrente ATIVADO (Segundas-feiras às 00:00 BRT, sem fim).")
 }

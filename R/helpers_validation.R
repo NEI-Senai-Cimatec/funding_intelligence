@@ -256,7 +256,8 @@ CAMPUS_RULES <- list(
   "Sertão" = "\\b(agricultura|agropecuari\\w*|agronegocio|agroindustri\\w*|agrotech|agro 4\\.0|pecuaria|irrigacao|semiarido|caatinga|bioeconomia|recursos hidricos|hidrogenio verde|energia solar|energia eolica|biomassa|bacia do sao francisco|residuos solidos|convivencia com o semiarido)\\b",
   "Mar" = "\\b(maritim\\w*|naval|navais|oceanic\\w*|subaquatic\\w*|offshore|submarin\\w*|oceanos?|economia azul|portuari\\w*|navios?|rov|auv)\\b",
   "Digital" = "\\b(inteligencia artificial|ciberseguranca|iot|internet das coisas|software|ciencia de dados|inteligencia de dados|analise de dados|computacao|cidades inteligentes|hpc|supercomputacao|hardware|machine learning|aprendizado de maquina|quantic\\w*|blockchain|chatbot)\\b",
-  "Sede e Park" = "\\b(manufatura|industria 4\\.0|nanotecnologia|materiais avancados|novos materiais|petroquimica|automotiv\\w*|eletromobilidade|processos industriais|embrapii|quimica verde)\\b"
+  "Sede e Park" = "\\b(manufatura|industria 4\\.0|nanotecnologia|materiais avancados|novos materiais|petroquimica|automotiv\\w*|eletromobilidade|processos industriais|embrapii|quimica verde)\\b",
+  "Startups" = "\\b(startups?|spin-?off|incubac\\w*|acelerac\\w*|venture capital|capital semente|seed|mpe|mpos?|microempresa\\w*|pequenas? empresas?|inovacao aberta|open innovation|catalisa|pipe|centelha|sinapse|pitch|angel|investidor-?anjo|tracionamento|deeptech|scale-?up)\\b"
 )
 CAMPUS_CASE_SENSITIVE_RULES <- list("Digital" = "\\b(IA|AI)\\b")
 

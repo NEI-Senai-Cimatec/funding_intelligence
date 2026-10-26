@@ -141,9 +141,8 @@
     }
 
     btn.prop('disabled', true).addClass('loading');
-    btn.html('<i class="fa fa-spinner fa-spin" style="margin-right: 8px;"></i><span>Enviando link...</span>');
-
-    var payload = { email: email, timestamp: Date.now() };
+    var redirectUri = window.location.origin + window.location.pathname;
+    var payload = { email: email, redirect_to: redirectUri, timestamp: Date.now() };
 
     if (window.Shiny && window.Shiny.setInputValue) {
       Shiny.setInputValue('recovery_email', email);
@@ -570,6 +569,17 @@
         window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
       }
       window.switchAuthTab('reset');
+      return true;
+    }
+
+    if (params.error || params.error_description) {
+      window.switchAuthTab('forgot');
+      var errBox = $('#auth_recovery_error_box');
+      var errText = $('#auth_recovery_error_text');
+      var rawMsg = params.error_description || params.error || '';
+      var decodedMsg = rawMsg.replace(/\+/g, ' ');
+      errText.text(decodedMsg || 'O link de recuperação expirou ou é inválido. Por favor, solicite um novo link abaixo.');
+      errBox.stop(true, true).slideDown(150);
       return true;
     }
     return false;

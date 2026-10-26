@@ -208,7 +208,8 @@ build_sidebar <- function() {
         "🌾 Sertão" = "Sertão",
         "🌊 Mar" = "Mar",
         "💻 Digital" = "Digital",
-        "<img src='logos/logo.png' height='14px' style='vertical-align: middle; margin-right: 4px;'> Sede e Park" = "Sede e Park"
+        "<img src='logos/logo.png' height='14px' style='vertical-align: middle; margin-right: 4px;'> Sede e Park" = "Sede e Park",
+        "💡 Startups" = "Startups"
       ), 
       multiple = TRUE, 
       options = list(
@@ -288,6 +289,12 @@ build_sidebar <- function() {
       choices = c("Todas" = "Todas", "Muito alta" = "Muito alta", "Alta" = "Alta", "Média" = "Média", "Baixa" = "Baixa"),
       selected = "Todas"
     ),
+    selectInput(
+      "filter_startups_level",
+      label = tags$span(tags$i(class = "fa fa-lightbulb"), " Aderência Startups & Inovação"),
+      choices = c("Todas" = "Todas", "Muito alta" = "Muito alta", "Alta" = "Alta", "Média" = "Média", "Baixa" = "Baixa"),
+      selected = "Todas"
+    ),
     tags$hr(style = "margin: 1rem 0; border-color: #cbd5e1;"),
     actionButton(
       "btn_clear_filters", 
@@ -311,7 +318,7 @@ ui <- bslib::page_sidebar(
       tags$div(
         class = "app-title-main",
         h2("Radar da Inovação"),
-        p("Plataforma de inteligência de fomento à P&D+I para os Campi Sertão, Aeroespacial, Mar, Digital e Park")
+        p("Plataforma de inteligência de fomento à P&D+I para os Campi Sertão, Aeroespacial, Mar, Digital, Park e Startups")
       )
     ),
     uiOutput("header_status")
@@ -539,6 +546,37 @@ ui <- bslib::page_sidebar(
       bslib::card(
         tags$h5(style = "color: #d97706; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Núcleo Park & Manufatura & Ideias de Projetos Recomendadas"),
         shinycssloaders::withSpinner(DTOutput("park_results_table"), type = 6, color = "#d97706")
+      )
+    ),
+    bslib::nav_panel(
+      title = tags$span(tags$i(class = "fa fa-lightbulb"), " Núcleo Startups & Inovação"),
+      value = "cimatec_startups",
+      bslib::card(
+        style = "background: linear-gradient(135deg, #7c3aed 0%, #3b0764 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;",
+        tags$div(
+          style = "display: flex; justify-content: space-between; align-items: center;",
+          tags$div(
+            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "💡 Núcleo de Startups & Inovação Aberta"),
+            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e propostas para Startups, Deep Techs, MPEs, Inovação Aberta e Venture Capital.")
+          ),
+          tags$div(
+            style = "text-align: right;",
+            tags$span(class = "badge bg-success", style = "font-size: 0.9rem; padding: 6px 12px;", "Aderência Ativa")
+          )
+        )
+      ),
+      bslib::layout_columns(
+        col_widths = c(6, 6),
+        selectInput("startups_theme_filter", "Eixo Temático Startups & Inovação Aberta", 
+                    choices = c("Todos os Eixos", "Startups de Base Tecnológica & Deep Techs", "Aceleração, Incubação & Escalonamento", "Inovação Aberta & Desafios Corporativos", "Venture Capital & Investimento Anjo", "MPEs Inovadoras & Spin-offs", "Prototipagem Ágil & Validação de Mercado (PoC/MVP)", "Internacionalização de Startups"),
+                    selected = "Todos os Eixos"),
+        selectInput("startups_level_tab_filter", "Filtrar por Nível de Aderência",
+                    choices = c("Todos os Níveis", "Muito alta", "Alta", "Média", "Baixa"),
+                    selected = "Todos os Níveis")
+      ),
+      bslib::card(
+        tags$h5(style = "color: #7c3aed; font-weight: 700; margin-bottom: 15px;", "Oportunidades para Startups & Ideias de Projetos Recomendadas"),
+        shinycssloaders::withSpinner(DTOutput("startups_results_table"), type = 6, color = "#7c3aed")
       )
     ),
     bslib::nav_panel(
@@ -986,8 +1024,14 @@ server <- function(input, output, session) {
       return()
     }
 
+    redirect_url <- if (is.list(btn_data) && !is.null(btn_data$redirect_to) && nzchar(btn_data$redirect_to)) {
+      as.character(btn_data$redirect_to)
+    } else {
+      Sys.getenv("APP_URL", "")
+    }
+
     shiny::withProgress(message = "Enviando link de recuperação...", {
-      rec_res <- supabase_request_password_reset(email)
+      rec_res <- supabase_request_password_reset(email, redirect_to = if (nzchar(redirect_url)) redirect_url else NULL)
     })
 
     if (isTRUE(rec_res$success)) {
@@ -1531,7 +1575,7 @@ server <- function(input, output, session) {
     showModal(modalDialog(
       title = "Salvar busca atual",
       textInput("save_search_name", "Nome da busca", value = paste0("Busca ", format(Sys.time(), "%d/%m %H:%M"))),
-      selectInput("save_search_campus", "Campus associado", choices = c("Aeroespacial", "Sertão", "Mar", "Digital", "Sede e Park"), selected = current_campus),
+      selectInput("save_search_campus", "Campus associado", choices = c("Aeroespacial", "Sertão", "Mar", "Digital", "Sede e Park", "Startups"), selected = current_campus),
       checkboxInput("save_search_alert", "Preparar alerta semanal", value = TRUE),
       footer = tagList(modalButton("Cancelar"), actionButton("confirm_save_search", "Salvar", class = "btn-primary"))
     ))
@@ -1891,6 +1935,21 @@ server <- function(input, output, session) {
       }
       df <- df |> dplyr::filter(aderencia_park_nivel == input$filter_park_level)
     }
+
+    # Filtro de Aderência Startups & Inovação do Sidebar
+    if (!is.null(input$filter_startups_level) && input$filter_startups_level != "Todas") {
+      if (!"aderencia_startups_nivel" %in% names(df)) df$aderencia_startups_nivel <- NA_character_
+      for (i in seq_len(nrow(df))) {
+        if (is.na(df$aderencia_startups_nivel[[i]]) || !nzchar(df$aderencia_startups_nivel[[i]] %||% "")) {
+          eval_res <- evaluate_startups_adherence(
+            titulo = df$titulo[[i]], descricao = df$descricao_resumida[[i]],
+            texto_bruto = df$texto_bruto[[i]], entidade = df$entidade[[i]], use_ai = FALSE
+          )
+          df$aderencia_startups_nivel[[i]] <- eval_res$aderencia_startups_nivel %||% "Baixa"
+        }
+      }
+      df <- df |> dplyr::filter(aderencia_startups_nivel == input$filter_startups_level)
+    }
     
     dplyr::arrange(df, dplyr::desc(score_aderencia), parse_date_safe(data_limite))
   })
@@ -1906,7 +1965,8 @@ server <- function(input, output, session) {
       "🌾 Sertão" = "Sertão",
       "🌊 Mar" = "Mar",
       "💻 Digital" = "Digital",
-      "<img src='logos/logo.png' height='14px' style='vertical-align: middle; margin-right: 4px;'> Sede e Park" = "Sede e Park"
+      "<img src='logos/logo.png' height='14px' style='vertical-align: middle; margin-right: 4px;'> Sede e Park" = "Sede e Park",
+      "💡 Startups" = "Startups"
     )
     updateSelectizeInput(session, "filter_campus", choices = campus_choices, selected = isolate(input$filter_campus))
 
@@ -1947,6 +2007,7 @@ server <- function(input, output, session) {
     updateSelectInput(session, "filter_aero_level", selected = "Todas")
     updateSelectInput(session, "filter_digital_level", selected = "Todas")
     updateSelectInput(session, "filter_park_level", selected = "Todas")
+    updateSelectInput(session, "filter_startups_level", selected = "Todas")
   })
 
   # Renderizador de status persistente no header da aplicação (inclui autenticação e perfil)
@@ -2209,7 +2270,7 @@ server <- function(input, output, session) {
       error = function(e) character()
     )
 
-    # Avaliação de Aderência Naval & Offshore
+    # Avaliação de Aderência dos 6 Núcleos Estratégicos & Campi
     naval_eval <- list(
       aderencia_naval_nivel = tryCatch(opp$aderencia_naval_nivel[[1]] %||% NA_character_, error = function(e) NA_character_),
       aderencia_naval_justificativa = tryCatch(opp$aderencia_naval_justificativa[[1]] %||% NA_character_, error = function(e) NA_character_),
@@ -2217,11 +2278,68 @@ server <- function(input, output, session) {
     )
     if (is.na(naval_eval$aderencia_naval_nivel) || !nzchar(naval_eval$aderencia_naval_nivel %||% "")) {
       naval_eval <- evaluate_naval_offshore_adherence(
-        titulo = opp$titulo[[1]],
-        descricao = opp$descricao_resumida[[1]],
-        texto_bruto = opp$texto_bruto[[1]],
-        entidade = opp$entidade[[1]],
-        use_ai = FALSE
+        titulo = opp$titulo[[1]], descricao = opp$descricao_resumida[[1]],
+        texto_bruto = opp$texto_bruto[[1]], entidade = opp$entidade[[1]], use_ai = FALSE
+      )
+    }
+
+    startups_eval <- list(
+      aderencia_startups_nivel = tryCatch(opp$aderencia_startups_nivel[[1]] %||% NA_character_, error = function(e) NA_character_),
+      aderencia_startups_justificativa = tryCatch(opp$aderencia_startups_justificativa[[1]] %||% NA_character_, error = function(e) NA_character_),
+      ideia_projeto_startups = tryCatch(opp$ideia_projeto_startups[[1]] %||% NA_character_, error = function(e) NA_character_)
+    )
+    if (is.na(startups_eval$aderencia_startups_nivel) || !nzchar(startups_eval$aderencia_startups_nivel %||% "")) {
+      startups_eval <- evaluate_startups_adherence(
+        titulo = opp$titulo[[1]], descricao = opp$descricao_resumida[[1]],
+        texto_bruto = opp$texto_bruto[[1]], entidade = opp$entidade[[1]], use_ai = FALSE
+      )
+    }
+
+    sertao_eval <- list(
+      aderencia_sertao_nivel = tryCatch(opp$aderencia_sertao_nivel[[1]] %||% NA_character_, error = function(e) NA_character_),
+      aderencia_sertao_justificativa = tryCatch(opp$aderencia_sertao_justificativa[[1]] %||% NA_character_, error = function(e) NA_character_),
+      ideia_projeto_sertao = tryCatch(opp$ideia_projeto_sertao[[1]] %||% NA_character_, error = function(e) NA_character_)
+    )
+    if (is.na(sertao_eval$aderencia_sertao_nivel) || !nzchar(sertao_eval$aderencia_sertao_nivel %||% "")) {
+      sertao_eval <- evaluate_sertao_adherence(
+        titulo = opp$titulo[[1]], descricao = opp$descricao_resumida[[1]],
+        texto_bruto = opp$texto_bruto[[1]], entidade = opp$entidade[[1]], use_ai = FALSE
+      )
+    }
+
+    aero_eval <- list(
+      aderencia_aero_nivel = tryCatch(opp$aderencia_aero_nivel[[1]] %||% NA_character_, error = function(e) NA_character_),
+      aderencia_aero_justificativa = tryCatch(opp$aderencia_aero_justificativa[[1]] %||% NA_character_, error = function(e) NA_character_),
+      ideia_projeto_aero = tryCatch(opp$ideia_projeto_aero[[1]] %||% NA_character_, error = function(e) NA_character_)
+    )
+    if (is.na(aero_eval$aderencia_aero_nivel) || !nzchar(aero_eval$aderencia_aero_nivel %||% "")) {
+      aero_eval <- evaluate_aero_adherence(
+        titulo = opp$titulo[[1]], descricao = opp$descricao_resumida[[1]],
+        texto_bruto = opp$texto_bruto[[1]], entidade = opp$entidade[[1]], use_ai = FALSE
+      )
+    }
+
+    digital_eval <- list(
+      aderencia_digital_nivel = tryCatch(opp$aderencia_digital_nivel[[1]] %||% NA_character_, error = function(e) NA_character_),
+      aderencia_digital_justificativa = tryCatch(opp$aderencia_digital_justificativa[[1]] %||% NA_character_, error = function(e) NA_character_),
+      ideia_projeto_digital = tryCatch(opp$ideia_projeto_digital[[1]] %||% NA_character_, error = function(e) NA_character_)
+    )
+    if (is.na(digital_eval$aderencia_digital_nivel) || !nzchar(digital_eval$aderencia_digital_nivel %||% "")) {
+      digital_eval <- evaluate_digital_adherence(
+        titulo = opp$titulo[[1]], descricao = opp$descricao_resumida[[1]],
+        texto_bruto = opp$texto_bruto[[1]], entidade = opp$entidade[[1]], use_ai = FALSE
+      )
+    }
+
+    park_eval <- list(
+      aderencia_park_nivel = tryCatch(opp$aderencia_park_nivel[[1]] %||% NA_character_, error = function(e) NA_character_),
+      aderencia_park_justificativa = tryCatch(opp$aderencia_park_justificativa[[1]] %||% NA_character_, error = function(e) NA_character_),
+      ideia_projeto_park = tryCatch(opp$ideia_projeto_park[[1]] %||% NA_character_, error = function(e) NA_character_)
+    )
+    if (is.na(park_eval$aderencia_park_nivel) || !nzchar(park_eval$aderencia_park_nivel %||% "")) {
+      park_eval <- evaluate_park_adherence(
+        titulo = opp$titulo[[1]], descricao = opp$descricao_resumida[[1]],
+        texto_bruto = opp$texto_bruto[[1]], entidade = opp$entidade[[1]], use_ai = FALSE
       )
     }
 
@@ -2328,29 +2446,46 @@ server <- function(input, output, session) {
                 )
               )
             ),
-            # Avaliação de Aderência para Núcleo Naval & Offshore de PD&I
+            # Avaliação de Aderência por Núcleo Estratégico (Naval, Sertão, Aeroespacial, Digital, Park e Startups)
             tags$div(
-              style = "margin-bottom: 25px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px;",
-              tags$div(
-                style = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;",
-                tags$h5(style = "color: #166534; font-weight: 700; margin: 0; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.5px;", "⚓ Núcleo Naval & Offshore de PD&I"),
-                tags$span(
-                  style = sprintf("background: %s; color: white; padding: 4px 10px; border-radius: 12px; font-weight: bold; font-size: 0.8rem;",
-                                  if (identical(naval_eval$aderencia_naval_nivel, "Muito alta")) "#15803d"
-                                  else if (identical(naval_eval$aderencia_naval_nivel, "Alta")) "#16a34a"
-                                  else if (identical(naval_eval$aderencia_naval_nivel, "Média")) "#d97706"
-                                  else "#64748b"),
-                  paste("Aderência:", naval_eval$aderencia_naval_nivel %||% "Baixa")
-                )
-              ),
-              tags$p(style = "color: #15803d; font-size: 0.92rem; line-height: 1.5; margin-bottom: 8px;", naval_eval$aderencia_naval_justificativa %||% "Sem dados."),
-              if (!is.null(naval_eval$ideia_projeto_consorcio) && !is.na(naval_eval$ideia_projeto_consorcio) && nzchar(naval_eval$ideia_projeto_consorcio %||% "")) {
+              style = "margin-bottom: 25px;",
+              tags$h5(style = "color: #0f172a; font-weight: 700; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;",
+                      tags$i(class = "fa fa-layer-group", style = "color: #004691;"), "Aderência por Núcleo Estratégico & Campi"),
+              tagList(lapply(list(
+                list(name = "Startups & Inovação Aberta", icon = "fa fa-lightbulb", level = startups_eval$aderencia_startups_nivel, justif = startups_eval$aderencia_startups_justificativa, ideia = startups_eval$ideia_projeto_startups, color = "#7c3aed", bg = "#faf5ff", border = "#e9d5ff"),
+                list(name = "Naval & Offshore", icon = "fa fa-anchor", level = naval_eval$aderencia_naval_nivel, justif = naval_eval$aderencia_naval_justificativa, ideia = naval_eval$ideia_projeto_consorcio, color = "#004691", bg = "#eff6ff", border = "#bfdbfe"),
+                list(name = "Sertão & Agro", icon = "fa fa-leaf", level = sertao_eval$aderencia_sertao_nivel, justif = sertao_eval$aderencia_sertao_justificativa, ideia = sertao_eval$ideia_projeto_sertao, color = "#15803d", bg = "#f0fdf4", border = "#bbf7d0"),
+                list(name = "Aeroespacial & Defesa", icon = "fa fa-rocket", level = aero_eval$aderencia_aero_nivel, justif = aero_eval$aderencia_aero_justificativa, ideia = aero_eval$ideia_projeto_aero, color = "#0284c7", bg = "#f0f9ff", border = "#bae6fd"),
+                list(name = "Digital & IA", icon = "fa fa-laptop-code", level = digital_eval$aderencia_digital_nivel, justif = digital_eval$aderencia_digital_justificativa, ideia = digital_eval$ideia_projeto_digital, color = "#4f46e5", bg = "#eef2ff", border = "#c7d2fe"),
+                list(name = "Park & Manufatura", icon = "fa fa-industry", level = park_eval$aderencia_park_nivel, justif = park_eval$aderencia_park_justificativa, ideia = park_eval$ideia_projeto_park, color = "#d97706", bg = "#fffbeb", border = "#fde68a")
+              ), function(nuc) {
+                lvl <- nuc$level %||% "Baixa"
+                b_col <- if (identical(lvl, "Muito alta")) "#15803d"
+                         else if (identical(lvl, "Alta")) "#16a34a"
+                         else if (identical(lvl, "Média")) "#d97706"
+                         else "#64748b"
                 tags$div(
-                  style = "background: #ffffff; border-left: 4px solid #16a34a; padding: 10px; border-radius: 4px; font-size: 0.88rem; color: #166534; margin-top: 10px;",
-                  tags$strong("💡 Ideia Inicial de Projeto & Consórcio Recomendado:"),
-                  tags$div(style = "margin-top: 4px; font-weight: 500;", naval_eval$ideia_projeto_consorcio)
+                  style = sprintf("margin-bottom: 12px; background: %s; border: 1px solid %s; border-radius: 8px; padding: 12px 14px;", nuc$bg, nuc$border),
+                  tags$div(
+                    style = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;",
+                    tags$div(
+                      style = sprintf("color: %s; font-weight: 700; font-size: 0.95rem; display: flex; align-items: center; gap: 6px;", nuc$color),
+                      tags$i(class = nuc$icon), nuc$name
+                    ),
+                    tags$span(
+                      style = sprintf("background: %s; color: white; padding: 3px 8px; border-radius: 12px; font-weight: bold; font-size: 0.75rem;", b_col),
+                      paste("Aderência:", lvl)
+                    )
+                  ),
+                  if (nzchar(nuc$justif %||% "")) tags$p(style = sprintf("color: %s; font-size: 0.88rem; line-height: 1.45; margin: 4px 0;", nuc$color), nuc$justif),
+                  if (!is.null(nuc$ideia) && !is.na(nuc$ideia) && nzchar(nuc$ideia)) {
+                    tags$div(
+                      style = sprintf("background: #ffffff; border-left: 3px solid %s; padding: 8px 10px; border-radius: 4px; font-size: 0.84rem; color: #0f172a; margin-top: 6px;", nuc$color),
+                      tags$strong("💡 Ideia de Projeto / Consórcio: "), nuc$ideia
+                    )
+                  }
                 )
-              }
+              }))
             ),
             # Objeto de Financiamento (Resumo da IA)
             tags$div(
@@ -3054,6 +3189,112 @@ server <- function(input, output, session) {
         pageLength = 10,
         scrollX = TRUE,
         language = list(emptyTable = "Nenhuma oportunidade encontrada para o CIMATEC Park & Sede."),
+        columnDefs = list(
+          list(targets = 0, visible = FALSE),
+          list(
+            targets = 3,
+            render = DT::JS("
+              function(data, type, row, meta) {
+                if (type === 'display') {
+                  var level = (data || 'Baixa').toLowerCase();
+                  var cls = 'badge-soft-neutral';
+                  if (level === 'muito alta') cls = 'badge-soft-open';
+                  else if (level === 'alta') cls = 'badge-soft-info';
+                  else if (level === 'média' || level === 'media') cls = 'badge-soft-warning';
+                  return \"<span class='status-badge \" + cls + \"'>\" + data + \"</span>\";
+                }
+                return data;
+              }
+            ")
+          )
+        )
+      )
+    )
+  }, server = FALSE)
+
+  # --- TAB CIMATEC STARTUPS & INOVAÇÃO ABERTA ---
+  startups_filtered_results <- reactive({
+    req(rv$user)
+    df <- base_results()
+    if (nrow(df) == 0) return(df)
+    
+    if (!"aderencia_startups_nivel" %in% names(df)) df$aderencia_startups_nivel <- NA_character_
+    if (!"aderencia_startups_justificativa" %in% names(df)) df$aderencia_startups_justificativa <- NA_character_
+    if (!"ideia_projeto_startups" %in% names(df)) df$ideia_projeto_startups <- NA_character_
+
+    for (i in seq_len(nrow(df))) {
+      if (is.na(df$aderencia_startups_nivel[[i]]) || !nzchar(df$aderencia_startups_nivel[[i]] %||% "")) {
+        eval_res <- evaluate_startups_adherence(
+          titulo = df$titulo[[i]],
+          descricao = df$descricao_resumida[[i]],
+          texto_bruto = df$texto_bruto[[i]],
+          entidade = df$entidade[[i]],
+          use_ai = FALSE
+        )
+        df$aderencia_startups_nivel[[i]] <- eval_res$aderencia_startups_nivel %||% "Baixa"
+        df$aderencia_startups_justificativa[[i]] <- eval_res$aderencia_startups_justificativa %||% ""
+        df$ideia_projeto_startups[[i]] <- eval_res$ideia_projeto_startups %||% NA_character_
+      }
+    }
+    
+    if (!is.null(input$startups_level_tab_filter) && input$startups_level_tab_filter != "Todos os Níveis") {
+      df <- df |> dplyr::filter(aderencia_startups_nivel == input$startups_level_tab_filter)
+    }
+    
+    if (!is.null(input$startups_theme_filter) && input$startups_theme_filter != "Todos os Eixos") {
+      theme_query <- tolower(normalize_text(input$startups_theme_filter))
+      df <- df |> dplyr::filter(vapply(seq_len(dplyr::n()), function(i) {
+        comb <- tolower(normalize_text(paste(df$titulo[[i]], df$descricao_resumida[[i]], df$aderencia_startups_justificativa[[i]])))
+        grepl(theme_query, comb, fixed = TRUE)
+      }, logical(1)))
+    }
+    
+    df |> dplyr::mutate(
+      startups_rank = dplyr::case_when(
+        aderencia_startups_nivel == "Muito alta" ~ 1,
+        aderencia_startups_nivel == "Alta" ~ 2,
+        aderencia_startups_nivel == "Média" ~ 3,
+        TRUE ~ 4
+      )
+    ) |> dplyr::arrange(startups_rank, parse_date_safe(data_limite))
+  })
+
+  output$startups_results_table <- renderDT({
+    req(rv$user)
+    df <- startups_filtered_results()
+    if (nrow(df) == 0) {
+      return(DT::datatable(tibble::tibble(Mensagem = "Nenhuma oportunidade encontrada para os filtros de Startups & Inovação."), options = list(dom = 't')))
+    }
+    
+    shown <- df |>
+      dplyr::mutate(
+        Prazo = format_date_br(data_limite),
+        Financiador = as.factor(entidade),
+        Título = stringr::str_trunc(titulo, 70),
+        Aderência = aderencia_startups_nivel,
+        `Análise & Justificativa` = stringr::str_trunc(aderencia_startups_justificativa %||% "Sem análise", 90),
+        `💡 Ideia de Projeto / Consórcio` = ifelse(!is.na(ideia_projeto_startups) & nzchar(ideia_projeto_startups %||% ""), stringr::str_trunc(ideia_projeto_startups, 90), "Ver edital"),
+        Ações = vapply(id_registro, make_actions_html, character(1))
+      ) |>
+      dplyr::transmute(
+        ID = id_registro,
+        Título,
+        Financiador,
+        Aderência,
+        `Análise & Justificativa`,
+        `💡 Ideia de Projeto / Consórcio`,
+        Prazo,
+        Ações
+      )
+    
+    DT::datatable(
+      shown,
+      escape = FALSE,
+      rownames = FALSE,
+      options = list(
+        pageLength = 10,
+        scrollX = TRUE,
+        language = list(emptyTable = "Nenhuma oportunidade encontrada para Startups & Inovação."),
         columnDefs = list(
           list(targets = 0, visible = FALSE),
           list(

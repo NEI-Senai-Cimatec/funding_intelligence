@@ -47,8 +47,10 @@ conectar_postgres <- function(database_url) {
     sslmode <- "require"
   }
 
-  # Limite rígido de 2 segundos para evitar qualquer travamento de conexão no Windows
-  setTimeLimit(elapsed = 2, transient = TRUE)
+  # Timeout resiliente: no Windows limita a 5s para evitar travamento em dev;
+  # em servidores (Linux/GHA/Posit Connect), usa 15s para suportar handshakes SSL remotos com o Supabase.
+  timeout_sec <- if (identical(.Platform$OS.type, "windows")) 5L else 15L
+  setTimeLimit(elapsed = timeout_sec + 2, transient = TRUE)
   on.exit(setTimeLimit(elapsed = Inf, transient = FALSE), add = TRUE)
 
   DBI::dbConnect(
@@ -59,7 +61,7 @@ conectar_postgres <- function(database_url) {
     user = parsed$username,
     password = parsed$password,
     sslmode = sslmode,
-    connect_timeout = 1L,
+    connect_timeout = timeout_sec,
     application_name = "funding_intelligence",
     options = "-c TimeZone=UTC"
   )

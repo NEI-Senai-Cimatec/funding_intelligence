@@ -911,7 +911,13 @@ is_funding_opportunity_heuristics <- function(title, description = "", url = "",
     "strategic petroleum reserve", "energy reliability", "energy exports",
     "nuclear energy", "nuclear security", "increase american energy",
     "energy innovation", "energy infrastructure", "affordable energy",
-    "fapealoficial", "fapema oficial"
+    "fapealoficial", "fapema oficial",
+    "decretos", "decreto", "leis federais", "leis estaduais", "lei federal", "lei estadual",
+    "parceiros credenciados", "portarias", "portarias -", "recebe dois selos",
+    "prestacao de contas", "editais de licitacao", "licitacoes e contratos",
+    "areas prioritarias", "explore tambem", "relacao de consultores",
+    "oportunidade - fapema", "oportunidade - fapesc",
+    "nasa awards enable", "stmd solicitations", "learn more about funding"
   )
 
   for (pat in invalid_title_patterns) {
@@ -921,7 +927,7 @@ is_funding_opportunity_heuristics <- function(title, description = "", url = "",
   }
 
   # Títulos exatos ou com limites de palavra que não devem casar substrings de palavras válidas
-  if (t_norm %in% c("admin", "fomento", "resolucoes", "todos | facepe", "todos", "grants", "subscribe")) {
+  if (t_norm %in% c("admin", "fomento", "resolucoes", "todos | facepe", "todos", "grants", "subscribe", "funding opportunities", "seed_1", "seed_2")) {
     return(FALSE)
   }
   if (grepl("^resolucoes(\\b|$)", t_norm)) return(FALSE)

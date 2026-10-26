@@ -124,7 +124,7 @@ init_auto_scheduler_daemon <- function(check_interval_sec = 120) {
   
   heartbeat <- function() {
     tryCatch({
-      if (is_collection_due(target_wday = 2, target_hour = 12, target_minute = 0)) {
+      if (is_collection_due(target_wday = 2, target_hour = 0, target_minute = 0)) {
         trigger_background_collection_daemon()
       }
     }, error = function(e) {
@@ -137,5 +137,5 @@ init_auto_scheduler_daemon <- function(check_interval_sec = 120) {
   
   # Primeira verificação 15 segundos após carregar o app
   later::later(heartbeat, 15)
-  message("[Agendador] Daemon interno de coleta recorrente ATIVADO (Segundas-feiras às 12:00 BRT, sem fim).")
+  message("[Agendador] Daemon interno de coleta recorrente ATIVADO (Segundas-feiras às 00:00 BRT, sem fim).")
 }

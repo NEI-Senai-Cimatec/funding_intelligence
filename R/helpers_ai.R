@@ -1830,4 +1830,101 @@ evaluate_park_adherence <- function(titulo, descricao, texto_bruto = "", entidad
   )
 }
 
+# ─── Avaliador de Aderência Científico-Tecnológica: Startups & Inovação Aberta ───
+
+PROMPT_STARTUPS <- "
+Você é um especialista sênior em ecossistemas de inovação, fomento a Startups, Deep Techs, Inovação Aberta e Venture Capital.
+Avalie a seguinte oportunidade de fomento para o ecossistema de Startups & MPEs do SENAI CIMATEC, focado nas seguintes áreas:
+1. Startups de Base Tecnológica & Deep Techs (hard tech, biotecnologia, nanotecnologia, novos materiais, IA aplicada);
+2. Aceleração, Incubação & Escalonamento (Scale-ups, programas de aceleração, ideação à tração);
+3. Inovação Aberta & Desafios Corporativos (Open Innovation, parcerias ICT + Startups + Grandes Empresas);
+4. Venture Capital, Capital Semente & Investimento Anjo (rodadas de investimento, corporate venture capital - CVC);
+5. Micro e Pequenas Empresas (MPEs) Inovadoras & Spin-offs Acadêmicas (PIPE FAPESP, Centelha, Catalisa ICT, Sebrae, Tecnova);
+6. Prototipagem Ágil, MVPs & Validação de Mercado (Living Labs, sandboxes regulatórios, PoCs, validação tecnológica);
+7. Internacionalização de Startups & Soft Landing (programas globais, missões internacionais, expansão de mercado).
+
+Retorne EXCLUSIVAMENTE um objeto JSON válido no seguinte formato:
+{
+  \"aderencia_startups_nivel\": \"Muito alta\" | \"Alta\" | \"Média\" | \"Baixa\",
+  \"aderencia_startups_justificativa\": \"Explicação objetiva de 1 a 3 frases sobre a conexão com o ecossistema de Startups e Inovação Aberta.\",
+  \"ideia_projeto_startups\": \"Sugestão prática de conceito de projeto/programa (ex: Startup Deep Tech + SENAI CIMATEC + Grande Empresa Âncora + Fomento PIPE/Centelha). Retorne null se aderência for Média ou Baixa.\"
+}
+
+=== OPORTUNIDADE ===
+"
+
+evaluate_startups_adherence <- function(titulo, descricao, texto_bruto = "", entidade = "", use_ai = TRUE, log_path = NULL, conn = NULL) {
+  full_text <- paste(titulo %||% "", descricao %||% "", texto_bruto %||% "", entidade %||% "")
+  norm_text <- tolower(normalize_text(full_text))
+  
+  if (use_ai && ai_available()) {
+    prompt <- paste0(PROMPT_STARTUPS, trim_for_ai(full_text, max_chars = 6000))
+    raw_resp <- ai_request_with_fallback(prompt, log_path = log_path, conn = conn)
+    if (!is.null(raw_resp)) {
+      parsed <- tryCatch(jsonlite::fromJSON(raw_resp, simplifyVector = TRUE), error = function(e) NULL)
+      if (!is.null(parsed) && !is.null(parsed$aderencia_startups_nivel)) {
+        return(list(
+          aderencia_startups_nivel = parsed$aderencia_startups_nivel,
+          aderencia_startups_justificativa = parsed$aderencia_startups_justificativa %||% "Oportunidade analisada pela IA com conexão ao ecossistema de Startups e Inovação Aberta.",
+          ideia_projeto_startups = parsed$ideia_projeto_startups %||% NA_character_
+        ))
+      }
+    }
+  }
+  
+  kw_deeptech <- c("deeptech", "deep tech", "base tecnologica", "spin-off", "spinoff", "patente", "hardtech", "transferencia de tecnologia", "propriedade intelectual")
+  kw_aceleracao <- c("startup", "startups", "aceleracao", "incubacao", "incubadora", "aceleradora", "scale-up", "scaleup", "tracionamento", "mentoria", "pitch", "demoday", "demo day")
+  kw_open_innov <- c("inovacao aberta", "open innovation", "desafio corporativo", "corporate venture", "cvc", "matchmaking", "co-criacao", "desafios de inovacao")
+  kw_investimento <- c("venture capital", "capital semente", "seed", "investimento anjo", "investidor anjo", "equity", "rodada de investimento", "fundo de investimento", "anjo")
+  kw_mpe_programas <- c("mpe", "mpe inovadora", "microempresa", "pequeno porte", "pequena empresa", "catalisa", "pipe", "centelha", "sinapse", "tecnova", "sebrae", "finep startup")
+  kw_mvp_labs <- c("mvp", "prototipagem", "living lab", "sandbox", "poc", "prova de conceito", "validacao de mercado", "ambiente de teste")
+  kw_internacional <- c("internacionalizacao", "soft landing", "missao internacional", "expansao global", "mercado global")
+  
+  check_hits <- function(kws) any(vapply(kws, function(k) grepl(k, norm_text, fixed = TRUE), logical(1)))
+  
+  hits_deeptech <- check_hits(kw_deeptech)
+  hits_aceleracao <- check_hits(kw_aceleracao)
+  hits_open_innov <- check_hits(kw_open_innov)
+  hits_investimento <- check_hits(kw_investimento)
+  hits_mpe <- check_hits(kw_mpe_programas)
+  hits_mvp <- check_hits(kw_mvp_labs)
+  hits_internacional <- check_hits(kw_internacional)
+  
+  total_hits <- sum(c(hits_deeptech, hits_aceleracao, hits_open_innov, hits_investimento, hits_mpe, hits_mvp, hits_internacional))
+  
+  found_areas <- character()
+  if (hits_deeptech) found_areas <- c(found_areas, "Startups de Base Tecnológica & Deep Techs")
+  if (hits_aceleracao) found_areas <- c(found_areas, "Aceleração, Incubação & Escalonamento")
+  if (hits_open_innov) found_areas <- c(found_areas, "Inovação Aberta & Desafios Corporativos")
+  if (hits_investimento) found_areas <- c(found_areas, "Venture Capital & Investimento Anjo")
+  if (hits_mpe) found_areas <- c(found_areas, "MPEs Inovadoras & Spin-offs")
+  if (hits_mvp) found_areas <- c(found_areas, "Prototipagem Ágil & Validação de Mercado (PoC/MVP)")
+  if (hits_internacional) found_areas <- c(found_areas, "Internacionalização de Startups")
+  
+  if (total_hits >= 3 || (hits_aceleracao && (hits_mpe || hits_open_innov)) || (hits_deeptech && hits_aceleracao)) {
+    nivel <- "Muito alta"
+    justificativa <- sprintf("Forte aderência direta a programas de aceleração, venture e apoio a Startups/MPEs nas áreas: %s.", paste(found_areas, collapse = ", "))
+    ideia <- sprintf("Projeto: Programa de aceleração tecnológica ou PoC em %s. Consórcio Recomendado: Startup Inovadora + SENAI CIMATEC + Grande Empresa Parceira + Fomento Sebrae/Finep.", found_areas[[1]])
+  } else if (total_hits >= 2) {
+    nivel <- "Alta"
+    justificativa <- sprintf("Oportunidade relevante para o ecossistema de Startups e empresas emergentes: %s.", paste(found_areas, collapse = ", "))
+    ideia <- sprintf("Projeto: Desenvolvimento de MVP/solução inovadora em %s. Consórcio Recomendado: Startup de Base Tecnológica + SENAI CIMATEC + Linha de Subvenção.", found_areas[[1]])
+  } else if (total_hits == 1) {
+    nivel <- "Média"
+    justificativa <- sprintf("Oportunidade com potencial sinergia para Startups em %s.", found_areas[[1]])
+    ideia <- NA_character_
+  } else {
+    nivel <- "Baixa"
+    justificativa <- "Oportunidade sem conexão direta identificada com fomento a Startups ou inovação aberta."
+    ideia <- NA_character_
+  }
+  
+  list(
+    aderencia_startups_nivel = nivel,
+    aderencia_startups_justificativa = justificativa,
+    ideia_projeto_startups = ideia
+  )
+}
+
+
 

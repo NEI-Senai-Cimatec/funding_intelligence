@@ -72,7 +72,10 @@ CREATE TABLE IF NOT EXISTS oportunidades (
     ideia_projeto_digital TEXT,
     aderencia_park_nivel TEXT,
     aderencia_park_justificativa TEXT,
-    ideia_projeto_park TEXT
+    ideia_projeto_park TEXT,
+    aderencia_startups_nivel TEXT,
+    aderencia_startups_justificativa TEXT,
+    ideia_projeto_startups TEXT
 );
 
 CREATE TABLE IF NOT EXISTS migration_flags (

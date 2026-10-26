@@ -1076,6 +1076,8 @@ campus_badge_html <- function(campus_str) {
       "<span class='badge' style='background-color:#4f46e5; color:white; font-size:0.75rem; margin-right:3px;'>💻 Digital</span>"
     } else if (c_clean %in% c("Park", "Sede e Park")) {
       "<span class='badge' style='background-color:#d97706; color:white; font-size:0.75rem; margin-right:3px;'><img src='logos/logo.png' alt='CIMATEC' style='height:12px; margin-right:4px; vertical-align:middle; filter: brightness(0) invert(1);'>Sede e Park</span>"
+    } else if (c_clean %in% c("Startups", "Startup")) {
+      "<span class='badge' style='background-color:#7c3aed; color:white; font-size:0.75rem; margin-right:3px;'>💡 Startups</span>"
     } else {
       cimatec_icon <- "<img src='logos/logo.png' alt='CIMATEC' style='height:12px; margin-right:4px; vertical-align:middle; filter: brightness(0) invert(1);'>"
       sprintf("<span class='badge bg-secondary' style='font-size:0.75rem; margin-right:3px;'>%s%s</span>", cimatec_icon, htmltools::htmlEscape(c_clean))

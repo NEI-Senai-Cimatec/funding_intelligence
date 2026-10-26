@@ -151,6 +151,21 @@ main_auto_collect <- function(test_mode = FALSE, source_filter = NULL) {
     }
   )
 
+  # Saneamento automático pós-coleta (remove quaisquer menus/links institucionais residuais)
+  message("[AutoCollect] Executando saneamento pós-coleta de editais...")
+  tryCatch({
+    py_bin <- Sys.which("python3")
+    if (!nzchar(py_bin)) py_bin <- Sys.which("python")
+    if (!nzchar(py_bin)) py_bin <- Sys.which("py")
+    clean_script <- file.path(app_dir, "tools", "clean_database.py")
+    if (nzchar(py_bin) && file.exists(clean_script)) {
+      system2(py_bin, args = clean_script, stdout = TRUE, stderr = TRUE)
+      message("[AutoCollect] Saneamento pós-coleta executado com sucesso.")
+    }
+  }, error = function(e) {
+    message(sprintf("[AutoCollect] Aviso no saneamento: %s", e$message))
+  })
+
   # Registrar log de conclusão
   conn <- ensure_alive_connection(conn)
   log_collection(

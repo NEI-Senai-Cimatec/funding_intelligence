@@ -264,9 +264,13 @@ supabase_request_password_reset <- function(email, redirect_to = NULL) {
   }
   
   endpoint <- paste0(cfg$url, "/auth/v1/recover")
+  if (!is.null(redirect_to) && nzchar(redirect_to)) {
+    endpoint <- paste0(endpoint, "?redirect_to=", utils::URLencode(redirect_to, reserved = TRUE))
+  }
   
   body_data <- list(email = email)
   if (!is.null(redirect_to) && nzchar(redirect_to)) {
+    body_data$redirect_to <- redirect_to
     body_data$redirectTo <- redirect_to
   }
   

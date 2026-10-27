@@ -1384,17 +1384,26 @@ show_reset_password_modal <- function(session, access_token = "", error_msg = NU
   shiny::showModal(
     shiny::modalDialog(
       title = htmltools::tags$div(
-        style = "display: flex; align-items: center; gap: 12px;",
+        style = "display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 12px;",
         htmltools::tags$div(
-          style = "background: #eff6ff; color: #004691; width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.25rem;",
-          htmltools::tags$i(class = "fa fa-key")
+          style = "display: flex; align-items: center; gap: 12px;",
+          htmltools::tags$div(
+            style = "background: #eff6ff; color: #004691; width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.25rem;",
+            htmltools::tags$i(class = "fa fa-key")
+          ),
+          htmltools::tags$div(
+            htmltools::tags$h4(style = "margin: 0; color: #004691; font-weight: 700; font-size: 1.2rem;", "🔑 Criar Nova Senha"),
+            htmltools::tags$span(style = "font-size: 0.8rem; color: #64748b;", "Radar da Inovação — SENAI CIMATEC")
+          )
         ),
         htmltools::tags$div(
-          htmltools::tags$h4(style = "margin: 0; color: #004691; font-weight: 700; font-size: 1.2rem;", "🔑 Criar Nova Senha"),
-          htmltools::tags$span(style = "font-size: 0.8rem; color: #64748b;", "Radar da Inovação — SENAI CIMATEC")
+          style = "display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #94a3b8; background: #f8fafc; border: 1px dashed #cbd5e1; padding: 4px 10px; border-radius: 20px; user-select: none;",
+          title = "Clique e arraste este cabeçalho para reposicionar o modal onde preferir",
+          htmltools::tags$i(class = "fa fa-up-down-left-right"),
+          htmltools::tags$span("Arrastável")
         )
       ),
-      size = "m",
+      size = "l",
       easyClose = FALSE,
       footer = htmltools::tags$div(
         style = "display: flex; justify-content: flex-end; gap: 10px; width: 100%;",
@@ -1420,34 +1429,62 @@ show_reset_password_modal <- function(session, access_token = "", error_msg = NU
         ),
         shiny::uiOutput("modal_reset_password_error_ui"),
         htmltools::tags$div(
-          class = "mb-3",
-          htmltools::tags$label(class = "form-label fw-bold text-secondary", style = "font-size: 0.85rem;", "Nova Senha (mínimo 6 caracteres):"),
+          class = "row g-3",
+          style = "margin-bottom: 1.25rem;",
           htmltools::tags$div(
-            style = "position: relative;",
-            shiny::passwordInput("modal_reset_password_new", label = NULL, placeholder = "••••••••", width = "100%"),
-            htmltools::tags$button(
-              type = "button",
-              class = "btn-toggle-pwd",
-              `data-target` = "modal_reset_password_new",
-              style = "position: absolute; right: 0.75rem; top: 7px; background: none; border: none; color: #94a3b8; cursor: pointer; padding: 4px; z-index: 10;",
-              title = "Mostrar/ocultar senha",
-              htmltools::tags$i(class = "fa fa-eye")
+            class = "col-12 col-md-6",
+            htmltools::tags$label(class = "form-label fw-bold text-secondary", style = "font-size: 0.85rem;", "Nova Senha (mínimo 6 caracteres):"),
+            htmltools::tags$div(
+              class = "form-group shiny-input-container",
+              style = "position: relative; width: 100%; margin-bottom: 0;",
+              shiny::tags$input(
+                id = "modal_reset_password_new",
+                type = "password",
+                class = "shiny-input-password form-control",
+                placeholder = "••••••••",
+                autocomplete = "new-password",
+                `data-lpignore` = "true",
+                `data-form-type` = "other",
+                value = "",
+                `data-update-on` = "change",
+                style = "padding-right: 2.75rem;"
+              ),
+              htmltools::tags$button(
+                type = "button",
+                class = "btn-toggle-pwd",
+                `data-target` = "modal_reset_password_new",
+                style = "position: absolute; right: 0.75rem; top: 7px; background: none; border: none; color: #94a3b8; cursor: pointer; padding: 4px; z-index: 10;",
+                title = "Mostrar/ocultar senha",
+                htmltools::tags$i(class = "fa fa-eye")
+              )
             )
-          )
-        ),
-        htmltools::tags$div(
-          class = "mb-3",
-          htmltools::tags$label(class = "form-label fw-bold text-secondary", style = "font-size: 0.85rem;", "Confirmar Nova Senha:"),
+          ),
           htmltools::tags$div(
-            style = "position: relative;",
-            shiny::passwordInput("modal_reset_password_confirm", label = NULL, placeholder = "••••••••", width = "100%"),
-            htmltools::tags$button(
-              type = "button",
-              class = "btn-toggle-pwd",
-              `data-target` = "modal_reset_password_confirm",
-              style = "position: absolute; right: 0.75rem; top: 7px; background: none; border: none; color: #94a3b8; cursor: pointer; padding: 4px; z-index: 10;",
-              title = "Mostrar/ocultar senha",
-              htmltools::tags$i(class = "fa fa-eye")
+            class = "col-12 col-md-6",
+            htmltools::tags$label(class = "form-label fw-bold text-secondary", style = "font-size: 0.85rem;", "Confirmar Nova Senha:"),
+            htmltools::tags$div(
+              class = "form-group shiny-input-container",
+              style = "position: relative; width: 100%; margin-bottom: 0;",
+              shiny::tags$input(
+                id = "modal_reset_password_confirm",
+                type = "password",
+                class = "shiny-input-password form-control",
+                placeholder = "••••••••",
+                autocomplete = "new-password",
+                `data-lpignore` = "true",
+                `data-form-type` = "other",
+                value = "",
+                `data-update-on` = "change",
+                style = "padding-right: 2.75rem;"
+              ),
+              htmltools::tags$button(
+                type = "button",
+                class = "btn-toggle-pwd",
+                `data-target` = "modal_reset_password_confirm",
+                style = "position: absolute; right: 0.75rem; top: 7px; background: none; border: none; color: #94a3b8; cursor: pointer; padding: 4px; z-index: 10;",
+                title = "Mostrar/ocultar senha",
+                htmltools::tags$i(class = "fa fa-eye")
+              )
             )
           )
         ),

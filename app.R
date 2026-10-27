@@ -1293,11 +1293,17 @@ server <- function(input, output, session) {
 
   # Restauração automática de sessão persistente ao atualizar a página (F5)
   observeEvent(input$restore_auth_session, {
-    # Se houver recuperação de senha em andamento, ignora restauração de sessão para evitar sobreposição
-    if (!is.null(rv$pending_recovery_token) || isTRUE(rv$reset_modal_open)) return()
+    # Se houver recuperação de senha em andamento, encerra estado de restauração para liberar o modal
+    if (!is.null(rv$pending_recovery_token) || isTRUE(rv$reset_modal_open)) {
+      session$sendCustomMessage("restore_auth_failed", list())
+      return()
+    }
 
     session_data <- input$restore_auth_session
-    if (!is.list(session_data)) return()
+    if (!is.list(session_data)) {
+      session$sendCustomMessage("restore_auth_failed", list())
+      return()
+    }
     
     access_tok <- session_data$access_token
     refresh_tok <- session_data$refresh_token
@@ -1311,7 +1317,10 @@ server <- function(input, output, session) {
       return()
     }
     
-    if (!is.null(isolate(rv$user))) return()
+    if (!is.null(isolate(rv$user))) {
+      session$sendCustomMessage("set_auth_state", TRUE)
+      return()
+    }
     
     restored <- tryCatch({
       supabase_restore_session(session_data, conn = conn)

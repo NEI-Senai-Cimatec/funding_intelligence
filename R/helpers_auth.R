@@ -463,7 +463,7 @@ supabase_get_user <- function(access_token) {
         "Authorization" = paste("Bearer", access_token)
       ) |>
       httr2::req_error(is_error = function(resp) FALSE) |>
-      httr2::req_timeout(8) |>
+      httr2::req_timeout(3.5) |>
       httr2::req_perform()
   }, error = function(e) NULL)
   
@@ -500,7 +500,7 @@ supabase_refresh_session <- function(refresh_token) {
       ) |>
       httr2::req_body_json(list(refresh_token = as.character(refresh_token))) |>
       httr2::req_error(is_error = function(resp) FALSE) |>
-      httr2::req_timeout(10) |>
+      httr2::req_timeout(3.5) |>
       httr2::req_perform()
   }, error = function(e) NULL)
   
@@ -931,7 +931,13 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
             var s = window.location.search || '';
             var hasRecoveryUrl = (h.indexOf('type=recovery') !== -1) || (s.indexOf('type=recovery') !== -1);
             var hasSavedSession = false;
-            try { hasSavedSession = !!localStorage.getItem('quiin_auth_session'); } catch(e) {}
+            try {
+              var saved = localStorage.getItem('quiin_auth_session');
+              if (saved) {
+                var parsed = JSON.parse(saved);
+                hasSavedSession = !!(parsed && (parsed.access_token || parsed.refresh_token || parsed.user));
+              }
+            } catch(e) {}
 
             if (hasRecoveryUrl) {
               var sNode = document.createElement('style');

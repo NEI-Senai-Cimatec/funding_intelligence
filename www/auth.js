@@ -617,6 +617,15 @@
       var elTabs = document.querySelector('.auth-tabs-nav');
 
       if (isAuth) {
+        sessionRestored = true;
+        if (restoreTimeoutFailsafe) {
+          clearTimeout(restoreTimeoutFailsafe);
+          restoreTimeoutFailsafe = null;
+        }
+        if (restoreTimer) {
+          clearInterval(restoreTimer);
+          restoreTimer = null;
+        }
         isRecoveryModeActive = false;
         window.currentRecoveryToken = null;
         try {
@@ -708,6 +717,15 @@
 
     // Limpar sessão persistente no logout
     Shiny.addCustomMessageHandler('clear_auth_session', function(msg) {
+      sessionRestored = false;
+      if (restoreTimeoutFailsafe) {
+        clearTimeout(restoreTimeoutFailsafe);
+        restoreTimeoutFailsafe = null;
+      }
+      if (restoreTimer) {
+        clearInterval(restoreTimer);
+        restoreTimer = null;
+      }
       try {
         localStorage.removeItem('quiin_auth_session');
       } catch(e) {}
@@ -743,6 +761,15 @@
 
     // Falha na restauração da sessão silenciosa (revela formulário sem apagar se for falha de rede transitória)
     Shiny.addCustomMessageHandler('restore_auth_failed', function(msg) {
+      sessionRestored = false;
+      if (restoreTimeoutFailsafe) {
+        clearTimeout(restoreTimeoutFailsafe);
+        restoreTimeoutFailsafe = null;
+      }
+      if (restoreTimer) {
+        clearInterval(restoreTimer);
+        restoreTimer = null;
+      }
       if (window.isUserInRecovery()) {
         window.enforceResetTab();
         return;
@@ -1103,8 +1130,11 @@
     return false;
   }
 
-  // 5. Restauração Silenciosa com Polling Robusto (SEM piscar formulário)
+  // 5. Restauração Silenciosa de Sessão Persistente
   var sessionRestored = false;
+  var restoreTimeoutFailsafe = null;
+  var restoreTimer = null;
+
   function initSessionRestore() {
     if (sessionRestored) return;
 
@@ -1139,7 +1169,14 @@
     var hasValidSavedSession = !!(sessionData && (sessionData.access_token || sessionData.refresh_token || sessionData.user));
 
     if (!hasValidSavedSession) {
-      // Usuário não tem sessão salva: verifica se há recuperação pendente nesta aba
+      // Sessão ausente ou inválida: remove estilo de restauração e garante formulário de login visível
+      $('#quiin_recovery_instant_css, #quiin_restore_instant_css, #quiin_early_auth_css, #quiin_instant_auth_css').remove();
+      var elRestoring = document.getElementById('auth_restoring_state');
+      var elLogin = document.getElementById('auth_form_login');
+      var elTabs = document.querySelector('.auth-tabs-nav');
+      if (elRestoring) elRestoring.style.display = 'none';
+      if (elLogin) elLogin.style.display = 'block';
+      if (elTabs) elTabs.style.display = 'flex';
       if (checkUrlForRecovery()) return;
       return;
     }
@@ -1159,10 +1196,23 @@
     if (elTabs) elTabs.style.display = 'none';
     if (elRestoring) elRestoring.style.display = 'block';
 
+    // Failsafe de proteção absoluta: Se em 3.5 segundos a sessão não for confirmada, destrava o app para login manual
+    if (!restoreTimeoutFailsafe) {
+      restoreTimeoutFailsafe = setTimeout(function() {
+        if (!$('body').hasClass('authenticated')) {
+          console.warn('[AUTH] Failsafe acionado: servidor demorou mais de 3.5s para responder. Destravando formulário de login.');
+          $('#quiin_recovery_instant_css, #quiin_restore_instant_css, #quiin_early_auth_css, #quiin_instant_auth_css').remove();
+          if (elRestoring) elRestoring.style.display = 'none';
+          if (elLogin) elLogin.style.display = 'block';
+          if (elTabs) elTabs.style.display = 'flex';
+          $('#auth_overlay_root').stop(true, true).fadeIn(150);
+        }
+      }, 3500);
+    }
+
     function doSendRestore() {
       if (sessionRestored) return true;
       if (window.Shiny && window.Shiny.setInputValue) {
-        sessionRestored = true;
         console.log('[AUTH] Enviando restore_auth_session para o servidor Shiny...');
         window.Shiny.setInputValue('restore_auth_session', sessionData, {priority: 'event'});
         return true;
@@ -1170,18 +1220,26 @@
       return false;
     }
 
+    // Dispara envio no evento nativo shiny:connected
+    $(document).off('shiny:connected.restore').on('shiny:connected.restore', function() {
+      setTimeout(function() {
+        if (!sessionRestored) {
+          doSendRestore();
+        }
+      }, 50);
+    });
+
+    // Se o Shiny já estiver pronto, envia imediatamente
     if (!doSendRestore()) {
-      $(document).on('shiny:connected', function() {
-        doSendRestore();
-      });
+      if (restoreTimer) clearInterval(restoreTimer);
       var attempts = 0;
-      var restoreTimer = setInterval(function() {
+      restoreTimer = setInterval(function() {
         attempts++;
         if (sessionRestored) {
           clearInterval(restoreTimer);
           return;
         }
-        if (doSendRestore() || attempts >= 100) {
+        if (doSendRestore() || attempts >= 40) {
           clearInterval(restoreTimer);
         }
       }, 100);

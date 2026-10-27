@@ -561,6 +561,63 @@
 
   registerShinyHandlers();
 
+  // Função para coletar parâmetros da URL em múltiplos contextos (iframe atual, parent e top)
+  function collectAllUrlParams() {
+    var params = {};
+    var sources = [window.location];
+
+    try {
+      if (window.parent && window.parent.location && window.parent !== window) {
+        sources.push(window.parent.location);
+      }
+    } catch(e) {}
+
+    try {
+      if (window.top && window.top.location && window.top !== window && window.top !== window.parent) {
+        sources.push(window.top.location);
+      }
+    } catch(e) {}
+
+    sources.forEach(function(loc) {
+      try {
+        var hash = loc.hash || '';
+        var search = loc.search || '';
+
+        [hash, search].forEach(function(str) {
+          if (str && str.length > 1) {
+            var clean = str.replace(/^[#?]/, '');
+            var parts = clean.split('&');
+            parts.forEach(function(part) {
+              var kv = part.split('=');
+              if (kv.length === 2) {
+                var key = decodeURIComponent(kv[0]);
+                var val = decodeURIComponent(kv[1]);
+                if (!params[key]) params[key] = val;
+              }
+            });
+          }
+        });
+      } catch(err) {}
+    });
+
+    // Também verifica document.referrer se disponível
+    try {
+      if (document.referrer && (document.referrer.indexOf('access_token=') !== -1 || document.referrer.indexOf('type=recovery') !== -1)) {
+        var refParts = document.referrer.split(/[#?&]/);
+        refParts.forEach(function(part) {
+          var kv = part.split('=');
+          if (kv.length === 2) {
+            var key = decodeURIComponent(kv[0]);
+            var val = decodeURIComponent(kv[1]);
+            if (!params[key]) params[key] = val;
+          }
+        });
+      }
+    } catch(e) {}
+
+    return params;
+  }
+
   // 4. Detecção de Link de Recuperação de Senha na URL
   function checkUrlForRecovery() {
     if (isRecoveryModeActive) {
@@ -576,33 +633,19 @@
       return true;
     }
 
-    var hash = window.location.hash || '';
-    var search = window.location.search || '';
-    var params = {};
+    var params = collectAllUrlParams();
 
-    if (hash && hash.length > 1) {
-      var hashParts = hash.substring(1).split('&');
-      hashParts.forEach(function(part) {
-        var kv = part.split('=');
-        if (kv.length === 2) {
-          params[decodeURIComponent(kv[0])] = decodeURIComponent(kv[1]);
-        }
-      });
-    }
+    // Detecção abrangente de recuperação de senha (suporta Implicit flow, PKCE, token_hash ou query param)
+    var isRecovery = (params.type === 'recovery') || 
+                     (params.recovery === 'true') || 
+                     (params.access_token && params.type !== 'signup') || 
+                     (params.token_hash && params.type === 'recovery');
 
-    if (search && search.length > 1) {
-      var searchParts = search.substring(1).split('&');
-      searchParts.forEach(function(part) {
-        var kv = part.split('=');
-        if (kv.length === 2) {
-          params[decodeURIComponent(kv[0])] = decodeURIComponent(kv[1]);
-        }
-      });
-    }
+    var token = params.access_token || params.token || params.code || params.token_hash || '';
 
-    if (params.type === 'recovery' && params.access_token) {
+    if (isRecovery && token) {
       isRecoveryModeActive = true;
-      window.currentRecoveryToken = params.access_token;
+      window.currentRecoveryToken = token;
 
       // Limpa qualquer sessão salva para não reautenticar por cima da redefinição
       try {
@@ -610,6 +653,20 @@
       } catch(e) {}
       $('body').removeClass('authenticated');
       $('#auth_overlay_root').show();
+
+      // Dispara abertura do modal dedicado no Shiny
+      function triggerShinyModal() {
+        if (window.Shiny && window.Shiny.setInputValue) {
+          window.Shiny.setInputValue('trigger_reset_password_modal', {
+            access_token: token,
+            timestamp: Date.now()
+          }, { priority: 'event' });
+        }
+      }
+      triggerShinyModal();
+      $(document).on('shiny:connected', triggerShinyModal);
+      setTimeout(triggerShinyModal, 800);
+      setTimeout(triggerShinyModal, 2000);
 
       if (window.history && window.history.replaceState) {
         window.history.replaceState(null, document.title, window.location.pathname + window.location.search);

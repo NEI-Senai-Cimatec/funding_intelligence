@@ -1359,12 +1359,91 @@ render_header_user_bar <- function(user, is_dev = FALSE, drive_status = "idle", 
         badge_ui
       ),
       htmltools::tags$button(
+        id = "btn_header_change_password",
+        class = "btn-header-change-pwd",
+        style = "background: none; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 8px; font-size: 0.75rem; color: #475569; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; transition: all 0.2s;",
+        onclick = "Shiny.setInputValue('btn_header_change_password', Math.random(), {priority: 'event'})",
+        title = "Alterar minha senha de acesso",
+        htmltools::tags$i(class = "fa fa-key"),
+        htmltools::tags$span("Alterar Senha")
+      ),
+      htmltools::tags$button(
         id = "btn_header_logout",
         class = "btn-header-logout",
         onclick = "Shiny.setInputValue('btn_header_logout', Math.random(), {priority: 'event'})",
         title = "Sair da conta e encerrar sessão",
         htmltools::tags$i(class = "fa fa-arrow-right-from-bracket"),
         htmltools::tags$span("Sair")
+      )
+    )
+  )
+}
+
+# Modal dedicado para Criação e Redefinição de Nova Senha (disparado via link ou botão)
+show_reset_password_modal <- function(session, access_token = "", error_msg = NULL, success_msg = NULL) {
+  shiny::showModal(
+    shiny::modalDialog(
+      title = htmltools::tags$div(
+        style = "display: flex; align-items: center; gap: 12px;",
+        htmltools::tags$div(
+          style = "background: #eff6ff; color: #004691; width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.25rem;",
+          htmltools::tags$i(class = "fa fa-key")
+        ),
+        htmltools::tags$div(
+          htmltools::tags$h4(style = "margin: 0; color: #004691; font-weight: 700; font-size: 1.2rem;", "🔑 Criar Nova Senha"),
+          htmltools::tags$span(style = "font-size: 0.8rem; color: #64748b;", "Radar da Inovação — SENAI CIMATEC")
+        )
+      ),
+      size = "m",
+      easyClose = TRUE,
+      footer = htmltools::tags$div(
+        style = "display: flex; justify-content: flex-end; gap: 10px; width: 100%;",
+        shiny::modalButton("Cancelar"),
+        shiny::actionButton(
+          "btn_modal_submit_new_password",
+          label = "Salvar Nova Senha",
+          class = "btn btn-primary",
+          style = "background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); border: none; font-weight: 600; padding: 8px 18px;",
+          icon = shiny::icon("check")
+        )
+      ),
+      htmltools::tags$div(
+        style = "padding: 8px 0;",
+        htmltools::tags$p(
+          style = "color: #334155; font-size: 0.95rem; margin-bottom: 16px; line-height: 1.5;",
+          "Defina uma nova senha para sua conta institucional no Radar da Inovação. A nova senha deve conter no mínimo 6 caracteres."
+        ),
+        if (!is.null(error_msg) && nzchar(error_msg)) {
+          htmltools::tags$div(
+            class = "alert alert-danger",
+            style = "margin-bottom: 15px; padding: 10px 14px; font-size: 0.9rem; border-radius: 6px;",
+            htmltools::tags$i(class = "fa fa-circle-exclamation", style = "margin-right: 6px;"),
+            error_msg
+          )
+        },
+        if (!is.null(success_msg) && nzchar(success_msg)) {
+          htmltools::tags$div(
+            class = "alert alert-success",
+            style = "margin-bottom: 15px; padding: 10px 14px; font-size: 0.9rem; border-radius: 6px;",
+            htmltools::tags$i(class = "fa fa-circle-check", style = "margin-right: 6px;"),
+            success_msg
+          )
+        },
+        htmltools::tags$div(
+          class = "mb-3",
+          htmltools::tags$label(class = "form-label fw-bold text-secondary", style = "font-size: 0.85rem;", "Nova Senha:"),
+          shiny::passwordInput("modal_reset_password_new", label = NULL, placeholder = "••••••••", width = "100%")
+        ),
+        htmltools::tags$div(
+          class = "mb-3",
+          htmltools::tags$label(class = "form-label fw-bold text-secondary", style = "font-size: 0.85rem;", "Confirmar Nova Senha:"),
+          shiny::passwordInput("modal_reset_password_confirm", label = NULL, placeholder = "••••••••", width = "100%")
+        ),
+        htmltools::tags$div(
+          style = "font-size: 0.8rem; color: #64748b; margin-top: 5px;",
+          htmltools::tags$i(class = "fa fa-info-circle", style = "margin-right: 4px;"),
+          "Após atualizar, sua nova senha passará a valer imediatamente para os próximos logins."
+        )
       )
     )
   )

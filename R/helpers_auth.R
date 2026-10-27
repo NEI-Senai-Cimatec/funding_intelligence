@@ -1395,10 +1395,15 @@ show_reset_password_modal <- function(session, access_token = "", error_msg = NU
         )
       ),
       size = "m",
-      easyClose = TRUE,
+      easyClose = FALSE,
       footer = htmltools::tags$div(
         style = "display: flex; justify-content: flex-end; gap: 10px; width: 100%;",
-        shiny::modalButton("Cancelar"),
+        shiny::actionButton(
+          "btn_modal_cancel_recovery",
+          label = "Voltar ao Login",
+          class = "btn btn-outline-secondary",
+          style = "font-size: 0.85rem;"
+        ),
         shiny::actionButton(
           "btn_modal_submit_new_password",
           label = "Salvar Nova Senha",

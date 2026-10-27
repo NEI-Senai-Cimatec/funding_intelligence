@@ -534,6 +534,9 @@
     Shiny.addCustomMessageHandler('reset_password_success', function(data) {
       isRecoveryModeActive = false;
       window.currentRecoveryToken = null;
+      try {
+        sessionStorage.removeItem('quiin_pending_recovery_token');
+      } catch(e) {}
       var btn = $('#btn_reset_password_submit');
       btn.prop('disabled', false).removeClass('loading');
       btn.html('<i class="fa fa-check" style="margin-right: 8px;"></i><span>Atualizar Senha</span>');
@@ -542,6 +545,16 @@
       window.switchAuthTab('login');
       $('#auth_login_success_text').text(msg);
       $('#auth_login_success_box').stop(true, true).slideDown(200);
+    });
+
+    // Cancelamento explícito da recuperação pelo usuário
+    Shiny.addCustomMessageHandler('clear_recovery_state', function(data) {
+      isRecoveryModeActive = false;
+      window.currentRecoveryToken = null;
+      try {
+        sessionStorage.removeItem('quiin_pending_recovery_token');
+      } catch(e) {}
+      window.switchAuthTab('login');
     });
 
     // Falha na redefinição de senha via link
@@ -625,34 +638,32 @@
     return params;
   }
 
-  // 4. Detecção de Link de Recuperação de Senha na URL
+  // 4. Detecção e Persistência de Recuperação de Senha na URL (sobrevive a F5 / reload)
   function checkUrlForRecovery() {
-    if (isRecoveryModeActive) {
-      window.switchAuthTab('reset');
-      return true;
-    }
-    if (isRecoveryErrorActive) {
-      window.switchAuthTab('forgot');
-      var errBox = $('#auth_recovery_error_box');
-      var errText = $('#auth_recovery_error_text');
-      errText.text(recoveryErrorMessage || 'O link de recuperação expirou ou é inválido. Por favor, solicite um novo link abaixo.');
-      errBox.stop(true, true).slideDown(150);
-      return true;
-    }
+    var storedToken = null;
+    try {
+      storedToken = sessionStorage.getItem('quiin_pending_recovery_token');
+    } catch(e) {}
 
     var params = collectAllUrlParams();
 
-    // Detecção abrangente de recuperação de senha (suporta Implicit flow, PKCE, token_hash ou query param)
+    // Detecção abrangente de recuperação de senha (suporta Implicit flow, PKCE, token_hash ou sessionStorage de reload anterior)
     var isRecovery = (params.type === 'recovery') || 
                      (params.recovery === 'true') || 
                      (params.access_token && params.type !== 'signup') || 
-                     (params.token_hash && params.type === 'recovery');
+                     (params.token_hash && params.type === 'recovery') ||
+                     (storedToken && storedToken.length > 5);
 
-    var token = params.access_token || params.token || params.code || params.token_hash || '';
+    var token = params.access_token || params.token || params.code || params.token_hash || storedToken || '';
 
     if (isRecovery && token) {
       isRecoveryModeActive = true;
       window.currentRecoveryToken = token;
+
+      // Salva no sessionStorage para que a redefinição de senha NÃO suma ao apertar F5
+      try {
+        sessionStorage.setItem('quiin_pending_recovery_token', token);
+      } catch(e) {}
 
       // Limpa qualquer sessão salva para não reautenticar por cima da redefinição
       try {
@@ -661,7 +672,10 @@
       $('body').removeClass('authenticated');
       $('#auth_overlay_root').show();
 
-      // Dispara abertura do modal dedicado no Shiny
+      // Força a exibição do formulário de redefinição
+      window.switchAuthTab('reset');
+
+      // Dispara abertura do modal dedicado no Shiny (com retentativas para garantir exibição mesmo após F5)
       function triggerShinyModal() {
         if (window.Shiny && window.Shiny.setInputValue) {
           window.Shiny.setInputValue('trigger_reset_password_modal', {
@@ -672,13 +686,13 @@
       }
       triggerShinyModal();
       $(document).on('shiny:connected', triggerShinyModal);
-      setTimeout(triggerShinyModal, 800);
-      setTimeout(triggerShinyModal, 2000);
+      setTimeout(triggerShinyModal, 400);
+      setTimeout(triggerShinyModal, 1200);
+      setTimeout(triggerShinyModal, 2500);
 
       if (window.history && window.history.replaceState) {
         window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
       }
-      window.switchAuthTab('reset');
       return true;
     }
 
@@ -701,9 +715,15 @@
   function initSessionRestore() {
     if (sessionRestored) return;
 
-    // Se estiver em modo de recuperação de senha, JAMAIS restaura sessão antiga
-    if (isRecoveryModeActive || window.currentRecoveryToken) {
+    var storedRecovery = null;
+    try {
+      storedRecovery = sessionStorage.getItem('quiin_pending_recovery_token');
+    } catch(e) {}
+
+    // Se estiver em modo de recuperação de senha ou com token pendente, JAMAIS restaura sessão antiga nem abre login
+    if (isRecoveryModeActive || window.currentRecoveryToken || (storedRecovery && storedRecovery.length > 5)) {
       console.log('[AUTH] Recuperação de senha ativa. Restauração de sessão persistente ignorada.');
+      checkUrlForRecovery();
       return;
     }
 

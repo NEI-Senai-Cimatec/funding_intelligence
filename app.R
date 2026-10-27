@@ -827,7 +827,10 @@ server <- function(input, output, session) {
     refresh_token = NULL,
     is_dev_diretoria = FALSE,
     login_error = NULL,
-    signup_success = NULL
+    signup_success = NULL,
+    pending_recovery_token = NULL,
+    modal_reset_error = NULL,
+    reset_modal_open = FALSE
   )
 
   # Cache da assinatura de interesses por sessão (MH-01/BUG-04): lista e modal
@@ -1050,6 +1053,21 @@ server <- function(input, output, session) {
     }
   })
 
+  # Renderiza mensagens de erro dinamicamente dentro do modal de redefinição de senha (sem recriar o modal)
+  output$modal_reset_password_error_ui <- renderUI({
+    err <- rv$modal_reset_error
+    if (!is.null(err) && nzchar(err)) {
+      htmltools::tags$div(
+        class = "alert alert-danger",
+        style = "margin-bottom: 15px; padding: 10px 14px; font-size: 0.9rem; border-radius: 6px; display: flex; align-items: center; gap: 8px; border-left: 4px solid #dc2626;",
+        htmltools::tags$i(class = "fa fa-circle-exclamation", style = "font-size: 1.1rem; color: #dc2626; flex-shrink: 0;"),
+        htmltools::tags$span(err)
+      )
+    } else {
+      NULL
+    }
+  })
+
   # Evento para abrir o modal dedicado de criar/redefinir senha (disparado pelo link de recuperação)
   observeEvent(input$trigger_reset_password_modal, {
     tok_data <- input$trigger_reset_password_modal
@@ -1057,11 +1075,17 @@ server <- function(input, output, session) {
     if (nzchar(tok)) {
       rv$pending_recovery_token <- tok
     }
-    show_reset_password_modal(session, access_token = rv$pending_recovery_token %||% rv$access_token %||% "")
+    rv$modal_reset_error <- NULL
+    if (!isTRUE(rv$reset_modal_open)) {
+      rv$reset_modal_open <- TRUE
+      show_reset_password_modal(session, access_token = rv$pending_recovery_token %||% rv$access_token %||% "")
+    }
   })
 
   # Evento para abrir o modal a partir do botão 'Alterar Senha' no cabeçalho
   observeEvent(input$btn_header_change_password, {
+    rv$modal_reset_error <- NULL
+    rv$reset_modal_open <- TRUE
     show_reset_password_modal(session, access_token = rv$access_token %||% "")
   })
 
@@ -1072,19 +1096,22 @@ server <- function(input, output, session) {
     token <- as.character(rv$pending_recovery_token %||% rv$access_token %||% "")
 
     if (!nzchar(pwd) || !nzchar(pwd_conf)) {
-      show_reset_password_modal(session, access_token = token, error_msg = "Por favor, preencha ambos os campos de senha.")
+      rv$modal_reset_error <- "Por favor, preencha ambos os campos de senha."
+      session$sendCustomMessage("modal_reset_error_focus", list())
       return()
     }
     if (nchar(pwd) < 6) {
-      show_reset_password_modal(session, access_token = token, error_msg = "A nova senha deve conter no mínimo 6 caracteres.")
+      rv$modal_reset_error <- "A nova senha deve conter no mínimo 6 caracteres."
+      session$sendCustomMessage("modal_reset_error_focus", list())
       return()
     }
     if (!identical(pwd, pwd_conf)) {
-      show_reset_password_modal(session, access_token = token, error_msg = "As senhas digitadas não coincidem. Digite novamente.")
+      rv$modal_reset_error <- "As senhas digitadas não coincidem. Digite novamente."
+      session$sendCustomMessage("modal_reset_error_focus", list())
       return()
     }
     if (!nzchar(token)) {
-      show_reset_password_modal(session, access_token = token, error_msg = "Token de recuperação ausente ou expirado. Por favor, solicite um novo link.")
+      rv$modal_reset_error <- "Token de recuperação ausente ou expirado. Por favor, solicite um novo link."
       return()
     }
 
@@ -1093,18 +1120,23 @@ server <- function(input, output, session) {
     })
 
     if (isTRUE(update_res$success)) {
+      rv$modal_reset_error <- NULL
+      rv$reset_modal_open <- FALSE
       shiny::removeModal()
       rv$pending_recovery_token <- NULL
       showNotification("Sua senha foi atualizada com sucesso no Supabase! Você já pode utilizá-la.", type = "message", duration = 8)
       session$sendCustomMessage("reset_password_success", list(message = "Senha atualizada com sucesso!"))
     } else {
-      show_reset_password_modal(session, access_token = token, error_msg = update_res$message)
+      rv$modal_reset_error <- update_res$message
+      session$sendCustomMessage("modal_reset_error_focus", list())
     }
   })
 
   # Cancelar recuperação e voltar para login a pedido do usuário
   observeEvent(input$btn_modal_cancel_recovery, {
     rv$pending_recovery_token <- NULL
+    rv$reset_modal_open <- FALSE
+    rv$modal_reset_error <- NULL
     shiny::removeModal()
     session$sendCustomMessage("clear_recovery_state", list())
   })

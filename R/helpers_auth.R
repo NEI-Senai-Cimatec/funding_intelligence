@@ -394,7 +394,7 @@ supabase_update_password <- function(access_token, new_password) {
   
   err_msg <- if (grepl("weak_password|at least 6 characters", tolower(raw_msg))) {
     "A nova senha deve conter no mínimo 6 caracteres."
-  } else if (grepl("same_password", tolower(raw_msg))) {
+  } else if (grepl("same_password|different from the old|should be different|different from", tolower(raw_msg))) {
     "A nova senha deve ser diferente da senha anterior."
   } else if (grepl("expired|invalid_token|jwt", tolower(raw_msg))) {
     "O link de recuperação expirou ou é inválido. Por favor, solicite uma nova recuperação."
@@ -1400,7 +1400,7 @@ show_reset_password_modal <- function(session, access_token = "", error_msg = NU
         style = "display: flex; justify-content: flex-end; gap: 10px; width: 100%;",
         shiny::actionButton(
           "btn_modal_cancel_recovery",
-          label = "Voltar ao Login",
+          label = "Cancelar",
           class = "btn btn-outline-secondary",
           style = "font-size: 0.85rem;"
         ),
@@ -1418,31 +1418,38 @@ show_reset_password_modal <- function(session, access_token = "", error_msg = NU
           style = "color: #334155; font-size: 0.95rem; margin-bottom: 16px; line-height: 1.5;",
           "Defina uma nova senha para sua conta institucional no Radar da Inovação. A nova senha deve conter no mínimo 6 caracteres."
         ),
-        if (!is.null(error_msg) && nzchar(error_msg)) {
-          htmltools::tags$div(
-            class = "alert alert-danger",
-            style = "margin-bottom: 15px; padding: 10px 14px; font-size: 0.9rem; border-radius: 6px;",
-            htmltools::tags$i(class = "fa fa-circle-exclamation", style = "margin-right: 6px;"),
-            error_msg
-          )
-        },
-        if (!is.null(success_msg) && nzchar(success_msg)) {
-          htmltools::tags$div(
-            class = "alert alert-success",
-            style = "margin-bottom: 15px; padding: 10px 14px; font-size: 0.9rem; border-radius: 6px;",
-            htmltools::tags$i(class = "fa fa-circle-check", style = "margin-right: 6px;"),
-            success_msg
-          )
-        },
+        shiny::uiOutput("modal_reset_password_error_ui"),
         htmltools::tags$div(
           class = "mb-3",
-          htmltools::tags$label(class = "form-label fw-bold text-secondary", style = "font-size: 0.85rem;", "Nova Senha:"),
-          shiny::passwordInput("modal_reset_password_new", label = NULL, placeholder = "••••••••", width = "100%")
+          htmltools::tags$label(class = "form-label fw-bold text-secondary", style = "font-size: 0.85rem;", "Nova Senha (mínimo 6 caracteres):"),
+          htmltools::tags$div(
+            style = "position: relative;",
+            shiny::passwordInput("modal_reset_password_new", label = NULL, placeholder = "••••••••", width = "100%"),
+            htmltools::tags$button(
+              type = "button",
+              class = "btn-toggle-pwd",
+              `data-target` = "modal_reset_password_new",
+              style = "position: absolute; right: 0.75rem; top: 7px; background: none; border: none; color: #94a3b8; cursor: pointer; padding: 4px; z-index: 10;",
+              title = "Mostrar/ocultar senha",
+              htmltools::tags$i(class = "fa fa-eye")
+            )
+          )
         ),
         htmltools::tags$div(
           class = "mb-3",
           htmltools::tags$label(class = "form-label fw-bold text-secondary", style = "font-size: 0.85rem;", "Confirmar Nova Senha:"),
-          shiny::passwordInput("modal_reset_password_confirm", label = NULL, placeholder = "••••••••", width = "100%")
+          htmltools::tags$div(
+            style = "position: relative;",
+            shiny::passwordInput("modal_reset_password_confirm", label = NULL, placeholder = "••••••••", width = "100%"),
+            htmltools::tags$button(
+              type = "button",
+              class = "btn-toggle-pwd",
+              `data-target` = "modal_reset_password_confirm",
+              style = "position: absolute; right: 0.75rem; top: 7px; background: none; border: none; color: #94a3b8; cursor: pointer; padding: 4px; z-index: 10;",
+              title = "Mostrar/ocultar senha",
+              htmltools::tags$i(class = "fa fa-eye")
+            )
+          )
         ),
         htmltools::tags$div(
           style = "font-size: 0.8rem; color: #64748b; margin-top: 5px;",

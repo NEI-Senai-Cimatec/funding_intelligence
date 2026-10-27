@@ -917,5 +917,58 @@ body.authenticated .auth-overlay-backdrop {
   text-decoration: none;
 }
 
+/* ─── Modais do Shiny / Bootstrap ────────────────────────────────────────── */
+/* Garantir que modais e seus backdrops fiquem SEMPRE acima do #auth_overlay_root (z-index: 99999999) */
+.modal {
+  z-index: 100000005 !important;
+  pointer-events: auto !important;
+}
+
+.modal-backdrop {
+  z-index: 100000000 !important;
+}
+
+.modal-dialog {
+  z-index: 100000006 !important;
+  pointer-events: auto !important;
+}
+
+.modal-content {
+  border-radius: 12px !important;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35) !important;
+  pointer-events: auto !important;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+.modal-body {
+  pointer-events: auto !important;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+.modal-body input,
+.modal-body input.form-control,
+#modal_reset_password_new,
+#modal_reset_password_confirm {
+  pointer-events: auto !important;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  cursor: text !important;
+  background-color: #ffffff !important;
+  padding-right: 2.75rem !important;
+  font-size: 0.95rem !important;
+  border-radius: 6px !important;
+}
+
+.modal-body input:focus,
+#modal_reset_password_new:focus,
+#modal_reset_password_confirm:focus {
+  border-color: #004691 !important;
+  box-shadow: 0 0 0 3px rgba(0, 70, 145, 0.15) !important;
+  outline: none !important;
+}
+
+
 
 

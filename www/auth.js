@@ -361,6 +361,30 @@
         window.submitResetPasswordForm();
       }
     });
+
+    // Submissão com ENTER nos campos do modal dedicado de reset de senha
+    $(document).on('keypress', '#modal_reset_password_new, #modal_reset_password_confirm', function(e) {
+      if (e.which === 13) {
+        e.preventDefault();
+        $('#btn_modal_submit_new_password').click();
+      }
+    });
+
+    // Limpa mensagem de erro dinamicamente ao digitar nos campos do modal
+    $(document).on('input', '#modal_reset_password_new, #modal_reset_password_confirm', function() {
+      $('#modal_reset_password_error_ui').empty();
+    });
+
+    // Foco automático e seleção ao exibir o modal do Shiny
+    $(document).on('shown.bs.modal', '#shiny-modal', function() {
+      setTimeout(function() {
+        var input = $('#modal_reset_password_new');
+        if (input.length) {
+          input.focus();
+          input.select();
+        }
+      }, 80);
+    });
   });
 
   // 3. Handlers Seguros do Shiny
@@ -568,6 +592,17 @@
       $('#auth_reset_error_box').stop(true, true).slideDown(150);
     });
 
+    // Foco e seleção imediata no campo de nova senha após erro de validação/mesma senha
+    Shiny.addCustomMessageHandler('modal_reset_error_focus', function() {
+      setTimeout(function() {
+        var inp = $('#modal_reset_password_new');
+        if (inp.length) {
+          inp.focus();
+          inp.select();
+        }
+      }, 50);
+    });
+
     // Scroll para logs
     Shiny.addCustomMessageHandler('scroll-logs', function(msg) {
       setTimeout(function() {
@@ -675,20 +710,32 @@
       // Força a exibição do formulário de redefinição
       window.switchAuthTab('reset');
 
-      // Dispara abertura do modal dedicado no Shiny (com retentativas para garantir exibição mesmo após F5)
+      // Dispara abertura do modal dedicado no Shiny (disparo único seguro)
+      var modalTriggerSent = false;
       function triggerShinyModal() {
+        if (modalTriggerSent) return;
         if (window.Shiny && window.Shiny.setInputValue) {
+          modalTriggerSent = true;
           window.Shiny.setInputValue('trigger_reset_password_modal', {
             access_token: token,
             timestamp: Date.now()
           }, { priority: 'event' });
         }
       }
-      triggerShinyModal();
-      $(document).on('shiny:connected', triggerShinyModal);
-      setTimeout(triggerShinyModal, 400);
-      setTimeout(triggerShinyModal, 1200);
-      setTimeout(triggerShinyModal, 2500);
+
+      if (window.Shiny && window.Shiny.shinyapp && window.Shiny.shinyapp.isConnected()) {
+        triggerShinyModal();
+      } else {
+        $(document).one('shiny:connected', function() {
+          triggerShinyModal();
+        });
+      }
+
+      setTimeout(function() {
+        if (!modalTriggerSent) {
+          triggerShinyModal();
+        }
+      }, 500);
 
       if (window.history && window.history.replaceState) {
         window.history.replaceState(null, document.title, window.location.pathname + window.location.search);

@@ -141,6 +141,7 @@
     }
 
     btn.prop('disabled', true).addClass('loading');
+    btn.html('<i class="fa fa-spinner fa-spin" style="margin-right: 8px;"></i><span>Enviando link para seu e-mail...</span>');
     var redirectUri = 'https://neicimatec-radar-da-inovacao.share.connect.posit.cloud/';
     try {
       if (window.location.origin.indexOf('localhost') !== -1 || window.location.origin.indexOf('127.0.0.1') !== -1) {
@@ -376,6 +377,13 @@
       if (e.key === 'Enter' || e.keyCode === 13 || e.which === 13) {
         e.preventDefault();
         window.submitSignupForm();
+      }
+    });
+
+    $(document).on('keydown', '#recovery_email', function(e) {
+      if (e.key === 'Enter' || e.keyCode === 13 || e.which === 13) {
+        e.preventDefault();
+        window.submitRecoveryForm();
       }
     });
 
@@ -628,7 +636,7 @@
 
       var msg = (data && data.message) ? data.message : 'Link de recuperação enviado com sucesso! Verifique sua caixa de entrada e spam.';
       $('#auth_recovery_error_box').hide();
-      $('#auth_recovery_success_text').text(msg);
+      $('#auth_recovery_success_text').html(msg + '<br><small style="display:block; margin-top:6px; opacity:0.9;"><strong>Aviso:</strong> Servidores corporativos (@fieb.org.br) podem levar de 1 a 3 minutos para liberar o e-mail na sua caixa.</small>');
       $('#auth_recovery_success_box').stop(true, true).slideDown(150);
     });
 

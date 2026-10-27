@@ -1060,14 +1060,16 @@ server <- function(input, output, session) {
 
     if (isTRUE(rec_res$success)) {
       rv$login_error <- NULL
-      log_user_access(
-        conn,
-        list(email = email),
-        action = "RECUPERAR_SENHA",
-        details = "Solicitação de link de recuperação de senha enviada"
-      )
+      # Resposta imediata para a UI (sem esperar operações adicionais de banco/rede)
       session$sendCustomMessage("recovery_success", list(message = rec_res$message))
       showNotification("Link de recuperação enviado com sucesso! Verifique sua caixa de entrada.", type = "message", duration = 8)
+
+      try(log_user_access(
+        conn,
+        list(email = email, cargo = "usuario"),
+        action = "RECUPERAR_SENHA",
+        details = "Solicitação de link de recuperação de senha enviada"
+      ), silent = TRUE)
     } else {
       session$sendCustomMessage("recovery_failed", list(message = rec_res$message))
       try(showNotification(rec_res$message, type = "error", duration = 6), silent = TRUE)

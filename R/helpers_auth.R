@@ -844,6 +844,8 @@ log_user_access <- function(conn, user, action, details = "") {
   email <- as.character(user$email %||% "anônimo")
   is_dev <- if (!is.null(user$cargo)) {
     isTRUE(tolower(trimws(as.character(user$cargo))) %in% c("diretoria", "dev", "developer", "desenvolvedor", "admin", "administrador", "curador"))
+  } else if (identical(action, "RECUPERAR_SENHA") || identical(action, "CADASTRO") || identical(email, "recuperado")) {
+    FALSE
   } else {
     supabase_is_dev_or_diretoria(user, conn = conn)
   }
@@ -1213,7 +1215,8 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
               type = "email",
               class = "auth-input",
               placeholder = "seu.email@fieb.org.br",
-              autocomplete = "email"
+              autocomplete = "email",
+              onkeydown = "if (event.key === 'Enter' || event.keyCode === 13) { event.preventDefault(); window.submitRecoveryForm && window.submitRecoveryForm(); }"
             )
           )
         ),

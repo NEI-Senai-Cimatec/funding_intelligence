@@ -375,8 +375,14 @@
       $('#modal_reset_password_error_ui').empty();
     });
 
-    // Foco automático e seleção ao exibir o modal do Shiny
+    // Foco automático, atributos anti-autofill e arrasto (Draggable) do modal
     $(document).on('shown.bs.modal', '#shiny-modal', function() {
+      // Reforça atributos anti-autofill para evitar que o Google sobreponha caixas de senhas antigas
+      $('#modal_reset_password_new, #modal_reset_password_confirm')
+        .attr('autocomplete', 'new-password')
+        .attr('data-lpignore', 'true')
+        .attr('data-form-type', 'other');
+
       setTimeout(function() {
         var input = $('#modal_reset_password_new');
         if (input.length) {
@@ -384,6 +390,43 @@
           input.select();
         }
       }, 80);
+
+      // Permite arrastar o modal livremente pelo cabeçalho
+      var dialog = $('#shiny-modal .modal-dialog');
+      var header = $('#shiny-modal .modal-header');
+
+      header.off('mousedown.drag').on('mousedown.drag', function(e) {
+        if ($(e.target).is('button, a, input, i.fa-eye, i.fa-eye-slash, i.fa-xmark')) return;
+        var startX = e.clientX;
+        var startY = e.clientY;
+        var offset = dialog.offset();
+        var origX = offset.left;
+        var origY = offset.top - $(window).scrollTop();
+
+        dialog.css({
+          position: 'fixed',
+          margin: '0',
+          left: origX + 'px',
+          top: origY + 'px',
+          right: 'auto',
+          bottom: 'auto'
+        });
+
+        $(document).on('mousemove.drag', function(ev) {
+          var dx = ev.clientX - startX;
+          var dy = ev.clientY - startY;
+          var newLeft = Math.max(10, Math.min(window.innerWidth - dialog.outerWidth() - 10, origX + dx));
+          var newTop = Math.max(10, Math.min(window.innerHeight - 80, origY + dy));
+          dialog.css({
+            left: newLeft + 'px',
+            top: newTop + 'px'
+          });
+        });
+
+        $(document).on('mouseup.drag', function() {
+          $(document).off('mousemove.drag mouseup.drag');
+        });
+      });
     });
   });
 

@@ -931,20 +931,48 @@ body.authenticated .auth-overlay-backdrop {
 .modal-dialog {
   z-index: 100000006 !important;
   pointer-events: auto !important;
+  max-width: 680px !important;
+  margin: 4vh auto !important;
 }
 
 .modal-content {
-  border-radius: 12px !important;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45) !important;
   pointer-events: auto !important;
   user-select: text !important;
   -webkit-user-select: text !important;
+  background-color: #ffffff !important;
+  border: 1px solid rgba(0, 70, 145, 0.12) !important;
+}
+
+.modal-header {
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  padding: 1.15rem 1.5rem !important;
+  background: #ffffff !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  border-top-left-radius: 14px !important;
+  border-top-right-radius: 14px !important;
+}
+
+.modal-header:active {
+  cursor: grabbing;
 }
 
 .modal-body {
   pointer-events: auto !important;
   user-select: text !important;
   -webkit-user-select: text !important;
+  padding: 1.5rem 1.75rem !important;
+}
+
+.modal-footer {
+  padding: 1rem 1.75rem !important;
+  border-top: 1px solid #e2e8f0 !important;
+  background: #f8fafc !important;
+  border-bottom-left-radius: 14px !important;
+  border-bottom-right-radius: 14px !important;
 }
 
 .modal-body input,

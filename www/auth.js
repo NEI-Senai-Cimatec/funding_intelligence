@@ -226,9 +226,52 @@
   var isRecoveryModeActive = false;
   var isRecoveryErrorActive = false;
   var recoveryErrorMessage = '';
+  var modalTriggerAcknowledged = false;
+
+  // Verifica se o usuário está em fluxo de recuperação (ativo, em memória, sessionStorage ou URL)
+  window.isUserInRecovery = function() {
+    var stored = null;
+    try {
+      stored = sessionStorage.getItem('quiin_pending_recovery_token');
+    } catch(e) {}
+    return isRecoveryModeActive || !!window.currentRecoveryToken || (!!stored && stored.length > 5);
+  };
+
+  // Força a exibição imediata e incontestável do formulário de criação de nova senha
+  window.enforceResetTab = function() {
+    var tabsNav = $('.auth-tabs-nav');
+    tabsNav.hide();
+    $('body').removeClass('authenticated');
+    $('#auth_overlay_root').show();
+
+    var elRestoring = document.getElementById('auth_restoring_state');
+    var elLogin = document.getElementById('auth_form_login');
+    var elSignup = document.getElementById('auth_form_signup');
+    var elForgot = document.getElementById('auth_form_forgot');
+    var elReset = document.getElementById('auth_form_reset_password');
+
+    if (elRestoring) elRestoring.style.display = 'none';
+    if (elLogin) elLogin.style.display = 'none';
+    if (elSignup) elSignup.style.display = 'none';
+    if (elForgot) elForgot.style.display = 'none';
+    if (elReset) {
+      elReset.style.display = 'block';
+      var resetPwd = document.getElementById('reset_password_new');
+      if (resetPwd) {
+        setTimeout(function() { resetPwd.focus(); }, 60);
+      }
+    }
+  };
 
   // 2. Função de Alternância de Abas Instantânea (Login, Cadastro, Recuperar e Redefinir)
   window.switchAuthTab = function(mode) {
+    // Se estiver em modo de recuperação e tentarem chavear para outra aba, bloqueia categoricamente
+    if (window.isUserInRecovery() && mode !== 'reset') {
+      console.warn('[AUTH] Bloqueando alternância de aba durante recuperação de senha pendente.');
+      window.enforceResetTab();
+      return;
+    }
+
     var tabsNav = $('.auth-tabs-nav');
     $('.auth-tab-btn').removeClass('active');
 
@@ -238,7 +281,7 @@
     var formReset = document.getElementById('auth_form_reset_password');
 
     // Se os elementos ainda não foram carregados no DOM, agenda para quando o DOM estiver pronto
-    if (!formLogin && !formReset) {
+    if (!formLogin || !formReset) {
       $(document).ready(function() {
         window.switchAuthTab(mode);
       });
@@ -265,20 +308,8 @@
     btnReset.prop('disabled', false).removeClass('loading');
     btnReset.html('<i class="fa fa-check" style="margin-right: 8px;"></i><span>Atualizar Senha</span>');
 
-    if (mode === 'reset' || isRecoveryModeActive) {
-      tabsNav.hide();
-      $('body').removeClass('authenticated');
-      $('#auth_overlay_root').show();
-      var elRestoring = document.getElementById('auth_restoring_state');
-      if (elRestoring) elRestoring.style.display = 'none';
-      if (formLogin) formLogin.style.display = 'none';
-      if (formSignup) formSignup.style.display = 'none';
-      if (formForgot) formForgot.style.display = 'none';
-      if (formReset) {
-        formReset.style.display = 'block';
-        var resetPwd = document.getElementById('reset_password_new');
-        if (resetPwd) resetPwd.focus();
-      }
+    if (mode === 'reset' || window.isUserInRecovery()) {
+      window.enforceResetTab();
     } else if (mode === 'forgot') {
       tabsNav.hide();
       if (formLogin) formLogin.style.display = 'none';
@@ -469,6 +500,13 @@
       } else {
         $('body').removeClass('authenticated');
 
+        // Se estiver em modo de recuperação, NUNCA permite exibir o formulário de login
+        if (window.isUserInRecovery()) {
+          console.warn('[AUTH] Recuperação de senha ativa. Exibição do formulário de login bloqueada.');
+          window.enforceResetTab();
+          return;
+        }
+
         // Reseta imediatamente o spinner de restauração para o formulário de login limpo
         if (elRestoring) elRestoring.style.display = 'none';
         if (elForgot) elForgot.style.display = 'none';
@@ -521,6 +559,11 @@
       } catch(e) {}
       sessionRestored = false;
 
+      if (window.isUserInRecovery()) {
+        window.enforceResetTab();
+        return;
+      }
+
       var elRestoring = document.getElementById('auth_restoring_state');
       var elLogin = document.getElementById('auth_form_login');
       var elSignup = document.getElementById('auth_form_signup');
@@ -543,6 +586,10 @@
 
     // Falha na restauração da sessão silenciosa (revela formulário sem apagar se for falha de rede transitória)
     Shiny.addCustomMessageHandler('restore_auth_failed', function(msg) {
+      if (window.isUserInRecovery()) {
+        window.enforceResetTab();
+        return;
+      }
       var elRestoring = document.getElementById('auth_restoring_state');
       var elLogin = document.getElementById('auth_form_login');
       var elTabs = document.querySelector('.auth-tabs-nav');
@@ -604,6 +651,10 @@
       try {
         sessionStorage.removeItem('quiin_pending_recovery_token');
       } catch(e) {}
+      $('#quiin_recovery_instant_css').remove();
+      if (window.history && window.history.replaceState) {
+        window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
+      }
       var btn = $('#btn_reset_password_submit');
       btn.prop('disabled', false).removeClass('loading');
       btn.html('<i class="fa fa-check" style="margin-right: 8px;"></i><span>Atualizar Senha</span>');
@@ -621,7 +672,17 @@
       try {
         sessionStorage.removeItem('quiin_pending_recovery_token');
       } catch(e) {}
+      $('#quiin_recovery_instant_css').remove();
+      if (window.history && window.history.replaceState) {
+        window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
+      }
       window.switchAuthTab('login');
+    });
+
+    // Confirmação de abertura do modal pelo servidor Shiny
+    Shiny.addCustomMessageHandler('reset_modal_opened', function(data) {
+      modalTriggerAcknowledged = true;
+      console.log('[AUTH] Confirmação de abertura do modal de recuperação recebida do servidor Shiny.');
     });
 
     // Falha na redefinição de senha via link
@@ -686,11 +747,11 @@
             var clean = str.replace(/^[#?]/, '');
             var parts = clean.split('&');
             parts.forEach(function(part) {
-              var kv = part.split('=');
-              if (kv.length === 2) {
-                var key = decodeURIComponent(kv[0]);
-                var val = decodeURIComponent(kv[1]);
-                if (!params[key]) params[key] = val;
+              var eqIdx = part.indexOf('=');
+              if (eqIdx !== -1) {
+                var key = decodeURIComponent(part.substring(0, eqIdx)).trim();
+                var val = decodeURIComponent(part.substring(eqIdx + 1)).trim();
+                if (key && !params[key]) params[key] = val;
               }
             });
           }
@@ -700,20 +761,54 @@
 
     // Também verifica document.referrer se disponível
     try {
-      if (document.referrer && (document.referrer.indexOf('access_token=') !== -1 || document.referrer.indexOf('type=recovery') !== -1)) {
+      if (document.referrer && (document.referrer.indexOf('access_token=') !== -1 || document.referrer.indexOf('type=recovery') !== -1 || document.referrer.indexOf('code=') !== -1)) {
         var refParts = document.referrer.split(/[#?&]/);
         refParts.forEach(function(part) {
-          var kv = part.split('=');
-          if (kv.length === 2) {
-            var key = decodeURIComponent(kv[0]);
-            var val = decodeURIComponent(kv[1]);
-            if (!params[key]) params[key] = val;
+          var eqIdx = part.indexOf('=');
+          if (eqIdx !== -1) {
+            var key = decodeURIComponent(part.substring(0, eqIdx)).trim();
+            var val = decodeURIComponent(part.substring(eqIdx + 1)).trim();
+            if (key && !params[key]) params[key] = val;
           }
         });
       }
     } catch(e) {}
 
     return params;
+  }
+
+  // Disparo contínuo e confiável da abertura do modal de recuperação no Shiny
+  function startRecoveryModalTrigger(token) {
+    if (modalTriggerAcknowledged) return;
+
+    function sendToShiny() {
+      if (modalTriggerAcknowledged) return;
+      if (window.Shiny && window.Shiny.setInputValue && window.Shiny.shinyapp && window.Shiny.shinyapp.isConnected()) {
+        console.log('[AUTH] Enviando trigger_reset_password_modal para o servidor Shiny...');
+        window.Shiny.setInputValue('trigger_reset_password_modal', {
+          access_token: token,
+          timestamp: Date.now()
+        }, { priority: 'event' });
+      }
+    }
+
+    if (window.Shiny && window.Shiny.shinyapp && window.Shiny.shinyapp.isConnected()) {
+      sendToShiny();
+    }
+
+    $(document).on('shiny:connected shiny:sessioninitialized', function() {
+      sendToShiny();
+    });
+
+    var pollAttempts = 0;
+    var recoveryPoll = setInterval(function() {
+      pollAttempts++;
+      if (modalTriggerAcknowledged || pollAttempts > 100 || !window.isUserInRecovery()) {
+        clearInterval(recoveryPoll);
+        return;
+      }
+      sendToShiny();
+    }, 200);
   }
 
   // 4. Detecção e Persistência de Recuperação de Senha na URL (sobrevive a F5 / reload)
@@ -729,7 +824,9 @@
     var isRecovery = (params.type === 'recovery') || 
                      (params.recovery === 'true') || 
                      (params.access_token && params.type !== 'signup') || 
-                     (params.token_hash && params.type === 'recovery') ||
+                     (params.token_hash && (params.type === 'recovery' || !params.type)) ||
+                     (params.code && params.code.length > 5) ||
+                     (params.token && params.token.length > 5) ||
                      (storedToken && storedToken.length > 5);
 
     var token = params.access_token || params.token || params.code || params.token_hash || storedToken || '';
@@ -747,42 +844,13 @@
       try {
         localStorage.removeItem('quiin_auth_session');
       } catch(e) {}
-      $('body').removeClass('authenticated');
-      $('#auth_overlay_root').show();
 
       // Força a exibição do formulário de redefinição
-      window.switchAuthTab('reset');
+      window.enforceResetTab();
 
-      // Dispara abertura do modal dedicado no Shiny (disparo único seguro)
-      var modalTriggerSent = false;
-      function triggerShinyModal() {
-        if (modalTriggerSent) return;
-        if (window.Shiny && window.Shiny.setInputValue) {
-          modalTriggerSent = true;
-          window.Shiny.setInputValue('trigger_reset_password_modal', {
-            access_token: token,
-            timestamp: Date.now()
-          }, { priority: 'event' });
-        }
-      }
+      // Dispara abertura do modal dedicado no Shiny de forma persistente
+      startRecoveryModalTrigger(token);
 
-      if (window.Shiny && window.Shiny.shinyapp && window.Shiny.shinyapp.isConnected()) {
-        triggerShinyModal();
-      } else {
-        $(document).one('shiny:connected', function() {
-          triggerShinyModal();
-        });
-      }
-
-      setTimeout(function() {
-        if (!modalTriggerSent) {
-          triggerShinyModal();
-        }
-      }, 500);
-
-      if (window.history && window.history.replaceState) {
-        window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
-      }
       return true;
     }
 
@@ -805,15 +873,10 @@
   function initSessionRestore() {
     if (sessionRestored) return;
 
-    var storedRecovery = null;
-    try {
-      storedRecovery = sessionStorage.getItem('quiin_pending_recovery_token');
-    } catch(e) {}
-
     // Se estiver em modo de recuperação de senha ou com token pendente, JAMAIS restaura sessão antiga nem abre login
-    if (isRecoveryModeActive || window.currentRecoveryToken || (storedRecovery && storedRecovery.length > 5)) {
+    if (window.isUserInRecovery()) {
       console.log('[AUTH] Recuperação de senha ativa. Restauração de sessão persistente ignorada.');
-      checkUrlForRecovery();
+      window.enforceResetTab();
       return;
     }
 
@@ -854,9 +917,9 @@
         clearInterval(restoreTimer);
         return;
       }
-      if (isRecoveryModeActive || window.currentRecoveryToken) {
+      if (window.isUserInRecovery()) {
         clearInterval(restoreTimer);
-        window.switchAuthTab('reset');
+        window.enforceResetTab();
         return;
       }
       if (window.Shiny && window.Shiny.setInputValue && window.Shiny.shinyapp && window.Shiny.shinyapp.isConnected()) {
@@ -867,6 +930,10 @@
       } else if (attempts >= maxAttempts) {
         clearInterval(restoreTimer);
         console.warn('[AUTH] Timeout aguardando conexao Shiny para restaurar sessao.');
+        if (window.isUserInRecovery()) {
+          window.enforceResetTab();
+          return;
+        }
         if (elRestoring) elRestoring.style.display = 'none';
         if (elLogin) elLogin.style.display = 'block';
         if (elTabs) elTabs.style.display = 'flex';

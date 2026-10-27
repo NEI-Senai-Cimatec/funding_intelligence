@@ -330,6 +330,23 @@ ui <- bslib::page_sidebar(
     tags$meta(name = "viewport", content = "width=device-width, initial-scale=1.0"),
     tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = paste0("styles.css?v=", as.integer(Sys.time()))),
+    tags$script(htmltools::HTML("
+      (function() {
+        try {
+          var h = window.location.hash || '';
+          var s = window.location.search || '';
+          var isRec = (h.indexOf('type=recovery') !== -1) || (s.indexOf('type=recovery') !== -1);
+          var saved = localStorage.getItem('quiin_auth_session');
+          if (saved && !isRec) {
+            document.documentElement.classList.add('authenticated');
+            var st = document.createElement('style');
+            st.id = 'quiin_early_auth_css';
+            st.textContent = '#auth_overlay_root { display: none !important; }';
+            document.head.appendChild(st);
+          }
+        } catch(e) {}
+      })();
+    ")),
     tags$script(src = paste0("auth.js?v=", as.integer(Sys.time())))
   ),
 
@@ -1103,10 +1120,11 @@ server <- function(input, output, session) {
     search_val <- session$clientData$url_search %||% ""
     full_query <- paste0(hash_val, "&", search_val)
     
-    if (grepl("type=recovery", full_query, ignore.case = TRUE) ||
-        grepl("access_token=", full_query, ignore.case = TRUE) ||
-        grepl("token_hash=", full_query, ignore.case = TRUE) ||
-        grepl("[?&#]code=", full_query, ignore.case = TRUE)) {
+    var_is_rec <- grepl("type=recovery", full_query, ignore.case = TRUE) ||
+                  grepl("recovery=true", full_query, ignore.case = TRUE) ||
+                  (grepl("token_hash=", full_query, ignore.case = TRUE) && grepl("type=recovery", full_query, ignore.case = TRUE))
+
+    if (var_is_rec) {
       
       tok <- ""
       m_tok <- regmatches(full_query, regexec("access_token=([^&]+)", full_query))[[1]]

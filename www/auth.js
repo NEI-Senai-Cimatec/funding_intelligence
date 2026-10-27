@@ -250,10 +250,12 @@
     if (!skipModalHide) {
       $('#shiny-modal').modal('hide');
     }
-    $('.auth-tabs-nav').css('display', 'flex').show();
-    $('#auth_form_reset_password').hide();
-    $('#auth_form_login').show();
-    window.switchAuthTab('login');
+    if (!$('body').hasClass('authenticated')) {
+      $('.auth-tabs-nav').css('display', 'flex').show();
+      $('#auth_form_reset_password').hide();
+      $('#auth_form_login').show();
+      window.switchAuthTab('login');
+    }
     if (window.Shiny && window.Shiny.setInputValue) {
       window.Shiny.setInputValue('reset_modal_closed', Date.now(), {priority: 'event'});
       window.Shiny.setInputValue('btn_modal_cancel_recovery', Date.now(), {priority: 'event'});
@@ -475,6 +477,11 @@
 
     // Fechamento do modal pelo usuário (clique fora no backdrop ou tecla ESC)
     $(document).on('hidden.bs.modal', '#shiny-modal', function() {
+      var btnH = $('#btn_header_change_password');
+      if (btnH.length) {
+        btnH.prop('disabled', false);
+        btnH.find('i').removeClass('fa-spinner fa-spin').addClass('fa-key');
+      }
       if (isRecoveryModeActive || window.currentRecoveryToken || $('#modal_reset_password_new').length) {
         window.cancelRecoveryModal(true);
       }
@@ -482,6 +489,11 @@
 
     // Foco automático, atributos anti-autofill e arrasto (Draggable) do modal
     $(document).on('shown.bs.modal', '#shiny-modal', function() {
+      var btnH = $('#btn_header_change_password');
+      if (btnH.length) {
+        btnH.prop('disabled', false);
+        btnH.find('i').removeClass('fa-spinner fa-spin').addClass('fa-key');
+      }
       // Reforça atributos anti-autofill para evitar que o Google sobreponha caixas de senhas antigas
       $('#modal_reset_password_new, #modal_reset_password_confirm')
         .attr('autocomplete', 'new-password')
@@ -745,12 +757,14 @@
       btn.html('<i class="fa fa-check" style="margin-right: 8px;"></i><span>Atualizar Senha</span>');
 
       var msg = (data && data.message) ? data.message : 'Senha atualizada com sucesso! Você já pode entrar com sua nova senha.';
-      $('.auth-tabs-nav').css('display', 'flex').show();
-      $('#auth_form_reset_password').hide();
-      $('#auth_form_login').show();
-      window.switchAuthTab('login');
-      $('#auth_login_success_text').text(msg);
-      $('#auth_login_success_box').stop(true, true).slideDown(200);
+      if (!$('body').hasClass('authenticated')) {
+        $('.auth-tabs-nav').css('display', 'flex').show();
+        $('#auth_form_reset_password').hide();
+        $('#auth_form_login').show();
+        window.switchAuthTab('login');
+        $('#auth_login_success_text').text(msg);
+        $('#auth_login_success_box').stop(true, true).slideDown(200);
+      }
     });
 
     // Cancelamento explícito da recuperação pelo usuário
@@ -770,10 +784,12 @@
         window.history.replaceState(null, document.title, window.location.pathname);
       }
       $('#shiny-modal').modal('hide');
-      $('.auth-tabs-nav').css('display', 'flex').show();
-      $('#auth_form_reset_password').hide();
-      $('#auth_form_login').show();
-      window.switchAuthTab('login');
+      if (!$('body').hasClass('authenticated')) {
+        $('.auth-tabs-nav').css('display', 'flex').show();
+        $('#auth_form_reset_password').hide();
+        $('#auth_form_login').show();
+        window.switchAuthTab('login');
+      }
     });
 
     // Confirmação de abertura do modal pelo servidor Shiny

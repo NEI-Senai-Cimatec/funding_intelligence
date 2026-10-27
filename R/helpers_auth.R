@@ -626,7 +626,7 @@ supabase_get_user_role_from_db <- function(user, access_token = NULL) {
       httr2::req_headers(!!!headers) |>
       httr2::req_url_query(!!!query_params) |>
       httr2::req_error(is_error = function(resp) FALSE) |>
-      httr2::req_timeout(5)
+      httr2::req_timeout(2)
     
     httr2::req_perform(req)
   }, error = function(e) NULL)
@@ -949,6 +949,18 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
               sNode.id = 'quiin_restore_instant_css';
               sNode.textContent = '#auth_form_login, .auth-tabs-nav, #auth_form_signup, #auth_form_forgot, #auth_form_reset_password { display: none !important; } #auth_restoring_state { display: block !important; }';
               document.head.appendChild(sNode);
+              setTimeout(function() {
+                var el = document.getElementById('quiin_restore_instant_css');
+                if (el && !(document.body && document.body.classList.contains('authenticated'))) {
+                  el.remove();
+                  var r = document.getElementById('auth_restoring_state');
+                  var l = document.getElementById('auth_form_login');
+                  var t = document.querySelector('.auth-tabs-nav');
+                  if (r) r.style.display = 'none';
+                  if (l) l.style.display = 'block';
+                  if (t) t.style.display = 'flex';
+                }
+              }, 4000);
             }
           } catch(e) {}
         })();
@@ -983,7 +995,16 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
         style = "display: none; text-align: center; padding: 2rem 1rem;",
         htmltools::tags$i(class = "fa fa-circle-notch fa-spin", style = "font-size: 2.2rem; color: #004691; margin-bottom: 1rem;"),
         htmltools::tags$h4(style = "color: #0f172a; font-size: 1.15rem; font-weight: 700; margin-bottom: 0.5rem;", "Restaurando sua sessão..."),
-        htmltools::tags$p(style = "color: #64748b; font-size: 0.85rem; margin: 0;", "Validando credenciais salvas no navegador.")
+        htmltools::tags$p(style = "color: #64748b; font-size: 0.85rem; margin: 0 0 1rem 0;", "Validando credenciais salvas no navegador."),
+        htmltools::tags$button(
+          id = "btn_cancel_restore",
+          type = "button",
+          class = "btn btn-sm btn-outline-secondary",
+          onclick = "window.cancelRestoreSession && window.cancelRestoreSession()",
+          style = "border-radius: 8px; font-size: 0.8rem; padding: 6px 14px; border-color: #cbd5e1; color: #64748b;",
+          htmltools::tags$i(class = "fa fa-arrow-left", style = "margin-right: 6px;"),
+          htmltools::tags$span("Entrar com outra conta")
+        )
       ),
       
       # ─── Formulário 1: Login ───────────────────────────────────────────────

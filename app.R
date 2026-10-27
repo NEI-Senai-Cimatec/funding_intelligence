@@ -328,6 +328,9 @@ ui <- bslib::page_sidebar(
   tags$head(
     tags$meta(charset = "utf-8"),
     tags$meta(name = "viewport", content = "width=device-width, initial-scale=1.0"),
+    tags$meta(`http-equiv` = "Cache-Control", content = "no-cache, no-store, must-revalidate"),
+    tags$meta(`http-equiv` = "Pragma", content = "no-cache"),
+    tags$meta(`http-equiv` = "Expires", content = "0"),
     tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = paste0("styles.css?v=", as.integer(Sys.time()))),
     tags$script(src = paste0("auth.js?v=", as.integer(Sys.time())))
@@ -1363,7 +1366,7 @@ server <- function(input, output, session) {
     } else {
       session$sendCustomMessage("restore_auth_failed", list())
     }
-  })
+  }, priority = 100, ignoreInit = FALSE)
 
   # Evento de logout
   observeEvent(input$btn_header_logout, {

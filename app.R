@@ -1050,11 +1050,63 @@ server <- function(input, output, session) {
     }
   })
 
-  # Evento de redefinição de senha com token de recuperação
+  # Evento para abrir o modal dedicado de criar/redefinir senha (disparado pelo link de recuperação)
+  observeEvent(input$trigger_reset_password_modal, {
+    tok_data <- input$trigger_reset_password_modal
+    tok <- as.character(if (is.list(tok_data)) tok_data$access_token else tok_data %||% "")
+    if (nzchar(tok)) {
+      rv$pending_recovery_token <- tok
+    }
+    show_reset_password_modal(session, access_token = rv$pending_recovery_token %||% rv$access_token %||% "")
+  })
+
+  # Evento para abrir o modal a partir do botão 'Alterar Senha' no cabeçalho
+  observeEvent(input$btn_header_change_password, {
+    show_reset_password_modal(session, access_token = rv$access_token %||% "")
+  })
+
+  # Submissão do formulário do modal dedicado de nova senha
+  observeEvent(input$btn_modal_submit_new_password, {
+    pwd <- trimws(as.character(input$modal_reset_password_new %||% ""))
+    pwd_conf <- trimws(as.character(input$modal_reset_password_confirm %||% ""))
+    token <- as.character(rv$pending_recovery_token %||% rv$access_token %||% "")
+
+    if (!nzchar(pwd) || !nzchar(pwd_conf)) {
+      show_reset_password_modal(session, access_token = token, error_msg = "Por favor, preencha ambos os campos de senha.")
+      return()
+    }
+    if (nchar(pwd) < 6) {
+      show_reset_password_modal(session, access_token = token, error_msg = "A nova senha deve conter no mínimo 6 caracteres.")
+      return()
+    }
+    if (!identical(pwd, pwd_conf)) {
+      show_reset_password_modal(session, access_token = token, error_msg = "As senhas digitadas não coincidem. Digite novamente.")
+      return()
+    }
+    if (!nzchar(token)) {
+      show_reset_password_modal(session, access_token = token, error_msg = "Token de recuperação ausente ou expirado. Por favor, solicite um novo link.")
+      return()
+    }
+
+    shiny::withProgress(message = "Atualizando senha no Supabase...", {
+      update_res <- supabase_update_password(token, pwd)
+    })
+
+    if (isTRUE(update_res$success)) {
+      shiny::removeModal()
+      rv$pending_recovery_token <- NULL
+      showNotification("Sua senha foi atualizada com sucesso no Supabase! Você já pode utilizá-la.", type = "message", duration = 8)
+      session$sendCustomMessage("reset_password_success", list(message = "Senha atualizada com sucesso!"))
+    } else {
+      show_reset_password_modal(session, access_token = token, error_msg = update_res$message)
+    }
+  })
+
+  # Evento de redefinição de senha com token de recuperação (via formulário embutido)
   observeEvent(input$btn_reset_password_submit, {
     btn_data <- input$btn_reset_password_submit
     pwd <- as.character(if (is.list(btn_data) && !is.null(btn_data$password)) btn_data$password else input$reset_password_new %||% "")
-    access_token <- as.character(if (is.list(btn_data) && !is.null(btn_data$access_token)) btn_data$access_token else "")
+    access_token <- as.character(if (is.list(btn_data) && !is.null(btn_data$access_token)) btn_data$access_token else rv$pending_recovery_token %||% "")
 
     if (!nzchar(pwd)) {
       session$sendCustomMessage("reset_password_failed", list(message = "Por favor, defina uma nova senha."))
@@ -1077,6 +1129,7 @@ server <- function(input, output, session) {
 
     if (isTRUE(update_res$success)) {
       rv$login_error <- NULL
+      rv$pending_recovery_token <- NULL
       # Tenta obter dados do usuário para registrar auditoria
       user_res <- supabase_get_user(access_token)
       user_info <- if (isTRUE(user_res$success)) user_res$user else list(email = "recuperado")

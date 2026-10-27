@@ -353,6 +353,38 @@ supabase_update_password <- function(access_token, new_password) {
     ))
   }
   
+  # Se o token não for um JWT clássico (não contiver 2 pontos), tenta trocar via /auth/v1/verify
+  is_jwt <- grepl("^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$", access_token)
+  if (!is_jwt) {
+    verify_endpoint <- paste0(cfg$url, "/auth/v1/verify")
+    verify_body <- list(type = "recovery")
+    if (nchar(access_token) == 64 || !grepl("-", access_token)) {
+      verify_body$token_hash <- access_token
+    } else {
+      verify_body$token <- access_token
+    }
+    
+    verify_resp <- tryCatch({
+      httr2::request(verify_endpoint) |>
+        httr2::req_headers(
+          "apikey" = cfg$anon_key,
+          "Content-Type" = "application/json"
+        ) |>
+        httr2::req_body_json(verify_body) |>
+        httr2::req_error(is_error = function(resp) FALSE) |>
+        httr2::req_timeout(10) |>
+        httr2::req_perform()
+    }, error = function(e) NULL)
+    
+    if (!is.null(verify_resp) && httr2::resp_status(verify_resp) %in% c(200, 201)) {
+      v_text <- tryCatch(httr2::resp_body_string(verify_resp), error = function(e) "")
+      v_json <- tryCatch(jsonlite::fromJSON(v_text, simplifyVector = FALSE), error = function(e) NULL)
+      if (!is.null(v_json$access_token) && nzchar(as.character(v_json$access_token))) {
+        access_token <- as.character(v_json$access_token)
+      }
+    }
+  }
+  
   endpoint <- paste0(cfg$url, "/auth/v1/user")
   
   resp <- tryCatch({
@@ -890,6 +922,29 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
         )
       },
       
+      # Proteção Instantânea contra Flash do Login: Se houver indício de recuperação na URL ou sessionStorage,
+      # injeta estilo imediato ocultando o formulário de login e forçando a exibição da tela de redefinição.
+      htmltools::tags$script(htmltools::HTML("
+        (function() {
+          try {
+            var h = window.location.hash || '';
+            var s = window.location.search || '';
+            var ref = document.referrer || '';
+            var st = '';
+            try { st = sessionStorage.getItem('quiin_pending_recovery_token') || ''; } catch(e) {}
+            var isRec = (h.indexOf('type=recovery') !== -1) || (h.indexOf('access_token=') !== -1) ||
+                        (s.indexOf('type=recovery') !== -1) || (s.indexOf('code=') !== -1) ||
+                        (ref.indexOf('type=recovery') !== -1) || (st.length > 5);
+            if (isRec) {
+              var sNode = document.createElement('style');
+              sNode.id = 'quiin_recovery_instant_css';
+              sNode.textContent = '#auth_form_login, .auth-tabs-nav, #auth_form_signup, #auth_form_forgot, #auth_restoring_state { display: none !important; } #auth_form_reset_password { display: block !important; }';
+              document.head.appendChild(sNode);
+            }
+          } catch(e) {}
+        })();
+      ")),
+
       # Alternador de Abas (Entrar vs Criar Conta)
       htmltools::tags$div(
         class = "auth-tabs-nav",
@@ -1449,7 +1504,8 @@ show_reset_password_modal <- function(session, access_token = "", error_msg = NU
                 `data-form-type` = "other",
                 value = "",
                 `data-update-on` = "change",
-                style = "padding-right: 2.75rem;"
+                style = "padding-right: 2.75rem;",
+                onkeydown = "if (event.key === 'Enter' || event.keyCode === 13) { event.preventDefault(); $('#btn_modal_submit_new_password').click(); }"
               ),
               htmltools::tags$button(
                 type = "button",
@@ -1477,7 +1533,8 @@ show_reset_password_modal <- function(session, access_token = "", error_msg = NU
                 `data-form-type` = "other",
                 value = "",
                 `data-update-on` = "change",
-                style = "padding-right: 2.75rem;"
+                style = "padding-right: 2.75rem;",
+                onkeydown = "if (event.key === 'Enter' || event.keyCode === 13) { event.preventDefault(); $('#btn_modal_submit_new_password').click(); }"
               ),
               htmltools::tags$button(
                 type = "button",

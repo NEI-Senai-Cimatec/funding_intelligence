@@ -1089,6 +1089,46 @@ server <- function(input, output, session) {
     }
   })
 
+  # Failsafe do Servidor: Detecta link de recuperação diretamente pela URL (hash ou search)
+  observe({
+    if (!is.null(rv$user) || isTRUE(rv$reset_modal_open)) return()
+    
+    hash_val <- session$clientData$url_hash %||% ""
+    search_val <- session$clientData$url_search %||% ""
+    full_query <- paste0(hash_val, "&", search_val)
+    
+    if (grepl("type=recovery", full_query, ignore.case = TRUE) ||
+        grepl("access_token=", full_query, ignore.case = TRUE) ||
+        grepl("token_hash=", full_query, ignore.case = TRUE) ||
+        grepl("[?&#]code=", full_query, ignore.case = TRUE)) {
+      
+      tok <- ""
+      m_tok <- regmatches(full_query, regexec("access_token=([^&]+)", full_query))[[1]]
+      if (length(m_tok) >= 2) tok <- utils::URLdecode(m_tok[2])
+      
+      if (!nzchar(tok)) {
+        m_hash <- regmatches(full_query, regexec("token_hash=([^&]+)", full_query))[[1]]
+        if (length(m_hash) >= 2) tok <- utils::URLdecode(m_hash[2])
+      }
+      if (!nzchar(tok)) {
+        m_code <- regmatches(full_query, regexec("[?&#]code=([^&]+)", full_query))[[1]]
+        if (length(m_code) >= 2) tok <- utils::URLdecode(m_code[2])
+      }
+      if (!nzchar(tok)) {
+        m_token <- regmatches(full_query, regexec("[?&#]token=([^&]+)", full_query))[[1]]
+        if (length(m_token) >= 2) tok <- utils::URLdecode(m_token[2])
+      }
+      
+      if (nzchar(tok)) {
+        rv$pending_recovery_token <- tok
+        rv$reset_modal_open <- TRUE
+        rv$modal_reset_error <- NULL
+        show_reset_password_modal(session, access_token = tok)
+        session$sendCustomMessage("reset_modal_opened", list(token = tok))
+      }
+    }
+  })
+
   # Evento para abrir o modal dedicado de criar/redefinir senha (disparado pelo link de recuperação)
   observeEvent(input$trigger_reset_password_modal, {
     tok_data <- input$trigger_reset_password_modal
@@ -1101,6 +1141,7 @@ server <- function(input, output, session) {
       rv$reset_modal_open <- TRUE
       show_reset_password_modal(session, access_token = rv$pending_recovery_token %||% rv$access_token %||% "")
     }
+    session$sendCustomMessage("reset_modal_opened", list(token = rv$pending_recovery_token %||% ""))
   })
 
   # Evento para abrir o modal a partir do botão 'Alterar Senha' no cabeçalho
@@ -1215,6 +1256,9 @@ server <- function(input, output, session) {
 
   # Restauração automática de sessão persistente ao atualizar a página (F5)
   observeEvent(input$restore_auth_session, {
+    # Se houver recuperação de senha em andamento, ignora restauração de sessão para evitar sobreposição
+    if (!is.null(rv$pending_recovery_token) || isTRUE(rv$reset_modal_open)) return()
+
     session_data <- input$restore_auth_session
     if (!is.list(session_data)) return()
     

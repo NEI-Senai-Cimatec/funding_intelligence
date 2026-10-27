@@ -333,38 +333,38 @@
       }
     });
 
-    // Submissão com tecla ENTER nos campos
-    $(document).on('keypress', '#login_email, #login_password', function(e) {
-      if (e.which === 13) {
+    // Submissão com tecla ENTER nos campos (usando keydown para máxima compatibilidade)
+    $(document).on('keydown', '#login_email, #login_password', function(e) {
+      if (e.key === 'Enter' || e.keyCode === 13 || e.which === 13) {
         e.preventDefault();
         window.submitLoginForm();
       }
     });
 
-    $(document).on('keypress', '#signup_email, #signup_password, #signup_password_confirm', function(e) {
-      if (e.which === 13) {
+    $(document).on('keydown', '#signup_email, #signup_password, #signup_password_confirm', function(e) {
+      if (e.key === 'Enter' || e.keyCode === 13 || e.which === 13) {
         e.preventDefault();
         window.submitSignupForm();
       }
     });
 
-    $(document).on('keypress', '#recovery_email', function(e) {
-      if (e.which === 13) {
+    $(document).on('keydown', '#recovery_email', function(e) {
+      if (e.key === 'Enter' || e.keyCode === 13 || e.which === 13) {
         e.preventDefault();
         window.submitRecoveryForm();
       }
     });
 
-    $(document).on('keypress', '#reset_password_new, #reset_password_confirm', function(e) {
-      if (e.which === 13) {
+    $(document).on('keydown', '#reset_password_new, #reset_password_confirm', function(e) {
+      if (e.key === 'Enter' || e.keyCode === 13 || e.which === 13) {
         e.preventDefault();
         window.submitResetPasswordForm();
       }
     });
 
     // Submissão com ENTER nos campos do modal dedicado de reset de senha
-    $(document).on('keypress', '#modal_reset_password_new, #modal_reset_password_confirm', function(e) {
-      if (e.which === 13) {
+    $(document).on('keydown', '#modal_reset_password_new, #modal_reset_password_confirm', function(e) {
+      if (e.key === 'Enter' || e.keyCode === 13 || e.which === 13) {
         e.preventDefault();
         $('#btn_modal_submit_new_password').click();
       }

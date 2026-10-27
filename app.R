@@ -853,8 +853,29 @@ server <- function(input, output, session) {
       }
     )
     opps_df <- tibble::as_tibble(data$opportunities)
-    if (nrow(opps_df) > 0L && !"search_text" %in% names(opps_df)) {
-      opps_df$search_text <- build_search_text(opps_df)
+    if (nrow(opps_df) > 0L) {
+      if (!"search_text" %in% names(opps_df)) {
+        opps_df$search_text <- build_search_text(opps_df)
+      }
+      # Assegura que editais com temática de Startups contenham 'Startups' no campus
+      if ("campus" %in% names(opps_df)) {
+        startup_pattern <- "\\b(startups?|spin-?off|incubac\\w*|acelerac\\w*|venture capital|capital semente|seed|mpe|mpos?|microempresa\\w*|pequenas? empresas?|inovacao aberta|open innovation|catalisa|pipe|centelha|sinapse|pitch|investidor-?anjo|tracionamento|deeptech|scale-?up)\\b"
+        opps_df$campus <- vapply(seq_len(nrow(opps_df)), function(i) {
+          cp <- as.character(opps_df$campus[[i]] %||% "")
+          comb <- paste(opps_df$titulo[[i]] %||% "", opps_df$descricao_resumida[[i]] %||% "", opps_df$palavras_chave[[i]] %||% "")
+          if (grepl(startup_pattern, comb, ignore.case = TRUE)) {
+            if (!nzchar(trimws(cp)) || is.na(cp) || cp == "Não classificado") {
+              "Startups"
+            } else if (!grepl("Startups", cp, ignore.case = TRUE)) {
+              paste0(cp, "; Startups")
+            } else {
+              cp
+            }
+          } else {
+            cp
+          }
+        }, character(1))
+      }
     }
     rv$opportunities <- opps_df
     rv$sources <- tibble::as_tibble(data$sources)
@@ -1084,9 +1105,11 @@ server <- function(input, output, session) {
 
   # Evento para abrir o modal a partir do botão 'Alterar Senha' no cabeçalho
   observeEvent(input$btn_header_change_password, {
-    rv$modal_reset_error <- NULL
-    rv$reset_modal_open <- TRUE
-    show_reset_password_modal(session, access_token = rv$access_token %||% "")
+    if (!isTRUE(rv$reset_modal_open)) {
+      rv$modal_reset_error <- NULL
+      rv$reset_modal_open <- TRUE
+      show_reset_password_modal(session, access_token = rv$access_token %||% "")
+    }
   })
 
   # Submissão do formulário do modal dedicado de nova senha

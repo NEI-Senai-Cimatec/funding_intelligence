@@ -938,7 +938,8 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
               type = "email",
               class = "auth-input",
               placeholder = "seu.email@fieb.org.br",
-              autocomplete = "username"
+              autocomplete = "username",
+              onkeydown = "if (event.key === 'Enter' || event.keyCode === 13) { event.preventDefault(); window.submitLoginForm && window.submitLoginForm(); }"
             )
           )
         ),
@@ -955,7 +956,8 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
               class = "auth-input",
               placeholder = "••••••••",
               autocomplete = "current-password",
-              style = "padding-right: 2.5rem;"
+              style = "padding-right: 2.5rem;",
+              onkeydown = "if (event.key === 'Enter' || event.keyCode === 13) { event.preventDefault(); window.submitLoginForm && window.submitLoginForm(); }"
             ),
             htmltools::tags$button(
               type = "button",
@@ -1362,7 +1364,7 @@ render_header_user_bar <- function(user, is_dev = FALSE, drive_status = "idle", 
         id = "btn_header_change_password",
         class = "btn-header-change-pwd",
         style = "background: none; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 8px; font-size: 0.75rem; color: #475569; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; transition: all 0.2s;",
-        onclick = "Shiny.setInputValue('btn_header_change_password', Math.random(), {priority: 'event'})",
+        onclick = "if (!this.disabled) { var b = this; b.disabled = true; $(b).find('i').removeClass('fa-key').addClass('fa-spinner fa-spin'); Shiny.setInputValue('btn_header_change_password', Math.random(), {priority: 'event'}); setTimeout(function(){ b.disabled = false; $(b).find('i').removeClass('fa-spinner fa-spin').addClass('fa-key'); }, 1500); }",
         title = "Alterar minha senha de acesso",
         htmltools::tags$i(class = "fa fa-key"),
         htmltools::tags$span("Alterar Senha")

@@ -141,7 +141,14 @@
     }
 
     btn.prop('disabled', true).addClass('loading');
-    var redirectUri = window.location.origin + window.location.pathname;
+    var redirectUri = 'https://neicimatec-radar-da-inovacao.share.connect.posit.cloud/';
+    try {
+      if (window.location.origin.indexOf('localhost') !== -1 || window.location.origin.indexOf('127.0.0.1') !== -1) {
+        redirectUri = window.location.origin + window.location.pathname;
+      } else if (window.location.origin.indexOf('share.connect.posit.cloud') !== -1) {
+        redirectUri = window.location.origin + window.location.pathname;
+      }
+    } catch(e) {}
     var payload = { email: email, redirect_to: redirectUri, timestamp: Date.now() };
 
     if (window.Shiny && window.Shiny.setInputValue) {

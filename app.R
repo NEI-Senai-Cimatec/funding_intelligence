@@ -1024,10 +1024,10 @@ server <- function(input, output, session) {
       return()
     }
 
-    redirect_url <- if (is.list(btn_data) && !is.null(btn_data$redirect_to) && nzchar(btn_data$redirect_to)) {
+    redirect_url <- if (is.list(btn_data) && !is.null(btn_data$redirect_to) && nzchar(btn_data$redirect_to) && !grepl("connect\\.posit\\.cloud/neicimatec/content/", btn_data$redirect_to)) {
       as.character(btn_data$redirect_to)
     } else {
-      Sys.getenv("APP_URL", "")
+      Sys.getenv("APP_URL", "https://neicimatec-radar-da-inovacao.share.connect.posit.cloud/")
     }
 
     shiny::withProgress(message = "Enviando link de recuperação...", {

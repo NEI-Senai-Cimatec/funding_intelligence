@@ -940,7 +940,7 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
             if (isRec) {
               var sNode = document.createElement('style');
               sNode.id = 'quiin_recovery_instant_css';
-              sNode.textContent = '#auth_form_login, .auth-tabs-nav, #auth_form_signup, #auth_form_forgot, #auth_restoring_state { display: none !important; } #auth_form_reset_password { display: block !important; }';
+              sNode.textContent = '#auth_form_login, .auth-tabs-nav, #auth_form_signup, #auth_form_forgot, #auth_form_reset_password { display: none !important; } #auth_restoring_state { display: block !important; }';
               document.head.appendChild(sNode);
             }
           } catch(e) {}
@@ -1422,7 +1422,7 @@ render_header_user_bar <- function(user, is_dev = FALSE, drive_status = "idle", 
         id = "btn_header_change_password",
         class = "btn-header-change-pwd",
         style = "background: none; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 8px; font-size: 0.75rem; color: #475569; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; transition: all 0.2s;",
-        onclick = "if (!this.disabled) { var b = this; b.disabled = true; $(b).find('i').removeClass('fa-key').addClass('fa-spinner fa-spin'); Shiny.setInputValue('btn_header_change_password', Math.random(), {priority: 'event'}); setTimeout(function(){ b.disabled = false; $(b).find('i').removeClass('fa-spinner fa-spin').addClass('fa-key'); }, 1500); }",
+        onclick = "if (!this.disabled) { var b = this; b.disabled = true; $(b).find('i').removeClass('fa-key').addClass('fa-spinner fa-spin'); Shiny.setInputValue('btn_header_change_password', Date.now(), {priority: 'event'}); setTimeout(function(){ b.disabled = false; $(b).find('i').removeClass('fa-spinner fa-spin').addClass('fa-key'); }, 800); }",
         title = "Alterar minha senha de acesso",
         htmltools::tags$i(class = "fa fa-key"),
         htmltools::tags$span("Alterar Senha")

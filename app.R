@@ -859,24 +859,26 @@ server <- function(input, output, session) {
         opps_df$search_text <- build_search_text(opps_df)
       }
       # Assegura que editais com temática de Startups contenham 'Startups' no campus
-      if ("campus" %in% names(opps_df)) {
-        startup_pattern <- "\\b(startups?|spin-?off|incubac\\w*|acelerac\\w*|venture capital|capital semente|seed|mpe|mpos?|microempresa\\w*|pequenas? empresas?|inovacao aberta|open innovation|catalisa|pipe|centelha|sinapse|pitch|investidor-?anjo|tracionamento|deeptech|scale-?up)\\b"
-        opps_df$campus <- vapply(seq_len(nrow(opps_df)), function(i) {
-          cp <- as.character(opps_df$campus[[i]] %||% "")
-          comb <- paste(opps_df$titulo[[i]] %||% "", opps_df$descricao_resumida[[i]] %||% "", opps_df$palavras_chave[[i]] %||% "")
-          if (grepl(startup_pattern, comb, ignore.case = TRUE)) {
-            if (!nzchar(trimws(cp)) || is.na(cp) || cp == "Não classificado") {
-              "Startups"
-            } else if (!grepl("Startups", cp, ignore.case = TRUE)) {
-              paste0(cp, "; Startups")
-            } else {
-              cp
-            }
+      if (!"campus" %in% names(opps_df)) {
+        opps_df$campus <- "Não classificado"
+      }
+      startup_pattern <- "\\b(startups?|spin-?off|incubac\\w*|acelerac\\w*|venture capital|capital semente|seed|mpe|mpos?|microempresa\\w*|pequenas? empresas?|inovacao aberta|open innovation|catalisa|pipe|centelha|sinapse|pitch|investidor-?anjo|tracionamento|deeptech|scale-?up)\\b"
+      opps_df$campus <- vapply(seq_len(nrow(opps_df)), function(i) {
+        cp <- as.character(opps_df$campus[[i]] %||% "")
+        area_i <- if ("area_tematica" %in% names(opps_df)) as.character(opps_df$area_tematica[[i]] %||% "") else ""
+        comb <- paste(opps_df$titulo[[i]] %||% "", opps_df$descricao_resumida[[i]] %||% "", opps_df$palavras_chave[[i]] %||% "", area_i)
+        if (grepl(startup_pattern, comb, ignore.case = TRUE)) {
+          if (!nzchar(trimws(cp)) || is.na(cp) || cp == "Não classificado") {
+            "Startups"
+          } else if (!grepl("Startups", cp, ignore.case = TRUE)) {
+            paste0(cp, "; Startups")
           } else {
             cp
           }
-        }, character(1))
-      }
+        } else {
+          cp
+        }
+      }, character(1))
     }
     rv$opportunities <- opps_df
     rv$sources <- tibble::as_tibble(data$sources)
@@ -2028,9 +2030,10 @@ server <- function(input, output, session) {
       df <- df |> dplyr::filter(vapply(seq_len(dplyr::n()), function(i) {
         rec_c <- df$campus[[i]] %||% ""
         ttl_i <- df$titulo[[i]] %||% ""
+        desc_i <- df$descricao_resumida[[i]] %||% ""
         area_i <- df$area_tematica[[i]] %||% ""
         kw_i <- df$palavras_chave[[i]] %||% ""
-        comb_text <- paste(rec_c, ttl_i, area_i, kw_i)
+        comb_text <- paste(rec_c, ttl_i, desc_i, area_i, kw_i)
         any(vapply(sel_campi, function(sc) {
           grepl(sc, comb_text, ignore.case = TRUE)
         }, logical(1)))

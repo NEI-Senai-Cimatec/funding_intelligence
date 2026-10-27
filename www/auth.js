@@ -1135,8 +1135,30 @@
   var restoreTimeoutFailsafe = null;
   var restoreTimer = null;
 
+  // Botão de escape / destravamento imediato pelo usuário
+  window.cancelRestoreSession = function() {
+    console.warn('[AUTH] Restauração cancelada pelo usuário. Destravando formulário de login.');
+    sessionRestored = false;
+    if (restoreTimeoutFailsafe) {
+      clearTimeout(restoreTimeoutFailsafe);
+      restoreTimeoutFailsafe = null;
+    }
+    if (restoreTimer) {
+      clearInterval(restoreTimer);
+      restoreTimer = null;
+    }
+    try {
+      localStorage.removeItem('quiin_auth_session');
+    } catch(e) {}
+    $('#quiin_recovery_instant_css, #quiin_restore_instant_css, #quiin_early_auth_css, #quiin_instant_auth_css').remove();
+    $('#auth_restoring_state').hide();
+    $('#auth_form_login').show();
+    $('.auth-tabs-nav').show();
+    $('#auth_overlay_root').stop(true, true).fadeIn(150);
+  };
+
   function initSessionRestore() {
-    if (sessionRestored) return;
+    if (sessionRestored || $('body').hasClass('authenticated')) return;
 
     // Purga quaisquer chaves legadas de recuperação em localStorage
     try {
@@ -1171,51 +1193,43 @@
     if (!hasValidSavedSession) {
       // Sessão ausente ou inválida: remove estilo de restauração e garante formulário de login visível
       $('#quiin_recovery_instant_css, #quiin_restore_instant_css, #quiin_early_auth_css, #quiin_instant_auth_css').remove();
-      var elRestoring = document.getElementById('auth_restoring_state');
-      var elLogin = document.getElementById('auth_form_login');
-      var elTabs = document.querySelector('.auth-tabs-nav');
-      if (elRestoring) elRestoring.style.display = 'none';
-      if (elLogin) elLogin.style.display = 'block';
-      if (elTabs) elTabs.style.display = 'flex';
+      $('#auth_restoring_state').hide();
+      $('#auth_form_login').show();
+      $('.auth-tabs-nav').show();
       if (checkUrlForRecovery()) return;
       return;
     }
 
-    // Se chegamos aqui, o usuário tem sessão salva legítima e não está acessando um link de recuperação
-    // Garante que o estado de restauração esteja visível e o login oculto enquanto o servidor valida
-    var elLogin = document.getElementById('auth_form_login');
-    var elSignup = document.getElementById('auth_form_signup');
-    var elForgot = document.getElementById('auth_form_forgot');
-    var elReset = document.getElementById('auth_form_reset_password');
-    var elTabs = document.querySelector('.auth-tabs-nav');
-    var elRestoring = document.getElementById('auth_restoring_state');
-    if (elLogin) elLogin.style.display = 'none';
-    if (elSignup) elSignup.style.display = 'none';
-    if (elForgot) elForgot.style.display = 'none';
-    if (elReset) elReset.style.display = 'none';
-    if (elTabs) elTabs.style.display = 'none';
-    if (elRestoring) elRestoring.style.display = 'block';
+    // Se o usuário tem sessão salva legítima: exibe o estado de restauração enquanto o servidor valida
+    if (!$('body').hasClass('authenticated')) {
+      $('#auth_form_login, #auth_form_signup, #auth_form_forgot, #auth_form_reset_password, .auth-tabs-nav').hide();
+      $('#auth_restoring_state').show();
+    }
 
     // Failsafe de proteção absoluta: Se em 3.5 segundos a sessão não for confirmada, destrava o app para login manual
     if (!restoreTimeoutFailsafe) {
       restoreTimeoutFailsafe = setTimeout(function() {
         if (!$('body').hasClass('authenticated')) {
-          console.warn('[AUTH] Failsafe acionado: servidor demorou mais de 3.5s para responder. Destravando formulário de login.');
+          console.warn('[AUTH] Failsafe acionado: sessão não restaurada em 3.5s. Destravando formulário de login.');
           $('#quiin_recovery_instant_css, #quiin_restore_instant_css, #quiin_early_auth_css, #quiin_instant_auth_css').remove();
-          if (elRestoring) elRestoring.style.display = 'none';
-          if (elLogin) elLogin.style.display = 'block';
-          if (elTabs) elTabs.style.display = 'flex';
+          $('#auth_restoring_state').hide();
+          $('#auth_form_login').show();
+          $('.auth-tabs-nav').show();
           $('#auth_overlay_root').stop(true, true).fadeIn(150);
         }
       }, 3500);
     }
 
     function doSendRestore() {
-      if (sessionRestored) return true;
-      if (window.Shiny && window.Shiny.setInputValue) {
-        console.log('[AUTH] Enviando restore_auth_session para o servidor Shiny...');
-        window.Shiny.setInputValue('restore_auth_session', sessionData, {priority: 'event'});
-        return true;
+      if (sessionRestored || $('body').hasClass('authenticated')) return true;
+      try {
+        if (window.Shiny && window.Shiny.setInputValue && window.Shiny.shinyapp && window.Shiny.shinyapp.isConnected && window.Shiny.shinyapp.isConnected()) {
+          console.log('[AUTH] Enviando restore_auth_session para o servidor Shiny conectado...');
+          window.Shiny.setInputValue('restore_auth_session', sessionData, {priority: 'event'});
+          return true;
+        }
+      } catch(e) {
+        console.warn('[AUTH] Erro ao enviar restore_auth_session:', e);
       }
       return false;
     }
@@ -1223,24 +1237,35 @@
     // Dispara envio no evento nativo shiny:connected
     $(document).off('shiny:connected.restore').on('shiny:connected.restore', function() {
       setTimeout(function() {
-        if (!sessionRestored) {
+        if (!sessionRestored && !$('body').hasClass('authenticated')) {
           doSendRestore();
         }
       }, 50);
+      setTimeout(function() {
+        if (!sessionRestored && !$('body').hasClass('authenticated')) {
+          doSendRestore();
+        }
+      }, 350);
     });
 
-    // Se o Shiny já estiver pronto, envia imediatamente
-    if (!doSendRestore()) {
-      if (restoreTimer) clearInterval(restoreTimer);
+    // Se o Shiny já estiver conectado no momento
+    if (doSendRestore()) {
+      return;
+    }
+
+    // Fallback de polling para garantir envio assim que Shiny conectar
+    if (!restoreTimer) {
       var attempts = 0;
       restoreTimer = setInterval(function() {
         attempts++;
-        if (sessionRestored) {
+        if (sessionRestored || $('body').hasClass('authenticated') || attempts >= 30) {
           clearInterval(restoreTimer);
+          restoreTimer = null;
           return;
         }
-        if (doSendRestore() || attempts >= 40) {
+        if (doSendRestore()) {
           clearInterval(restoreTimer);
+          restoreTimer = null;
         }
       }, 100);
     }
@@ -1259,3 +1284,4 @@
   $(document).on('shiny:connected', handleInitialAuthState);
 
 })();
+

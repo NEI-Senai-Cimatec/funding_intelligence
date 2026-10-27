@@ -924,21 +924,27 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
         )
       },
       
-      # Proteção Instantânea contra Flash do Login: Se houver indício de recuperação na URL ou storage,
+      # Proteção Instantânea contra Flash do Login: Se houver indício de recuperação na URL ou sessionStorage,
       # injeta estilo imediato ocultando o formulário de login e forçando a exibição da tela de redefinição.
       htmltools::tags$script(htmltools::HTML("
         (function() {
           try {
+            // Purga chaves residuais de recuperação no localStorage para não interferir na sessão persistente
+            try {
+              localStorage.removeItem('quiin_pending_recovery_token');
+              localStorage.removeItem('quiin_recovery_active');
+            } catch(e) {}
+
             var h = window.location.hash || '';
             var s = window.location.search || '';
-            var ref = document.referrer || '';
-            var st = '', lt = '', recAct = '';
+            var st = '';
             try { st = sessionStorage.getItem('quiin_pending_recovery_token') || ''; } catch(e) {}
-            try { lt = localStorage.getItem('quiin_pending_recovery_token') || ''; } catch(e) {}
-            try { recAct = sessionStorage.getItem('quiin_recovery_active') || localStorage.getItem('quiin_recovery_active') || ''; } catch(e) {}
-            var isRec = (h.indexOf('type=recovery') !== -1) || (h.indexOf('access_token=') !== -1) ||
-                        (s.indexOf('type=recovery') !== -1) || (s.indexOf('code=') !== -1) ||
-                        (ref.indexOf('type=recovery') !== -1) || (st.length > 5) || (lt.length > 5) || (recAct === '1');
+            var hasSavedSession = false;
+            try { hasSavedSession = !!localStorage.getItem('quiin_auth_session'); } catch(e) {}
+
+            var hasRecoveryUrl = (h.indexOf('type=recovery') !== -1) || (s.indexOf('type=recovery') !== -1);
+            var isRec = hasRecoveryUrl || (st.length > 5 && !hasSavedSession);
+
             if (isRec) {
               var sNode = document.createElement('style');
               sNode.id = 'quiin_recovery_instant_css';

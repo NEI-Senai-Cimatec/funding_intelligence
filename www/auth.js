@@ -283,15 +283,14 @@
     }
   };
 
-  // Verifica se o usuário está em fluxo de recuperação (ativo, em memória, storage ou URL)
+  // Verifica se o usuário está em fluxo de recuperação (ativo, em memória, sessionStorage ou URL)
   window.isUserInRecovery = function() {
+    if ($('body').hasClass('authenticated')) return false;
     var stored = null;
-    var recAct = null;
     try {
-      stored = sessionStorage.getItem('quiin_pending_recovery_token') || localStorage.getItem('quiin_pending_recovery_token');
-      recAct = sessionStorage.getItem('quiin_recovery_active') || localStorage.getItem('quiin_recovery_active');
+      stored = sessionStorage.getItem('quiin_pending_recovery_token');
     } catch(e) {}
-    return isRecoveryModeActive || !!window.currentRecoveryToken || (!!stored && stored.length > 5) || (recAct === '1');
+    return isRecoveryModeActive || !!window.currentRecoveryToken || (!!stored && stored.length > 5);
   };
 
   // Força a exibição imediata e incontestável do formulário de criação de nova senha
@@ -588,11 +587,16 @@
       var elTabs = document.querySelector('.auth-tabs-nav');
 
       if (isAuth) {
-        if (isRecoveryModeActive || window.currentRecoveryToken) {
-          console.warn('[AUTH] Ignorando autenticação automática porque está no modo de recuperação de senha.');
-          window.switchAuthTab('reset');
-          return;
-        }
+        isRecoveryModeActive = false;
+        window.currentRecoveryToken = null;
+        try {
+          sessionStorage.removeItem('quiin_pending_recovery_token');
+          sessionStorage.removeItem('quiin_recovery_active');
+          localStorage.removeItem('quiin_pending_recovery_token');
+          localStorage.removeItem('quiin_recovery_active');
+        } catch(e) {}
+        $('#quiin_recovery_instant_css').remove();
+
         var btn = $('#btn_login_submit');
         if (btn.length) {
           btn.html('<i class="fa fa-check" style="margin-right: 8px;"></i><span>Acesso autorizado!</span>');
@@ -935,21 +939,6 @@
       } catch(err) {}
     });
 
-    // Também verifica document.referrer se disponível
-    try {
-      if (document.referrer && (document.referrer.indexOf('access_token=') !== -1 || document.referrer.indexOf('type=recovery') !== -1 || document.referrer.indexOf('code=') !== -1)) {
-        var refParts = document.referrer.split(/[#?&]/);
-        refParts.forEach(function(part) {
-          var eqIdx = part.indexOf('=');
-          if (eqIdx !== -1) {
-            var key = decodeURIComponent(part.substring(0, eqIdx)).trim();
-            var val = decodeURIComponent(part.substring(eqIdx + 1)).trim();
-            if (key && !params[key]) params[key] = val;
-          }
-        });
-      }
-    } catch(e) {}
-
     return params;
   }
 
@@ -999,48 +988,50 @@
     }, 250);
   }
 
-  // 4. Detecção e Persistência de Recuperação de Senha na URL e Storage (sobrevive a F5 / reload)
+  // 4. Detecção e Persistência de Recuperação de Senha na URL (sobrevive a F5 / reload)
   function checkUrlForRecovery() {
-    var storedToken = null;
-    var isRecActive = false;
-    try {
-      storedToken = sessionStorage.getItem('quiin_pending_recovery_token') || localStorage.getItem('quiin_pending_recovery_token');
-      isRecActive = (sessionStorage.getItem('quiin_recovery_active') === '1') || (localStorage.getItem('quiin_recovery_active') === '1');
-    } catch(e) {}
-
     var params = collectAllUrlParams();
 
-    // Detecção abrangente de recuperação de senha (suporta Implicit flow, PKCE, token_hash ou storage de reload anterior)
-    var isRecovery = (params.type === 'recovery') || 
-                     (params.recovery === 'true') || 
-                     (params.access_token && params.type !== 'signup') || 
-                     (params.token_hash && (params.type === 'recovery' || !params.type)) ||
-                     (params.code && params.code.length > 5) ||
-                     (params.token && params.token.length > 5) ||
-                     isRecActive ||
-                     (storedToken && storedToken.length > 5);
+    // Uma URL de recuperação genuína deve conter explicitamente type=recovery (padrão Supabase Auth)
+    var isRecoveryUrl = (params.type === 'recovery') || 
+                        (params.recovery === 'true') || 
+                        (window.location.hash.indexOf('type=recovery') !== -1) ||
+                        (window.location.search.indexOf('type=recovery') !== -1) ||
+                        (params.token_hash && (params.type === 'recovery' || !params.type));
 
+    var storedToken = null;
+    try {
+      storedToken = sessionStorage.getItem('quiin_pending_recovery_token');
+    } catch(e) {}
+
+    var hasSavedAuth = false;
+    try {
+      hasSavedAuth = !!localStorage.getItem('quiin_auth_session');
+    } catch(e) {}
+
+    // Se o usuário já tem sessão salva e a URL NÃO é de recuperação, NUNCA entra em recuperação
+    if (hasSavedAuth && !isRecoveryUrl) {
+      return false;
+    }
+
+    var isRecovery = isRecoveryUrl || (storedToken && storedToken.length > 5);
     var token = params.access_token || params.token || params.code || params.token_hash || storedToken || '';
 
     if (isRecovery && token) {
       isRecoveryModeActive = true;
       window.currentRecoveryToken = token;
 
-      // Salva tanto em sessionStorage quanto localStorage para resistir a F5 / reloads
+      // Salva apenas no sessionStorage da aba atual (NUNCA no localStorage global)
       try {
         sessionStorage.setItem('quiin_pending_recovery_token', token);
-        localStorage.setItem('quiin_pending_recovery_token', token);
-        sessionStorage.setItem('quiin_recovery_active', '1');
-        localStorage.setItem('quiin_recovery_active', '1');
       } catch(e) {}
 
-      // Limpa qualquer sessão salva de usuário anterior para não reautenticar
-      try {
-        localStorage.removeItem('quiin_auth_session');
-      } catch(e) {}
-
-      // NOTA: A URL e o hash são preservados enquanto a senha não for redefinida com sucesso.
-      // Isso permite que o usuário atualize a página (F5) sem perder o link de recuperação.
+      // Só limpa a sessão salva se a URL atual for explicitamente um novo link de recuperação por email
+      if (isRecoveryUrl) {
+        try {
+          localStorage.removeItem('quiin_auth_session');
+        } catch(e) {}
+      }
 
       // Força a exibição do formulário de redefinição
       window.enforceResetTab();
@@ -1070,29 +1061,44 @@
   function initSessionRestore() {
     if (sessionRestored) return;
 
-    // Se estiver em modo de recuperação de senha ou com token pendente, JAMAIS restaura sessão antiga nem abre login
-    if (window.isUserInRecovery()) {
-      console.log('[AUTH] Recuperação de senha ativa. Restauração de sessão persistente ignorada.');
-      window.enforceResetTab();
-      return;
-    }
+    // Purga quaisquer chaves legadas de recuperação em localStorage
+    try {
+      localStorage.removeItem('quiin_pending_recovery_token');
+      localStorage.removeItem('quiin_recovery_active');
+    } catch(e) {}
 
-    // Se a URL contém token de recuperação de senha, prioriza o fluxo de recuperação
-    if (checkUrlForRecovery()) return;
+    var params = collectAllUrlParams();
+    var isRecoveryUrl = (params.type === 'recovery') || 
+                        (params.recovery === 'true') || 
+                        (window.location.hash.indexOf('type=recovery') !== -1) || 
+                        (window.location.search.indexOf('type=recovery') !== -1);
+
+    // Se a URL contém explicitamente link de recuperação de senha por email, prioriza recuperação
+    if (isRecoveryUrl) {
+      if (checkUrlForRecovery()) return;
+    }
 
     var saved = null;
     try {
       saved = localStorage.getItem('quiin_auth_session');
     } catch(e) {}
-    if (!saved) return;
 
     var sessionData = null;
-    try {
-      sessionData = JSON.parse(saved);
-    } catch(e) {}
-    if (!sessionData || (!sessionData.access_token && !sessionData.refresh_token && !sessionData.user)) return;
+    if (saved) {
+      try {
+        sessionData = JSON.parse(saved);
+      } catch(e) {}
+    }
+    var hasValidSavedSession = !!(sessionData && (sessionData.access_token || sessionData.refresh_token || sessionData.user));
 
-    // Se temos uma sessão salva, esconde imediatamente o formulário de login e mostra o restoring spinner
+    if (!hasValidSavedSession) {
+      // Usuário não tem sessão salva: verifica se há recuperação pendente nesta aba
+      if (checkUrlForRecovery()) return;
+      return;
+    }
+
+    // Se chegamos aqui, o usuário tem sessão salva legítima e não está acessando um link de recuperação
+    // Exibe o spinner de restauração e esconde o formulário de login imediatamente
     var elLogin = document.getElementById('auth_form_login');
     var elSignup = document.getElementById('auth_form_signup');
     var elForgot = document.getElementById('auth_form_forgot');
@@ -1138,22 +1144,16 @@
     }, 100);
   }
 
-  // Inicia detecção de recuperação e restauração imediatamente e quando o DOM estiver pronto
-  checkUrlForRecovery();
-  initSessionRestore();
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() {
-      checkUrlForRecovery();
-      initSessionRestore();
-    });
+  // Inicia detecção de recuperação e restauração de forma unificada e segura
+  function handleInitialAuthState() {
+    initSessionRestore();
   }
-  $(document).ready(function() {
-    checkUrlForRecovery();
-    initSessionRestore();
-  });
-  $(document).on('shiny:connected', function() {
-    checkUrlForRecovery();
-    initSessionRestore();
-  });
+
+  handleInitialAuthState();
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', handleInitialAuthState);
+  }
+  $(document).ready(handleInitialAuthState);
+  $(document).on('shiny:connected', handleInitialAuthState);
 
 })();

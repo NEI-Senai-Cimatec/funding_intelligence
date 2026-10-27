@@ -922,8 +922,8 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
       },
       
       # Proteção Instantânea contra Flash de Tela:
-      # Se houver indício de recuperação na URL, oculta formulários normais e força tela de redefinição.
-      # Se houver sessão salva legítima no localStorage (e URL NÃO é de recuperação), oculta o overlay instantaneamente no F5.
+      # Se houver indício de recuperação na URL, oculta formulários normais e força exibição do estado de restauração/redefinição.
+      # Se houver sessão salva legítima no localStorage (e URL NÃO é de recuperação), oculta os formulários e exibe o spinner de restauração instantaneamente.
       htmltools::tags$script(htmltools::HTML("
         (function() {
           try {
@@ -939,11 +939,10 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
               sNode.textContent = '#auth_form_login, .auth-tabs-nav, #auth_form_signup, #auth_form_forgot, #auth_form_reset_password { display: none !important; } #auth_restoring_state { display: block !important; }';
               document.head.appendChild(sNode);
             } else if (hasSavedSession) {
-              var sAuth = document.createElement('style');
-              sAuth.id = 'quiin_instant_auth_css';
-              sAuth.textContent = '#auth_overlay_root { display: none !important; }';
-              document.head.appendChild(sAuth);
-              document.documentElement.classList.add('authenticated');
+              var sNode = document.createElement('style');
+              sNode.id = 'quiin_restore_instant_css';
+              sNode.textContent = '#auth_form_login, .auth-tabs-nav, #auth_form_signup, #auth_form_forgot, #auth_form_reset_password { display: none !important; } #auth_restoring_state { display: block !important; }';
+              document.head.appendChild(sNode);
             }
           } catch(e) {}
         })();

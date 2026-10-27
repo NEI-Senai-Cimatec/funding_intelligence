@@ -1129,8 +1129,7 @@ server <- function(input, output, session) {
         rv$pending_recovery_token <- tok
         rv$reset_modal_open <- TRUE
         rv$modal_reset_error <- NULL
-        shiny::updateQueryString("?", mode = "replace")
-        show_reset_password_modal(session, access_token = tok)
+        show_reset_password_modal(session, access_token = tok, is_logged_in = FALSE)
         session$sendCustomMessage("reset_modal_opened", list(token = tok))
       }
     }
@@ -1147,8 +1146,7 @@ server <- function(input, output, session) {
     rv$modal_reset_error <- NULL
     if (!isTRUE(rv$reset_modal_open)) {
       rv$reset_modal_open <- TRUE
-      shiny::updateQueryString("?", mode = "replace")
-      show_reset_password_modal(session, access_token = rv$pending_recovery_token %||% rv$access_token %||% "")
+      show_reset_password_modal(session, access_token = rv$pending_recovery_token %||% rv$access_token %||% "", is_logged_in = !is.null(rv$user))
     }
     session$sendCustomMessage("reset_modal_opened", list(token = rv$pending_recovery_token %||% ""))
   })
@@ -1159,7 +1157,7 @@ server <- function(input, output, session) {
     if (!isTRUE(rv$reset_modal_open)) {
       rv$modal_reset_error <- NULL
       rv$reset_modal_open <- TRUE
-      show_reset_password_modal(session, access_token = rv$access_token %||% "")
+      show_reset_password_modal(session, access_token = rv$access_token %||% "", is_logged_in = TRUE)
     }
   })
 
@@ -1200,7 +1198,7 @@ server <- function(input, output, session) {
       shiny::removeModal()
       shiny::updateQueryString("?", mode = "replace")
       showNotification("Sua senha foi atualizada com sucesso no Supabase! Você já pode utilizá-la.", type = "message", duration = 8)
-      session$sendCustomMessage("reset_password_success", list(message = "Senha atualizada com sucesso!"))
+      session$sendCustomMessage("reset_password_success", list(message = "Senha atualizada com sucesso! Você já pode entrar com sua nova senha."))
     } else {
       rv$modal_reset_error <- update_res$message
       session$sendCustomMessage("modal_reset_error_focus", list())
@@ -1225,22 +1223,18 @@ server <- function(input, output, session) {
 
   # Cancelar recuperação e voltar para login a pedido do usuário
   observeEvent(input$btn_modal_cancel_recovery, {
-    rv$pending_recovery_token <- NULL
+    # Só permite cancelamento se o usuário estiver autenticado (modal do cabeçalho)
+    if (is.null(rv$user)) return()
     rv$reset_modal_open <- FALSE
-    rv$recovery_dismissed <- TRUE
     rv$modal_reset_error <- NULL
     shiny::removeModal()
-    shiny::updateQueryString("?", mode = "replace")
-    session$sendCustomMessage("clear_recovery_state", list())
   })
 
   # Evento disparado quando o modal é fechado pelo usuário (clique fora / backdrop ou ESC)
   observeEvent(input$reset_modal_closed, {
-    rv$pending_recovery_token <- NULL
+    if (is.null(rv$user)) return()
     rv$reset_modal_open <- FALSE
-    rv$recovery_dismissed <- TRUE
     rv$modal_reset_error <- NULL
-    shiny::updateQueryString("?", mode = "replace")
   })
 
   # Evento de redefinição de senha com token de recuperação (via formulário embutido)

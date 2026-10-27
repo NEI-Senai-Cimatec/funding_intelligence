@@ -924,7 +924,7 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
         )
       },
       
-      # Proteção Instantânea contra Flash do Login: Se houver indício de recuperação na URL ou sessionStorage,
+      # Proteção Instantânea contra Flash do Login: Se houver indício de recuperação na URL ou storage,
       # injeta estilo imediato ocultando o formulário de login e forçando a exibição da tela de redefinição.
       htmltools::tags$script(htmltools::HTML("
         (function() {
@@ -932,11 +932,13 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
             var h = window.location.hash || '';
             var s = window.location.search || '';
             var ref = document.referrer || '';
-            var st = '';
+            var st = '', lt = '', recAct = '';
             try { st = sessionStorage.getItem('quiin_pending_recovery_token') || ''; } catch(e) {}
+            try { lt = localStorage.getItem('quiin_pending_recovery_token') || ''; } catch(e) {}
+            try { recAct = sessionStorage.getItem('quiin_recovery_active') || localStorage.getItem('quiin_recovery_active') || ''; } catch(e) {}
             var isRec = (h.indexOf('type=recovery') !== -1) || (h.indexOf('access_token=') !== -1) ||
                         (s.indexOf('type=recovery') !== -1) || (s.indexOf('code=') !== -1) ||
-                        (ref.indexOf('type=recovery') !== -1) || (st.length > 5);
+                        (ref.indexOf('type=recovery') !== -1) || (st.length > 5) || (lt.length > 5) || (recAct === '1');
             if (isRec) {
               var sNode = document.createElement('style');
               sNode.id = 'quiin_recovery_instant_css';
@@ -1440,7 +1442,7 @@ render_header_user_bar <- function(user, is_dev = FALSE, drive_status = "idle", 
 }
 
 # Modal dedicado para Criação e Redefinição de Nova Senha (disparado via link ou botão)
-show_reset_password_modal <- function(session, access_token = "", error_msg = NULL, success_msg = NULL) {
+show_reset_password_modal <- function(session, access_token = "", is_logged_in = FALSE, error_msg = NULL, success_msg = NULL) {
   shiny::showModal(
     shiny::modalDialog(
       title = htmltools::tags$div(
@@ -1464,16 +1466,18 @@ show_reset_password_modal <- function(session, access_token = "", error_msg = NU
         )
       ),
       size = "l",
-      easyClose = TRUE,
+      easyClose = isTRUE(is_logged_in),
       footer = htmltools::tags$div(
         style = "display: flex; justify-content: flex-end; gap: 10px; width: 100%;",
-        shiny::actionButton(
-          "btn_modal_cancel_recovery",
-          label = "Cancelar",
-          class = "btn btn-outline-secondary",
-          style = "font-size: 0.85rem;",
-          onclick = "window.cancelRecoveryModal && window.cancelRecoveryModal();"
-        ),
+        if (isTRUE(is_logged_in)) {
+          shiny::actionButton(
+            "btn_modal_cancel_recovery",
+            label = "Cancelar",
+            class = "btn btn-outline-secondary",
+            style = "font-size: 0.85rem;",
+            onclick = "window.cancelRecoveryModal && window.cancelRecoveryModal();"
+          )
+        },
         shiny::actionButton(
           "btn_modal_submit_new_password",
           label = "Salvar Nova Senha",

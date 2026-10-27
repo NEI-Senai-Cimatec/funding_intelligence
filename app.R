@@ -330,23 +330,6 @@ ui <- bslib::page_sidebar(
     tags$meta(name = "viewport", content = "width=device-width, initial-scale=1.0"),
     tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = paste0("styles.css?v=", as.integer(Sys.time()))),
-    tags$script(htmltools::HTML("
-      (function() {
-        try {
-          var h = window.location.hash || '';
-          var s = window.location.search || '';
-          var isRec = (h.indexOf('type=recovery') !== -1) || (s.indexOf('type=recovery') !== -1);
-          var saved = localStorage.getItem('quiin_auth_session');
-          if (saved && !isRec) {
-            document.documentElement.classList.add('authenticated');
-            var st = document.createElement('style');
-            st.id = 'quiin_early_auth_css';
-            st.textContent = '#auth_overlay_root { display: none !important; }';
-            document.head.appendChild(st);
-          }
-        } catch(e) {}
-      })();
-    ")),
     tags$script(src = paste0("auth.js?v=", as.integer(Sys.time())))
   ),
 

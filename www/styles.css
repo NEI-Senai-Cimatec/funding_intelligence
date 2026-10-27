@@ -46,8 +46,7 @@ body:not(.authenticated) .card:not(.auth-card) {
   pointer-events: auto !important;
 }
 
-body.authenticated #auth_overlay_root,
-html.authenticated #auth_overlay_root {
+body.authenticated #auth_overlay_root {
   display: none !important;
   visibility: hidden !important;
   pointer-events: none !important;

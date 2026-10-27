@@ -625,7 +625,7 @@
           localStorage.removeItem('quiin_pending_recovery_token');
           localStorage.removeItem('quiin_recovery_active');
         } catch(e) {}
-        $('#quiin_recovery_instant_css').remove();
+        $('#quiin_recovery_instant_css, #quiin_restore_instant_css, #quiin_early_auth_css, #quiin_instant_auth_css').remove();
         if (window.history && window.history.replaceState) {
           var h = window.location.hash || '';
           var s = window.location.search || '';
@@ -640,7 +640,7 @@
         }
         $('html').addClass('authenticated');
         $('body').addClass('authenticated');
-        $('#auth_overlay_root').stop(true, true).hide();
+        $('#auth_overlay_root').stop(true, true).fadeOut(250);
 
         // Prepara o formulário em estado pronto caso o usuário deslogue
         if (elRestoring) elRestoring.style.display = 'none';
@@ -652,7 +652,7 @@
       } else {
         $('html').removeClass('authenticated');
         $('body').removeClass('authenticated');
-        $('#quiin_early_auth_css, #quiin_instant_auth_css').remove();
+        $('#quiin_recovery_instant_css, #quiin_restore_instant_css, #quiin_early_auth_css, #quiin_instant_auth_css').remove();
 
         // Se estiver em modo de recuperação, NUNCA permite exibir o formulário de login
         if (window.isUserInRecovery()) {
@@ -711,11 +711,10 @@
       try {
         localStorage.removeItem('quiin_auth_session');
       } catch(e) {}
-      sessionRestored = false;
       $('html').removeClass('authenticated');
       $('body').removeClass('authenticated');
-      $('#quiin_early_auth_css, #quiin_instant_auth_css').remove();
-      $('#auth_overlay_root').css('display', 'flex').show();
+      $('#quiin_recovery_instant_css, #quiin_restore_instant_css, #quiin_early_auth_css, #quiin_instant_auth_css').remove();
+      $('#auth_overlay_root').stop(true, true).fadeIn(150);
 
       if (window.isUserInRecovery()) {
         window.enforceResetTab();
@@ -750,8 +749,8 @@
       }
       $('html').removeClass('authenticated');
       $('body').removeClass('authenticated');
-      $('#quiin_early_auth_css, #quiin_instant_auth_css').remove();
-      $('#auth_overlay_root').css('display', 'flex').show();
+      $('#quiin_recovery_instant_css, #quiin_restore_instant_css, #quiin_early_auth_css, #quiin_instant_auth_css').remove();
+      $('#auth_overlay_root').stop(true, true).fadeIn(150);
       var elRestoring = document.getElementById('auth_restoring_state');
       var elLogin = document.getElementById('auth_form_login');
       var elTabs = document.querySelector('.auth-tabs-nav');
@@ -1146,10 +1145,19 @@
     }
 
     // Se chegamos aqui, o usuário tem sessão salva legítima e não está acessando um link de recuperação
-    // Oculta imediatamente o overlay e ativa a classe authenticated para manter o app destravado
-    $('html').addClass('authenticated');
-    $('body').addClass('authenticated');
-    $('#auth_overlay_root').hide();
+    // Garante que o estado de restauração esteja visível e o login oculto enquanto o servidor valida
+    var elLogin = document.getElementById('auth_form_login');
+    var elSignup = document.getElementById('auth_form_signup');
+    var elForgot = document.getElementById('auth_form_forgot');
+    var elReset = document.getElementById('auth_form_reset_password');
+    var elTabs = document.querySelector('.auth-tabs-nav');
+    var elRestoring = document.getElementById('auth_restoring_state');
+    if (elLogin) elLogin.style.display = 'none';
+    if (elSignup) elSignup.style.display = 'none';
+    if (elForgot) elForgot.style.display = 'none';
+    if (elReset) elReset.style.display = 'none';
+    if (elTabs) elTabs.style.display = 'none';
+    if (elRestoring) elRestoring.style.display = 'block';
 
     function doSendRestore() {
       if (sessionRestored) return true;

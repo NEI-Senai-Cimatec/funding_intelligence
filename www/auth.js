@@ -228,6 +228,68 @@
   var isRecoveryErrorActive = false;
   var recoveryErrorMessage = '';
   var modalTriggerAcknowledged = false;
+  var recoveryPollTimer = null;
+
+  // Cancela / encerra completamente o fluxo de recuperação de senha e destrava a interface
+  window.cancelRecoveryModal = function(skipModalHide) {
+    console.log('[AUTH] Cancelando / encerrando fluxo de recuperação de senha...');
+    isRecoveryModeActive = false;
+    window.currentRecoveryToken = null;
+    modalTriggerAcknowledged = true;
+    if (recoveryPollTimer) {
+      clearInterval(recoveryPollTimer);
+      recoveryPollTimer = null;
+    }
+    try {
+      sessionStorage.removeItem('quiin_pending_recovery_token');
+    } catch(e) {}
+    $('#quiin_recovery_instant_css').remove();
+    if (window.history && window.history.replaceState) {
+      window.history.replaceState(null, document.title, window.location.pathname);
+    }
+    if (!skipModalHide) {
+      $('#shiny-modal').modal('hide');
+    }
+    $('.auth-tabs-nav').css('display', 'flex').show();
+    $('#auth_form_reset_password').hide();
+    $('#auth_form_login').show();
+    window.switchAuthTab('login');
+    if (window.Shiny && window.Shiny.setInputValue) {
+      window.Shiny.setInputValue('reset_modal_closed', Date.now(), {priority: 'event'});
+      window.Shiny.setInputValue('btn_modal_cancel_recovery', Date.now(), {priority: 'event'});
+    }
+  };
+
+  // Submissão direta e segura do modal dedicado de nova senha
+  window.submitModalPasswordReset = function() {
+    var p1 = $.trim($('#modal_reset_password_new').val() || '');
+    var p2 = $.trim($('#modal_reset_password_confirm').val() || '');
+    var token = window.currentRecoveryToken || '';
+    try {
+      if (!token) token = sessionStorage.getItem('quiin_pending_recovery_token') || '';
+    } catch(e) {}
+
+    var btn = $('#btn_modal_submit_new_password');
+    if (!p1 || !p2) {
+      // Deixa o servidor processar a validação
+    } else {
+      btn.prop('disabled', true);
+      btn.html('<i class="fa fa-spinner fa-spin" style="margin-right: 6px;"></i><span>Salvando...</span>');
+    }
+
+    if (window.Shiny && window.Shiny.setInputValue) {
+      window.Shiny.setInputValue('modal_reset_password_new', p1);
+      window.Shiny.setInputValue('modal_reset_password_confirm', p2);
+      window.Shiny.setInputValue('btn_modal_submit_new_password_custom', {
+        password: p1,
+        confirm: p2,
+        token: token,
+        timestamp: Date.now()
+      }, {priority: 'event'});
+    } else {
+      $('#btn_modal_submit_new_password').click();
+    }
+  };
 
   // Verifica se o usuário está em fluxo de recuperação (ativo, em memória, sessionStorage ou URL)
   window.isUserInRecovery = function() {
@@ -266,8 +328,12 @@
 
   // 2. Função de Alternância de Abas Instantânea (Login, Cadastro, Recuperar e Redefinir)
   window.switchAuthTab = function(mode) {
-    // Se estiver em modo de recuperação e tentarem chavear para outra aba, bloqueia categoricamente
-    if (window.isUserInRecovery() && mode !== 'reset') {
+    if (mode === 'login' && window.isUserInRecovery()) {
+      isRecoveryModeActive = false;
+      window.currentRecoveryToken = null;
+      try { sessionStorage.removeItem('quiin_pending_recovery_token'); } catch(e) {}
+      $('#quiin_recovery_instant_css').remove();
+    } else if (window.isUserInRecovery() && mode !== 'reset') {
       console.warn('[AUTH] Bloqueando alternância de aba durante recuperação de senha pendente.');
       window.enforceResetTab();
       return;
@@ -387,13 +453,6 @@
       }
     });
 
-    $(document).on('keydown', '#recovery_email', function(e) {
-      if (e.key === 'Enter' || e.keyCode === 13 || e.which === 13) {
-        e.preventDefault();
-        window.submitRecoveryForm();
-      }
-    });
-
     $(document).on('keydown', '#reset_password_new, #reset_password_confirm', function(e) {
       if (e.key === 'Enter' || e.keyCode === 13 || e.which === 13) {
         e.preventDefault();
@@ -405,13 +464,20 @@
     $(document).on('keydown', '#modal_reset_password_new, #modal_reset_password_confirm', function(e) {
       if (e.key === 'Enter' || e.keyCode === 13 || e.which === 13) {
         e.preventDefault();
-        $('#btn_modal_submit_new_password').click();
+        window.submitModalPasswordReset();
       }
     });
 
     // Limpa mensagem de erro dinamicamente ao digitar nos campos do modal
     $(document).on('input', '#modal_reset_password_new, #modal_reset_password_confirm', function() {
       $('#modal_reset_password_error_ui').empty();
+    });
+
+    // Fechamento do modal pelo usuário (clique fora no backdrop ou tecla ESC)
+    $(document).on('hidden.bs.modal', '#shiny-modal', function() {
+      if (isRecoveryModeActive || window.currentRecoveryToken || $('#modal_reset_password_new').length) {
+        window.cancelRecoveryModal(true);
+      }
     });
 
     // Foco automático, atributos anti-autofill e arrasto (Draggable) do modal
@@ -656,18 +722,32 @@
     Shiny.addCustomMessageHandler('reset_password_success', function(data) {
       isRecoveryModeActive = false;
       window.currentRecoveryToken = null;
+      modalTriggerAcknowledged = true;
+      if (recoveryPollTimer) {
+        clearInterval(recoveryPollTimer);
+        recoveryPollTimer = null;
+      }
       try {
         sessionStorage.removeItem('quiin_pending_recovery_token');
       } catch(e) {}
       $('#quiin_recovery_instant_css').remove();
       if (window.history && window.history.replaceState) {
-        window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
+        window.history.replaceState(null, document.title, window.location.pathname);
+      }
+      $('#shiny-modal').modal('hide');
+      var btnM = $('#btn_modal_submit_new_password');
+      if (btnM.length) {
+        btnM.prop('disabled', false);
+        btnM.html('<i class="fa fa-check" style="margin-right: 6px;"></i><span>Salvar Nova Senha</span>');
       }
       var btn = $('#btn_reset_password_submit');
       btn.prop('disabled', false).removeClass('loading');
       btn.html('<i class="fa fa-check" style="margin-right: 8px;"></i><span>Atualizar Senha</span>');
 
       var msg = (data && data.message) ? data.message : 'Senha atualizada com sucesso! Você já pode entrar com sua nova senha.';
+      $('.auth-tabs-nav').css('display', 'flex').show();
+      $('#auth_form_reset_password').hide();
+      $('#auth_form_login').show();
       window.switchAuthTab('login');
       $('#auth_login_success_text').text(msg);
       $('#auth_login_success_box').stop(true, true).slideDown(200);
@@ -677,24 +757,42 @@
     Shiny.addCustomMessageHandler('clear_recovery_state', function(data) {
       isRecoveryModeActive = false;
       window.currentRecoveryToken = null;
+      modalTriggerAcknowledged = true;
+      if (recoveryPollTimer) {
+        clearInterval(recoveryPollTimer);
+        recoveryPollTimer = null;
+      }
       try {
         sessionStorage.removeItem('quiin_pending_recovery_token');
       } catch(e) {}
       $('#quiin_recovery_instant_css').remove();
       if (window.history && window.history.replaceState) {
-        window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
+        window.history.replaceState(null, document.title, window.location.pathname);
       }
+      $('#shiny-modal').modal('hide');
+      $('.auth-tabs-nav').css('display', 'flex').show();
+      $('#auth_form_reset_password').hide();
+      $('#auth_form_login').show();
       window.switchAuthTab('login');
     });
 
     // Confirmação de abertura do modal pelo servidor Shiny
     Shiny.addCustomMessageHandler('reset_modal_opened', function(data) {
       modalTriggerAcknowledged = true;
+      if (recoveryPollTimer) {
+        clearInterval(recoveryPollTimer);
+        recoveryPollTimer = null;
+      }
       console.log('[AUTH] Confirmação de abertura do modal de recuperação recebida do servidor Shiny.');
     });
 
     // Falha na redefinição de senha via link
     Shiny.addCustomMessageHandler('reset_password_failed', function(data) {
+      var btnM = $('#btn_modal_submit_new_password');
+      if (btnM.length) {
+        btnM.prop('disabled', false);
+        btnM.html('<i class="fa fa-check" style="margin-right: 6px;"></i><span>Salvar Nova Senha</span>');
+      }
       var btn = $('#btn_reset_password_submit');
       btn.prop('disabled', false).removeClass('loading');
       btn.html('<i class="fa fa-check" style="margin-right: 8px;"></i><span>Atualizar Senha</span>');
@@ -706,6 +804,16 @@
 
     // Foco e seleção imediata no campo de nova senha após erro de validação/mesma senha
     Shiny.addCustomMessageHandler('modal_reset_error_focus', function() {
+      var btnM = $('#btn_modal_submit_new_password');
+      if (btnM.length) {
+        btnM.prop('disabled', false);
+        btnM.html('<i class="fa fa-check" style="margin-right: 6px;"></i><span>Salvar Nova Senha</span>');
+      }
+      var btn = $('#btn_reset_password_submit');
+      if (btn.length) {
+        btn.prop('disabled', false).removeClass('loading');
+        btn.html('<i class="fa fa-check" style="margin-right: 8px;"></i><span>Atualizar Senha</span>');
+      }
       setTimeout(function() {
         var inp = $('#modal_reset_password_new');
         if (inp.length) {
@@ -789,8 +897,19 @@
   function startRecoveryModalTrigger(token) {
     if (modalTriggerAcknowledged) return;
 
+    if (recoveryPollTimer) {
+      clearInterval(recoveryPollTimer);
+      recoveryPollTimer = null;
+    }
+
     function sendToShiny() {
-      if (modalTriggerAcknowledged) return;
+      if (modalTriggerAcknowledged || !window.isUserInRecovery()) {
+        if (recoveryPollTimer) {
+          clearInterval(recoveryPollTimer);
+          recoveryPollTimer = null;
+        }
+        return;
+      }
       if (window.Shiny && window.Shiny.setInputValue && window.Shiny.shinyapp && window.Shiny.shinyapp.isConnected()) {
         console.log('[AUTH] Enviando trigger_reset_password_modal para o servidor Shiny...');
         window.Shiny.setInputValue('trigger_reset_password_modal', {
@@ -809,14 +928,15 @@
     });
 
     var pollAttempts = 0;
-    var recoveryPoll = setInterval(function() {
+    recoveryPollTimer = setInterval(function() {
       pollAttempts++;
-      if (modalTriggerAcknowledged || pollAttempts > 100 || !window.isUserInRecovery()) {
-        clearInterval(recoveryPoll);
+      if (modalTriggerAcknowledged || pollAttempts > 30 || !window.isUserInRecovery()) {
+        clearInterval(recoveryPollTimer);
+        recoveryPollTimer = null;
         return;
       }
       sendToShiny();
-    }, 200);
+    }, 250);
   }
 
   // 4. Detecção e Persistência de Recuperação de Senha na URL (sobrevive a F5 / reload)
@@ -843,7 +963,7 @@
       isRecoveryModeActive = true;
       window.currentRecoveryToken = token;
 
-      // Salva no sessionStorage para que a redefinição de senha NÃO suma ao apertar F5
+      // Salva no sessionStorage para manter o fluxo durante a redefinição
       try {
         sessionStorage.setItem('quiin_pending_recovery_token', token);
       } catch(e) {}
@@ -852,6 +972,11 @@
       try {
         localStorage.removeItem('quiin_auth_session');
       } catch(e) {}
+
+      // Limpa imediatamente a URL da barra de endereços (evita reabertura em F5 futuros)
+      if (window.history && window.history.replaceState) {
+        window.history.replaceState(null, document.title, window.location.pathname);
+      }
 
       // Força a exibição do formulário de redefinição
       window.enforceResetTab();

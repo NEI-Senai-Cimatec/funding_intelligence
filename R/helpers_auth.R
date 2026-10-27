@@ -1349,7 +1349,7 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
           htmltools::tags$a(
             href = "#",
             class = "auth-link-back",
-            onclick = "window.switchAuthTab && window.switchAuthTab('login'); return false;",
+            onclick = "window.cancelRecoveryModal && window.cancelRecoveryModal(); return false;",
             htmltools::tags$i(class = "fa fa-arrow-left"),
             htmltools::tags$span("Voltar para o Login")
           )
@@ -1464,21 +1464,23 @@ show_reset_password_modal <- function(session, access_token = "", error_msg = NU
         )
       ),
       size = "l",
-      easyClose = FALSE,
+      easyClose = TRUE,
       footer = htmltools::tags$div(
         style = "display: flex; justify-content: flex-end; gap: 10px; width: 100%;",
         shiny::actionButton(
           "btn_modal_cancel_recovery",
           label = "Cancelar",
           class = "btn btn-outline-secondary",
-          style = "font-size: 0.85rem;"
+          style = "font-size: 0.85rem;",
+          onclick = "window.cancelRecoveryModal && window.cancelRecoveryModal();"
         ),
         shiny::actionButton(
           "btn_modal_submit_new_password",
           label = "Salvar Nova Senha",
           class = "btn btn-primary",
           style = "background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); border: none; font-weight: 600; padding: 8px 18px;",
-          icon = shiny::icon("check")
+          icon = shiny::icon("check"),
+          onclick = "window.submitModalPasswordReset && window.submitModalPasswordReset();"
         )
       ),
       htmltools::tags$div(
@@ -1506,9 +1508,8 @@ show_reset_password_modal <- function(session, access_token = "", error_msg = NU
                 `data-lpignore` = "true",
                 `data-form-type` = "other",
                 value = "",
-                `data-update-on` = "change",
                 style = "padding-right: 2.75rem;",
-                onkeydown = "if (event.key === 'Enter' || event.keyCode === 13) { event.preventDefault(); $('#btn_modal_submit_new_password').click(); }"
+                onkeydown = "if (event.key === 'Enter' || event.keyCode === 13) { event.preventDefault(); window.submitModalPasswordReset && window.submitModalPasswordReset(); }"
               ),
               htmltools::tags$button(
                 type = "button",
@@ -1535,9 +1536,8 @@ show_reset_password_modal <- function(session, access_token = "", error_msg = NU
                 `data-lpignore` = "true",
                 `data-form-type` = "other",
                 value = "",
-                `data-update-on` = "change",
                 style = "padding-right: 2.75rem;",
-                onkeydown = "if (event.key === 'Enter' || event.keyCode === 13) { event.preventDefault(); $('#btn_modal_submit_new_password').click(); }"
+                onkeydown = "if (event.key === 'Enter' || event.keyCode === 13) { event.preventDefault(); window.submitModalPasswordReset && window.submitModalPasswordReset(); }"
               ),
               htmltools::tags$button(
                 type = "button",

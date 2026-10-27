@@ -1102,6 +1102,13 @@ server <- function(input, output, session) {
     }
   })
 
+  # Cancelar recuperação e voltar para login a pedido do usuário
+  observeEvent(input$btn_modal_cancel_recovery, {
+    rv$pending_recovery_token <- NULL
+    shiny::removeModal()
+    session$sendCustomMessage("clear_recovery_state", list())
+  })
+
   # Evento de redefinição de senha com token de recuperação (via formulário embutido)
   observeEvent(input$btn_reset_password_submit, {
     btn_data <- input$btn_reset_password_submit

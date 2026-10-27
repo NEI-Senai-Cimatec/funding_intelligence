@@ -27,6 +27,21 @@
     errBox.hide();
     if (successBox.length) successBox.hide();
 
+    // Limpa quaisquer tokens residuais de recuperação anteriores para não interferir no login
+    try {
+      sessionStorage.removeItem('quiin_pending_recovery_token');
+      sessionStorage.removeItem('quiin_recovery_active');
+      localStorage.removeItem('quiin_pending_recovery_token');
+      localStorage.removeItem('quiin_recovery_active');
+    } catch(e) {}
+    if (window.history && window.history.replaceState) {
+      var curHash = window.location.hash || '';
+      var curSearch = window.location.search || '';
+      if (curHash.indexOf('type=recovery') !== -1 || curSearch.indexOf('type=recovery') !== -1) {
+        window.history.replaceState(null, document.title, window.location.pathname);
+      }
+    }
+
     // Feedback visual imediato e animação no botão
     btn.prop('disabled', true).addClass('loading');
     btn.html('<i class="fa fa-spinner fa-spin" style="margin-right: 8px;"></i><span>Entrando na plataforma...</span>');
@@ -285,12 +300,27 @@
 
   // Verifica se o usuário está em fluxo de recuperação (ativo, em memória, sessionStorage ou URL)
   window.isUserInRecovery = function() {
-    if ($('body').hasClass('authenticated')) return false;
+    if ($('body').hasClass('authenticated') || $('html').hasClass('authenticated')) return false;
+
+    var params = collectAllUrlParams();
+    var hasRecoveryUrl = (params.type === 'recovery') || 
+                         (params.recovery === 'true') || 
+                         (window.location.hash.indexOf('type=recovery') !== -1) ||
+                         (window.location.search.indexOf('type=recovery') !== -1);
+
+    var hasSavedAuth = false;
+    try {
+      hasSavedAuth = !!localStorage.getItem('quiin_auth_session');
+    } catch(e) {}
+
+    // Se o usuário já possui sessão salva e a URL NÃO é explicitamente de recuperação, NUNCA está em recuperação
+    if (hasSavedAuth && !hasRecoveryUrl) return false;
+
     var stored = null;
     try {
       stored = sessionStorage.getItem('quiin_pending_recovery_token');
     } catch(e) {}
-    return isRecoveryModeActive || !!window.currentRecoveryToken || (!!stored && stored.length > 5);
+    return isRecoveryModeActive || hasRecoveryUrl || (!!stored && stored.length > 5);
   };
 
   // Força a exibição imediata e incontestável do formulário de criação de nova senha
@@ -596,13 +626,21 @@
           localStorage.removeItem('quiin_recovery_active');
         } catch(e) {}
         $('#quiin_recovery_instant_css').remove();
+        if (window.history && window.history.replaceState) {
+          var h = window.location.hash || '';
+          var s = window.location.search || '';
+          if (h.indexOf('type=recovery') !== -1 || s.indexOf('type=recovery') !== -1) {
+            window.history.replaceState(null, document.title, window.location.pathname);
+          }
+        }
 
         var btn = $('#btn_login_submit');
         if (btn.length) {
           btn.html('<i class="fa fa-check" style="margin-right: 8px;"></i><span>Acesso autorizado!</span>');
         }
+        $('html').addClass('authenticated');
         $('body').addClass('authenticated');
-        $('#auth_overlay_root').stop(true, true).fadeOut(250);
+        $('#auth_overlay_root').stop(true, true).hide();
 
         // Prepara o formulário em estado pronto caso o usuário deslogue
         if (elRestoring) elRestoring.style.display = 'none';
@@ -612,7 +650,9 @@
         if (elLogin) elLogin.style.display = 'block';
         if (elTabs) elTabs.style.display = 'flex';
       } else {
+        $('html').removeClass('authenticated');
         $('body').removeClass('authenticated');
+        $('#quiin_early_auth_css, #quiin_instant_auth_css').remove();
 
         // Se estiver em modo de recuperação, NUNCA permite exibir o formulário de login
         if (window.isUserInRecovery()) {
@@ -672,6 +712,10 @@
         localStorage.removeItem('quiin_auth_session');
       } catch(e) {}
       sessionRestored = false;
+      $('html').removeClass('authenticated');
+      $('body').removeClass('authenticated');
+      $('#quiin_early_auth_css, #quiin_instant_auth_css').remove();
+      $('#auth_overlay_root').css('display', 'flex').show();
 
       if (window.isUserInRecovery()) {
         window.enforceResetTab();
@@ -704,6 +748,10 @@
         window.enforceResetTab();
         return;
       }
+      $('html').removeClass('authenticated');
+      $('body').removeClass('authenticated');
+      $('#quiin_early_auth_css, #quiin_instant_auth_css').remove();
+      $('#auth_overlay_root').css('display', 'flex').show();
       var elRestoring = document.getElementById('auth_restoring_state');
       var elLogin = document.getElementById('auth_form_login');
       var elTabs = document.querySelector('.auth-tabs-nav');
@@ -1098,50 +1146,38 @@
     }
 
     // Se chegamos aqui, o usuário tem sessão salva legítima e não está acessando um link de recuperação
-    // Exibe o spinner de restauração e esconde o formulário de login imediatamente
-    var elLogin = document.getElementById('auth_form_login');
-    var elSignup = document.getElementById('auth_form_signup');
-    var elForgot = document.getElementById('auth_form_forgot');
-    var elReset = document.getElementById('auth_form_reset_password');
-    var elTabs = document.querySelector('.auth-tabs-nav');
-    var elRestoring = document.getElementById('auth_restoring_state');
-    if (elLogin) elLogin.style.display = 'none';
-    if (elSignup) elSignup.style.display = 'none';
-    if (elForgot) elForgot.style.display = 'none';
-    if (elReset) elReset.style.display = 'none';
-    if (elTabs) elTabs.style.display = 'none';
-    if (elRestoring) elRestoring.style.display = 'block';
+    // Oculta imediatamente o overlay e ativa a classe authenticated para manter o app destravado
+    $('html').addClass('authenticated');
+    $('body').addClass('authenticated');
+    $('#auth_overlay_root').hide();
 
-    var attempts = 0;
-    var maxAttempts = 120; // 12 segundos
-    var restoreTimer = setInterval(function() {
-      attempts++;
-      if (sessionRestored) {
-        clearInterval(restoreTimer);
-        return;
-      }
-      if (window.isUserInRecovery()) {
-        clearInterval(restoreTimer);
-        window.enforceResetTab();
-        return;
-      }
-      if (window.Shiny && window.Shiny.setInputValue && window.Shiny.shinyapp && window.Shiny.shinyapp.isConnected()) {
+    function doSendRestore() {
+      if (sessionRestored) return true;
+      if (window.Shiny && window.Shiny.setInputValue) {
         sessionRestored = true;
-        clearInterval(restoreTimer);
         console.log('[AUTH] Enviando restore_auth_session para o servidor Shiny...');
         window.Shiny.setInputValue('restore_auth_session', sessionData, {priority: 'event'});
-      } else if (attempts >= maxAttempts) {
-        clearInterval(restoreTimer);
-        console.warn('[AUTH] Timeout aguardando conexao Shiny para restaurar sessao.');
-        if (window.isUserInRecovery()) {
-          window.enforceResetTab();
+        return true;
+      }
+      return false;
+    }
+
+    if (!doSendRestore()) {
+      $(document).on('shiny:connected', function() {
+        doSendRestore();
+      });
+      var attempts = 0;
+      var restoreTimer = setInterval(function() {
+        attempts++;
+        if (sessionRestored) {
+          clearInterval(restoreTimer);
           return;
         }
-        if (elRestoring) elRestoring.style.display = 'none';
-        if (elLogin) elLogin.style.display = 'block';
-        if (elTabs) elTabs.style.display = 'flex';
-      }
-    }, 100);
+        if (doSendRestore() || attempts >= 100) {
+          clearInterval(restoreTimer);
+        }
+      }, 100);
+    }
   }
 
   // Inicia detecção de recuperação e restauração de forma unificada e segura

@@ -572,11 +572,8 @@ supabase_restore_session <- function(session_data, conn = NULL) {
     ))
   }
   
-  # 3. Fallback de resiliência: se houve erro de rede ou timeout e o usuário cached é válido
-  ref_status <- ref_res$status_code %||% 0
-  is_explicit_rejection <- ref_status %in% c(400, 401, 403)
-  
-  if (!is_explicit_rejection && is.list(cached_user) && !is.null(cached_user$email) && nzchar(as.character(cached_user$email))) {
+  # 3. Fallback de resiliência: se o cached_user contém dados válidos de usuário autenticado
+  if (is.list(cached_user) && !is.null(cached_user$email) && nzchar(as.character(cached_user$email))) {
     user <- cached_user
     is_dev <- supabase_is_dev_or_diretoria(user, conn = conn)
     user$cargo <- user$cargo %||% (if (isTRUE(is_dev)) "diretoria" else "leitor")
@@ -591,7 +588,7 @@ supabase_restore_session <- function(session_data, conn = NULL) {
     ))
   }
   
-  list(success = FALSE, is_invalid = is_explicit_rejection)
+  list(success = FALSE, is_invalid = TRUE)
 }
 
 # ─── Opção 3: Consulta de Permissões na Tabela 'public.perfis' do Supabase ───────
@@ -924,32 +921,29 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
         )
       },
       
-      # Proteção Instantânea contra Flash do Login: Se houver indício de recuperação na URL ou sessionStorage,
-      # injeta estilo imediato ocultando o formulário de login e forçando a exibição da tela de redefinição.
+      # Proteção Instantânea contra Flash de Tela:
+      # Se houver indício de recuperação na URL, oculta formulários normais e força tela de redefinição.
+      # Se houver sessão salva legítima no localStorage (e URL NÃO é de recuperação), oculta o overlay instantaneamente no F5.
       htmltools::tags$script(htmltools::HTML("
         (function() {
           try {
-            // Purga chaves residuais de recuperação no localStorage para não interferir na sessão persistente
-            try {
-              localStorage.removeItem('quiin_pending_recovery_token');
-              localStorage.removeItem('quiin_recovery_active');
-            } catch(e) {}
-
             var h = window.location.hash || '';
             var s = window.location.search || '';
-            var st = '';
-            try { st = sessionStorage.getItem('quiin_pending_recovery_token') || ''; } catch(e) {}
+            var hasRecoveryUrl = (h.indexOf('type=recovery') !== -1) || (s.indexOf('type=recovery') !== -1);
             var hasSavedSession = false;
             try { hasSavedSession = !!localStorage.getItem('quiin_auth_session'); } catch(e) {}
 
-            var hasRecoveryUrl = (h.indexOf('type=recovery') !== -1) || (s.indexOf('type=recovery') !== -1);
-            var isRec = hasRecoveryUrl || (st.length > 5 && !hasSavedSession);
-
-            if (isRec) {
+            if (hasRecoveryUrl) {
               var sNode = document.createElement('style');
               sNode.id = 'quiin_recovery_instant_css';
               sNode.textContent = '#auth_form_login, .auth-tabs-nav, #auth_form_signup, #auth_form_forgot, #auth_form_reset_password { display: none !important; } #auth_restoring_state { display: block !important; }';
               document.head.appendChild(sNode);
+            } else if (hasSavedSession) {
+              var sAuth = document.createElement('style');
+              sAuth.id = 'quiin_instant_auth_css';
+              sAuth.textContent = '#auth_overlay_root { display: none !important; }';
+              document.head.appendChild(sAuth);
+              document.documentElement.classList.add('authenticated');
             }
           } catch(e) {}
         })();

@@ -922,14 +922,21 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
       },
       
       # Proteção Instantânea contra Flash de Tela:
-      # Se houver indício de recuperação na URL, oculta formulários normais e força exibição do estado de restauração/redefinição.
-      # Se houver sessão salva legítima no localStorage (e URL NÃO é de recuperação), oculta os formulários e exibe o spinner de restauração instantaneamente.
+      # Se houver indício de recuperação na URL ou sessionStorage, oculta formulários normais e exibe o estado de 'Aguarde...'.
+      # Se houver sessão salva legítima no localStorage (e URL NÃO é de recuperação), oculta os formulários e exibe o spinner de restauração.
       htmltools::tags$script(htmltools::HTML("
         (function() {
           try {
             var h = window.location.hash || '';
             var s = window.location.search || '';
-            var hasRecoveryUrl = (h.indexOf('type=recovery') !== -1) || (s.indexOf('type=recovery') !== -1);
+            var hasRecoveryUrl = (h.indexOf('type=recovery') !== -1) || (s.indexOf('type=recovery') !== -1) || (h.indexOf('token_hash=') !== -1) || (s.indexOf('token_hash=') !== -1);
+            var hasRecoveryStorage = false;
+            try {
+              hasRecoveryStorage = !!(sessionStorage.getItem('quiin_pending_recovery_token') || sessionStorage.getItem('quiin_recovery_active'));
+            } catch(e) {}
+
+            var isRecovery = hasRecoveryUrl || hasRecoveryStorage;
+
             var hasSavedSession = false;
             try {
               var saved = localStorage.getItem('quiin_auth_session');
@@ -939,15 +946,15 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
               }
             } catch(e) {}
 
-            if (hasRecoveryUrl) {
+            if (isRecovery) {
               var sNode = document.createElement('style');
               sNode.id = 'quiin_recovery_instant_css';
-              sNode.textContent = '#auth_form_login, .auth-tabs-nav, #auth_form_signup, #auth_form_forgot, #auth_form_reset_password { display: none !important; } #auth_restoring_state { display: block !important; }';
+              sNode.textContent = '#auth_form_login, .auth-tabs-nav, #auth_form_signup, #auth_form_forgot, #auth_form_reset_password, #auth_restoring_state { display: none !important; } #auth_recovery_loading_state { display: block !important; }';
               document.head.appendChild(sNode);
             } else if (hasSavedSession) {
               var sNode = document.createElement('style');
               sNode.id = 'quiin_restore_instant_css';
-              sNode.textContent = '#auth_form_login, .auth-tabs-nav, #auth_form_signup, #auth_form_forgot, #auth_form_reset_password { display: none !important; } #auth_restoring_state { display: block !important; }';
+              sNode.textContent = '#auth_form_login, .auth-tabs-nav, #auth_form_signup, #auth_form_forgot, #auth_form_reset_password, #auth_recovery_loading_state { display: none !important; } #auth_restoring_state { display: block !important; }';
               document.head.appendChild(sNode);
               setTimeout(function() {
                 var el = document.getElementById('quiin_restore_instant_css');
@@ -987,6 +994,15 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
           htmltools::tags$i(class = "fa fa-user-plus"),
           htmltools::tags$span("Criar Conta")
         )
+      ),
+      
+      # Estado de Aguarde para Recuperação de Senha (Visível apenas enquanto prepara a tela de nova senha)
+      htmltools::tags$div(
+        id = "auth_recovery_loading_state",
+        style = "display: none; text-align: center; padding: 2.5rem 1rem;",
+        htmltools::tags$i(class = "fa fa-circle-notch fa-spin", style = "font-size: 2.2rem; color: #004691; margin-bottom: 1.25rem;"),
+        htmltools::tags$h4(style = "color: #0f172a; font-size: 1.2rem; font-weight: 700; margin-bottom: 0.5rem;", "Aguarde..."),
+        htmltools::tags$p(style = "color: #64748b; font-size: 0.9rem; margin: 0;", "Carregando a tela de alteração de senha.")
       ),
       
       # Estado de Restauração de Sessão (Visível quando restaurando sessão salva no localStorage)
@@ -1296,16 +1312,16 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
         htmltools::tags$div(
           style = "text-align: center; margin-bottom: 1.35rem;",
           htmltools::tags$div(
-            style = "width: 52px; height: 52px; border-radius: 50%; background: #f0fdf4; border: 1px solid #bbf7d0; color: #16a34a; display: inline-flex; align-items: center; justify-content: center; font-size: 1.35rem; margin-bottom: 0.75rem; box-shadow: 0 2px 8px rgba(22, 163, 74, 0.1);",
-            htmltools::tags$i(class = "fa fa-lock-open")
+            style = "width: 52px; height: 52px; border-radius: 50%; background: #eff6ff; border: 1px solid #bfdbfe; color: #004691; display: inline-flex; align-items: center; justify-content: center; font-size: 1.35rem; margin-bottom: 0.75rem; box-shadow: 0 2px 8px rgba(0, 70, 145, 0.1);",
+            htmltools::tags$i(class = "fa fa-key")
           ),
           htmltools::tags$h3(style = "font-size: 1.25rem; font-weight: 800; color: #0f172a; margin: 0 0 0.35rem 0;", "Criar Nova Senha"),
-          htmltools::tags$p(style = "font-size: 0.85rem; color: #64748b; margin: 0; line-height: 1.45;", "Defina uma nova senha segura para acessar a plataforma.")
+          htmltools::tags$p(style = "font-size: 0.85rem; color: #64748b; margin: 0; line-height: 1.45;", "Defina uma nova senha para acessar sua conta na plataforma.")
         ),
         
         htmltools::tags$div(
           class = "auth-form-group",
-          htmltools::tags$label(class = "auth-form-label", "Nova senha (mínimo 6 caracteres):"),
+          htmltools::tags$label(class = "auth-form-label", "Senha:"),
           htmltools::tags$div(
             class = "auth-input-wrapper",
             htmltools::tags$i(class = "fa fa-lock auth-input-icon"),
@@ -1315,7 +1331,8 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
               class = "auth-input",
               placeholder = "••••••••",
               autocomplete = "new-password",
-              style = "padding-right: 2.5rem;"
+              style = "padding-right: 2.5rem;",
+              onkeydown = "if (event.key === 'Enter' || event.keyCode === 13) { event.preventDefault(); window.submitResetPasswordForm && window.submitResetPasswordForm(); }"
             ),
             htmltools::tags$button(
               type = "button",
@@ -1330,7 +1347,7 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
         
         htmltools::tags$div(
           class = "auth-form-group",
-          htmltools::tags$label(class = "auth-form-label", "Confirmar nova senha:"),
+          htmltools::tags$label(class = "auth-form-label", "Confirme a senha:"),
           htmltools::tags$div(
             class = "auth-input-wrapper",
             htmltools::tags$i(class = "fa fa-check-double auth-input-icon"),
@@ -1340,7 +1357,8 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
               class = "auth-input",
               placeholder = "••••••••",
               autocomplete = "new-password",
-              style = "padding-right: 2.5rem;"
+              style = "padding-right: 2.5rem;",
+              onkeydown = "if (event.key === 'Enter' || event.keyCode === 13) { event.preventDefault(); window.submitResetPasswordForm && window.submitResetPasswordForm(); }"
             ),
             htmltools::tags$button(
               type = "button",
@@ -1366,21 +1384,10 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
           id = "btn_reset_password_submit",
           type = "button",
           class = "auth-btn-primary",
-          style = "background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);",
+          style = "background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); margin-top: 0.5rem;",
           onclick = "window.submitResetPasswordForm && window.submitResetPasswordForm()",
           htmltools::tags$i(class = "fa fa-check", style = "margin-right: 8px;"),
-          htmltools::tags$span("Atualizar Senha")
-        ),
-        
-        htmltools::tags$div(
-          style = "text-align: center; margin-top: 1.25rem; font-size: 0.825rem;",
-          htmltools::tags$a(
-            href = "#",
-            class = "auth-link-back",
-            onclick = "window.cancelRecoveryModal && window.cancelRecoveryModal(); return false;",
-            htmltools::tags$i(class = "fa fa-arrow-left"),
-            htmltools::tags$span("Voltar para o Login")
-          )
+          htmltools::tags$span("Salvar Nova Senha")
         )
       ),
       
@@ -1491,7 +1498,7 @@ show_reset_password_modal <- function(session, access_token = "", is_logged_in =
           htmltools::tags$span("Arrastável")
         )
       ),
-      size = "l",
+      size = "m",
       easyClose = isTRUE(is_logged_in),
       footer = htmltools::tags$div(
         style = "display: flex; justify-content: flex-end; gap: 10px; width: 100%;",
@@ -1521,62 +1528,58 @@ show_reset_password_modal <- function(session, access_token = "", is_logged_in =
         ),
         shiny::uiOutput("modal_reset_password_error_ui"),
         htmltools::tags$div(
-          class = "row g-3",
-          style = "margin-bottom: 1.25rem;",
+          class = "mb-3",
+          htmltools::tags$label(class = "form-label fw-bold text-secondary", style = "font-size: 0.85rem;", "Senha:"),
           htmltools::tags$div(
-            class = "col-12 col-md-6",
-            htmltools::tags$label(class = "form-label fw-bold text-secondary", style = "font-size: 0.85rem;", "Nova Senha (mínimo 6 caracteres):"),
-            htmltools::tags$div(
-              class = "form-group shiny-input-container",
-              style = "position: relative; width: 100%; margin-bottom: 0;",
-              shiny::tags$input(
-                id = "modal_reset_password_new",
-                type = "password",
-                class = "shiny-input-password form-control",
-                placeholder = "••••••••",
-                autocomplete = "new-password",
-                `data-lpignore` = "true",
-                `data-form-type` = "other",
-                value = "",
-                style = "padding-right: 2.75rem;",
-                onkeydown = "if (event.key === 'Enter' || event.keyCode === 13) { event.preventDefault(); window.submitModalPasswordReset && window.submitModalPasswordReset(); }"
-              ),
-              htmltools::tags$button(
-                type = "button",
-                class = "btn-toggle-pwd",
-                `data-target` = "modal_reset_password_new",
-                style = "position: absolute; right: 0.75rem; top: 7px; background: none; border: none; color: #94a3b8; cursor: pointer; padding: 4px; z-index: 10;",
-                title = "Mostrar/ocultar senha",
-                htmltools::tags$i(class = "fa fa-eye")
-              )
+            class = "form-group shiny-input-container",
+            style = "position: relative; width: 100%; margin-bottom: 0;",
+            shiny::tags$input(
+              id = "modal_reset_password_new",
+              type = "password",
+              class = "shiny-input-password form-control",
+              placeholder = "••••••••",
+              autocomplete = "new-password",
+              `data-lpignore` = "true",
+              `data-form-type` = "other",
+              value = "",
+              style = "padding-right: 2.75rem;",
+              onkeydown = "if (event.key === 'Enter' || event.keyCode === 13) { event.preventDefault(); window.submitModalPasswordReset && window.submitModalPasswordReset(); }"
+            ),
+            htmltools::tags$button(
+              type = "button",
+              class = "btn-toggle-pwd",
+              `data-target` = "modal_reset_password_new",
+              style = "position: absolute; right: 0.75rem; top: 7px; background: none; border: none; color: #94a3b8; cursor: pointer; padding: 4px; z-index: 10;",
+              title = "Mostrar/ocultar senha",
+              htmltools::tags$i(class = "fa fa-eye")
             )
-          ),
+          )
+        ),
+        htmltools::tags$div(
+          class = "mb-3",
+          htmltools::tags$label(class = "form-label fw-bold text-secondary", style = "font-size: 0.85rem;", "Confirme a senha:"),
           htmltools::tags$div(
-            class = "col-12 col-md-6",
-            htmltools::tags$label(class = "form-label fw-bold text-secondary", style = "font-size: 0.85rem;", "Confirmar Nova Senha:"),
-            htmltools::tags$div(
-              class = "form-group shiny-input-container",
-              style = "position: relative; width: 100%; margin-bottom: 0;",
-              shiny::tags$input(
-                id = "modal_reset_password_confirm",
-                type = "password",
-                class = "shiny-input-password form-control",
-                placeholder = "••••••••",
-                autocomplete = "new-password",
-                `data-lpignore` = "true",
-                `data-form-type` = "other",
-                value = "",
-                style = "padding-right: 2.75rem;",
-                onkeydown = "if (event.key === 'Enter' || event.keyCode === 13) { event.preventDefault(); window.submitModalPasswordReset && window.submitModalPasswordReset(); }"
-              ),
-              htmltools::tags$button(
-                type = "button",
-                class = "btn-toggle-pwd",
-                `data-target` = "modal_reset_password_confirm",
-                style = "position: absolute; right: 0.75rem; top: 7px; background: none; border: none; color: #94a3b8; cursor: pointer; padding: 4px; z-index: 10;",
-                title = "Mostrar/ocultar senha",
-                htmltools::tags$i(class = "fa fa-eye")
-              )
+            class = "form-group shiny-input-container",
+            style = "position: relative; width: 100%; margin-bottom: 0;",
+            shiny::tags$input(
+              id = "modal_reset_password_confirm",
+              type = "password",
+              class = "shiny-input-password form-control",
+              placeholder = "••••••••",
+              autocomplete = "new-password",
+              `data-lpignore` = "true",
+              `data-form-type` = "other",
+              value = "",
+              style = "padding-right: 2.75rem;",
+              onkeydown = "if (event.key === 'Enter' || event.keyCode === 13) { event.preventDefault(); window.submitModalPasswordReset && window.submitModalPasswordReset(); }"
+            ),
+            htmltools::tags$button(
+              type = "button",
+              class = "btn-toggle-pwd",
+              `data-target` = "modal_reset_password_confirm",
+              style = "position: absolute; right: 0.75rem; top: 7px; background: none; border: none; color: #94a3b8; cursor: pointer; padding: 4px; z-index: 10;",
+              title = "Mostrar/ocultar senha",
+              htmltools::tags$i(class = "fa fa-eye")
             )
           )
         ),

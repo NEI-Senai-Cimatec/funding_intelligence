@@ -217,9 +217,12 @@
     }
 
     btn.prop('disabled', true).addClass('loading');
-    btn.html('<i class="fa fa-spinner fa-spin" style="margin-right: 8px;"></i><span>Atualizando senha...</span>');
+    btn.html('<i class="fa fa-spinner fa-spin" style="margin-right: 8px;"></i><span>Salvando...</span>');
 
     var token = window.currentRecoveryToken || '';
+    try {
+      if (!token) token = sessionStorage.getItem('quiin_pending_recovery_token') || localStorage.getItem('quiin_pending_recovery_token') || '';
+    } catch(e) {}
     var payload = { password: pwd, access_token: token, timestamp: Date.now() };
 
     if (window.Shiny && window.Shiny.setInputValue) {
@@ -230,7 +233,7 @@
           Shiny.setInputValue('btn_reset_password_submit', payload, {priority: 'event'});
         } else {
           btn.prop('disabled', false).removeClass('loading');
-          btn.html('<i class="fa fa-check" style="margin-right: 8px;"></i><span>Atualizar Senha</span>');
+          btn.html('<i class="fa fa-check" style="margin-right: 8px;"></i><span>Salvar Nova Senha</span>');
           errText.text('Não foi possível conectar ao servidor. Tente novamente em alguns segundos.');
           errBox.slideDown(150);
         }
@@ -330,12 +333,15 @@
     $('body').removeClass('authenticated');
     $('#auth_overlay_root').show();
 
+    $('#quiin_recovery_instant_css').remove();
+    var elRecoveryLoading = document.getElementById('auth_recovery_loading_state');
     var elRestoring = document.getElementById('auth_restoring_state');
     var elLogin = document.getElementById('auth_form_login');
     var elSignup = document.getElementById('auth_form_signup');
     var elForgot = document.getElementById('auth_form_forgot');
     var elReset = document.getElementById('auth_form_reset_password');
 
+    if (elRecoveryLoading) elRecoveryLoading.style.display = 'none';
     if (elRestoring) elRestoring.style.display = 'none';
     if (elLogin) elLogin.style.display = 'none';
     if (elSignup) elSignup.style.display = 'none';
@@ -860,12 +866,13 @@
       }
       var btn = $('#btn_reset_password_submit');
       btn.prop('disabled', false).removeClass('loading');
-      btn.html('<i class="fa fa-check" style="margin-right: 8px;"></i><span>Atualizar Senha</span>');
+      btn.html('<i class="fa fa-check" style="margin-right: 8px;"></i><span>Salvar Nova Senha</span>');
 
       var msg = (data && data.message) ? data.message : 'Senha atualizada com sucesso! Você já pode entrar com sua nova senha.';
       if (!$('body').hasClass('authenticated')) {
         // Direciona direta e necessariamente para o modal/card de login
         $('#auth_overlay_root').css('display', 'flex').show();
+        $('#auth_recovery_loading_state').hide();
         $('#auth_restoring_state').hide();
         $('#auth_form_signup, #auth_form_forgot, #auth_form_reset_password').hide();
         $('#auth_form_login').show();
@@ -933,7 +940,7 @@
       }
       var btn = $('#btn_reset_password_submit');
       btn.prop('disabled', false).removeClass('loading');
-      btn.html('<i class="fa fa-check" style="margin-right: 8px;"></i><span>Atualizar Senha</span>');
+      btn.html('<i class="fa fa-check" style="margin-right: 8px;"></i><span>Salvar Nova Senha</span>');
 
       var msg = (data && data.message) ? data.message : 'Não foi possível redefinir sua senha. O link pode ter expirado.';
       $('#auth_reset_error_text').text(msg);
@@ -1095,22 +1102,21 @@
       isRecoveryModeActive = true;
       window.currentRecoveryToken = token;
 
-      // Salva apenas no sessionStorage da aba atual (NUNCA no localStorage global)
+      // Salva no sessionStorage para resistir a F5 / reloads na mesma aba
       try {
         sessionStorage.setItem('quiin_pending_recovery_token', token);
+        sessionStorage.setItem('quiin_recovery_active', '1');
       } catch(e) {}
 
-      // Só limpa a sessão salva se a URL atual for explicitamente um novo link de recuperação por email
-      if (isRecoveryUrl) {
-        try {
-          localStorage.removeItem('quiin_auth_session');
-        } catch(e) {}
-      }
+      // Limpa qualquer sessão salva de usuário anterior para não reautenticar
+      try {
+        localStorage.removeItem('quiin_auth_session');
+      } catch(e) {}
 
       // Força a exibição do formulário de redefinição
       window.enforceResetTab();
 
-      // Dispara abertura do modal dedicado no Shiny de forma persistente
+      // Dispara registro do token no Shiny
       startRecoveryModalTrigger(token);
 
       return true;
@@ -1160,6 +1166,12 @@
   function initSessionRestore() {
     if (sessionRestored || $('body').hasClass('authenticated')) return;
 
+    // Se estiver em modo de recuperação, NUNCA executa restauração nem exibe login
+    if (window.isUserInRecovery && window.isUserInRecovery()) {
+      checkUrlForRecovery();
+      return;
+    }
+
     // Purga quaisquer chaves legadas de recuperação em localStorage
     try {
       localStorage.removeItem('quiin_pending_recovery_token');
@@ -1191,8 +1203,13 @@
     var hasValidSavedSession = !!(sessionData && (sessionData.access_token || sessionData.refresh_token || sessionData.user));
 
     if (!hasValidSavedSession) {
+      if (window.isUserInRecovery && window.isUserInRecovery()) {
+        checkUrlForRecovery();
+        return;
+      }
       // Sessão ausente ou inválida: remove estilo de restauração e garante formulário de login visível
       $('#quiin_recovery_instant_css, #quiin_restore_instant_css, #quiin_early_auth_css, #quiin_instant_auth_css').remove();
+      $('#auth_recovery_loading_state').hide();
       $('#auth_restoring_state').hide();
       $('#auth_form_login').show();
       $('.auth-tabs-nav').show();

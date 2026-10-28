@@ -1133,7 +1133,9 @@ server <- function(input, output, session) {
         rv$pending_recovery_token <- tok
         rv$reset_modal_open <- TRUE
         rv$modal_reset_error <- NULL
-        show_reset_password_modal(session, access_token = tok, is_logged_in = FALSE)
+        if (!is.null(rv$user)) {
+          show_reset_password_modal(session, access_token = tok, is_logged_in = TRUE)
+        }
         session$sendCustomMessage("reset_modal_opened", list(token = tok))
       }
     }
@@ -1148,9 +1150,9 @@ server <- function(input, output, session) {
       rv$pending_recovery_token <- tok
     }
     rv$modal_reset_error <- NULL
-    if (!isTRUE(rv$reset_modal_open)) {
+    if (!isTRUE(rv$reset_modal_open) && !is.null(rv$user)) {
       rv$reset_modal_open <- TRUE
-      show_reset_password_modal(session, access_token = rv$pending_recovery_token %||% rv$access_token %||% "", is_logged_in = !is.null(rv$user))
+      show_reset_password_modal(session, access_token = rv$pending_recovery_token %||% rv$access_token %||% "", is_logged_in = TRUE)
     }
     session$sendCustomMessage("reset_modal_opened", list(token = rv$pending_recovery_token %||% ""))
   })

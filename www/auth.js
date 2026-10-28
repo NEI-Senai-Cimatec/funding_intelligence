@@ -303,13 +303,15 @@
 
   // Verifica se o usuário está em fluxo de recuperação (ativo, em memória, sessionStorage ou URL)
   window.isUserInRecovery = function() {
-    if ($('body').hasClass('authenticated') || $('html').hasClass('authenticated')) return false;
+    if (document.body && document.body.classList.contains('authenticated')) return false;
 
     var params = collectAllUrlParams();
     var hasRecoveryUrl = (params.type === 'recovery') || 
                          (params.recovery === 'true') || 
                          (window.location.hash.indexOf('type=recovery') !== -1) ||
-                         (window.location.search.indexOf('type=recovery') !== -1);
+                         (window.location.search.indexOf('type=recovery') !== -1) ||
+                         (window.location.hash.indexOf('token_hash=') !== -1) ||
+                         (window.location.search.indexOf('token_hash=') !== -1);
 
     var hasSavedAuth = false;
     try {
@@ -328,12 +330,21 @@
 
   // Força a exibição imediata e incontestável do formulário de criação de nova senha
   window.enforceResetTab = function() {
-    var tabsNav = $('.auth-tabs-nav');
-    tabsNav.hide();
-    $('body').removeClass('authenticated');
-    $('#auth_overlay_root').show();
+    try {
+      var s = document.getElementById('quiin_recovery_instant_css');
+      if (s) s.remove();
+    } catch(e) {}
+    try {
+      var s2 = document.getElementById('quiin_restore_instant_css');
+      if (s2) s2.remove();
+    } catch(e) {}
+    if (window.$) {
+      $('#quiin_recovery_instant_css, #quiin_restore_instant_css').remove();
+      $('.auth-tabs-nav').hide();
+      $('#auth_overlay_root').show();
+      $('body').removeClass('authenticated');
+    }
 
-    $('#quiin_recovery_instant_css').remove();
     var elRecoveryLoading = document.getElementById('auth_recovery_loading_state');
     var elRestoring = document.getElementById('auth_restoring_state');
     var elLogin = document.getElementById('auth_form_login');
@@ -341,18 +352,67 @@
     var elForgot = document.getElementById('auth_form_forgot');
     var elReset = document.getElementById('auth_form_reset_password');
 
-    if (elRecoveryLoading) elRecoveryLoading.style.display = 'none';
-    if (elRestoring) elRestoring.style.display = 'none';
-    if (elLogin) elLogin.style.display = 'none';
-    if (elSignup) elSignup.style.display = 'none';
-    if (elForgot) elForgot.style.display = 'none';
+    // Se os elementos ainda não foram carregados no DOM, agenda para quando o DOM estiver pronto
+    if (!elReset) {
+      if (window.$) {
+        $(document).ready(window.enforceResetTab);
+      } else {
+        document.addEventListener('DOMContentLoaded', window.enforceResetTab);
+      }
+      setTimeout(window.enforceResetTab, 50);
+      return;
+    }
+
+    if (elRecoveryLoading) elRecoveryLoading.style.setProperty('display', 'none', 'important');
+    if (elRestoring) elRestoring.style.setProperty('display', 'none', 'important');
+    if (elLogin) elLogin.style.setProperty('display', 'none', 'important');
+    if (elSignup) elSignup.style.setProperty('display', 'none', 'important');
+    if (elForgot) elForgot.style.setProperty('display', 'none', 'important');
     if (elReset) {
-      elReset.style.display = 'block';
+      elReset.style.setProperty('display', 'block', 'important');
       var resetPwd = document.getElementById('reset_password_new');
       if (resetPwd) {
-        setTimeout(function() { resetPwd.focus(); }, 60);
+        setTimeout(function() { resetPwd.focus(); }, 80);
       }
     }
+  };
+
+  // Desbloqueio forçado manual para o usuário voltar ao login se a rede/servidor demorar
+  window.forceUnlockLogin = function() {
+    console.warn('[AUTH] Desbloqueio forçado para login solicitado pelo usuário.');
+    isRecoveryModeActive = false;
+    window.currentRecoveryToken = null;
+    try {
+      sessionStorage.removeItem('quiin_pending_recovery_token');
+      sessionStorage.removeItem('quiin_recovery_active');
+      localStorage.removeItem('quiin_pending_recovery_token');
+      localStorage.removeItem('quiin_recovery_active');
+    } catch(e) {}
+    try {
+      var s1 = document.getElementById('quiin_recovery_instant_css');
+      if (s1) s1.remove();
+      var s2 = document.getElementById('quiin_restore_instant_css');
+      if (s2) s2.remove();
+    } catch(e) {}
+    if (window.$) {
+      $('#quiin_recovery_instant_css, #quiin_restore_instant_css').remove();
+    }
+    var elRecoveryLoading = document.getElementById('auth_recovery_loading_state');
+    var elRestoring = document.getElementById('auth_restoring_state');
+    var elLogin = document.getElementById('auth_form_login');
+    var elSignup = document.getElementById('auth_form_signup');
+    var elForgot = document.getElementById('auth_form_forgot');
+    var elReset = document.getElementById('auth_form_reset_password');
+    var elTabs = document.querySelector('.auth-tabs-nav');
+
+    if (elRecoveryLoading) elRecoveryLoading.style.setProperty('display', 'none', 'important');
+    if (elRestoring) elRestoring.style.setProperty('display', 'none', 'important');
+    if (elReset) elReset.style.setProperty('display', 'none', 'important');
+    if (elSignup) elSignup.style.setProperty('display', 'none', 'important');
+    if (elForgot) elForgot.style.setProperty('display', 'none', 'important');
+    if (elLogin) elLogin.style.setProperty('display', 'block', 'important');
+    if (elTabs) elTabs.style.setProperty('display', 'flex', 'important');
+    if (window.switchAuthTab) window.switchAuthTab('login');
   };
 
   // 2. Função de Alternância de Abas Instantânea (Login, Cadastro, Recuperar e Redefinir)
@@ -1073,11 +1133,13 @@
   function checkUrlForRecovery() {
     var params = collectAllUrlParams();
 
-    // Uma URL de recuperação genuína deve conter explicitamente type=recovery (padrão Supabase Auth)
+    // Uma URL de recuperação genuína deve conter explicitamente type=recovery ou token_hash
     var isRecoveryUrl = (params.type === 'recovery') || 
                         (params.recovery === 'true') || 
                         (window.location.hash.indexOf('type=recovery') !== -1) ||
                         (window.location.search.indexOf('type=recovery') !== -1) ||
+                        (window.location.hash.indexOf('token_hash=') !== -1) ||
+                        (window.location.search.indexOf('token_hash=') !== -1) ||
                         (params.token_hash && (params.type === 'recovery' || !params.type));
 
     var storedToken = null;
@@ -1105,7 +1167,6 @@
       // Salva no sessionStorage para resistir a F5 / reloads na mesma aba
       try {
         sessionStorage.setItem('quiin_pending_recovery_token', token);
-        sessionStorage.setItem('quiin_recovery_active', '1');
       } catch(e) {}
 
       // Limpa qualquer sessão salva de usuário anterior para não reautenticar
@@ -1133,6 +1194,18 @@
       errBox.stop(true, true).slideDown(150);
       return true;
     }
+
+    // Se foi detectada recuperação mas sem token válido (ou token expirado/ausente), limpa e destrava
+    if (isRecovery && !token) {
+      console.warn('[AUTH] Link de recuperação sem token válido. Destravando para tela de login.');
+      try {
+        sessionStorage.removeItem('quiin_pending_recovery_token');
+        sessionStorage.removeItem('quiin_recovery_active');
+      } catch(e) {}
+      window.forceUnlockLogin();
+      return false;
+    }
+
     return false;
   }
 
@@ -1156,33 +1229,46 @@
     try {
       localStorage.removeItem('quiin_auth_session');
     } catch(e) {}
-    $('#quiin_recovery_instant_css, #quiin_restore_instant_css, #quiin_early_auth_css, #quiin_instant_auth_css').remove();
-    $('#auth_restoring_state').hide();
-    $('#auth_form_login').show();
-    $('.auth-tabs-nav').show();
-    $('#auth_overlay_root').stop(true, true).fadeIn(150);
+    try {
+      var s1 = document.getElementById('quiin_recovery_instant_css');
+      if (s1) s1.remove();
+      var s2 = document.getElementById('quiin_restore_instant_css');
+      if (s2) s2.remove();
+    } catch(e) {}
+    if (window.$) {
+      $('#quiin_recovery_instant_css, #quiin_restore_instant_css, #quiin_early_auth_css, #quiin_instant_auth_css').remove();
+      $('#auth_recovery_loading_state').hide();
+      $('#auth_restoring_state').hide();
+      $('#auth_form_login').show();
+      $('.auth-tabs-nav').show();
+      $('#auth_overlay_root').stop(true, true).fadeIn(150);
+    }
   };
 
   function initSessionRestore() {
-    if (sessionRestored || $('body').hasClass('authenticated')) return;
+    if (sessionRestored || (document.body && document.body.classList.contains('authenticated'))) return;
 
-    // Se estiver em modo de recuperação, NUNCA executa restauração nem exibe login
+    // Se estiver em modo de recuperação, executa verificação de recuperação
     if (window.isUserInRecovery && window.isUserInRecovery()) {
-      checkUrlForRecovery();
-      return;
+      if (checkUrlForRecovery()) return;
     }
 
-    // Purga quaisquer chaves legadas de recuperação em localStorage
+    // Purga quaisquer chaves legadas de recuperação se não estiver em recuperação válida
     try {
-      localStorage.removeItem('quiin_pending_recovery_token');
-      localStorage.removeItem('quiin_recovery_active');
+      if (!window.isUserInRecovery || !window.isUserInRecovery()) {
+        localStorage.removeItem('quiin_pending_recovery_token');
+        localStorage.removeItem('quiin_recovery_active');
+        sessionStorage.removeItem('quiin_recovery_active');
+      }
     } catch(e) {}
 
     var params = collectAllUrlParams();
     var isRecoveryUrl = (params.type === 'recovery') || 
                         (params.recovery === 'true') || 
                         (window.location.hash.indexOf('type=recovery') !== -1) || 
-                        (window.location.search.indexOf('type=recovery') !== -1);
+                        (window.location.search.indexOf('type=recovery') !== -1) ||
+                        (window.location.hash.indexOf('token_hash=') !== -1) ||
+                        (window.location.search.indexOf('token_hash=') !== -1);
 
     // Se a URL contém explicitamente link de recuperação de senha por email, prioriza recuperação
     if (isRecoveryUrl) {
@@ -1204,16 +1290,26 @@
 
     if (!hasValidSavedSession) {
       if (window.isUserInRecovery && window.isUserInRecovery()) {
-        checkUrlForRecovery();
-        return;
+        if (checkUrlForRecovery()) return;
       }
       // Sessão ausente ou inválida: remove estilo de restauração e garante formulário de login visível
-      $('#quiin_recovery_instant_css, #quiin_restore_instant_css, #quiin_early_auth_css, #quiin_instant_auth_css').remove();
-      $('#auth_recovery_loading_state').hide();
-      $('#auth_restoring_state').hide();
-      $('#auth_form_login').show();
-      $('.auth-tabs-nav').show();
-      if (checkUrlForRecovery()) return;
+      try {
+        var s1 = document.getElementById('quiin_recovery_instant_css');
+        if (s1) s1.remove();
+        var s2 = document.getElementById('quiin_restore_instant_css');
+        if (s2) s2.remove();
+      } catch(e) {}
+      if (window.$) {
+        $('#quiin_recovery_instant_css, #quiin_restore_instant_css, #quiin_early_auth_css, #quiin_instant_auth_css').remove();
+      }
+      var elRecLoad = document.getElementById('auth_recovery_loading_state');
+      if (elRecLoad) elRecLoad.style.setProperty('display', 'none', 'important');
+      var elRestoring = document.getElementById('auth_restoring_state');
+      if (elRestoring) elRestoring.style.setProperty('display', 'none', 'important');
+      var elLogin = document.getElementById('auth_form_login');
+      if (elLogin) elLogin.style.setProperty('display', 'block', 'important');
+      var elTabs = document.querySelector('.auth-tabs-nav');
+      if (elTabs) elTabs.style.setProperty('display', 'flex', 'important');
       return;
     }
 
@@ -1293,12 +1389,22 @@
     initSessionRestore();
   }
 
-  handleInitialAuthState();
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', handleInitialAuthState);
+  } else {
+    handleInitialAuthState();
   }
-  $(document).ready(handleInitialAuthState);
-  $(document).on('shiny:connected', handleInitialAuthState);
+  if (window.$) {
+    $(document).ready(handleInitialAuthState);
+    $(document).on('shiny:connected', handleInitialAuthState);
+  } else {
+    document.addEventListener('DOMContentLoaded', function() {
+      if (window.$) {
+        $(document).ready(handleInitialAuthState);
+        $(document).on('shiny:connected', handleInitialAuthState);
+      }
+    });
+  }
 
 })();
 

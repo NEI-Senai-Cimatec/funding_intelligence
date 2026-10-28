@@ -922,7 +922,7 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
       },
       
       # Proteção Instantânea contra Flash de Tela:
-      # Se houver indício de recuperação na URL ou sessionStorage, oculta formulários normais e exibe o estado de 'Aguarde...'.
+      # Se houver indício de recuperação na URL ou token salvo, oculta formulários normais e exibe o estado de 'Aguarde...'.
       # Se houver sessão salva legítima no localStorage (e URL NÃO é de recuperação), oculta os formulários e exibe o spinner de restauração.
       htmltools::tags$script(htmltools::HTML("
         (function() {
@@ -930,10 +930,11 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
             var h = window.location.hash || '';
             var s = window.location.search || '';
             var hasRecoveryUrl = (h.indexOf('type=recovery') !== -1) || (s.indexOf('type=recovery') !== -1) || (h.indexOf('token_hash=') !== -1) || (s.indexOf('token_hash=') !== -1);
-            var hasRecoveryStorage = false;
+            var storedToken = null;
             try {
-              hasRecoveryStorage = !!(sessionStorage.getItem('quiin_pending_recovery_token') || sessionStorage.getItem('quiin_recovery_active'));
+              storedToken = sessionStorage.getItem('quiin_pending_recovery_token');
             } catch(e) {}
+            var hasRecoveryStorage = !!(storedToken && storedToken.length > 5);
 
             var isRecovery = hasRecoveryUrl || hasRecoveryStorage;
 
@@ -951,6 +952,25 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
               sNode.id = 'quiin_recovery_instant_css';
               sNode.textContent = '#auth_form_login, .auth-tabs-nav, #auth_form_signup, #auth_form_forgot, #auth_form_reset_password, #auth_restoring_state { display: none !important; } #auth_recovery_loading_state { display: block !important; }';
               document.head.appendChild(sNode);
+
+              // Failsafe absoluto de recuperação: após 2.5s destrava a tela de nova senha ou faz fallback para login
+              setTimeout(function() {
+                var el = document.getElementById('quiin_recovery_instant_css');
+                if (el) el.remove();
+                var recLoad = document.getElementById('auth_recovery_loading_state');
+                var recForm = document.getElementById('auth_form_reset_password');
+                var loginForm = document.getElementById('auth_form_login');
+                var tabs = document.querySelector('.auth-tabs-nav');
+                if (recLoad) recLoad.style.setProperty('display', 'none', 'important');
+                if (recForm && (hasRecoveryUrl || hasRecoveryStorage)) {
+                  recForm.style.setProperty('display', 'block', 'important');
+                  var inp = document.getElementById('reset_password_new');
+                  if (inp) inp.focus();
+                } else if (loginForm) {
+                  loginForm.style.setProperty('display', 'block', 'important');
+                  if (tabs) tabs.style.setProperty('display', 'flex', 'important');
+                }
+              }, 2500);
             } else if (hasSavedSession) {
               var sNode = document.createElement('style');
               sNode.id = 'quiin_restore_instant_css';
@@ -1002,7 +1022,16 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
         style = "display: none; text-align: center; padding: 2.5rem 1rem;",
         htmltools::tags$i(class = "fa fa-circle-notch fa-spin", style = "font-size: 2.2rem; color: #004691; margin-bottom: 1.25rem;"),
         htmltools::tags$h4(style = "color: #0f172a; font-size: 1.2rem; font-weight: 700; margin-bottom: 0.5rem;", "Aguarde..."),
-        htmltools::tags$p(style = "color: #64748b; font-size: 0.9rem; margin: 0;", "Carregando a tela de alteração de senha.")
+        htmltools::tags$p(style = "color: #64748b; font-size: 0.9rem; margin: 0 0 1.25rem 0;", "Carregando a tela de alteração de senha."),
+        htmltools::tags$button(
+          id = "btn_unlock_login_from_wait",
+          type = "button",
+          class = "btn btn-sm btn-link text-muted",
+          onclick = "window.forceUnlockLogin && window.forceUnlockLogin();",
+          style = "font-size: 0.8rem; text-decoration: none; color: #94a3b8; padding: 4px 8px;",
+          htmltools::tags$i(class = "fa fa-arrow-left", style = "margin-right: 5px;"),
+          htmltools::tags$span("Demorando? Ir para o Login")
+        )
       ),
       
       # Estado de Restauração de Sessão (Visível quando restaurando sessão salva no localStorage)

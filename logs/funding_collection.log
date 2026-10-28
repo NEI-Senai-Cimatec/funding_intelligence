@@ -6150,3 +6150,8 @@
 [2026-10-28 14:59:18] [WARN] Falha ao exportar XLSX: attempt to select less than one element in integerOneIndex
 [2026-10-28 14:59:18] [INFO] Fim da coleta oficial. 1 fontes processadas. 0 registros adicionados nesta rodada. 338 registros na base.
 [2026-10-28 14:59:19] [WARN] Coleta finalizada sem novos registros: 1 fonte(s) processadas, 338 registros na base.
+[2026-10-28 15:39:22] [INFO] Início da coleta oficial.
+[2026-10-28 15:40:14] [INFO] Fonte em processamento: sigitec | https://conexoes-inovacao.petrobras.com.br/conexoesinovacao/s/cooperacoes-tecnologicas?language=pt_BR
+[2026-10-28 15:40:15] [INFO] [sigitec] sucesso: 17 registro(s) processado(s). 567 desafio(s) no portal; 17 aberto(s) capturado(s); 17 processado(s); 0 falha(s) de detalhe; 0 falha(s) no Link do Desafio.
+[2026-10-28 15:40:17] [WARN] Falha ao exportar XLSX: attempt to select less than one element in integerOneIndex
+[2026-10-28 15:40:17] [INFO] Fim da coleta oficial. 1 fontes processadas. 17 registros adicionados nesta rodada. 355 registros na base.

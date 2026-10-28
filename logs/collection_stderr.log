@@ -37,11 +37,10 @@ The following object is masked from 'package:rvest':
 
     guess_encoding
 
-[2026-10-28 14:58:31] [INFO] Início da coleta oficial.
-[2026-10-28 14:59:12] [INFO] Fonte em processamento: sigitec | https://conexoes-inovacao.petrobras.com.br/conexoesinovacao/s/cooperacoes-tecnologicas?language=pt_BR
-[2026-10-28 14:59:13] [WARN] [sigitec] parcial: Persistencia parcial: 0 de 17 registro(s) gravados (17 falha(s), 0 colisao(oes) de hash). 567 desafio(s) no portal; 17 aberto(s) capturado(s); 17 processado(s); 0 falha(s) de detalhe; 0 falha(s) no Link do Desafio.
-[2026-10-28 14:59:18] [WARN] Falha ao exportar XLSX: attempt to select less than one element in integerOneIndex
-[2026-10-28 14:59:18] [INFO] Fim da coleta oficial. 1 fontes processadas. 0 registros adicionados nesta rodada. 338 registros na base.
-[2026-10-28 14:59:19] [WARN] Coleta finalizada sem novos registros: 1 fonte(s) processadas, 338 registros na base.
+[2026-10-28 15:39:22] [INFO] Início da coleta oficial.
+[2026-10-28 15:40:14] [INFO] Fonte em processamento: sigitec | https://conexoes-inovacao.petrobras.com.br/conexoesinovacao/s/cooperacoes-tecnologicas?language=pt_BR
+[2026-10-28 15:40:15] [INFO] [sigitec] sucesso: 17 registro(s) processado(s). 567 desafio(s) no portal; 17 aberto(s) capturado(s); 17 processado(s); 0 falha(s) de detalhe; 0 falha(s) no Link do Desafio.
+[2026-10-28 15:40:17] [WARN] Falha ao exportar XLSX: attempt to select less than one element in integerOneIndex
+[2026-10-28 15:40:17] [INFO] Fim da coleta oficial. 1 fontes processadas. 17 registros adicionados nesta rodada. 355 registros na base.
 Warning message:
-UNRELIABLE VALUE: Future (<unnamed-1>) unexpectedly generated random numbers without specifying argument 'seed'. There is a risk that those random numbers are not statistically sound and the overall results might be invalid. To fix this, specify 'seed=TRUE'. This ensures that proper, parallel-safe random numbers are produced. To disable this check, use 'seed=NULL', or set option 'future.rng.onMisuse' to "ignore". [future <unnamed-1> (4cb3676fd241b1c9ec0daaf3b8974826-1); on 4cb3676fd241b1c9ec0daaf3b8974826@DESKTOP-RNJ2JJH<13820>] 
+UNRELIABLE VALUE: Future (<unnamed-1>) unexpectedly generated random numbers without specifying argument 'seed'. There is a risk that those random numbers are not statistically sound and the overall results might be invalid. To fix this, specify 'seed=TRUE'. This ensures that proper, parallel-safe random numbers are produced. To disable this check, use 'seed=NULL', or set option 'future.rng.onMisuse' to "ignore". [future <unnamed-1> (b90506fa8049d82f080673f26f994f47-1); on b90506fa8049d82f080673f26f994f47@DESKTOP-RNJ2JJH<8952>] 

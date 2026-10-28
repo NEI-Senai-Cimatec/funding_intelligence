@@ -934,7 +934,7 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
             try {
               storedToken = sessionStorage.getItem('quiin_pending_recovery_token');
             } catch(e) {}
-            var hasRecoveryStorage = !!(storedToken && storedToken.length > 5);
+            var hasRecoveryStorage = !!((storedToken && storedToken.length > 5) || (sessionStorage.getItem('quiin_em_redefinicao_senha') === '1'));
 
             var isRecovery = hasRecoveryUrl || hasRecoveryStorage;
 
@@ -953,7 +953,7 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
               sNode.textContent = '#auth_form_login, .auth-tabs-nav, #auth_form_signup, #auth_form_forgot, #auth_form_reset_password, #auth_restoring_state { display: none !important; } #auth_recovery_loading_state { display: block !important; }';
               document.head.appendChild(sNode);
 
-              // Failsafe absoluto de recuperação: após 2.5s destrava a tela de nova senha ou faz fallback para login
+              // Failsafe absoluto de recuperação: após 2.5s destrava a tela de nova senha com exclusão mútua rigorosa
               setTimeout(function() {
                 var el = document.getElementById('quiin_recovery_instant_css');
                 if (el) el.remove();
@@ -963,10 +963,13 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
                 var tabs = document.querySelector('.auth-tabs-nav');
                 if (recLoad) recLoad.style.setProperty('display', 'none', 'important');
                 if (recForm && (hasRecoveryUrl || hasRecoveryStorage)) {
+                  if (loginForm) loginForm.style.setProperty('display', 'none', 'important');
+                  if (tabs) tabs.style.setProperty('display', 'none', 'important');
                   recForm.style.setProperty('display', 'block', 'important');
                   var inp = document.getElementById('reset_password_new');
                   if (inp) inp.focus();
                 } else if (loginForm) {
+                  if (recForm) recForm.style.setProperty('display', 'none', 'important');
                   loginForm.style.setProperty('display', 'block', 'important');
                   if (tabs) tabs.style.setProperty('display', 'flex', 'important');
                 }
@@ -1417,6 +1420,21 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
           onclick = "window.submitResetPasswordForm && window.submitResetPasswordForm()",
           htmltools::tags$i(class = "fa fa-check", style = "margin-right: 8px;"),
           htmltools::tags$span("Salvar Nova Senha")
+        ),
+        
+        # Link para desistir da recuperação e voltar ao login (padrão nei-js)
+        htmltools::tags$p(
+          class = "auth-switch-link",
+          style = "text-align: center; margin-top: 1.15rem; margin-bottom: 0.25rem; font-size: 0.85rem; color: #64748b;",
+          "Deseja cancelar? ",
+          htmltools::tags$button(
+            id = "btn_cancelar_nova_senha",
+            type = "button",
+            class = "auth-switch-btn",
+            style = "background: none; border: none; color: #004691; font-weight: 600; cursor: pointer; font-size: 0.85rem; padding: 0; text-decoration: underline;",
+            onclick = "window.cancelarRedefinicaoSenha && window.cancelarRedefinicaoSenha()",
+            "Voltar ao login"
+          )
         )
       ),
       

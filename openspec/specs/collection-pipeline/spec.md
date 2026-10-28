@@ -117,12 +117,14 @@ The system SHALL collect CAPES opportunities via the Plone REST API at `/++api++
 - **WHEN** the Plone API returns an error
 - **THEN** Playwright is used to render the CAPES page and extract candidates
 
-### Requirement: Specialized SIGITEC collection via REST API
-The system SHALL collect Petrobras SIGITEC opportunities via the REST API at `/v2/ms-authorization/opportunity/getAllPublicOpportunities`. The collector fetches the full listing, filters for `status == "A"` (Aberta), then fetches details for each opportunity via `/v2/ms-authorization/opportunity/public-opportunity/{id}`. Falls back to Playwright if the API fails.
+### Requirement: Specialized SIGITEC collection via Conexões portal
+The system SHALL collect Petrobras opportunities from the Conexões para Inovação portal list view (`Desafio__c`, list view `00BU4000009TpOhMAK`) via Salesforce Aura JSON, walk the full listing (open records may appear on any page), filter for `pkl_Status__c == "Aberto"`, and enrich each open record with the portal detail page (`RecordUi.getRecordWithFields`) and with the public SIGITEC API reached through `url_LinkDoDesafio__c`. Recollections are incremental: only open records are emitted and existing records are preserved by the upsert keyed on `id_registro`.
 
-#### Scenario: SIGITEC API listing
-- **WHEN** `collect_sigitec()` runs and the API is accessible
-- **THEN** only opportunities with status "A" are processed with detail enrichment
+#### Scenario: Conexões Aura listing
+- **WHEN** `collect_sigitec()` runs and the portal is accessible
+- **THEN** only records with Status "Aberto" are processed; closed records are not emitted
+- **AND** the SIGITEC challenge detail enriches title, challenge, objective, expected solution, theme/subtheme, TRL/CRL and regulatory agency
+- **AND** the Link do Desafio URL is used as `link_detalhe` and the portal record page as `link_origem`
 
 ### Requirement: Specialized FAPESB collection via WordPress REST
 The system SHALL collect FAPESB opportunities via the WordPress REST API at `/wp-json/wp/v2/posts?categories=11` (category 11 = "Aberto"). The collector paginates, cleans HTML entities from titles, extracts dates from content via regex, and builds records with the FAPESB schema.

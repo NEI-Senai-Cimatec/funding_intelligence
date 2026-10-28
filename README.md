@@ -152,7 +152,7 @@ flowchart TD
 | `fapesb` | Fundação de Amparo à Pesquisa do Estado da Bahia | Brasil | WordPress REST API | pt |
 | `horizon_europe` | Horizon Europe | UE | EU F&T Portal REST API | en → pt (tradução automática) |
 | `erc` | European Research Council | UE | EU F&T Portal REST API | en → pt (tradução automática) |
-| `sigitec` | Petrobras SIGITEC | Brasil | REST API | pt |
+| `sigitec` | Petrobras SIGITEC / Conexões para Inovação | Brasil | Aura JSON + API SIGITEC | pt |
 | `undp` | UNDP Brasil | Brasil | JS component + HTML | pt |
 | `embrapii` | EMBRAPII | Brasil | HTML scraping | pt |
 | `daad` | DAAD Brasil | Alemanha | Hybrid JSON+HTML | en |
@@ -175,7 +175,7 @@ flowchart TD
 - `collect_fapesb` — WordPress REST API (`/wp-json/wp/v2/posts?categories=11`)
 - `collect_horizon_europe` — EU F&T Portal Search API com 21 termos de busca (EIC, MSCA, WIDERA, CL2-CL5, EURATOM)
 - `collect_erc` — EU F&T Portal Search API com termos ERC específicos
-- `collect_sigitec` — REST API SIGITEC com listing + detalhe por ID
+- `collect_sigitec` — portal Conexões para Inovação: listagem Aura (`Desafio__c`, somente `Status = Aberto`) + detalhe por recordId + enriquecimento pelo Link do Desafio (API pública SIGITEC)
 - `collect_undp` — Componente externo UNDP (JSON) + HTML de detalhe
 - `collect_embrapii` — Parsing HTML estático da página de transparência
 - `collect_daad` — Híbrido: JSON catálogo global (scholarships.js) + HTML scraping detalhe
@@ -192,6 +192,8 @@ flowchart TD
 - `collect_darpa_quantum_benchmarking` — HTML + Playwright Stealth DARPA QBI
 - `collect_generic_official` — Fallback HTML para CNPq e fontes não especializadas
 
+> **SIGITEC / Conexões para Inovação:** a coleta lê a tabela `Desafio__c` do portal e emite apenas `Status = Aberto`. A listagem é percorrida por inteiro (os abertos podem estar em qualquer página), o detalhe do portal fornece Fase/Tipo de Chamada/Link do Desafio e a API pública SIGITEC enriquece título, desafio, objetivo, solução esperada, tema, TRL/CRL e agência. Recoletas são incrementais: o upsert por `id_registro` preserva o histórico e apenas acrescenta/atualiza os abertos.
+
 > **Nota sobre fontes EU/US:** Horizon Europe e ERC (e opcionalmente Grants.gov/NSF/DARPA) utilizam a EU F&T Portal API via
 > Cloudflare Worker proxy (`EU_API_PROXY_URL`) para contornar bloqueio de IPs da AWS no Posit Connect Cloud.
 > A mesma variável `EU_API_PROXY_URL` é generalizada para fontes US quando necessário (Grants.gov, DARPA QBI com WAF).
@@ -205,7 +207,6 @@ As seguintes fontes foram removidas na versão atual do sistema (commit `fbaa74c
 |---|---|
 | FAPESP, FAPERJ, FAPEMIG, FAPES/ES, FAPESC/SC | FAPES regionais com estruturas de URL instáveis |
 | CONFAP, BNDES, MCTI | Fontes com atualização irregular ou baixa aderência |
-| Petrobras SIGITEC | API descontinuada ou inacessível |
 | NIH, NSF, Wellcome Trust, Gates Foundation | Fontes internacionais com scraping complexo |
 | IDRC, UNESCO, World Bank, IDB | Baixo volume de editais relevantes |
 | EUREKA Network | Fontes europeias consolidadas no Horizon Europe |

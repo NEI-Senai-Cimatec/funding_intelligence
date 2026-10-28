@@ -3931,9 +3931,16 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
     }
     n_failed <- attr(n_inserted, "failed") %||% 0L
     n_collisions <- attr(n_inserted, "collisions") %||% 0L
+    n_persist_errors <- attr(n_inserted, "errors") %||% character()
+    if (length(n_persist_errors) > 0L) {
+      log_write(log_path, "ERROR", sprintf("[%s] Falha de persistencia: %s", sid, n_persist_errors[[1]]))
+    }
     inserted_total <- inserted_total + as.integer(n_inserted)
     log_metric(conn, sid, "source_records", as.integer(n_inserted), list(source_id = sid, pages = result$pages_visited %||% 0L))
     lg <- collection_log_status(result, nrow(recs), as.integer(n_inserted), n_failed, n_collisions)
+    if (length(n_persist_errors) > 0L) {
+      lg$mensagem <- paste0(lg$mensagem, " Erro: ", n_persist_errors[[1]])
+    }
     log_write(log_path, if (lg$status %in% c("erro", "parcial")) "WARN" else "INFO", sprintf("[%s] %s: %s", sid, lg$status, lg$mensagem))
     log_collection(
       conn = conn,

@@ -296,7 +296,7 @@ source_catalog <- function() {
     "fapesb", "Fundação de Amparo à Pesquisa do Estado da Bahia", "FAPESB", "Brasil", "fundação estadual de amparo", "fundação pública estadual", "https://www.fapesb.ba.gov.br/", "https://www.fapesb.ba.gov.br/category/edital/aberto/", "html", "pt", "diária", "Editais e chamadas da FAPESB.",
     "horizon_europe", "Horizon Europe", "HEU", "União Europeia", "programa multilateral", "união supranacional", "https://research-and-innovation.ec.europa.eu/", "https://api.tech.ec.europa.eu/search-api/prod/rest/search?apiKey=SEDIA", "api_json", "en", "diária", "API REST pública EU F&T Portal. Busca HORIZON (CL1-CL5, EIC, MSCA, WIDERA) + pós-filtro frameworkProgramme=43108390.",
     "erc", "European Research Council", "ERC", "União Europeia", "agência internacional", "união supranacional", "https://erc.europa.eu/", "https://api.tech.ec.europa.eu/search-api/prod/rest/search?apiKey=SEDIA&text=ERC", "api_json", "en", "diária", "API REST pública EU F&T Portal. Busca ERC + pós-filtro Horizon Europe (43108390) + ERC (43108406).",
-    "sigitec", "Petrobras SIGITEC - Sistema de Gestão de Inovação e Tecnologia Competitividade", "PETROBRAS", "Brasil", "empresa estatal", "empresa pública", "https://sigitec-competitividade.petrobras.com.br", "https://sigitec-competitividade.petrobras.com.br/v2/public/opportunities", "api_json", "pt", "diária", "API pública do SIGITEC (listagem + detalhe); página /v2/public/opportunities é uma SPA, não um endpoint JSON. Status oficiais A/J/R/F/CC. Fonte canônica; alias legado: anp_shell.",
+    "sigitec", "Petrobras SIGITEC - Conexões para Inovação (Cooperações Tecnológicas)", "PETROBRAS", "Brasil", "empresa estatal", "empresa pública", "https://conexoes-inovacao.petrobras.com.br", "https://conexoes-inovacao.petrobras.com.br/conexoesinovacao/s/cooperacoes-tecnologicas?language=pt_BR", "api_json", "pt", "diária", "Portal Conexões para Inovação (Salesforce Aura): listagem da tabela Desafios Cooperações Tecnológicas, somente Status=Aberto; detalhe por recordId e enriquecimento pelo Link do Desafio (API pública SIGITEC). Recoletas incrementais; alias legado: anp_shell.",
     "undp", "United Nations Development Programme - Brasil", "UNDP", "Brasil", "agência internacional", "organização multilateral", "https://www.undp.org/pt/brazil", "https://www.undp.org/pt/brazil/licitacoes", "api_json", "pt", "diária", "Componente externo UNDP Procurement Notices. JSON via public-components.undp.org. Detalhes via procurement-notices.undp.org.",
     "embrapii", "Empresa Brasileira de Pesquisa e Inovação Industrial", "EMBRAPII", "Brasil", "empresa estatal", "empresa pública", "https://embrapii.org.br", "https://embrapii.org.br/transparencia/", "html", "pt", "diária", "Chamadas públicas EMBRAPII via parsing HTML estático da página de transparência. Detalhes com cronograma e documentos PDF.",
     "daad", "Deutscher Akademischer Austauschdienst - Brasil", "DAAD", "Alemanha", "agência internacional", "organização internacional", "https://www.daad-brasil.org/pt/", "https://www.daad-brasil.org/pt/bolsas/busca/", "hybrid", "en", "mensal", "Bolsas de estudo DAAD Brasil. Híbrido: JSON catálogo global (scholarships.js) + HTML scraping detalhe. ~82 bolsas filtradas para Brasil (origin=48).",
@@ -550,6 +550,69 @@ create_tables <- function(conn) {
       details TEXT,
       timestamp TEXT DEFAULT (datetime('now', 'localtime'))
     )")
+
+  # Bancos sincronizados/importados podem ter tabelas sem PK/UNIQUE (ex.:
+  # dbWriteTable(overwrite=TRUE)); ON CONFLICT exige esses índices.
+  ensure_db_constraints(conn)
+}
+
+# Garante os alvos de ON CONFLICT usados pelo app. Não remove dados: se houver
+# duplicatas, avisa e não cria o índice (saneamento deve ser explícito).
+.ensure_unique_index <- function(conn, table, column, index_name) {
+  table_exists <- tryCatch(
+    nrow(DBI::dbGetQuery(conn, "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", params = list(table))) > 0L,
+    error = function(e) FALSE
+  )
+  if (!isTRUE(table_exists)) return(invisible(FALSE))
+
+  idx <- tryCatch(DBI::dbGetQuery(conn, sprintf("PRAGMA index_list(%s)", table)), error = function(e) NULL)
+  if (!is.null(idx) && nrow(idx) > 0L) {
+    for (nm in idx$name[idx$unique == 1L]) {
+      cols <- tryCatch(
+        DBI::dbGetQuery(conn, sprintf("PRAGMA index_info(%s)", shQuote(nm)))$name,
+        error = function(e) character()
+      )
+      if (identical(cols, column)) return(invisible(TRUE))
+    }
+  }
+
+  dup <- tryCatch(
+    DBI::dbGetQuery(
+      conn,
+      sprintf(
+        "SELECT COUNT(*) AS n FROM (SELECT %s FROM %s WHERE %s IS NOT NULL AND %s <> '' GROUP BY %s HAVING COUNT(*) > 1)",
+        column, table, column, column, column
+      )
+    )$n[[1]],
+    error = function(e) 0L
+  )
+  if (isTRUE(dup > 0L)) {
+    warning(sprintf("[DB] %s(%s) tem %d valor(es) duplicado(s); indice unico nao criado. Rode o saneamento.",
+                    table, column, dup), call. = FALSE)
+    return(invisible(FALSE))
+  }
+
+  ok <- tryCatch(
+    {
+      DBI::dbExecute(conn, sprintf("CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s(%s)", index_name, table, column))
+      TRUE
+    },
+    error = function(e) {
+      warning(sprintf("[DB] Falha ao criar indice unico %s: %s", index_name, conditionMessage(e)), call. = FALSE)
+      FALSE
+    }
+  )
+  invisible(ok)
+}
+
+ensure_db_constraints <- function(conn) {
+  if (db_is_postgres(conn)) return(invisible(TRUE))
+  .ensure_unique_index(conn, "oportunidades", "id_registro", "idx_oportunidades_id_registro")
+  .ensure_unique_index(conn, "oportunidades", "hash_deduplicacao", "idx_oportunidades_hash_dedup")
+  .ensure_unique_index(conn, "fontes_financiamento", "id_fonte", "idx_fontes_id_fonte")
+  .ensure_unique_index(conn, "editais_rastreados", "id_oportunidade", "idx_editais_id_oportunidade")
+  .ensure_unique_index(conn, "migration_flags", "flag", "idx_migration_flags_flag")
+  invisible(TRUE)
 }
 
 seed_sources <- function(conn) {
@@ -1001,7 +1064,7 @@ fallback_app_data <- function() {
 #  * Colisões de hash UNIQUE e falhas por linha são CONTADAS e expostas como atributos do retorno.
 upsert_opportunities <- function(conn, opportunities_df, clear_fields = NULL) {
   if (is.null(opportunities_df) || nrow(opportunities_df) == 0) {
-    return(invisible(structure(0L, updated = 0L, collisions = 0L, failed = 0L)))
+    return(invisible(structure(0L, updated = 0L, collisions = 0L, failed = 0L, errors = character())))
   }
 
   cols <- DBI::dbListFields(conn, "oportunidades")
@@ -1033,7 +1096,8 @@ upsert_opportunities <- function(conn, opportunities_df, clear_fields = NULL) {
     update_clause
   )
   existing_ids <- tryCatch(DBI::dbGetQuery(conn, "SELECT id_registro FROM oportunidades")$id_registro, error = function(e) character())
-  n_updated <- 0L; n_collisions <- 0L; n_failed <- 0L
+  n_updated <- 0L; n_collisions <- 0L; n_failed <- 0L; error_messages <- character()
+  warned_noncollision <- FALSE
 
   inserted <- 0L
   in_transaction <- FALSE
@@ -1090,13 +1154,17 @@ upsert_opportunities <- function(conn, opportunities_df, clear_fields = NULL) {
       },
       error = function(e) {
         failed <<- TRUE
-        # Loga colisão de hash_deduplicacao UNIQUE sem abortar o lote (observabilidade)
+        msg <- conditionMessage(e)
+        error_messages <<- c(error_messages, sprintf("[%s] %s", row$id_registro %||% "NA", msg))
+        # Loga colisão de hash UNIQUE sem abortar o lote (observabilidade)
         try(
           {
-            msg <- conditionMessage(e)
             if (grepl("UNIQUE constraint failed.*hash_deduplicacao|hash_deduplicacao.*UNIQUE|duplicate key value violates unique constraint", msg, ignore.case = TRUE)) {
               n_collisions <<- n_collisions + 1L
               warning(sprintf("[upsert] hash colisão ignorada id=%s titulo='%s' hash=%s", row$id_registro %||% "NA", substr(row$titulo %||% "", 1, 60), row$hash_deduplicacao %||% "NA"), call. = FALSE)
+            } else if (!warned_noncollision) {
+              warned_noncollision <<- TRUE
+              warning(sprintf("[upsert] falha de persistencia id=%s: %s", row$id_registro %||% "NA", msg), call. = FALSE)
             }
           },
           silent = TRUE
@@ -1127,7 +1195,8 @@ upsert_opportunities <- function(conn, opportunities_df, clear_fields = NULL) {
 
   DBI::dbCommit(conn)
   in_transaction <- FALSE
-  invisible(structure(inserted, updated = n_updated, collisions = n_collisions, failed = n_failed))
+  invisible(structure(inserted, updated = n_updated, collisions = n_collisions, failed = n_failed,
+                      errors = error_messages))
 }
 
 log_collection <- function(conn, fonte, metodo_coleta, status_execucao, mensagem, n_paginas = 0L, n_registros = 0L, url = NA_character_) {

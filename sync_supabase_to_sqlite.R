@@ -76,5 +76,26 @@ for (tbl in tables) {
   })
 }
 
+# dbWriteTable(overwrite=TRUE) recria a tabela sem PK/UNIQUE. Recria os alvos
+# de ON CONFLICT usados pelo app; se houver duplicatas, o app avisa no startup.
+sync_indexes <- list(
+  c("oportunidades", "id_registro", "idx_oportunidades_id_registro"),
+  c("oportunidades", "hash_deduplicacao", "idx_oportunidades_hash_dedup"),
+  c("fontes_financiamento", "id_fonte", "idx_fontes_id_fonte"),
+  c("editais_rastreados", "id_oportunidade", "idx_editais_id_oportunidade"),
+  c("migration_flags", "flag", "idx_migration_flags_flag")
+)
+for (idx in sync_indexes) {
+  tryCatch(
+    {
+      DBI::dbExecute(con, sprintf("CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s(%s)", idx[[3]], idx[[1]], idx[[2]]))
+      cat(sprintf("+ índice único %-38s OK\n", idx[[3]]))
+    },
+    error = function(e) {
+      cat(sprintf("! índice único %-38s: %s\n", idx[[3]], conditionMessage(e)))
+    }
+  )
+}
+
 DBI::dbDisconnect(con)
 cat("=== Sincronização concluída com sucesso! ===\n")

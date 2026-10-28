@@ -21,7 +21,7 @@ resolve_source_aliases <- function(ids) {
 }
 
 BR_CANONICAL_URLS <- list(
-  sigitec = "https://sigitec-competitividade.petrobras.com.br/v2/public/opportunities",
+  sigitec = "https://conexoes-inovacao.petrobras.com.br/conexoesinovacao/s/cooperacoes-tecnologicas?language=pt_BR",
   bnb_fundeci = "https://www.bnb.gov.br/fundeci/editais",
   aeb = "https://www.gov.br/aeb/pt-br/acesso-a-informacao/concurso-e-processos-seletivos",
   bndes = "https://www.bndes.gov.br/wps/portal/site/home/transparencia/licitacoes-contratos/licitacoes/",
@@ -37,7 +37,7 @@ BR_LEGACY_URL_PATTERNS <- c(
   bnb_fundeci = "ConveniosWeb",
   bndes = "onde-estamos/licitacoes-e-compras",
   bnb_hubine = "bnb\\.gov\\.br/hubine/?$",
-  sigitec = "NEVER_MATCHES"
+  sigitec = "sigitec-competitividade\\.petrobras\\.com\\.br"
 )
 
 br_source_url <- function(source_row, id) {
@@ -124,6 +124,34 @@ br_fetch_json_text <- function(url, log_path = NULL, headers = list()) {
   if (isTRUE(st$ok)) return(list(ok = TRUE, status = 200L, body = st$text))
   list(ok = FALSE, status = NA_integer_, body = NA_character_, error = st$error %||% msg,
        kind = st$error_kind %||% "network_error")
+}
+
+# JSON público via POST de formulário (TLS validado). Injetável por
+# `options(fi.br_json_post_fetcher = function(url, form) list(ok, status, body, error, kind))`.
+br_fetch_json_post <- function(url, form, log_path = NULL, headers = list()) {
+  injected <- getOption("fi.br_json_post_fetcher", NULL)
+  if (is.function(injected)) return(injected(url, form))
+  hdr <- build_scrape_headers()
+  req <- httr2::request(url) |>
+    httr2::req_user_agent(hdr$`User-Agent`) |>
+    httr2::req_headers(Accept = "application/json, text/plain, */*", !!!headers) |>
+    httr2::req_body_form(!!!form) |>
+    httr2::req_timeout(45) |>
+    httr2::req_retry(max_tries = 2, backoff = function(i) 2^i)
+  resp <- tryCatch(httr2::req_perform(req), error = function(e) e)
+  if (!inherits(resp, "error") || !is.null(resp$response)) {
+    r <- if (inherits(resp, "error")) resp$response else resp
+    st <- httr2::resp_status(r)
+    body <- tryCatch(httr2::resp_body_string(r), error = function(e) NA_character_)
+    if (st >= 200 && st < 300) return(list(ok = TRUE, status = st, body = body))
+    return(list(ok = FALSE, status = st, body = body, error = sprintf("HTTP %d", st),
+                kind = if (st %in% c(401L, 403L, 429L)) "blocked" else "http_error"))
+  }
+  msg <- conditionMessage(resp)
+  if (grepl("ssl|tls|certificate", tolower(msg))) {
+    return(list(ok = FALSE, status = NA_integer_, body = NA_character_, error = msg, kind = "tls_error"))
+  }
+  list(ok = FALSE, status = NA_integer_, body = NA_character_, error = msg, kind = "network_error")
 }
 
 br_unwrap_safelink <- function(url) {

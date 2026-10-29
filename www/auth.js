@@ -6,19 +6,6 @@
 (function() {
   'use strict';
 
-  // Inicialização do SDK Oficial do Supabase (Padrão comprovado nei-js)
-  var SUPABASE_URL = (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.url) || "https://jsystdrhtcoopjkrcwql.supabase.co";
-  var SUPABASE_ANON_KEY = (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.anonKey) || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpzeXN0ZHJodGNvb3Bqa3Jjd3FsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA4Njk5MzksImV4cCI6MjEwNjQ0NTkzOX0.2zCgYRema1h-KAz7ibQmoJfrmvVfoJTjMaKBeB18j98";
-  var supabaseClient = null;
-  try {
-    if (window.supabase && typeof window.supabase.createClient === 'function') {
-      supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      console.log('[AUTH] Supabase SDK Client v2 inicializado com sucesso.');
-    }
-  } catch(e) {
-    console.warn('[AUTH] Aviso ao inicializar Supabase Client:', e);
-  }
-
   // 1. Funções Globais de Submissão de Formulário (sempre disponíveis)
   window.submitLoginForm = function() {
     var emailInput = document.getElementById('login_email');
@@ -43,7 +30,6 @@
     // Limpa quaisquer tokens residuais de recuperação anteriores para não interferir no login
     try {
       sessionStorage.removeItem('quiin_pending_recovery_token');
-      sessionStorage.removeItem('quiin_em_redefinicao_senha');
       sessionStorage.removeItem('quiin_recovery_active');
       localStorage.removeItem('quiin_pending_recovery_token');
       localStorage.removeItem('quiin_recovery_active');
@@ -329,29 +315,17 @@
 
     var hasSavedAuth = false;
     try {
-      var raw = localStorage.getItem('quiin_auth_session');
-      if (raw) {
-        var p = JSON.parse(raw);
-        if (p && (p.access_token || p.refresh_token) && p.user && p.user.email) {
-          hasSavedAuth = true;
-        }
-      }
+      hasSavedAuth = !!localStorage.getItem('quiin_auth_session');
     } catch(e) {}
 
     // Se o usuário já possui sessão salva e a URL NÃO é explicitamente de recuperação, NUNCA está em recuperação
-    if (hasSavedAuth && !hasRecoveryUrl) {
-      try {
-        sessionStorage.removeItem('quiin_em_redefinicao_senha');
-        sessionStorage.removeItem('nei_em_redefinicao_senha');
-      } catch(e) {}
-      return false;
-    }
+    if (hasSavedAuth && !hasRecoveryUrl) return false;
 
     var storedToken = null;
     var storedFlag = null;
     try {
       storedToken = sessionStorage.getItem('quiin_pending_recovery_token');
-      storedFlag = sessionStorage.getItem('quiin_em_redefinicao_senha') || sessionStorage.getItem('nei_em_redefinicao_senha');
+      storedFlag = sessionStorage.getItem('quiin_em_redefinicao_senha');
     } catch(e) {}
 
     return isRecoveryModeActive || hasRecoveryUrl || (!!storedToken && storedToken.length > 5) || (storedFlag === '1');
@@ -379,14 +353,10 @@
     try {
       sessionStorage.removeItem('quiin_pending_recovery_token');
       sessionStorage.removeItem('quiin_em_redefinicao_senha');
-      sessionStorage.removeItem('nei_em_redefinicao_senha');
       sessionStorage.removeItem('quiin_recovery_active');
       localStorage.removeItem('quiin_pending_recovery_token');
       localStorage.removeItem('quiin_recovery_active');
     } catch(e) {}
-    if (supabaseClient && supabaseClient.auth) {
-      try { supabaseClient.auth.signOut(); } catch(e) {}
-    }
     if (window.history && window.history.replaceState) {
       window.history.replaceState(null, document.title, window.location.pathname);
     }
@@ -409,6 +379,9 @@
 
   // 2. Função Mestre de Exibição com Exclusão Mútua Rígida (padrão nei-js)
   window.exibirModoAuth = function(modo) {
+    var isAuth = document.body && document.body.classList.contains('authenticated');
+    if (isAuth) return;
+
     var elRecoveryLoading = document.getElementById('auth_recovery_loading_state');
     var elRestoring = document.getElementById('auth_restoring_state');
     var elLogin = document.getElementById('auth_form_login');
@@ -417,17 +390,17 @@
     var elReset = document.getElementById('auth_form_reset_password');
     var elTabs = document.querySelector('.auth-tabs-nav');
 
-    // Remove estilos temporários e revela o overlay
+    // Remove estilos temporários de bloqueio inicial
     try {
-      ['quiin_early_auth_css', 'quiin_instant_auth_css', 'quiin_recovery_instant_css', 'quiin_restore_instant_css'].forEach(function(id) {
-        var el = document.getElementById(id);
-        if (el) el.remove();
-      });
+      var s1 = document.getElementById('quiin_recovery_instant_css');
+      if (s1) s1.remove();
+      var s2 = document.getElementById('quiin_restore_instant_css');
+      if (s2) s2.remove();
     } catch(e) {}
     if (window.$) {
-      $('#quiin_early_auth_css, #quiin_instant_auth_css, #quiin_recovery_instant_css, #quiin_restore_instant_css').remove();
-      $('html, body').removeClass('authenticated');
-      $('#auth_overlay_root').css('display', 'flex').show();
+      $('#quiin_recovery_instant_css, #quiin_restore_instant_css').remove();
+      $('#auth_overlay_root').show();
+      $('body').removeClass('authenticated');
     }
 
     // Se os elementos ainda não foram injetados no DOM, reagenda
@@ -751,7 +724,6 @@
         window.currentRecoveryToken = null;
         try {
           sessionStorage.removeItem('quiin_pending_recovery_token');
-          sessionStorage.removeItem('quiin_em_redefinicao_senha');
           sessionStorage.removeItem('quiin_recovery_active');
           localStorage.removeItem('quiin_pending_recovery_token');
           localStorage.removeItem('quiin_recovery_active');
@@ -828,20 +800,12 @@
       }
     });
 
-    // Salvar sessão persistente no localStorage e no Supabase SDK
+    // Salvar sessão persistente no localStorage
     Shiny.addCustomMessageHandler('save_auth_session', function(data) {
       if (data && (data.access_token || data.refresh_token || data.user)) {
         try {
           localStorage.setItem('quiin_auth_session', JSON.stringify(data));
         } catch(e) {}
-        if (supabaseClient && supabaseClient.auth && data.access_token && data.refresh_token) {
-          try {
-            supabaseClient.auth.setSession({
-              access_token: data.access_token,
-              refresh_token: data.refresh_token
-            });
-          } catch(e) {}
-        }
       }
     });
 
@@ -859,9 +823,6 @@
       try {
         localStorage.removeItem('quiin_auth_session');
       } catch(e) {}
-      if (supabaseClient && supabaseClient.auth) {
-        try { supabaseClient.auth.signOut(); } catch(e) {}
-      }
       $('html').removeClass('authenticated');
       $('body').removeClass('authenticated');
       $('#quiin_recovery_instant_css, #quiin_restore_instant_css, #quiin_early_auth_css, #quiin_instant_auth_css').remove();
@@ -911,7 +872,12 @@
       $('body').removeClass('authenticated');
       $('#quiin_recovery_instant_css, #quiin_restore_instant_css, #quiin_early_auth_css, #quiin_instant_auth_css').remove();
       $('#auth_overlay_root').stop(true, true).fadeIn(150);
-      window.exibirModoAuth('login');
+      var elRestoring = document.getElementById('auth_restoring_state');
+      var elLogin = document.getElementById('auth_form_login');
+      var elTabs = document.querySelector('.auth-tabs-nav');
+      if (elRestoring) elRestoring.style.display = 'none';
+      if (elLogin) elLogin.style.display = 'block';
+      if (elTabs) elTabs.style.display = 'flex';
     });
 
     // Falha de login
@@ -1155,7 +1121,7 @@
         }
         return;
       }
-      if (window.Shiny && typeof window.Shiny.setInputValue === 'function') {
+      if (window.Shiny && window.Shiny.setInputValue && window.Shiny.shinyapp && window.Shiny.shinyapp.isConnected()) {
         console.log('[AUTH] Enviando trigger_reset_password_modal para o servidor Shiny...');
         window.Shiny.setInputValue('trigger_reset_password_modal', {
           access_token: token,
@@ -1164,7 +1130,7 @@
       }
     }
 
-    if (window.Shiny && typeof window.Shiny.setInputValue === 'function') {
+    if (window.Shiny && window.Shiny.shinyapp && window.Shiny.shinyapp.isConnected()) {
       sendToShiny();
     }
 
@@ -1261,7 +1227,7 @@
     return false;
   }
 
-  // 5. Restauração Silenciosa de Sessão Persistente (Padrão Oficial Supabase SDK / nei-js)
+  // 5. Restauração Silenciosa de Sessão Persistente
   var sessionRestored = false;
   var restoreTimeoutFailsafe = null;
   var restoreTimer = null;
@@ -1270,72 +1236,23 @@
   window.cancelRestoreSession = function() {
     console.warn('[AUTH] Restauração cancelada pelo usuário. Destravando formulário de login.');
     sessionRestored = false;
+    if (restoreTimeoutFailsafe) {
+      clearTimeout(restoreTimeoutFailsafe);
+      restoreTimeoutFailsafe = null;
+    }
+    if (restoreTimer) {
+      clearInterval(restoreTimer);
+      restoreTimer = null;
+    }
     try {
       localStorage.removeItem('quiin_auth_session');
     } catch(e) {}
-    if (supabaseClient && supabaseClient.auth) {
-      try { supabaseClient.auth.signOut(); } catch(e) {}
-    }
     window.exibirModoAuth('login');
     $('#auth_overlay_root').stop(true, true).fadeIn(150);
   };
 
-  // Envia a sessão para o servidor Shiny
-  function enviarSessaoParaShiny(payload) {
-    if (sessionRestored) return true;
-    try {
-      if (window.Shiny && typeof window.Shiny.setInputValue === 'function') {
-        sessionRestored = true;
-        console.log('[AUTH] Enviando restore_auth_session para o servidor Shiny...');
-        window.Shiny.setInputValue('restore_auth_session', payload, {priority: 'event'});
-        return true;
-      }
-    } catch(e) {
-      console.warn('[AUTH] Erro ao enviar restore_auth_session:', e);
-    }
-    return false;
-  }
-
-  // Listener oficial do Supabase SDK (idêntico ao padrão nei-js)
-  if (supabaseClient && supabaseClient.auth && typeof supabaseClient.auth.onAuthStateChange === 'function') {
-    supabaseClient.auth.onAuthStateChange(function(evento, session) {
-      console.log('[AUTH] onAuthStateChange:', evento, session ? session.user.email : 'sem sessao');
-      if (evento === 'PASSWORD_RECOVERY') {
-        sessionStorage.setItem('quiin_em_redefinicao_senha', '1');
-        sessionStorage.setItem('nei_em_redefinicao_senha', '1');
-        isRecoveryModeActive = true;
-        window.exibirModoAuth('reset');
-      } else if (evento === 'SIGNED_IN' || evento === 'TOKEN_REFRESHED') {
-        if (session && session.user && !isRecoveryModeActive) {
-          var payload = {
-            access_token: session.access_token,
-            refresh_token: session.refresh_token,
-            user: {
-              id: session.user.id,
-              email: session.user.email,
-              role: session.user.role || 'authenticated'
-            }
-          };
-          try { localStorage.setItem('quiin_auth_session', JSON.stringify(payload)); } catch(e) {}
-          $('html').addClass('authenticated');
-          $('body').addClass('authenticated');
-          $('#auth_overlay_root').hide();
-          enviarSessaoParaShiny(payload);
-        }
-      } else if (evento === 'SIGNED_OUT') {
-        if (!isRecoveryModeActive) {
-          try { localStorage.removeItem('quiin_auth_session'); } catch(e) {}
-          $('html').removeClass('authenticated');
-          $('body').removeClass('authenticated');
-          $('#auth_overlay_root').show();
-          window.exibirModoAuth('login');
-        }
-      }
-    });
-  }
-
   function initSessionRestore() {
-    if (sessionRestored) return;
+    if (sessionRestored || (document.body && document.body.classList.contains('authenticated'))) return;
 
     // Se estiver em modo de recuperação, executa verificação de recuperação
     if (window.isUserInRecovery && window.isUserInRecovery()) {
@@ -1349,9 +1266,6 @@
       if (!window.isUserInRecovery || !window.isUserInRecovery()) {
         localStorage.removeItem('quiin_pending_recovery_token');
         localStorage.removeItem('quiin_recovery_active');
-        sessionStorage.removeItem('quiin_pending_recovery_token');
-        sessionStorage.removeItem('quiin_em_redefinicao_senha');
-        sessionStorage.removeItem('nei_em_redefinicao_senha');
         sessionStorage.removeItem('quiin_recovery_active');
       }
     } catch(e) {}
@@ -1369,38 +1283,6 @@
       if (checkUrlForRecovery()) return;
     }
 
-    // 1. Tenta restaurar sessão via SDK Oficial do Supabase (getSession - padrão nei-js)
-    if (supabaseClient && supabaseClient.auth && typeof supabaseClient.auth.getSession === 'function') {
-      supabaseClient.auth.getSession().then(function(res) {
-        if (res && res.data && res.data.session && res.data.session.user) {
-          var s = res.data.session;
-          var sdkPayload = {
-            access_token: s.access_token,
-            refresh_token: s.refresh_token,
-            user: {
-              id: s.user.id,
-              email: s.user.email,
-              role: s.user.role || 'authenticated'
-            }
-          };
-          try { localStorage.setItem('quiin_auth_session', JSON.stringify(sdkPayload)); } catch(e) {}
-          $('html').addClass('authenticated');
-          $('body').addClass('authenticated');
-          $('#auth_overlay_root').hide();
-
-          if (!enviarSessaoParaShiny(sdkPayload)) {
-            $(document).off('shiny:connected.sdk').on('shiny:connected.sdk', function() {
-              enviarSessaoParaShiny(sdkPayload);
-            });
-          }
-          return;
-        }
-      }).catch(function(err) {
-        console.warn('[AUTH] Aviso getSession:', err);
-      });
-    }
-
-    // 2. Leitura síncrona imediata do localStorage para não ter flash de tela no F5
     var saved = null;
     try {
       saved = localStorage.getItem('quiin_auth_session');
@@ -1412,53 +1294,83 @@
         sessionData = JSON.parse(saved);
       } catch(e) {}
     }
-    var hasValidSavedSession = !!(sessionData && (sessionData.access_token || sessionData.refresh_token) && sessionData.user && sessionData.user.email);
-
-    if (hasValidSavedSession && !isRecoveryUrl) {
-      try {
-        sessionStorage.removeItem('quiin_pending_recovery_token');
-        sessionStorage.removeItem('quiin_em_redefinicao_senha');
-        sessionStorage.removeItem('nei_em_redefinicao_senha');
-        sessionStorage.removeItem('quiin_recovery_active');
-      } catch(e) {}
-    }
+    var hasValidSavedSession = !!(sessionData && (sessionData.access_token || sessionData.refresh_token || sessionData.user));
 
     if (!hasValidSavedSession) {
-      sessionRestored = false;
-      if (window.$) {
-        $('#quiin_early_auth_css, #quiin_instant_auth_css, #quiin_recovery_instant_css, #quiin_restore_instant_css').remove();
-        $('html, body').removeClass('authenticated');
-        $('#auth_overlay_root').css('display', 'flex').show();
-      }
       if (window.isUserInRecovery && window.isUserInRecovery()) {
         if (checkUrlForRecovery()) return;
         window.exibirModoAuth('reset');
         return;
       }
-      // Se não há sessão salva, exibe formulário de login normalmente
+      // Sessão ausente ou inválida: remove estilo de restauração e garante formulário de login visível
       window.exibirModoAuth('login');
       return;
     }
 
-    // Se o usuário tem sessão salva legítima e não está em link de recuperação:
-    // Destrava imediatamente o layout e oculta o overlay
-    $('html').addClass('authenticated');
-    $('body').addClass('authenticated');
-    $('#auth_overlay_root').hide();
+    // Se o usuário tem sessão salva legítima: exibe o estado de restauração enquanto o servidor valida
+    if (!$('body').hasClass('authenticated')) {
+      $('#auth_form_login, #auth_form_signup, #auth_form_forgot, #auth_form_reset_password, .auth-tabs-nav').hide();
+      $('#auth_restoring_state').show();
+    }
 
-    if (!enviarSessaoParaShiny(sessionData)) {
-      $(document).off('shiny:connected.restore').on('shiny:connected.restore', function() {
-        enviarSessaoParaShiny(sessionData);
-      });
+    // Failsafe de proteção absoluta: Se em 3.5 segundos a sessão não for confirmada, destrava o app para login manual
+    if (!restoreTimeoutFailsafe) {
+      restoreTimeoutFailsafe = setTimeout(function() {
+        if (!$('body').hasClass('authenticated')) {
+          console.warn('[AUTH] Failsafe acionado: sessão não restaurada em 3.5s. Destravando formulário de login.');
+          window.exibirModoAuth('login');
+          $('#auth_overlay_root').stop(true, true).fadeIn(150);
+        }
+      }, 3500);
+    }
+
+    function doSendRestore() {
+      if (sessionRestored || $('body').hasClass('authenticated')) return true;
+      try {
+        if (window.Shiny && typeof window.Shiny.setInputValue === 'function') {
+          sessionRestored = true;
+          console.log('[AUTH] Enviando restore_auth_session para o servidor Shiny conectado...');
+          window.Shiny.setInputValue('restore_auth_session', sessionData, {priority: 'event'});
+          return true;
+        }
+      } catch(e) {
+        console.warn('[AUTH] Erro ao enviar restore_auth_session:', e);
+      }
+      return false;
+    }
+
+    // Dispara envio no evento nativo shiny:connected
+    $(document).off('shiny:connected.restore').on('shiny:connected.restore', function() {
+      setTimeout(function() {
+        if (!sessionRestored && !$('body').hasClass('authenticated')) {
+          doSendRestore();
+        }
+      }, 50);
+      setTimeout(function() {
+        if (!sessionRestored && !$('body').hasClass('authenticated')) {
+          doSendRestore();
+        }
+      }, 350);
+    });
+
+    // Se o Shiny já estiver conectado no momento
+    if (doSendRestore()) {
+      return;
+    }
+
+    // Fallback de polling para garantir envio assim que Shiny conectar
+    if (!restoreTimer) {
       var attempts = 0;
-      var restoreTimer = setInterval(function() {
+      restoreTimer = setInterval(function() {
         attempts++;
-        if (sessionRestored || attempts >= 100) {
+        if (sessionRestored || $('body').hasClass('authenticated') || attempts >= 30) {
           clearInterval(restoreTimer);
+          restoreTimer = null;
           return;
         }
-        if (enviarSessaoParaShiny(sessionData)) {
+        if (doSendRestore()) {
           clearInterval(restoreTimer);
+          restoreTimer = null;
         }
       }, 100);
     }

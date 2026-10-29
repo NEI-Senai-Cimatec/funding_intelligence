@@ -930,39 +930,22 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
             var h = window.location.hash || '';
             var s = window.location.search || '';
             var hasRecoveryUrl = (h.indexOf('type=recovery') !== -1) || (s.indexOf('type=recovery') !== -1) || (h.indexOf('token_hash=') !== -1) || (s.indexOf('token_hash=') !== -1);
-
-            var hasSavedSession = false;
-            try {
-              var raw = localStorage.getItem('quiin_auth_session');
-              if (raw) {
-                var p = JSON.parse(raw);
-                if (p && (p.access_token || p.refresh_token) && p.user && p.user.email) {
-                  hasSavedSession = true;
-                }
-              }
-            } catch(e) {}
-
             var storedToken = null;
             try {
               storedToken = sessionStorage.getItem('quiin_pending_recovery_token');
             } catch(e) {}
+            var hasRecoveryStorage = !!((storedToken && storedToken.length > 5) || (sessionStorage.getItem('quiin_em_redefinicao_senha') === '1'));
 
-            // Se o usuário possui sessão salva legítima e a URL NÃO é explicitamente link de recuperação,
-            // purga flags residuais de redefinição para que a restauração de sessão ocorra com prioridade total
-            if (hasSavedSession && !hasRecoveryUrl) {
-              try {
-                sessionStorage.removeItem('quiin_em_redefinicao_senha');
-                sessionStorage.removeItem('nei_em_redefinicao_senha');
-                sessionStorage.removeItem('quiin_pending_recovery_token');
-                sessionStorage.removeItem('quiin_recovery_active');
-              } catch(e) {}
-              storedToken = null;
-            }
+            var isRecovery = hasRecoveryUrl || hasRecoveryStorage;
 
-            var hasRecoveryStorage = !!((storedToken && storedToken.length > 5) || 
-                                       (sessionStorage.getItem('quiin_em_redefinicao_senha') === '1') ||
-                                       (sessionStorage.getItem('nei_em_redefinicao_senha') === '1'));
-            var isRecovery = hasRecoveryUrl || (!hasSavedSession && hasRecoveryStorage);
+            var hasSavedSession = false;
+            try {
+              var saved = localStorage.getItem('quiin_auth_session');
+              if (saved) {
+                var parsed = JSON.parse(saved);
+                hasSavedSession = !!(parsed && (parsed.access_token || parsed.refresh_token || parsed.user));
+              }
+            } catch(e) {}
 
             if (isRecovery) {
               var sNode = document.createElement('style');
@@ -992,12 +975,22 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
                 }
               }, 2500);
             } else if (hasSavedSession) {
-              var sAuth = document.createElement('style');
-              sAuth.id = 'quiin_instant_auth_css';
-              sAuth.textContent = '#auth_overlay_root { display: none !important; }';
-              document.head.appendChild(sAuth);
-              if (document.documentElement) document.documentElement.classList.add('authenticated');
-              if (document.body) document.body.classList.add('authenticated');
+              var sNode = document.createElement('style');
+              sNode.id = 'quiin_restore_instant_css';
+              sNode.textContent = '#auth_form_login, .auth-tabs-nav, #auth_form_signup, #auth_form_forgot, #auth_form_reset_password, #auth_recovery_loading_state { display: none !important; } #auth_restoring_state { display: block !important; }';
+              document.head.appendChild(sNode);
+              setTimeout(function() {
+                var el = document.getElementById('quiin_restore_instant_css');
+                if (el && !(document.body && document.body.classList.contains('authenticated'))) {
+                  el.remove();
+                  var r = document.getElementById('auth_restoring_state');
+                  var l = document.getElementById('auth_form_login');
+                  var t = document.querySelector('.auth-tabs-nav');
+                  if (r) r.style.display = 'none';
+                  if (l) l.style.display = 'block';
+                  if (t) t.style.display = 'flex';
+                }
+              }, 4000);
             }
           } catch(e) {}
         })();

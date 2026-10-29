@@ -1234,7 +1234,7 @@
     return false;
   }
 
-  // 5. Restauração Silenciosa de Sessão Persistente
+  // 5. Restauração Silenciosa de Sessão Persistente (Padrão Comprovado c424f00)
   var sessionRestored = false;
   var restoreTimeoutFailsafe = null;
   var restoreTimer = null;
@@ -1243,14 +1243,6 @@
   window.cancelRestoreSession = function() {
     console.warn('[AUTH] Restauração cancelada pelo usuário. Destravando formulário de login.');
     sessionRestored = false;
-    if (restoreTimeoutFailsafe) {
-      clearTimeout(restoreTimeoutFailsafe);
-      restoreTimeoutFailsafe = null;
-    }
-    if (restoreTimer) {
-      clearInterval(restoreTimer);
-      restoreTimer = null;
-    }
     try {
       localStorage.removeItem('quiin_auth_session');
     } catch(e) {}
@@ -1259,7 +1251,7 @@
   };
 
   function initSessionRestore() {
-    if (sessionRestored || (document.body && document.body.classList.contains('authenticated'))) return;
+    if (sessionRestored) return;
 
     // Se estiver em modo de recuperação, executa verificação de recuperação
     if (window.isUserInRecovery && window.isUserInRecovery()) {
@@ -1324,32 +1316,17 @@
       return;
     }
 
-    // Se o usuário tem sessão salva legítima: exibe o estado de restauração enquanto o servidor valida
-    if (!$('body').hasClass('authenticated')) {
-      $('#auth_form_login, #auth_form_signup, #auth_form_forgot, #auth_form_reset_password, .auth-tabs-nav').hide();
-      $('#auth_restoring_state').show();
-    }
-
-    // Failsafe resiliente: evita bloqueio indefinido caso a conexão falhe, tolerando a latência do Posit Connect
-    function armRestoreFailsafe(ms) {
-      if (restoreTimeoutFailsafe) clearTimeout(restoreTimeoutFailsafe);
-      restoreTimeoutFailsafe = setTimeout(function() {
-        if (!$('body').hasClass('authenticated')) {
-          console.warn('[AUTH] Failsafe acionado: sessão não restaurada no tempo limite. Destravando formulário de login.');
-          window.exibirModoAuth('login');
-          $('#auth_overlay_root').stop(true, true).fadeIn(150);
-        }
-      }, ms || 6500);
-    }
-
-    if (!restoreTimeoutFailsafe) {
-      armRestoreFailsafe(6500);
-    }
+    // Se o usuário tem sessão salva legítima e não está em link de recuperação:
+    // Oculta imediatamente o overlay e ativa a classe authenticated para manter o app destravado
+    $('html').addClass('authenticated');
+    $('body').addClass('authenticated');
+    $('#auth_overlay_root').hide();
 
     function doSendRestore() {
-      if (sessionRestored || $('body').hasClass('authenticated')) return true;
+      if (sessionRestored) return true;
       try {
         if (window.Shiny && typeof window.Shiny.setInputValue === 'function') {
+          sessionRestored = true;
           console.log('[AUTH] Enviando restore_auth_session para o servidor Shiny...');
           window.Shiny.setInputValue('restore_auth_session', sessionData, {priority: 'event'});
           return true;
@@ -1360,39 +1337,19 @@
       return false;
     }
 
-    // Dispara envio no evento nativo shiny:connected
-    $(document).off('shiny:connected.restore').on('shiny:connected.restore', function() {
-      armRestoreFailsafe(5500);
-      setTimeout(function() {
-        if (!sessionRestored && !$('body').hasClass('authenticated')) {
-          doSendRestore();
-        }
-      }, 50);
-      setTimeout(function() {
-        if (!sessionRestored && !$('body').hasClass('authenticated')) {
-          doSendRestore();
-        }
-      }, 350);
-    });
-
-    // Se o Shiny já estiver conectado no momento
-    if (doSendRestore()) {
-      return;
-    }
-
-    // Fallback de polling para garantir envio assim que Shiny conectar
-    if (!restoreTimer) {
+    if (!doSendRestore()) {
+      $(document).off('shiny:connected.restore').on('shiny:connected.restore', function() {
+        doSendRestore();
+      });
       var attempts = 0;
-      restoreTimer = setInterval(function() {
+      var restoreTimer = setInterval(function() {
         attempts++;
-        if (sessionRestored || $('body').hasClass('authenticated') || attempts >= 30) {
+        if (sessionRestored || attempts >= 100) {
           clearInterval(restoreTimer);
-          restoreTimer = null;
           return;
         }
         if (doSendRestore()) {
           clearInterval(restoreTimer);
-          restoreTimer = null;
         }
       }, 100);
     }

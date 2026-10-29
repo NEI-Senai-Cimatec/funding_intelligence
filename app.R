@@ -352,14 +352,11 @@ ui <- bslib::page_sidebar(
                       (sessionStorage.getItem('nei_em_redefinicao_senha') === '1');
           var hasSession = false;
           try {
-            if (localStorage.getItem('quiin_auth_session')) {
-              hasSession = true;
-            } else {
-              for (var k in localStorage) {
-                if (k.indexOf('-auth-token') !== -1 && localStorage.getItem(k)) {
-                  hasSession = true;
-                  break;
-                }
+            var raw = localStorage.getItem('quiin_auth_session');
+            if (raw) {
+              var p = JSON.parse(raw);
+              if (p && (p.access_token || p.refresh_token) && p.user && p.user.email) {
+                hasSession = true;
               }
             }
           } catch(e) {}
@@ -1363,7 +1360,7 @@ server <- function(input, output, session) {
     
     restored <- tryCatch({
       supabase_restore_session(session_data, conn = conn)
-    }, error = function(e) list(success = FALSE, is_invalid = FALSE))
+    }, error = function(e) list(success = FALSE, is_invalid = TRUE))
     
     if (isTRUE(restored$success)) {
       rv$user <- restored$user
@@ -1396,7 +1393,7 @@ server <- function(input, output, session) {
         action = "SESSAO_RESTAURADA", 
         details = "Sessão persistente restaurada automaticamente no navegador"
       )
-    } else if (isTRUE(restored$is_invalid)) {
+    } else {
       session$sendCustomMessage("clear_auth_session", list())
       session$sendCustomMessage("restore_auth_failed", list())
     }

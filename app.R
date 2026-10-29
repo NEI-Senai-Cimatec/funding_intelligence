@@ -1819,14 +1819,14 @@ server <- function(input, output, session) {
       show_progress_modal()
       return()
     }
-    region <- input$region_filter
+    region <- as.character(input$region_filter %||% "Ambas")
     available_sources <- rv$sources
     
-    if (region == "Brasileiras") {
+    if (identical(region, "Brasileiras")) {
       available_sources <- available_sources |> dplyr::filter(pais == "Brasil")
-    } else if (region == "Europeias") {
+    } else if (identical(region, "Europeias")) {
       available_sources <- available_sources |> dplyr::filter(pais %in% c("União Europeia", "Alemanha", "Europa"))
-    } else if (region == "Internacionais") {
+    } else if (identical(region, "Internacionais")) {
       available_sources <- available_sources |> dplyr::filter(pais != "Brasil")
     } else {
       available_sources <- available_sources
@@ -2023,12 +2023,12 @@ server <- function(input, output, session) {
     df$derived_status <- derive_status_df(df)
 
     # Filtro regional — Ambas = literalmente todas (sem filtro), Internacionais = todas não-brasileiras
-    region <- input$region_filter
-    if (region == "Brasileiras") {
+    region <- as.character(input$region_filter %||% "Ambas")
+    if (identical(region, "Brasileiras")) {
       df <- df |> dplyr::filter(pais_origem == "Brasil")
-    } else if (region == "Europeias") {
+    } else if (identical(region, "Europeias")) {
       df <- df |> dplyr::filter(pais_origem %in% c("União Europeia", "Alemanha", "Europa"))
-    } else if (region == "Internacionais") {
+    } else if (identical(region, "Internacionais")) {
       df <- df |> dplyr::filter(pais_origem != "Brasil")
     } else {
       # Ambas — literalmente todas as origens, inclusivo a futuras (EUA, Canadá, etc.)

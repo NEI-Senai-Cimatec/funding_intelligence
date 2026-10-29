@@ -332,6 +332,12 @@ ui <- bslib::page_sidebar(
     tags$meta(`http-equiv` = "Expires", content = "0"),
     tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = paste0("styles.css?v=", as.integer(Sys.time()))),
+    tags$script(src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"),
+    tags$script(htmltools::HTML(sprintf(
+      "window.SUPABASE_CONFIG = { url: %s, anonKey: %s };",
+      jsonlite::toJSON(supabase_get_config()$url, auto_unbox = TRUE),
+      jsonlite::toJSON(supabase_get_config()$anon_key, auto_unbox = TRUE)
+    ))),
     tags$script(htmltools::HTML("
       (function() {
         try {
@@ -342,9 +348,22 @@ ui <- bslib::page_sidebar(
                       (h.indexOf('token_hash=') !== -1) || 
                       (s.indexOf('token_hash=') !== -1) ||
                       (h.indexOf('recovery=true') !== -1) ||
-                      (s.indexOf('recovery=true') !== -1);
-          var saved = localStorage.getItem('quiin_auth_session');
-          if (saved && !isRec) {
+                      (s.indexOf('recovery=true') !== -1) ||
+                      (sessionStorage.getItem('nei_em_redefinicao_senha') === '1');
+          var hasSession = false;
+          try {
+            if (localStorage.getItem('quiin_auth_session')) {
+              hasSession = true;
+            } else {
+              for (var k in localStorage) {
+                if (k.indexOf('-auth-token') !== -1 && localStorage.getItem(k)) {
+                  hasSession = true;
+                  break;
+                }
+              }
+            }
+          } catch(e) {}
+          if (hasSession && !isRec) {
             document.documentElement.classList.add('authenticated');
             var st = document.createElement('style');
             st.id = 'quiin_early_auth_css';

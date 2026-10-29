@@ -30,6 +30,7 @@
     // Limpa quaisquer tokens residuais de recuperação anteriores para não interferir no login
     try {
       sessionStorage.removeItem('quiin_pending_recovery_token');
+      sessionStorage.removeItem('quiin_em_redefinicao_senha');
       sessionStorage.removeItem('quiin_recovery_active');
       localStorage.removeItem('quiin_pending_recovery_token');
       localStorage.removeItem('quiin_recovery_active');
@@ -319,7 +320,12 @@
     } catch(e) {}
 
     // Se o usuário já possui sessão salva e a URL NÃO é explicitamente de recuperação, NUNCA está em recuperação
-    if (hasSavedAuth && !hasRecoveryUrl) return false;
+    if (hasSavedAuth && !hasRecoveryUrl) {
+      try {
+        sessionStorage.removeItem('quiin_em_redefinicao_senha');
+      } catch(e) {}
+      return false;
+    }
 
     var storedToken = null;
     var storedFlag = null;
@@ -724,6 +730,7 @@
         window.currentRecoveryToken = null;
         try {
           sessionStorage.removeItem('quiin_pending_recovery_token');
+          sessionStorage.removeItem('quiin_em_redefinicao_senha');
           sessionStorage.removeItem('quiin_recovery_active');
           localStorage.removeItem('quiin_pending_recovery_token');
           localStorage.removeItem('quiin_recovery_active');
@@ -1266,6 +1273,8 @@
       if (!window.isUserInRecovery || !window.isUserInRecovery()) {
         localStorage.removeItem('quiin_pending_recovery_token');
         localStorage.removeItem('quiin_recovery_active');
+        sessionStorage.removeItem('quiin_pending_recovery_token');
+        sessionStorage.removeItem('quiin_em_redefinicao_senha');
         sessionStorage.removeItem('quiin_recovery_active');
       }
     } catch(e) {}
@@ -1296,6 +1305,14 @@
     }
     var hasValidSavedSession = !!(sessionData && (sessionData.access_token || sessionData.refresh_token || sessionData.user));
 
+    if (hasValidSavedSession && !isRecoveryUrl) {
+      try {
+        sessionStorage.removeItem('quiin_pending_recovery_token');
+        sessionStorage.removeItem('quiin_em_redefinicao_senha');
+        sessionStorage.removeItem('quiin_recovery_active');
+      } catch(e) {}
+    }
+
     if (!hasValidSavedSession) {
       if (window.isUserInRecovery && window.isUserInRecovery()) {
         if (checkUrlForRecovery()) return;
@@ -1313,15 +1330,20 @@
       $('#auth_restoring_state').show();
     }
 
-    // Failsafe de proteção absoluta: Se em 3.5 segundos a sessão não for confirmada, destrava o app para login manual
-    if (!restoreTimeoutFailsafe) {
+    // Failsafe resiliente: evita bloqueio indefinido caso a conexão falhe, tolerando a latência do Posit Connect
+    function armRestoreFailsafe(ms) {
+      if (restoreTimeoutFailsafe) clearTimeout(restoreTimeoutFailsafe);
       restoreTimeoutFailsafe = setTimeout(function() {
         if (!$('body').hasClass('authenticated')) {
-          console.warn('[AUTH] Failsafe acionado: sessão não restaurada em 3.5s. Destravando formulário de login.');
+          console.warn('[AUTH] Failsafe acionado: sessão não restaurada no tempo limite. Destravando formulário de login.');
           window.exibirModoAuth('login');
           $('#auth_overlay_root').stop(true, true).fadeIn(150);
         }
-      }, 3500);
+      }, ms || 6500);
+    }
+
+    if (!restoreTimeoutFailsafe) {
+      armRestoreFailsafe(6500);
     }
 
     function doSendRestore() {
@@ -1340,6 +1362,7 @@
 
     // Dispara envio no evento nativo shiny:connected
     $(document).off('shiny:connected.restore').on('shiny:connected.restore', function() {
+      armRestoreFailsafe(5500);
       setTimeout(function() {
         if (!sessionRestored && !$('body').hasClass('authenticated')) {
           doSendRestore();

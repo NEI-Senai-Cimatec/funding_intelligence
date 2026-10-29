@@ -930,13 +930,6 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
             var h = window.location.hash || '';
             var s = window.location.search || '';
             var hasRecoveryUrl = (h.indexOf('type=recovery') !== -1) || (s.indexOf('type=recovery') !== -1) || (h.indexOf('token_hash=') !== -1) || (s.indexOf('token_hash=') !== -1);
-            var storedToken = null;
-            try {
-              storedToken = sessionStorage.getItem('quiin_pending_recovery_token');
-            } catch(e) {}
-            var hasRecoveryStorage = !!((storedToken && storedToken.length > 5) || (sessionStorage.getItem('quiin_em_redefinicao_senha') === '1'));
-
-            var isRecovery = hasRecoveryUrl || hasRecoveryStorage;
 
             var hasSavedSession = false;
             try {
@@ -946,6 +939,25 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
                 hasSavedSession = !!(parsed && (parsed.access_token || parsed.refresh_token || parsed.user));
               }
             } catch(e) {}
+
+            var storedToken = null;
+            try {
+              storedToken = sessionStorage.getItem('quiin_pending_recovery_token');
+            } catch(e) {}
+
+            // Se o usuário possui sessão salva legítima e a URL NÃO é explicitamente link de recuperação,
+            // purga flags residuais de redefinição para que a restauração de sessão ocorra com prioridade total
+            if (hasSavedSession && !hasRecoveryUrl) {
+              try {
+                sessionStorage.removeItem('quiin_em_redefinicao_senha');
+                sessionStorage.removeItem('quiin_pending_recovery_token');
+                sessionStorage.removeItem('quiin_recovery_active');
+              } catch(e) {}
+              storedToken = null;
+            }
+
+            var hasRecoveryStorage = !!((storedToken && storedToken.length > 5) || (sessionStorage.getItem('quiin_em_redefinicao_senha') === '1'));
+            var isRecovery = hasRecoveryUrl || (!hasSavedSession && hasRecoveryStorage);
 
             if (isRecovery) {
               var sNode = document.createElement('style');
@@ -990,7 +1002,7 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
                   if (l) l.style.display = 'block';
                   if (t) t.style.display = 'flex';
                 }
-              }, 4000);
+              }, 6500);
             }
           } catch(e) {}
         })();

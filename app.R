@@ -960,7 +960,7 @@ server <- function(input, output, session) {
       )
 
       showNotification(sprintf("Bem-vindo(a), %s!", rv$user$email %||% "Usuário"), type = "message")
-      bslib::nav_select(id = "main_tabs", selected = "Resultados")
+      bslib::nav_select(id = "main_tabs", selected = "resultados_editais", session = session)
     } else {
       rv$login_error <- auth_res$message
       session$sendCustomMessage("login_failed", list(message = auth_res$message))
@@ -1031,7 +1031,7 @@ server <- function(input, output, session) {
         ))
         session$sendCustomMessage("set_auth_state", TRUE)
         showNotification(sprintf("Conta criada com sucesso! Bem-vindo(a), %s!", email), type = "message")
-        bslib::nav_select(id = "main_tabs", selected = "Resultados")
+        bslib::nav_select(id = "main_tabs", selected = "resultados_editais", session = session)
       } else {
         rv$signup_success <- signup_res$message
         showNotification(signup_res$message, type = "message", duration = 8)
@@ -1339,6 +1339,8 @@ server <- function(input, output, session) {
       rv$login_error <- NULL
       rv$signup_success <- NULL
       
+      message(sprintf("[AUTH] Sessão restaurada com sucesso para %s (is_dev: %s)", rv$user$email %||% "N/A", rv$is_dev_diretoria))
+      
       # Se os tokens foram renovados via refresh_token, atualiza no localStorage
       if (isTRUE(restored$updated)) {
         user_payload <- list(
@@ -1355,7 +1357,7 @@ server <- function(input, output, session) {
       }
       
       session$sendCustomMessage("set_auth_state", TRUE)
-      bslib::nav_select(id = "main_tabs", selected = "Resultados")
+      bslib::nav_select(id = "main_tabs", selected = "resultados_editais", session = session)
       log_user_access(
         conn, 
         rv$user, 
@@ -3774,7 +3776,7 @@ server <- function(input, output, session) {
       if (length(idx_match) > 0) {
         rv$saved_searches$last_run_at[idx_match] <- now_str
       }
-      bslib::nav_select(id = "main_tabs", selected = "Resultados", session = session)
+      bslib::nav_select(id = "main_tabs", selected = "resultados_editais", session = session)
       showNotification(paste0("Busca '", row$nome_busca[[1]], "' executada com sucesso!"), type = "message", duration = 4)
     }
   })

@@ -1121,7 +1121,7 @@
         }
         return;
       }
-      if (window.Shiny && window.Shiny.setInputValue && window.Shiny.shinyapp && window.Shiny.shinyapp.isConnected()) {
+      if (window.Shiny && typeof window.Shiny.setInputValue === 'function') {
         console.log('[AUTH] Enviando trigger_reset_password_modal para o servidor Shiny...');
         window.Shiny.setInputValue('trigger_reset_password_modal', {
           access_token: token,
@@ -1130,7 +1130,7 @@
       }
     }
 
-    if (window.Shiny && window.Shiny.shinyapp && window.Shiny.shinyapp.isConnected()) {
+    if (window.Shiny && typeof window.Shiny.setInputValue === 'function') {
       sendToShiny();
     }
 
@@ -1325,7 +1325,13 @@
     }
 
     function doSendRestore() {
-      if (sessionRestored || $('body').hasClass('authenticated')) return true;
+      if (sessionRestored || (document.body && document.body.classList.contains('authenticated'))) {
+        if (restoreTimer) {
+          clearInterval(restoreTimer);
+          restoreTimer = null;
+        }
+        return true;
+      }
       try {
         if (window.Shiny && typeof window.Shiny.setInputValue === 'function') {
           console.log('[AUTH] Enviando restore_auth_session para o servidor Shiny conectado...');
@@ -1338,24 +1344,33 @@
       return false;
     }
 
-    // Dispara envio prioritariamente no evento nativo shiny:connected (quando o socket está ativo)
+    // 1. Dispara envio imediato se Shiny já estiver pronto
+    doSendRestore();
+
+    // 2. Dispara envio assim que o WebSocket conectar
     $(document).off('shiny:connected.restore').on('shiny:connected.restore', function() {
+      console.log('[AUTH] Evento shiny:connected detectado. Enviando restore_auth_session...');
       doSendRestore();
-      setTimeout(function() {
-        if (!sessionRestored && !$('body').hasClass('authenticated')) {
-          doSendRestore();
-        }
-      }, 250);
-      setTimeout(function() {
-        if (!sessionRestored && !$('body').hasClass('authenticated')) {
-          doSendRestore();
-        }
-      }, 750);
     });
 
-    // Se o Shiny já estiver conectado
-    if (window.Shiny && window.Shiny.shinyapp && window.Shiny.shinyapp.isConnected && window.Shiny.shinyapp.isConnected()) {
+    // 3. Dispara envio quando a sessão Shiny for totalmente inicializada
+    $(document).off('shiny:sessioninitialized.restore').on('shiny:sessioninitialized.restore', function() {
+      console.log('[AUTH] Evento shiny:sessioninitialized detectado. Enviando restore_auth_session...');
       doSendRestore();
+    });
+
+    // 4. Polling resiliente ativo: insiste a cada 200ms até que o Shiny responda ou atinja 8s
+    if (!restoreTimer) {
+      var restoreAttempts = 0;
+      restoreTimer = setInterval(function() {
+        restoreAttempts++;
+        if (sessionRestored || (document.body && document.body.classList.contains('authenticated')) || restoreAttempts >= 40) {
+          clearInterval(restoreTimer);
+          restoreTimer = null;
+          return;
+        }
+        doSendRestore();
+      }, 200);
     }
   }
 

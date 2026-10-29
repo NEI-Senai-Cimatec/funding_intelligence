@@ -329,10 +329,31 @@ ui <- bslib::page_sidebar(
     tags$meta(charset = "utf-8"),
     tags$meta(name = "viewport", content = "width=device-width, initial-scale=1.0"),
     tags$meta(`http-equiv` = "Cache-Control", content = "no-cache, no-store, must-revalidate"),
-    tags$meta(`http-equiv` = "Pragma", content = "no-cache"),
     tags$meta(`http-equiv` = "Expires", content = "0"),
     tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = paste0("styles.css?v=", as.integer(Sys.time()))),
+    tags$script(htmltools::HTML("
+      (function() {
+        try {
+          var h = window.location.hash || '';
+          var s = window.location.search || '';
+          var isRec = (h.indexOf('type=recovery') !== -1) || 
+                      (s.indexOf('type=recovery') !== -1) || 
+                      (h.indexOf('token_hash=') !== -1) || 
+                      (s.indexOf('token_hash=') !== -1) ||
+                      (h.indexOf('recovery=true') !== -1) ||
+                      (s.indexOf('recovery=true') !== -1);
+          var saved = localStorage.getItem('quiin_auth_session');
+          if (saved && !isRec) {
+            document.documentElement.classList.add('authenticated');
+            var st = document.createElement('style');
+            st.id = 'quiin_early_auth_css';
+            st.textContent = '#auth_overlay_root { display: none !important; }';
+            document.head.appendChild(st);
+          }
+        } catch(e) {}
+      })();
+    ")),
     tags$script(src = paste0("auth.js?v=", as.integer(Sys.time())))
   ),
 
@@ -1298,17 +1319,11 @@ server <- function(input, output, session) {
 
   # Restauração automática de sessão persistente ao atualizar a página (F5)
   observeEvent(input$restore_auth_session, {
-    # Se houver recuperação de senha em andamento, encerra estado de restauração para liberar o modal
-    if (!is.null(rv$pending_recovery_token) || isTRUE(rv$reset_modal_open)) {
-      session$sendCustomMessage("restore_auth_failed", list())
-      return()
-    }
+    # Se houver recuperação de senha em andamento, ignora restauração de sessão para evitar sobreposição
+    if (!is.null(rv$pending_recovery_token) || isTRUE(rv$reset_modal_open)) return()
 
     session_data <- input$restore_auth_session
-    if (!is.list(session_data)) {
-      session$sendCustomMessage("restore_auth_failed", list())
-      return()
-    }
+    if (!is.list(session_data)) return()
     
     access_tok <- session_data$access_token
     refresh_tok <- session_data$refresh_token
@@ -1364,8 +1379,6 @@ server <- function(input, output, session) {
       )
     } else if (isTRUE(restored$is_invalid)) {
       session$sendCustomMessage("clear_auth_session", list())
-      session$sendCustomMessage("restore_auth_failed", list())
-    } else {
       session$sendCustomMessage("restore_auth_failed", list())
     }
   }, priority = 100, ignoreInit = FALSE)

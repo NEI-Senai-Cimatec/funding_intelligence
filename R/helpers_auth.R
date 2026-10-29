@@ -987,22 +987,12 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
                 }
               }, 2500);
             } else if (hasSavedSession) {
-              var sNode = document.createElement('style');
-              sNode.id = 'quiin_restore_instant_css';
-              sNode.textContent = '#auth_form_login, .auth-tabs-nav, #auth_form_signup, #auth_form_forgot, #auth_form_reset_password, #auth_recovery_loading_state { display: none !important; } #auth_restoring_state { display: block !important; }';
-              document.head.appendChild(sNode);
-              setTimeout(function() {
-                var el = document.getElementById('quiin_restore_instant_css');
-                if (el && !(document.body && document.body.classList.contains('authenticated'))) {
-                  el.remove();
-                  var r = document.getElementById('auth_restoring_state');
-                  var l = document.getElementById('auth_form_login');
-                  var t = document.querySelector('.auth-tabs-nav');
-                  if (r) r.style.display = 'none';
-                  if (l) l.style.display = 'block';
-                  if (t) t.style.display = 'flex';
-                }
-              }, 6500);
+              var sAuth = document.createElement('style');
+              sAuth.id = 'quiin_instant_auth_css';
+              sAuth.textContent = '#auth_overlay_root { display: none !important; }';
+              document.head.appendChild(sAuth);
+              if (document.documentElement) document.documentElement.classList.add('authenticated');
+              if (document.body) document.body.classList.add('authenticated');
             }
           } catch(e) {}
         })();

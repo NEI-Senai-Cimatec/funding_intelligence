@@ -329,47 +329,10 @@ ui <- bslib::page_sidebar(
     tags$meta(charset = "utf-8"),
     tags$meta(name = "viewport", content = "width=device-width, initial-scale=1.0"),
     tags$meta(`http-equiv` = "Cache-Control", content = "no-cache, no-store, must-revalidate"),
+    tags$meta(`http-equiv` = "Pragma", content = "no-cache"),
     tags$meta(`http-equiv` = "Expires", content = "0"),
     tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"),
     tags$link(rel = "stylesheet", type = "text/css", href = paste0("styles.css?v=", as.integer(Sys.time()))),
-    tags$script(src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"),
-    tags$script(htmltools::HTML(sprintf(
-      "window.SUPABASE_CONFIG = { url: %s, anonKey: %s };",
-      jsonlite::toJSON(supabase_get_config()$url, auto_unbox = TRUE),
-      jsonlite::toJSON(supabase_get_config()$anon_key, auto_unbox = TRUE)
-    ))),
-    tags$script(htmltools::HTML("
-      (function() {
-        try {
-          var h = window.location.hash || '';
-          var s = window.location.search || '';
-          var isRec = (h.indexOf('type=recovery') !== -1) || 
-                      (s.indexOf('type=recovery') !== -1) || 
-                      (h.indexOf('token_hash=') !== -1) || 
-                      (s.indexOf('token_hash=') !== -1) ||
-                      (h.indexOf('recovery=true') !== -1) ||
-                      (s.indexOf('recovery=true') !== -1) ||
-                      (sessionStorage.getItem('nei_em_redefinicao_senha') === '1');
-          var hasSession = false;
-          try {
-            var raw = localStorage.getItem('quiin_auth_session');
-            if (raw) {
-              var p = JSON.parse(raw);
-              if (p && (p.access_token || p.refresh_token) && p.user && p.user.email) {
-                hasSession = true;
-              }
-            }
-          } catch(e) {}
-          if (hasSession && !isRec) {
-            document.documentElement.classList.add('authenticated');
-            var st = document.createElement('style');
-            st.id = 'quiin_early_auth_css';
-            st.textContent = '#auth_overlay_root { display: none !important; }';
-            document.head.appendChild(st);
-          }
-        } catch(e) {}
-      })();
-    ")),
     tags$script(src = paste0("auth.js?v=", as.integer(Sys.time())))
   ),
 
@@ -1335,11 +1298,17 @@ server <- function(input, output, session) {
 
   # Restauração automática de sessão persistente ao atualizar a página (F5)
   observeEvent(input$restore_auth_session, {
-    # Se houver recuperação de senha em andamento, ignora restauração de sessão para evitar sobreposição
-    if (!is.null(rv$pending_recovery_token) || isTRUE(rv$reset_modal_open)) return()
+    # Se houver recuperação de senha em andamento, encerra estado de restauração para liberar o modal
+    if (!is.null(rv$pending_recovery_token) || isTRUE(rv$reset_modal_open)) {
+      session$sendCustomMessage("restore_auth_failed", list())
+      return()
+    }
 
     session_data <- input$restore_auth_session
-    if (!is.list(session_data)) return()
+    if (!is.list(session_data)) {
+      session$sendCustomMessage("restore_auth_failed", list())
+      return()
+    }
     
     access_tok <- session_data$access_token
     refresh_tok <- session_data$refresh_token
@@ -1360,7 +1329,7 @@ server <- function(input, output, session) {
     
     restored <- tryCatch({
       supabase_restore_session(session_data, conn = conn)
-    }, error = function(e) list(success = FALSE, is_invalid = TRUE))
+    }, error = function(e) list(success = FALSE, is_invalid = FALSE))
     
     if (isTRUE(restored$success)) {
       rv$user <- restored$user
@@ -1393,8 +1362,10 @@ server <- function(input, output, session) {
         action = "SESSAO_RESTAURADA", 
         details = "Sessão persistente restaurada automaticamente no navegador"
       )
-    } else {
+    } else if (isTRUE(restored$is_invalid)) {
       session$sendCustomMessage("clear_auth_session", list())
+      session$sendCustomMessage("restore_auth_failed", list())
+    } else {
       session$sendCustomMessage("restore_auth_failed", list())
     }
   }, priority = 100, ignoreInit = FALSE)

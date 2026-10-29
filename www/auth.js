@@ -1128,7 +1128,7 @@
         }
         return;
       }
-      if (window.Shiny && window.Shiny.setInputValue && window.Shiny.shinyapp && window.Shiny.shinyapp.isConnected()) {
+      if (window.Shiny && typeof window.Shiny.setInputValue === 'function') {
         console.log('[AUTH] Enviando trigger_reset_password_modal para o servidor Shiny...');
         window.Shiny.setInputValue('trigger_reset_password_modal', {
           access_token: token,
@@ -1137,7 +1137,7 @@
       }
     }
 
-    if (window.Shiny && window.Shiny.shinyapp && window.Shiny.shinyapp.isConnected()) {
+    if (window.Shiny && typeof window.Shiny.setInputValue === 'function') {
       sendToShiny();
     }
 
@@ -1349,8 +1349,8 @@
     function doSendRestore() {
       if (sessionRestored || $('body').hasClass('authenticated')) return true;
       try {
-        if (window.Shiny && window.Shiny.setInputValue && window.Shiny.shinyapp && window.Shiny.shinyapp.isConnected && window.Shiny.shinyapp.isConnected()) {
-          console.log('[AUTH] Enviando restore_auth_session para o servidor Shiny conectado...');
+        if (window.Shiny && typeof window.Shiny.setInputValue === 'function') {
+          console.log('[AUTH] Enviando restore_auth_session para o servidor Shiny...');
           window.Shiny.setInputValue('restore_auth_session', sessionData, {priority: 'event'});
           return true;
         }

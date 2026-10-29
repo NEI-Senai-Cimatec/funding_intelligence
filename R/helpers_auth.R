@@ -990,7 +990,7 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
                   if (l) l.style.display = 'block';
                   if (t) t.style.display = 'flex';
                 }
-              }, 4000);
+              }, 8000);
             }
           } catch(e) {}
         })();

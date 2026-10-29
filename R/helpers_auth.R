@@ -933,10 +933,15 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
 
             var hasSavedSession = false;
             try {
-              var saved = localStorage.getItem('quiin_auth_session');
-              if (saved) {
-                var parsed = JSON.parse(saved);
-                hasSavedSession = !!(parsed && (parsed.access_token || parsed.refresh_token || parsed.user));
+              if (localStorage.getItem('quiin_auth_session')) {
+                hasSavedSession = true;
+              } else {
+                for (var k in localStorage) {
+                  if (k.indexOf('-auth-token') !== -1 && localStorage.getItem(k)) {
+                    hasSavedSession = true;
+                    break;
+                  }
+                }
               }
             } catch(e) {}
 
@@ -950,13 +955,16 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
             if (hasSavedSession && !hasRecoveryUrl) {
               try {
                 sessionStorage.removeItem('quiin_em_redefinicao_senha');
+                sessionStorage.removeItem('nei_em_redefinicao_senha');
                 sessionStorage.removeItem('quiin_pending_recovery_token');
                 sessionStorage.removeItem('quiin_recovery_active');
               } catch(e) {}
               storedToken = null;
             }
 
-            var hasRecoveryStorage = !!((storedToken && storedToken.length > 5) || (sessionStorage.getItem('quiin_em_redefinicao_senha') === '1'));
+            var hasRecoveryStorage = !!((storedToken && storedToken.length > 5) || 
+                                       (sessionStorage.getItem('quiin_em_redefinicao_senha') === '1') ||
+                                       (sessionStorage.getItem('nei_em_redefinicao_senha') === '1'));
             var isRecovery = hasRecoveryUrl || (!hasSavedSession && hasRecoveryStorage);
 
             if (isRecovery) {

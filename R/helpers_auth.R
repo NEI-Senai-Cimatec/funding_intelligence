@@ -933,14 +933,11 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
 
             var hasSavedSession = false;
             try {
-              if (localStorage.getItem('quiin_auth_session')) {
-                hasSavedSession = true;
-              } else {
-                for (var k in localStorage) {
-                  if (k.indexOf('-auth-token') !== -1 && localStorage.getItem(k)) {
-                    hasSavedSession = true;
-                    break;
-                  }
+              var raw = localStorage.getItem('quiin_auth_session');
+              if (raw) {
+                var p = JSON.parse(raw);
+                if (p && (p.access_token || p.refresh_token) && p.user && p.user.email) {
+                  hasSavedSession = true;
                 }
               }
             } catch(e) {}

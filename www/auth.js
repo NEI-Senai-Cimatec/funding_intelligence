@@ -329,14 +329,11 @@
 
     var hasSavedAuth = false;
     try {
-      if (localStorage.getItem('quiin_auth_session')) {
-        hasSavedAuth = true;
-      } else {
-        for (var k in localStorage) {
-          if (k.indexOf('-auth-token') !== -1 && localStorage.getItem(k)) {
-            hasSavedAuth = true;
-            break;
-          }
+      var raw = localStorage.getItem('quiin_auth_session');
+      if (raw) {
+        var p = JSON.parse(raw);
+        if (p && (p.access_token || p.refresh_token) && p.user && p.user.email) {
+          hasSavedAuth = true;
         }
       }
     } catch(e) {}
@@ -412,9 +409,6 @@
 
   // 2. Função Mestre de Exibição com Exclusão Mútua Rígida (padrão nei-js)
   window.exibirModoAuth = function(modo) {
-    var isAuth = document.body && document.body.classList.contains('authenticated');
-    if (isAuth) return;
-
     var elRecoveryLoading = document.getElementById('auth_recovery_loading_state');
     var elRestoring = document.getElementById('auth_restoring_state');
     var elLogin = document.getElementById('auth_form_login');
@@ -423,17 +417,17 @@
     var elReset = document.getElementById('auth_form_reset_password');
     var elTabs = document.querySelector('.auth-tabs-nav');
 
-    // Remove estilos temporários de bloqueio inicial
+    // Remove estilos temporários e revela o overlay
     try {
-      var s1 = document.getElementById('quiin_recovery_instant_css');
-      if (s1) s1.remove();
-      var s2 = document.getElementById('quiin_restore_instant_css');
-      if (s2) s2.remove();
+      ['quiin_early_auth_css', 'quiin_instant_auth_css', 'quiin_recovery_instant_css', 'quiin_restore_instant_css'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.remove();
+      });
     } catch(e) {}
     if (window.$) {
-      $('#quiin_recovery_instant_css, #quiin_restore_instant_css').remove();
-      $('#auth_overlay_root').show();
-      $('body').removeClass('authenticated');
+      $('#quiin_early_auth_css, #quiin_instant_auth_css, #quiin_recovery_instant_css, #quiin_restore_instant_css').remove();
+      $('html, body').removeClass('authenticated');
+      $('#auth_overlay_root').css('display', 'flex').show();
     }
 
     // Se os elementos ainda não foram injetados no DOM, reagenda
@@ -917,12 +911,7 @@
       $('body').removeClass('authenticated');
       $('#quiin_recovery_instant_css, #quiin_restore_instant_css, #quiin_early_auth_css, #quiin_instant_auth_css').remove();
       $('#auth_overlay_root').stop(true, true).fadeIn(150);
-      var elRestoring = document.getElementById('auth_restoring_state');
-      var elLogin = document.getElementById('auth_form_login');
-      var elTabs = document.querySelector('.auth-tabs-nav');
-      if (elRestoring) elRestoring.style.display = 'none';
-      if (elLogin) elLogin.style.display = 'block';
-      if (elTabs) elTabs.style.display = 'flex';
+      window.exibirModoAuth('login');
     });
 
     // Falha de login
@@ -1423,7 +1412,7 @@
         sessionData = JSON.parse(saved);
       } catch(e) {}
     }
-    var hasValidSavedSession = !!(sessionData && (sessionData.access_token || sessionData.refresh_token || sessionData.user));
+    var hasValidSavedSession = !!(sessionData && (sessionData.access_token || sessionData.refresh_token) && sessionData.user && sessionData.user.email);
 
     if (hasValidSavedSession && !isRecoveryUrl) {
       try {
@@ -1435,6 +1424,12 @@
     }
 
     if (!hasValidSavedSession) {
+      sessionRestored = false;
+      if (window.$) {
+        $('#quiin_early_auth_css, #quiin_instant_auth_css, #quiin_recovery_instant_css, #quiin_restore_instant_css').remove();
+        $('html, body').removeClass('authenticated');
+        $('#auth_overlay_root').css('display', 'flex').show();
+      }
       if (window.isUserInRecovery && window.isUserInRecovery()) {
         if (checkUrlForRecovery()) return;
         window.exibirModoAuth('reset');

@@ -2110,23 +2110,19 @@ server <- function(input, output, session) {
   })
 
   # ==============================================================================
-  # GERAÇÃO DE RELATÓRIO DE EDITAIS ABERTOS POR ADERÊNCIA
+  # ==============================================================================
+  # GERAÇÃO DE RELATÓRIO DE EDITAIS ABERTOS POR ADERÊNCIA E CAMPUS
   # ==============================================================================
   rv$report_generated_data <- NULL
 
   observeEvent(list(input$btn_open_report_modal, input$btn_open_report_top), {
-    # Evita disparo na inicialização
     req(isTRUE(input$btn_open_report_modal > 0) || isTRUE(input$btn_open_report_top > 0))
 
-    opps <- rv$opportunities
-    has_active_campus <- length(input$filter_campus) > 0 && !"Todos" %in% input$filter_campus
-    has_active_area <- length(input$filter_area) > 0
-    has_active_funder <- length(input$filter_funder) > 0
-    has_active_type <- length(input$filter_type) > 0
-    has_active_query <- nzchar(input$search_query %||% "")
-    has_any_active <- has_active_campus || has_active_area || has_active_funder || has_active_type || has_active_query
-
-    default_cat <- if (has_active_campus) "campus" else if (has_active_area) "area" else if (has_active_funder) "funder" else if (has_any_active) "current" else "campus"
+    sel_default <- if (length(input$filter_campus) > 0 && !"Todos" %in% input$filter_campus) {
+      input$filter_campus[[1]]
+    } else {
+      ""
+    }
     rv$report_generated_data <- NULL
 
     showModal(modalDialog(
@@ -2138,40 +2134,40 @@ server <- function(input, output, session) {
       size = "l",
       easyClose = TRUE,
       tags$div(
-        style = "margin-bottom: 1rem;",
+        style = "margin-bottom: 1.25rem;",
         tags$p(
-          style = "font-size: 0.95rem; color: #475569; margin-bottom: 0.75rem;",
-          "Gere um relatório formatado com ",
+          style = "font-size: 0.95rem; color: #475569; margin-bottom: 1rem; line-height: 1.4;",
+          "Gera um relatório formatado com ",
           tags$strong("até 4 oportunidades abertas de maior aderência"),
-          " para o filtro escolhido."
+          " para o Campus CIMATEC selecionado."
         ),
         tags$div(
-          style = "background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; margin-bottom: 1rem;",
-          tags$label(
-            style = "font-weight: 700; color: #1e293b; margin-bottom: 0.5rem; display: block;",
-            tags$i(class = "fa fa-filter text-primary me-1"), " 1. Critério de Filtragem (Obrigatório):"
-          ),
-          radioButtons(
-            "report_filter_cat",
-            label = NULL,
-            choices = c(
-              "Por Campus CIMATEC" = "campus",
-              "Por Área Temática" = "area",
-              "Por Financiador / Agência" = "funder",
-              "Por Tipo de Oportunidade" = "type",
-              "Usar Filtros Ativos no Painel" = "current"
+          style = "background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem;",
+          selectInput(
+            "report_campus_select",
+            label = tags$span(
+              style = "font-weight: 700; color: #1e293b; display: block; margin-bottom: 0.5rem;",
+              tags$i(class = "fa fa-university text-primary me-1"), " Selecione o Campus CIMATEC (Obrigatório):"
             ),
-            selected = default_cat,
-            inline = TRUE
-          ),
-          uiOutput("report_filter_selector_ui")
+            choices = c(
+              "Selecione um campus..." = "",
+              "🚀 Aeroespacial" = "Aeroespacial",
+              "🌾 Sertão" = "Sertão",
+              "🌊 Mar (Naval & Offshore)" = "Mar",
+              "💻 Digital (TI & IA)" = "Digital",
+              "🏢 Sede e Park (Manufatura)" = "Sede e Park",
+              "💡 Startups & Inovação" = "Startups"
+            ),
+            selected = sel_default,
+            selectize = FALSE, width = "100%"
+          )
         ),
         actionButton(
           "btn_do_generate_report",
           " Gerar Relatório de Editais Abertos",
           class = "btn-primary w-100",
           icon = icon("wand-magic-sparkles"),
-          style = "font-weight: 700; padding: 0.75rem; border-radius: 6px;"
+          style = "font-weight: 700; padding: 0.75rem; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,70,145,0.2);"
         )
       ),
       uiOutput("report_content_container"),
@@ -2181,145 +2177,55 @@ server <- function(input, output, session) {
     ))
   }, ignoreInit = TRUE)
 
-  output$report_filter_selector_ui <- renderUI({
-    cat_sel <- input$report_filter_cat %||% "campus"
-    opps <- rv$opportunities
-
-    if (identical(cat_sel, "campus")) {
-      sel_val <- if (length(input$filter_campus) > 0) input$filter_campus[[1]] else ""
-      selectInput(
-        "report_filter_val_campus",
-        label = tags$span("Selecione o Campus (Obrigatório):"),
-        choices = c(
-          "Selecione um campus..." = "",
-          "🚀 Aeroespacial" = "Aeroespacial",
-          "🌾 Sertão" = "Sertão",
-          "🌊 Mar (Naval & Offshore)" = "Mar",
-          "💻 Digital (TI & IA)" = "Digital",
-          "🏢 Sede e Park (Manufatura)" = "Sede e Park",
-          "💡 Startups & Inovação" = "Startups"
-        ),
-        selected = sel_val
-      )
-    } else if (identical(cat_sel, "area")) {
-      area_choices <- if (is.null(opps) || nrow(opps) == 0) character() else sort(unique(opps$area_tematica[!is.na(opps$area_tematica) & opps$area_tematica != ""]))
-      sel_val <- if (length(input$filter_area) > 0) input$filter_area[[1]] else ""
-      selectInput(
-        "report_filter_val_area",
-        label = tags$span("Selecione a Área Temática (Obrigatório):"),
-        choices = c("Selecione uma área temática..." = "", area_choices),
-        selected = sel_val
-      )
-    } else if (identical(cat_sel, "funder")) {
-      funder_choices <- if (is.null(opps) || nrow(opps) == 0) character() else sort(unique(opps$entidade[!is.na(opps$entidade) & opps$entidade != ""]))
-      sel_val <- if (length(input$filter_funder) > 0) input$filter_funder[[1]] else ""
-      selectInput(
-        "report_filter_val_funder",
-        label = tags$span("Selecione o Financiador (Obrigatório):"),
-        choices = c("Selecione um financiador..." = "", funder_choices),
-        selected = sel_val
-      )
-    } else if (identical(cat_sel, "type")) {
-      type_choices <- if (is.null(opps) || nrow(opps) == 0) character() else sort(unique(opps$tipo_oportunidade[!is.na(opps$tipo_oportunidade) & opps$tipo_oportunidade != ""]))
-      sel_val <- if (length(input$filter_type) > 0) input$filter_type[[1]] else ""
-      selectInput(
-        "report_filter_val_type",
-        label = tags$span("Selecione o Tipo de Oportunidade (Obrigatório):"),
-        choices = c("Selecione um tipo..." = "", type_choices),
-        selected = sel_val
-      )
-    } else {
-      # current
-      has_active <- length(input$filter_campus) > 0 || length(input$filter_status) > 0 ||
-                     length(input$filter_funder) > 0 || length(input$filter_area) > 0 ||
-                     length(input$filter_type) > 0 || nzchar(input$search_query %||% "")
-      tags$div(
-        style = "margin-top: 0.5rem; padding: 0.75rem; background: #ffffff; border-radius: 6px; border: 1px dashed #cbd5e1;",
-        tags$span(style = "font-weight: 600; color: #334155;", "Filtros atualmente ativos no painel:"),
-        tags$div(
-          style = "margin-top: 0.25rem;",
-          if (length(input$filter_campus) > 0) tags$span(class = "badge bg-primary me-1", paste("Campus:", paste(input$filter_campus, collapse = ", "))),
-          if (length(input$filter_status) > 0) tags$span(class = "badge bg-info text-dark me-1", paste("Status:", paste(input$filter_status, collapse = ", "))),
-          if (length(input$filter_funder) > 0) tags$span(class = "badge bg-secondary me-1", paste("Financiador:", paste(input$filter_funder, collapse = ", "))),
-          if (length(input$filter_area) > 0) tags$span(class = "badge bg-success me-1", paste("Área:", paste(input$filter_area, collapse = ", "))),
-          if (nzchar(input$search_query %||% "")) tags$span(class = "badge bg-warning text-dark me-1", paste("Busca:", input$search_query)),
-          if (!has_active)
-            tags$span(style = "color: #e11d48; font-size: 0.85rem; font-weight: 600;", "⚠️ Nenhum filtro está ativo no painel. Selecione uma opção acima (Campus, Área ou Financiador).")
-        )
-      )
-    }
-  })
-
   observeEvent(input$btn_do_generate_report, {
-    cat_sel <- input$report_filter_cat %||% "campus"
     opps <- rv$opportunities
     req(nrow(opps) > 0)
 
-    # 1. Validação estrita: exige que o filtro seja escolhido!
-    filter_value <- ""
-    filter_label <- ""
+    sel_campus <- trimws(input$report_campus_select %||% "")
 
-    if (identical(cat_sel, "campus")) {
-      filter_value <- input$report_filter_val_campus %||% ""
-      filter_label <- paste("Campus", filter_value)
-    } else if (identical(cat_sel, "area")) {
-      filter_value <- input$report_filter_val_area %||% ""
-      filter_label <- paste("Área Temática", filter_value)
-    } else if (identical(cat_sel, "funder")) {
-      filter_value <- input$report_filter_val_funder %||% ""
-      filter_label <- paste("Financiador", filter_value)
-    } else if (identical(cat_sel, "type")) {
-      filter_value <- input$report_filter_val_type %||% ""
-      filter_label <- paste("Tipo", filter_value)
-    } else if (identical(cat_sel, "current")) {
-      has_any <- length(input$filter_campus) > 0 || length(input$filter_status) > 0 ||
-                 length(input$filter_funder) > 0 || length(input$filter_area) > 0 ||
-                 length(input$filter_type) > 0 || nzchar(input$search_query %||% "")
-      if (has_any) {
-        filter_value <- "current"
-        filter_label <- "Filtros Ativos do Painel"
-      }
-    }
-
-    # Se nenhum filtro foi escolhido, emite aviso claro e não gera!
-    if (!nzchar(filter_value)) {
+    # Exige obrigatoriamente que o Campus seja escolhido
+    if (!nzchar(sel_campus)) {
       showNotification(
-        "Por favor, selecione obrigatoriamente um filtro (ex.: Campus, Área ou Financiador) para gerar o relatório.",
+        "Por favor, selecione obrigatoriamente um Campus CIMATEC para gerar o relatório.",
         type = "warning",
         duration = 5
       )
       return()
     }
 
-    # 2. Aplica o filtro selecionado
-    df_filtered <- if (identical(cat_sel, "campus")) {
-      opps |> dplyr::filter(vapply(seq_len(dplyr::n()), function(i) {
-        rec_c <- opps$campus[[i]] %||% ""
-        ttl_i <- opps$titulo[[i]] %||% ""
-        desc_i <- opps$descricao_resumida[[i]] %||% ""
-        area_i <- opps$area_tematica[[i]] %||% ""
-        comb_text <- paste(rec_c, ttl_i, desc_i, area_i)
-        grepl(filter_value, comb_text, ignore.case = TRUE)
-      }, logical(1)))
-    } else if (identical(cat_sel, "area")) {
-      opps |> dplyr::filter(area_tematica == filter_value)
-    } else if (identical(cat_sel, "funder")) {
-      opps |> dplyr::filter(entidade == filter_value)
-    } else if (identical(cat_sel, "type")) {
-      opps |> dplyr::filter(tipo_oportunidade == filter_value)
-    } else {
-      # current
-      filtered_results()
+    # 1. Filtra oportunidades que contenham menção ao campus no texto ou metadados
+    matches_campus <- vapply(seq_len(nrow(opps)), function(i) {
+      rec_c <- opps$campus[[i]] %||% ""
+      ttl_i <- opps$titulo[[i]] %||% ""
+      desc_i <- opps$descricao_resumida[[i]] %||% ""
+      area_i <- opps$area_tematica[[i]] %||% ""
+      comb_text <- paste(rec_c, ttl_i, desc_i, area_i)
+      grepl(sel_campus, comb_text, ignore.case = TRUE)
+    }, logical(1))
+
+    df_filtered <- opps[matches_campus, , drop = FALSE]
+    if (nrow(df_filtered) == 0L) {
+      df_filtered <- opps
     }
 
-    # 3. Recalcula aderência para o termo de pesquisa/campus
+    # 2. Recalcula aderência para o campus escolhido
     conn <- isolate(rv$conn)
-    query_term <- if (identical(cat_sel, "campus")) filter_value else rv$current_query
-    df_filtered <- compute_adherence_score(df_filtered, conn, query_term, signature = interest_sig())
+    df_filtered <- tryCatch({
+      compute_adherence_score(df_filtered, conn, sel_campus, signature = interest_sig())
+    }, error = function(e) {
+      if (!"score_aderencia" %in% names(df_filtered)) df_filtered$score_aderencia <- 0
+      df_filtered
+    })
 
-    # 4. Gera o relatório com no máximo 4 editais abertos
+    # Adiciona bonificação se o registro tiver menção direta ao campus
+    if ("campus" %in% names(df_filtered)) {
+      direct_hit <- grepl(sel_campus, df_filtered$campus, ignore.case = TRUE)
+      df_filtered$score_aderencia <- df_filtered$score_aderencia + ifelse(direct_hit, 30, 0)
+    }
+
+    # 3. Gera o relatório com até 4 oportunidades abertas de maior aderência
     rep_result <- generate_adherence_report(df_filtered, max_items = 4L)
-    rep_result$filter_name <- filter_label
+    rep_result$campus_name <- sel_campus
     rv$report_generated_data <- rep_result
   })
 
@@ -2332,8 +2238,8 @@ server <- function(input, output, session) {
         class = "alert alert-warning mt-3",
         tags$i(class = "fa fa-exclamation-triangle me-2"),
         tags$strong("Atenção: "),
-        "Nenhum edital com status 'Aberto' foi encontrado para o filtro ",
-        tags$strong(rep_data$filter_name %||% "selecionado"),
+        "Nenhum edital com status 'Aberto' foi encontrado para o Campus ",
+        tags$strong(rep_data$campus_name %||% "selecionado"),
         " no momento da geração do relatório."
       ))
     }
@@ -2346,7 +2252,7 @@ server <- function(input, output, session) {
           tags$span(class = "badge bg-success", style = "font-size: 0.85rem; padding: 0.4rem 0.6rem;",
                     sprintf("%d edital(is) aberto(s) com maior aderência", rep_data$count)),
           tags$span(class = "text-muted ms-2", style = "font-size: 0.85rem;",
-                    sprintf("Filtro: %s | %s", rep_data$filter_name, format(Sys.time(), "%d/%m/%Y às %H:%M")))
+                    sprintf("Campus %s | %s", rep_data$campus_name, format(Sys.time(), "%d/%m/%Y às %H:%M")))
         ),
         tags$div(
           style = "display: flex; gap: 0.5rem;",
@@ -2368,6 +2274,12 @@ server <- function(input, output, session) {
       tags$div(
         style = "background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 1.25rem; max-height: 480px; overflow-y: auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;",
         lapply(rep_data$items, function(it) {
+          link_target <- if (nzchar(it$link_url) && !identical(it$link_url, "#")) {
+            tags$a(href = it$link_url, target = "_blank", it$link_label, tags$i(class = "fa fa-external-link-alt ms-1", style = "font-size: 0.75rem;"))
+          } else {
+            tags$span(it$link_label)
+          }
+
           tags$div(
             style = "border-bottom: 1px dashed #e2e8f0; padding-bottom: 1.25rem; margin-bottom: 1.25rem;",
             tags$div(
@@ -2383,7 +2295,7 @@ server <- function(input, output, session) {
             tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Área temática: "), it$area),
             tags$p(style = "margin-bottom: 0.5rem; text-align: justify; line-height: 1.5;", tags$strong("Resumo: "), it$resumo),
             tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Orçamento estimado: "), tags$span(style = "color: #b45309; font-weight: 600;", it$orcamento)),
-            tags$p(style = "margin-bottom: 0;", tags$strong("Link de acesso: "), tags$a(href = it$link_url, target = "_blank", it$link_label, tags$i(class = "fa fa-external-link-alt ms-1", style = "font-size: 0.75rem;")))
+            tags$p(style = "margin-bottom: 0;", tags$strong("Link de acesso: "), link_target)
           )
         })
       )

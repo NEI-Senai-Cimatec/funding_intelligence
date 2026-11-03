@@ -790,7 +790,7 @@
         var inputsToClear = ['login_email', 'login_password', 'signup_email', 'signup_password', 'signup_password_confirm', 'recovery_email', 'reset_password_new', 'reset_password_confirm'];
         inputsToClear.forEach(function(id) {
           var el = document.getElementById(id);
-          if (el) el.value = '';
+          if (el && document.activeElement !== el) el.value = '';
         });
 
         var btnLogin = $('#btn_login_submit');
@@ -858,7 +858,7 @@
       var inputsToClear = ['login_email', 'login_password', 'signup_email', 'signup_password', 'signup_password_confirm', 'recovery_email', 'reset_password_new', 'reset_password_confirm'];
       inputsToClear.forEach(function(id) {
         var el = document.getElementById(id);
-        if (el) el.value = '';
+        if (el && document.activeElement !== el) el.value = '';
       });
     });
 

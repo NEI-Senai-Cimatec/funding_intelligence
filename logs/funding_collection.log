@@ -6155,3 +6155,79 @@
 [2026-10-28 15:40:15] [INFO] [sigitec] sucesso: 17 registro(s) processado(s). 567 desafio(s) no portal; 17 aberto(s) capturado(s); 17 processado(s); 0 falha(s) de detalhe; 0 falha(s) no Link do Desafio.
 [2026-10-28 15:40:17] [WARN] Falha ao exportar XLSX: attempt to select less than one element in integerOneIndex
 [2026-10-28 15:40:17] [INFO] Fim da coleta oficial. 1 fontes processadas. 17 registros adicionados nesta rodada. 355 registros na base.
+[2026-11-03 10:22:51] [INFO] Início da coleta oficial.
+[2026-11-03 10:22:51] [INFO] Coletando FAPESB via categoria (ano=2026, status=Abertos)...
+[2026-11-03 10:22:59] [INFO] FAPESB: 5 editais abertos em 2026
+[2026-11-03 10:22:59] [INFO] [1/5] DIRETRIZES ESPECÍFICAS DA FAPESB – CHAMADA BIODIVERSA + “BIODIVFUTURE 
+[2026-11-03 10:23:05] [WARN] Ambiguidade de data: '06/09/2026'
+[2026-11-03 10:23:05] [WARN] Ambiguidade de data: '06/09/2026'
+[2026-11-03 10:23:05] [INFO] FAPESB prazo extraido via PDF: 2028-04-01 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/DIRETRIZES___COOPINTER___BIODIVERSA_V1.pdf)
+[2026-11-03 10:23:06] [INFO] [2/5] DIRETRIZES ESPECÍFICAS DA FAPESB – CHAMADA TRANSNACIONAL CONJUNTA WATE
+[2026-11-03 10:23:13] [INFO] FAPESB prazo extraido via PDF: 2027-04-06 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/DIRETRIZES___COOPINTER___WATER4ALL_VF__1_-1-1.pdf)
+[2026-11-03 10:23:14] [INFO] [3/5] DIRETRIZES ESPECÍFICAS DA FAPESB – 1ª CHAMADA DA PARCERIA DE MATÉRIAS-
+[2026-11-03 10:23:21] [INFO] FAPESB prazo extraido via PDF: 2027-05-15 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/DIRETRIZES_COOPINTER_RAMP_2026.pdf)
+[2026-11-03 10:23:22] [INFO] [4/5] CHAMADA CDTI ESPANHA (2026-2027) – DIRETRIZES ESPECÍFICAS DA FAPESB -
+[2026-11-03 10:23:27] [WARN] Ambiguidade de data: '08/10/2026'
+[2026-11-03 10:23:28] [WARN] Ambiguidade de data: '08/10/2026'
+[2026-11-03 10:23:28] [INFO] FAPESB prazo extraido via PDF: 2026-10-08 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/MINUTA_DIRETRIZES___COOPINTER___BR_ESPANHA___CDTI__6__-correto.pdf)
+[2026-11-03 10:23:29] [INFO] [5/5] CHAMADA GCUB – MOB Nº 2026/2027 – PROGRAMA DE MOBILIDADE INTERNACIONAL
+[2026-11-03 10:23:36] [INFO] FAPESB prazo extraido via PDF: 2026-07-13 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/MINUTA_DIRETRIZES___GCUB_2026.2027.pdf)
+[2026-11-03 10:23:36] [INFO] FAPESB: 5 registros finais coletados
+[2026-11-03 10:23:37] [INFO] Fonte em processamento: fapesb | https://www.fapesb.ba.gov.br/category/edital/aberto/
+[2026-11-03 10:23:37] [WARN] data_inconsistente: titulo 'DIRETRIZES ESPECÍFICAS DA FAPESB – CHAMADA BIODIVERSA + “BIODIVFUTURE 2026 – 202' | data_limite 2028-04-01 | fonte fapesb
+[2026-11-03 10:23:38] [INFO] [fapesb] sucesso: 5 registro(s) processado(s)
+[2026-11-03 10:23:39] [WARN] Falha ao exportar XLSX: attempt to select less than one element in integerOneIndex
+[2026-11-03 10:23:39] [INFO] Fim da coleta oficial. 1 fontes processadas. 5 registros adicionados nesta rodada. 338 registros na base.
+[2026-11-03 10:34:59] [INFO] Início da coleta oficial.
+[2026-11-03 10:35:01] [INFO] Fonte em processamento: fapesb | https://www.fapesb.ba.gov.br/category/edital/aberto/
+[2026-11-03 10:35:01] [ERROR] Falha na fonte fapesb: não foi possível encontrar a função "source_dispatch"
+[2026-11-03 10:35:02] [WARN] Falha ao exportar XLSX: attempt to select less than one element in integerOneIndex
+[2026-11-03 10:35:02] [INFO] Fim da coleta oficial. 0 fontes processadas. 0 registros adicionados nesta rodada. 338 registros na base.
+[2026-11-03 10:35:02] [WARN] Coleta finalizada sem novos registros: 0 fonte(s) processadas, 338 registros na base.
+[2026-11-03 10:40:18] [WARN] Ambiguidade de data: '06/09/2026'
+[2026-11-03 10:42:10] [INFO] Início da coleta oficial.
+[2026-11-03 10:42:11] [INFO] Coletando FAPESB via categoria (ano=2026, status=Abertos)...
+[2026-11-03 10:42:21] [INFO] FAPESB: 5 editais abertos em 2026
+[2026-11-03 10:42:21] [INFO] [1/5] DIRETRIZES ESPECÍFICAS DA FAPESB – CHAMADA BIODIVERSA + “BIODIVFUTURE 
+[2026-11-03 10:42:27] [WARN] Ambiguidade de data: '06/09/2026'
+[2026-11-03 10:42:28] [WARN] Ambiguidade de data: '06/09/2026'
+[2026-11-03 10:42:28] [INFO] FAPESB prazo extraido via PDF: 2028-04-01 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/DIRETRIZES___COOPINTER___BIODIVERSA_V1.pdf)
+[2026-11-03 10:42:28] [INFO] [2/5] DIRETRIZES ESPECÍFICAS DA FAPESB – CHAMADA TRANSNACIONAL CONJUNTA WATE
+[2026-11-03 10:42:35] [INFO] FAPESB prazo extraido via PDF: 2027-04-06 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/DIRETRIZES___COOPINTER___WATER4ALL_VF__1_-1-1.pdf)
+[2026-11-03 10:42:35] [INFO] [3/5] DIRETRIZES ESPECÍFICAS DA FAPESB – 1ª CHAMADA DA PARCERIA DE MATÉRIAS-
+[2026-11-03 10:42:42] [INFO] FAPESB prazo extraido via PDF: 2027-05-15 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/DIRETRIZES_COOPINTER_RAMP_2026.pdf)
+[2026-11-03 10:42:42] [INFO] [4/5] CHAMADA CDTI ESPANHA (2026-2027) – DIRETRIZES ESPECÍFICAS DA FAPESB -
+[2026-11-03 10:42:49] [WARN] Ambiguidade de data: '08/10/2026'
+[2026-11-03 10:42:50] [WARN] Ambiguidade de data: '08/10/2026'
+[2026-11-03 10:42:50] [INFO] FAPESB prazo extraido via PDF: 2026-10-08 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/MINUTA_DIRETRIZES___COOPINTER___BR_ESPANHA___CDTI__6__-correto.pdf)
+[2026-11-03 10:42:50] [INFO] [5/5] CHAMADA GCUB – MOB Nº 2026/2027 – PROGRAMA DE MOBILIDADE INTERNACIONAL
+[2026-11-03 10:42:57] [INFO] FAPESB prazo extraido via PDF: 2026-07-13 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/MINUTA_DIRETRIZES___GCUB_2026.2027.pdf)
+[2026-11-03 10:42:58] [INFO] FAPESB: 5 registros finais coletados
+[2026-11-03 10:42:58] [INFO] Fonte em processamento: fapesb | https://www.fapesb.ba.gov.br/category/edital/aberto/
+[2026-11-03 10:42:58] [WARN] data_inconsistente: titulo 'DIRETRIZES ESPECÍFICAS DA FAPESB – CHAMADA BIODIVERSA + “BIODIVFUTURE 2026 – 202' | data_limite 2028-04-01 | fonte fapesb
+[2026-11-03 10:42:59] [INFO] [fapesb] sucesso: 5 registro(s) processado(s)
+[2026-11-03 10:42:59] [WARN] Falha ao exportar XLSX: attempt to select less than one element in integerOneIndex
+[2026-11-03 10:42:59] [INFO] Fim da coleta oficial. 1 fontes processadas. 5 registros adicionados nesta rodada. 338 registros na base.
+[2026-11-03 10:46:10] [INFO] Início da coleta oficial.
+[2026-11-03 10:46:12] [INFO] Coletando FAPESB via categoria (ano=2026, status=Abertos)...
+[2026-11-03 10:46:20] [INFO] FAPESB: 5 editais abertos em 2026
+[2026-11-03 10:46:20] [INFO] [1/5] DIRETRIZES ESPECÍFICAS DA FAPESB – CHAMADA BIODIVERSA + “BIODIVFUTURE 
+[2026-11-03 10:46:26] [WARN] Ambiguidade de data: '06/09/2026'
+[2026-11-03 10:46:27] [WARN] Ambiguidade de data: '06/09/2026'
+[2026-11-03 10:46:27] [INFO] FAPESB prazo extraido via PDF: 2028-04-01 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/DIRETRIZES___COOPINTER___BIODIVERSA_V1.pdf)
+[2026-11-03 10:46:28] [INFO] [2/5] DIRETRIZES ESPECÍFICAS DA FAPESB – CHAMADA TRANSNACIONAL CONJUNTA WATE
+[2026-11-03 10:46:35] [INFO] FAPESB prazo extraido via PDF: 2027-04-06 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/DIRETRIZES___COOPINTER___WATER4ALL_VF__1_-1-1.pdf)
+[2026-11-03 10:46:36] [INFO] [3/5] DIRETRIZES ESPECÍFICAS DA FAPESB – 1ª CHAMADA DA PARCERIA DE MATÉRIAS-
+[2026-11-03 10:46:42] [INFO] FAPESB prazo extraido via PDF: 2027-05-15 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/DIRETRIZES_COOPINTER_RAMP_2026.pdf)
+[2026-11-03 10:46:43] [INFO] [4/5] CHAMADA CDTI ESPANHA (2026-2027) – DIRETRIZES ESPECÍFICAS DA FAPESB -
+[2026-11-03 10:46:49] [WARN] Ambiguidade de data: '08/10/2026'
+[2026-11-03 10:46:50] [WARN] Ambiguidade de data: '08/10/2026'
+[2026-11-03 10:46:50] [INFO] FAPESB prazo extraido via PDF: 2026-10-08 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/MINUTA_DIRETRIZES___COOPINTER___BR_ESPANHA___CDTI__6__-correto.pdf)
+[2026-11-03 10:46:51] [INFO] [5/5] CHAMADA GCUB – MOB Nº 2026/2027 – PROGRAMA DE MOBILIDADE INTERNACIONAL
+[2026-11-03 10:46:57] [INFO] FAPESB prazo extraido via PDF: 2026-07-13 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/MINUTA_DIRETRIZES___GCUB_2026.2027.pdf)
+[2026-11-03 10:46:58] [INFO] FAPESB: 5 registros finais coletados
+[2026-11-03 10:46:58] [INFO] Fonte em processamento: fapesb | https://www.fapesb.ba.gov.br/category/edital/aberto/
+[2026-11-03 10:46:58] [WARN] data_inconsistente: titulo 'DIRETRIZES ESPECÍFICAS DA FAPESB – CHAMADA BIODIVERSA + “BIODIVFUTURE 2026 – 202' | data_limite 2028-04-01 | fonte fapesb
+[2026-11-03 10:46:58] [INFO] [fapesb] sucesso: 5 registro(s) processado(s)
+[2026-11-03 10:46:59] [WARN] Falha ao exportar XLSX: attempt to select less than one element in integerOneIndex
+[2026-11-03 10:46:59] [INFO] Fim da coleta oficial. 1 fontes processadas. 5 registros adicionados nesta rodada. 338 registros na base.

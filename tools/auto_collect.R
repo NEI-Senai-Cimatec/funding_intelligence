@@ -4,11 +4,6 @@
 main_auto_collect <- function(test_mode = FALSE, source_filter = NULL) {
   app_dir <- normalizePath(getwd(), winslash = "/", mustWork = FALSE)
 
-  # Define SCRAPE_WORKERS = 1 por padrão para garantir execução estável e sequencial
-  if (!nzchar(Sys.getenv("SCRAPE_WORKERS"))) {
-    Sys.setenv(SCRAPE_WORKERS = "1")
-  }
-
   # Identificação do ambiente de execução (Posit Connect, GitHub Actions ou Cron)
   exec_env <- if (nzchar(Sys.getenv("CONNECT_SERVER")) || nzchar(Sys.getenv("R_CONFIG_ACTIVE"))) {
     "POSIT_CONNECT"
@@ -21,6 +16,13 @@ main_auto_collect <- function(test_mode = FALSE, source_filter = NULL) {
     Sys.getenv("CONNECT_SERVER")
   } else {
     "https://github.com/workflows/auto_collect"
+  }
+
+  # Define número de workers para coleta paralela resiliente
+  # No GitHub Actions (runners com 4 vCPUs), usa 4 workers. Em outros ambientes, respeita env ou usa 2.
+  if (!nzchar(Sys.getenv("SCRAPE_WORKERS")) || Sys.getenv("SCRAPE_WORKERS") == "1") {
+    default_workers <- if (identical(exec_env, "GITHUB_ACTIONS")) "4" else "2"
+    Sys.setenv(SCRAPE_WORKERS = default_workers)
   }
 
   # Suporte a biblioteca local R_libs (desenvolvimento local) ou biblioteca do sistema (GHA/Connect)
@@ -111,7 +113,11 @@ main_auto_collect <- function(test_mode = FALSE, source_filter = NULL) {
   # Configurações de coleta
   max_pages <- if (test_mode) 1L else 5L
   max_records <- if (test_mode) 5L else 20L
-  use_ai <- ai_available()
+  # Na coleta automática em lote (GHA/Cron), o uso de LLM externo é desabilitado por padrão
+  # para evitar timeouts de 50+ min por rate limit de rede. A classificação heurística
+  # determinística de alta precisão (R/helpers_ai.R) processa instantaneamente todos os campi.
+  enable_ai_env <- tolower(trimws(Sys.getenv("ENABLE_AI_AUTO_COLLECT", "false")))
+  use_ai <- identical(enable_ai_env, "true") && ai_available()
 
   # Se for teste rápido e nenhuma fonte informada, filtra para teste rápido
   if (is.null(source_filter) && isTRUE(test_mode)) {

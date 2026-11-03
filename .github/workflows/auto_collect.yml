@@ -17,13 +17,12 @@ jobs:
   collect:
     name: 🚀 Coletar e Atualizar Oportunidades
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 90
 
     steps:
-      - name: 📥 Clonar repositório (branch feat-fix-new-fontes)
+      - name: 📥 Clonar repositório
         uses: actions/checkout@v4
         with:
-          ref: feat-fix-new-fontes
           fetch-depth: 0
 
       - name: ⚙️ Instalar dependências de sistema
@@ -45,6 +44,13 @@ jobs:
           r-version: '4.4.0'
           use-public-rspm: true
 
+      - name: 💾 Cache de Pacotes R
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.R_LIBS_USER }}
+          key: ${{ runner.os }}-r-4.4-${{ hashFiles('tools/auto_collect.R', 'R/helpers_collect.R') }}
+          restore-keys: ${{ runner.os }}-r-4.4-
+
       - name: 📚 Instalar pacotes R essenciais
         run: |
           Rscript -e "
@@ -57,15 +63,15 @@ jobs:
               'DBI', 'RSQLite', 'jsonlite', 'digest', 'dplyr', 'purrr',
               'stringr', 'stringi', 'httr', 'httr2', 'rvest', 'xml2', 'lubridate', 'tibble',
               'readr', 'writexl', 'callr', 'ratelimitr', 'uuid', 'memoise',
-              'RPostgres'
+              'RPostgres', 'future', 'future.apply', 'polite', 'shinycssloaders'
             );
-            # Instala apenas os pacotes que ainda não estiverem disponíveis
+            # Instala apenas os pacotes que ainda não estiverem disponíveis (sem dependências sugeridas desnecessárias)
             missing_pkgs <- pkgs[!pkgs %in% installed.packages()[, 'Package']];
             if (length(missing_pkgs) > 0) {
-              install.packages(missing_pkgs, dependencies = TRUE);
+              install.packages(missing_pkgs, dependencies = c('Depends', 'Imports', 'LinkingTo'));
             }
             # Validação obrigatória de carregamento das bibliotecas C/C++ compartilhadas
-            for (p in c('stringi', 'stringr', 'DBI', 'RSQLite', 'RPostgres', 'rvest')) {
+            for (p in c('stringi', 'stringr', 'DBI', 'RSQLite', 'RPostgres', 'rvest', 'future')) {
               library(p, character.only = TRUE);
             }
             message('Dependências R verificadas e carregadas com sucesso.');
@@ -77,10 +83,12 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           AI_PROVIDER: ${{ secrets.AI_PROVIDER || 'gemini' }}
           AI_MODEL: ${{ secrets.AI_MODEL || 'gemini-1.5-flash' }}
+          SCRAPE_WORKERS: "4"
+          ENABLE_AI_AUTO_COLLECT: "false"
         run: |
           Rscript tools/auto_collect.R
 
-      - name: 💾 Commit & Push dos dados atualizados na feat-fix-new-fontes e main
+      - name: 💾 Commit & Push dos dados atualizados
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
@@ -88,12 +96,14 @@ jobs:
           if git diff --staged --quiet; then
             echo "Nenhuma alteração nos arquivos locais detectada nesta rodada."
           else
+            CURRENT_BRANCH=$(git branch --show-current)
             git commit -m "chore(auto-collect): atualização automática de editais [$(date -u +'%Y-%m-%d %H:%M UTC')]"
-            git pull --rebase -X theirs origin feat-fix-new-fontes || git pull --rebase origin feat-fix-new-fontes || true
-            git push origin HEAD:feat-fix-new-fontes
-            # Mantém também a branch main sincronizada com o banco e exportações recentes
-            git pull --rebase -X theirs origin main || git pull --rebase origin main || true
-            git push origin HEAD:main || true
+            git pull --rebase -X theirs origin "$CURRENT_BRANCH" || true
+            git push origin HEAD:"$CURRENT_BRANCH"
+            if [ "$CURRENT_BRANCH" != "main" ]; then
+              git pull --rebase -X theirs origin main || true
+              git push origin HEAD:main || true
+            fi
           fi
 
       - name: 📦 Salvar Banco de Dados e Exportações como Artefato

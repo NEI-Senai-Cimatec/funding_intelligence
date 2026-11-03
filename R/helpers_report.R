@@ -307,8 +307,7 @@ generate_adherence_report <- function(opportunities_df, max_items = 4L) {
     }
 
     sprintf(
-"%d:\n\nEdital: %s\n\nTipo de oportunidade: %s\n\nPaís de origem: %s\n\nPrazo limite de submissão: %s\n\nÁrea temática: %s\n\nResumo: %s\n\nOrçamento estimado: %s\n\nLink de acesso: %s",
-      it$idx,
+"Edital: %s\n\nTipo de oportunidade: %s\n\nPaís de origem: %s\n\nPrazo limite de submissão: %s\n\nÁrea temática: %s\n\nResumo: %s\n\nOrçamento estimado: %s\n\nLink de acesso: %s",
       it$edital,
       it$tipo,
       it$pais,
@@ -331,8 +330,7 @@ generate_adherence_report <- function(opportunities_df, max_items = 4L) {
     }
 
     sprintf(
-"### %d. %s\n\n* **Tipo de oportunidade:** %s\n* **País de origem:** %s\n* **Prazo limite de submissão:** %s\n* **Área temática:** %s\n* **Orçamento estimado:** %s\n* **Link de acesso:** %s\n\n**Resumo:**\n%s\n",
-      it$idx,
+"### %s\n\n* **Tipo de oportunidade:** %s\n* **País de origem:** %s\n* **Prazo limite de submissão:** %s\n* **Área temática:** %s\n* **Orçamento estimado:** %s\n* **Link de acesso:** %s\n\n**Resumo:**\n%s\n",
       it$edital,
       it$tipo,
       it$pais,

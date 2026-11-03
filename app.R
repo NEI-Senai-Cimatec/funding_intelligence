@@ -2282,12 +2282,12 @@ server <- function(input, output, session) {
 
           tags$div(
             style = "border-bottom: 1px dashed #e2e8f0; padding-bottom: 1.25rem; margin-bottom: 1.25rem;",
-            tags$div(
-              style = "display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;",
-              tags$span(style = "font-size: 1.15rem; font-weight: 800; color: #004691;", sprintf("%d:", it$idx)),
-              if (!is.null(it$score) && it$score > 0)
+            if (!is.null(it$score) && it$score > 0) {
+              tags$div(
+                style = "display: flex; justify-content: flex-end; margin-bottom: 0.5rem;",
                 tags$span(class = "badge bg-primary", sprintf("Aderência: %d%%", it$score))
-            ),
+              )
+            },
             tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Edital: "), tags$span(style = "font-weight: 600; color: #1e293b;", it$edital)),
             tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Tipo de oportunidade: "), it$tipo),
             tags$p(style = "margin-bottom: 0.5rem;", tags$strong("País de origem: "), it$pais),

@@ -1034,6 +1034,7 @@ server <- function(input, output, session) {
         bslib::nav_select(id = "main_tabs", selected = "resultados_editais", session = session)
       } else {
         rv$signup_success <- signup_res$message
+        session$sendCustomMessage("signup_success", list(message = signup_res$message))
         showNotification(signup_res$message, type = "message", duration = 8)
       }
     } else {
@@ -1298,6 +1299,7 @@ server <- function(input, output, session) {
 
   # Restauração automática de sessão persistente ao atualizar a página (F5)
   observeEvent(input$restore_auth_session, {
+    req(input$restore_auth_session)
     # Se houver recuperação de senha em andamento, encerra estado de restauração para liberar o modal
     if (!is.null(rv$pending_recovery_token) || isTRUE(rv$reset_modal_open)) {
       session$sendCustomMessage("restore_auth_failed", list())
@@ -1370,7 +1372,7 @@ server <- function(input, output, session) {
     } else {
       session$sendCustomMessage("restore_auth_failed", list())
     }
-  }, priority = 100, ignoreInit = FALSE)
+  }, priority = 100, ignoreInit = TRUE)
 
   # Evento de logout
   observeEvent(input$btn_header_logout, {
@@ -2233,6 +2235,7 @@ server <- function(input, output, session) {
       scraping_status = progress_rv$status
     )
   })
+  outputOptions(output, "header_status", suspendWhenHidden = FALSE)
 
   # Botão Atualizar Base (exclusivo para desenvolvedores / diretoria)
   output$btn_collect_container <- renderUI({
@@ -4112,6 +4115,14 @@ server <- function(input, output, session) {
     outputOptions(output, "themes_plot", suspendWhenHidden = TRUE)
     outputOptions(output, "theme_funder_plot", suspendWhenHidden = TRUE)
     outputOptions(output, "keywords_table", suspendWhenHidden = TRUE)
+    outputOptions(output, "naval_results_table", suspendWhenHidden = TRUE)
+    outputOptions(output, "sertao_results_table", suspendWhenHidden = TRUE)
+    outputOptions(output, "aero_results_table", suspendWhenHidden = TRUE)
+    outputOptions(output, "digital_results_table", suspendWhenHidden = TRUE)
+    outputOptions(output, "park_results_table", suspendWhenHidden = TRUE)
+    outputOptions(output, "startups_results_table", suspendWhenHidden = TRUE)
+    outputOptions(output, "recommended_table", suspendWhenHidden = TRUE)
+    outputOptions(output, "collaborators_table", suspendWhenHidden = TRUE)
   }, silent = TRUE)
 }
 

@@ -463,7 +463,7 @@ supabase_get_user <- function(access_token) {
         "Authorization" = paste("Bearer", access_token)
       ) |>
       httr2::req_error(is_error = function(resp) FALSE) |>
-      httr2::req_timeout(3.5) |>
+      httr2::req_timeout(15) |>
       httr2::req_perform()
   }, error = function(e) NULL)
   
@@ -500,7 +500,7 @@ supabase_refresh_session <- function(refresh_token) {
       ) |>
       httr2::req_body_json(list(refresh_token = as.character(refresh_token))) |>
       httr2::req_error(is_error = function(resp) FALSE) |>
-      httr2::req_timeout(3.5) |>
+      httr2::req_timeout(15) |>
       httr2::req_perform()
   }, error = function(e) NULL)
   
@@ -528,7 +528,9 @@ supabase_restore_session <- function(session_data, conn = NULL) {
   if (!is.list(session_data)) return(list(success = FALSE, is_invalid = TRUE))
   access_tok <- as.character(session_data$access_token %||% "")
   refresh_tok <- as.character(session_data$refresh_token %||% "")
-  cached_user <- session_data$user
+  # SEGURANÇA: os dados de usuário salvos no navegador (session_data$user) NUNCA são
+  # usados para autenticar nem para definir cargo — podem ser editados por qualquer um.
+  # A identidade vem exclusivamente do Supabase a partir de um token válido.
   
   # 1. Tenta validar o access_token atual na API GoTrue do Supabase
   user_res <- if (nzchar(access_tok)) {
@@ -559,36 +561,34 @@ supabase_restore_session <- function(session_data, conn = NULL) {
   }
   
   if (isTRUE(ref_res$success)) {
-    user <- ref_res$user %||% cached_user
-    is_dev <- supabase_is_dev_or_diretoria(user, access_token = ref_res$access_token, conn = conn)
-    user$cargo <- if (isTRUE(is_dev)) "diretoria" else "leitor"
-    return(list(
-      success = TRUE,
-      user = user,
-      access_token = ref_res$access_token,
-      refresh_token = ref_res$refresh_token,
-      is_dev = is_dev,
-      updated = TRUE
-    ))
+    user <- ref_res$user
+    if (is.null(user) || is.null(user$email)) {
+      fresh <- supabase_get_user(ref_res$access_token)
+      user <- if (isTRUE(fresh$success)) fresh$user else NULL
+    }
+    if (!is.null(user)) {
+      user$cargo <- NULL
+      is_dev <- supabase_is_dev_or_diretoria(user, access_token = ref_res$access_token, conn = conn)
+      user$cargo <- if (isTRUE(is_dev)) "diretoria" else "leitor"
+      return(list(
+        success = TRUE,
+        user = user,
+        access_token = ref_res$access_token,
+        refresh_token = ref_res$refresh_token,
+        is_dev = is_dev,
+        updated = TRUE
+      ))
+    }
   }
   
-  # 3. Fallback de resiliência: se o cached_user contém dados válidos de usuário autenticado
-  if (is.list(cached_user) && !is.null(cached_user$email) && nzchar(as.character(cached_user$email))) {
-    user <- cached_user
-    is_dev <- supabase_is_dev_or_diretoria(user, conn = conn)
-    user$cargo <- user$cargo %||% (if (isTRUE(is_dev)) "diretoria" else "leitor")
-    return(list(
-      success = TRUE,
-      user = user,
-      access_token = access_tok,
-      refresh_token = refresh_tok,
-      is_dev = is_dev,
-      updated = FALSE,
-      offline_fallback = TRUE
-    ))
-  }
+  # 3. Sem token válido: NÃO autentica. Se o Supabase recusou explicitamente os tokens
+  # (HTTP 4xx), a sessão salva é inválida e deve ser apagada. Se foi falha de rede,
+  # preserva a sessão salva para nova tentativa no próximo carregamento.
+  rejected <- function(res) !is.null(res$status_code) && res$status_code >= 400 && res$status_code < 500
+  access_rejected <- !nzchar(access_tok) || rejected(user_res)
+  refresh_rejected <- !nzchar(refresh_tok) || rejected(ref_res)
   
-  list(success = FALSE, is_invalid = TRUE)
+  list(success = FALSE, is_invalid = isTRUE(access_rejected && refresh_rejected))
 }
 
 # ─── Opção 3: Consulta de Permissões na Tabela 'public.perfis' do Supabase ───────
@@ -626,7 +626,7 @@ supabase_get_user_role_from_db <- function(user, access_token = NULL) {
       httr2::req_headers(!!!headers) |>
       httr2::req_url_query(!!!query_params) |>
       httr2::req_error(is_error = function(resp) FALSE) |>
-      httr2::req_timeout(2)
+      httr2::req_timeout(10)
     
     httr2::req_perform(req)
   }, error = function(e) NULL)
@@ -990,7 +990,7 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
                   if (l) l.style.display = 'block';
                   if (t) t.style.display = 'flex';
                 }
-              }, 8000);
+              }, 45000);
             }
           } catch(e) {}
         })();
@@ -1243,6 +1243,15 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
           htmltools::tags$div(id = "auth_signup_error_text", "")
         ),
         
+        # Alerta de sucesso dinâmico de cadastro instantâneo via JavaScript
+        htmltools::tags$div(
+          id = "auth_signup_success_box",
+          class = "auth-alert auth-alert-success",
+          style = "display: none; margin-bottom: 1rem;",
+          htmltools::tags$i(class = "fa fa-circle-check", style = "margin-top: 2px;"),
+          htmltools::tags$div(id = "auth_signup_success_text", "")
+        ),
+        
         htmltools::tags$button(
           id = "btn_signup_submit",
           type = "button",
@@ -1327,6 +1336,7 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
         htmltools::tags$div(
           style = "text-align: center; margin-top: 1.25rem; font-size: 0.825rem;",
           htmltools::tags$a(
+            id = "link_back_to_login",
             href = "#",
             class = "auth-link-back",
             onclick = "window.switchAuthTab && window.switchAuthTab('login'); return false;",

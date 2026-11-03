@@ -99,6 +99,7 @@
     }
 
     errBox.hide();
+    $('#auth_signup_success_box').hide();
 
     // Feedback visual imediato e animação no botão
     btn.prop('disabled', true).addClass('loading');
@@ -431,7 +432,7 @@
 
     // 2. Limpa caixas de erro
     if (window.$) {
-      $('#auth_login_error_box, #auth_signup_error_box, #auth_recovery_error_box, #auth_recovery_success_box, #auth_reset_error_box').hide();
+      $('#auth_login_error_box, #auth_signup_error_box, #auth_signup_success_box, #auth_recovery_error_box, #auth_recovery_success_box, #auth_reset_error_box').hide();
     }
 
     // 3. Reseta botões se estiverem em loading
@@ -744,6 +745,12 @@
         $('html').addClass('authenticated');
         $('body').addClass('authenticated');
         $('#auth_overlay_root').stop(true, true).fadeOut(250);
+        setTimeout(function() {
+          try {
+            $(window).trigger('resize');
+            $(document).trigger('shown');
+          } catch(e) {}
+        }, 60);
 
         // Prepara o formulário em estado pronto caso o usuário deslogue
         if (elRestoring) elRestoring.style.display = 'none';
@@ -755,6 +762,8 @@
       } else {
         $('html').removeClass('authenticated');
         $('body').removeClass('authenticated');
+        restoreSent = false;
+        sessionRestored = false;
         $('#quiin_recovery_instant_css, #quiin_restore_instant_css, #quiin_early_auth_css, #quiin_instant_auth_css').remove();
 
         // Se estiver em modo de recuperação, NUNCA permite exibir o formulário de login
@@ -775,7 +784,7 @@
         // Reseta abas e esconde caixas de erro e mensagens de sucesso
         $('.auth-tab-btn').removeClass('active');
         $('.auth-tab-btn[data-mode="login"]').addClass('active');
-        $('#auth_login_error_box, #auth_signup_error_box, #auth_recovery_error_box, #auth_recovery_success_box, #auth_reset_error_box').hide();
+        $('#auth_login_error_box, #auth_signup_error_box, #auth_signup_success_box, #auth_recovery_error_box, #auth_recovery_success_box, #auth_reset_error_box').hide();
 
         // Limpa campos de credenciais imediatamente ao sair
         var inputsToClear = ['login_email', 'login_password', 'signup_email', 'signup_password', 'signup_password_confirm', 'recovery_email', 'reset_password_new', 'reset_password_confirm'];
@@ -856,6 +865,7 @@
     // Falha na restauração da sessão silenciosa (revela formulário sem apagar se for falha de rede transitória)
     Shiny.addCustomMessageHandler('restore_auth_failed', function(msg) {
       sessionRestored = false;
+      restoreSent = false;
       if (restoreTimeoutFailsafe) {
         clearTimeout(restoreTimeoutFailsafe);
         restoreTimeoutFailsafe = null;
@@ -900,6 +910,18 @@
       var msg = (data && data.message) ? data.message : 'Falha no cadastro.';
       $('#auth_signup_error_text').text(msg);
       $('#auth_signup_error_box').stop(true, true).slideDown(150);
+    });
+
+    // Sucesso de cadastro
+    Shiny.addCustomMessageHandler('signup_success', function(data) {
+      var btn = $('#btn_signup_submit');
+      btn.prop('disabled', false).removeClass('loading');
+      btn.html('<i class="fa fa-user-check" style="margin-right: 8px;"></i><span>Cadastrar e Criar Conta</span>');
+
+      var msg = (data && data.message) ? data.message : 'Cadastro realizado com sucesso! Verifique seu e-mail para confirmar a conta antes de entrar.';
+      $('#auth_signup_error_box').hide();
+      $('#auth_signup_success_text').text(msg);
+      $('#auth_signup_success_box').stop(true, true).slideDown(150);
     });
 
     // Sucesso no envio do link de recuperação
@@ -1029,7 +1051,7 @@
     });
 
     // Foco e seleção imediata no campo de nova senha após erro de validação/mesma senha
-    Shiny.addCustomMessageHandler('modal_reset_error_focus', function() {
+    Shiny.addCustomMessageHandler('modal_reset_error_focus', function(data) {
       var btnM = $('#btn_modal_submit_new_password');
       if (btnM.length) {
         btnM.prop('disabled', false);
@@ -1229,6 +1251,7 @@
 
   // 5. Restauração Silenciosa de Sessão Persistente
   var sessionRestored = false;
+  var restoreSent = false;
   var restoreTimeoutFailsafe = null;
   var restoreTimer = null;
 
@@ -1236,6 +1259,7 @@
   window.cancelRestoreSession = function() {
     console.warn('[AUTH] Restauração cancelada pelo usuário. Destravando formulário de login.');
     sessionRestored = false;
+    restoreSent = false;
     if (restoreTimeoutFailsafe) {
       clearTimeout(restoreTimeoutFailsafe);
       restoreTimeoutFailsafe = null;
@@ -1313,15 +1337,23 @@
       $('#auth_restoring_state').show();
     }
 
-    // Failsafe de proteção: Se em 8 segundos a sessão não for confirmada, destrava o app para login manual
+    // Failsafe de proteção: Se em 25 segundos a sessão não for confirmada, destrava o app para login manual
     if (!restoreTimeoutFailsafe) {
       restoreTimeoutFailsafe = setTimeout(function() {
         if (!$('body').hasClass('authenticated')) {
-          console.warn('[AUTH] Failsafe acionado: sessão não restaurada em 8s. Destravando formulário de login.');
+          console.warn('[AUTH] Failsafe acionado: sessão não restaurada em 45s. Destravando formulário de login.');
           window.exibirModoAuth('login');
           $('#auth_overlay_root').stop(true, true).fadeIn(150);
         }
-      }, 8000);
+      }, 45000);
+    }
+
+    function isShinyReady() {
+      return !!(window.Shiny && 
+                typeof window.Shiny.setInputValue === 'function' &&
+                window.Shiny.shinyapp && 
+                typeof window.Shiny.shinyapp.isConnected === 'function' &&
+                window.Shiny.shinyapp.isConnected());
     }
 
     function doSendRestore() {
@@ -1332,16 +1364,22 @@
         }
         return true;
       }
-      try {
-        if (window.Shiny && typeof window.Shiny.setInputValue === 'function') {
-          console.log('[AUTH] Enviando restore_auth_session para o servidor Shiny conectado...');
-          window.Shiny.setInputValue('restore_auth_session', sessionData, {priority: 'event'});
-          return true;
-        }
-      } catch(e) {
-        console.warn('[AUTH] Erro ao enviar restore_auth_session:', e);
+
+      if (!isShinyReady()) {
+        return false;
       }
-      return false;
+
+      try {
+        console.log('[AUTH] Enviando restore_auth_session para o servidor Shiny conectado...');
+        var payload = Object.assign({}, sessionData, { _ts: Date.now() });
+        window.Shiny.setInputValue('restore_auth_session', payload, {priority: 'event'});
+        restoreSent = true;
+        return true;
+      } catch(e) {
+        console.warn('[AUTH] Falha ao enviar restore_auth_session:', e);
+        restoreSent = false;
+        return false;
+      }
     }
 
     // 1. Dispara envio imediato se Shiny já estiver pronto
@@ -1359,18 +1397,20 @@
       doSendRestore();
     });
 
-    // 4. Polling resiliente ativo: insiste a cada 200ms até que o Shiny responda ou atinja 8s
+    // 4. Polling resiliente ativo: insiste a cada 250ms até que o Shiny responda ou atinja 45s
     if (!restoreTimer) {
       var restoreAttempts = 0;
       restoreTimer = setInterval(function() {
         restoreAttempts++;
-        if (sessionRestored || (document.body && document.body.classList.contains('authenticated')) || restoreAttempts >= 40) {
+        if (sessionRestored || (document.body && document.body.classList.contains('authenticated')) || restoreAttempts >= 180) {
           clearInterval(restoreTimer);
           restoreTimer = null;
           return;
         }
-        doSendRestore();
-      }, 200);
+        if (!restoreSent || !sessionRestored) {
+          doSendRestore();
+        }
+      }, 250);
     }
   }
 

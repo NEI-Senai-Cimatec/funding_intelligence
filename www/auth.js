@@ -1438,3 +1438,21 @@
 
 })();
 
+
+// Função utilitária global para cópia rápida do relatório de editais
+window.copyReportToClipboard = function() {
+  const el = document.getElementById('report_raw_text_area');
+  if (!el) return;
+  navigator.clipboard.writeText(el.value).then(function() {
+    const btn = document.getElementById('btn_copy_report');
+    if (btn) {
+      const orig = btn.innerHTML;
+      btn.innerHTML = '<i class="fa fa-check text-success"></i> Copiado!';
+      setTimeout(function() { btn.innerHTML = orig; }, 2500);
+    }
+  }).catch(function(err) {
+    el.select();
+    document.execCommand('copy');
+    alert('Relatório copiado para a área de transferência!');
+  });
+};

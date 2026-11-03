@@ -143,6 +143,7 @@ safe_source("R/helpers_sanitize.R")
 safe_source("R/helpers_export.R")
 safe_source("R/helpers_auth.R")
 safe_source("R/helpers_reports.R")
+safe_source("R/helpers_report.R")
 safe_source("R/helpers_auto_scheduler.R")
 
 # Registra a pasta logos como recurso estático do Shiny
@@ -240,10 +241,15 @@ build_sidebar <- function() {
     ),
     selectizeInput(
       "filter_status", 
-      label = tags$span(tags$i(class = "fa fa-info-circle"), " Status"),
-      choices = NULL, 
+      label = tags$span(tags$i(class = "fa fa-info-circle"), " Status do Edital"),
+      choices = c(
+        "Abertos" = "aberto",
+        "Desconhecidos" = "desconhecido",
+        "Encerrados" = "encerrado",
+        "Em breve" = "em_breve"
+      ), 
       multiple = TRUE, 
-      options = list(placeholder = "Todos os status")
+      options = list(placeholder = "Todos os status (Abertos, Desconhecidos, Encerrados)")
     ),
     selectizeInput(
       "filter_type", 
@@ -259,43 +265,14 @@ build_sidebar <- function() {
       multiple = TRUE, 
       options = list(placeholder = "Todos os idiomas")
     ),
-    selectInput(
-      "filter_naval_level",
-      label = tags$span(tags$i(class = "fa fa-anchor"), " Aderência Naval & Offshore"),
-      choices = c("Todas" = "Todas", "Muito alta" = "Muito alta", "Alta" = "Alta", "Média" = "Média", "Baixa" = "Baixa"),
-      selected = "Todas"
-    ),
-    selectInput(
-      "filter_sertao_level",
-      label = tags$span(tags$i(class = "fa fa-leaf"), " Aderência Sertão & Agro"),
-      choices = c("Todas" = "Todas", "Muito alta" = "Muito alta", "Alta" = "Alta", "Média" = "Média", "Baixa" = "Baixa"),
-      selected = "Todas"
-    ),
-    selectInput(
-      "filter_aero_level",
-      label = tags$span(tags$i(class = "fa fa-rocket"), " Aderência Aeroespacial & Defesa"),
-      choices = c("Todas" = "Todas", "Muito alta" = "Muito alta", "Alta" = "Alta", "Média" = "Média", "Baixa" = "Baixa"),
-      selected = "Todas"
-    ),
-    selectInput(
-      "filter_digital_level",
-      label = tags$span(tags$i(class = "fa fa-laptop-code"), " Aderência Digital & IA"),
-      choices = c("Todas" = "Todas", "Muito alta" = "Muito alta", "Alta" = "Alta", "Média" = "Média", "Baixa" = "Baixa"),
-      selected = "Todas"
-    ),
-    selectInput(
-      "filter_park_level",
-      label = tags$span(tags$i(class = "fa fa-industry"), " Aderência Park & Manufatura"),
-      choices = c("Todas" = "Todas", "Muito alta" = "Muito alta", "Alta" = "Alta", "Média" = "Média", "Baixa" = "Baixa"),
-      selected = "Todas"
-    ),
-    selectInput(
-      "filter_startups_level",
-      label = tags$span(tags$i(class = "fa fa-lightbulb"), " Aderência Startups & Inovação"),
-      choices = c("Todas" = "Todas", "Muito alta" = "Muito alta", "Alta" = "Alta", "Média" = "Média", "Baixa" = "Baixa"),
-      selected = "Todas"
-    ),
     tags$hr(style = "margin: 1rem 0; border-color: #cbd5e1;"),
+    actionButton(
+      "btn_open_report_modal", 
+      "Gerar Relatório de Editais", 
+      class = "btn-primary w-100 mb-2", 
+      icon = icon("file-lines"),
+      style = "font-weight: 700; padding: 0.65rem; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,70,145,0.2);"
+    ),
     actionButton(
       "btn_clear_filters", 
       "Limpar Filtros", 
@@ -362,6 +339,7 @@ ui <- bslib::page_sidebar(
       actionButton("btn_search", "Buscar", class = "btn-primary", icon = icon("search")),
       actionButton("btn_advanced", "Busca avançada", class = "btn-outline-primary", icon = icon("sliders-h")),
       actionButton("btn_save_search", "Salvar busca", class = "btn-outline-secondary", icon = icon("bookmark")),
+      actionButton("btn_open_report_top", "Relatório de Editais", class = "btn-outline-info", icon = icon("file-lines")),
       uiOutput("btn_collect_container")
     )
   ),
@@ -2059,111 +2037,20 @@ server <- function(input, output, session) {
       df <- df |> dplyr::filter(area_tematica %in% input$filter_area)
     }
     if (length(input$filter_status) > 0) {
-      df <- df |> dplyr::filter(derived_status %in% tolower(gsub(" ", "_", input$filter_status)))
+      sel_status <- tolower(gsub(" ", "_", input$filter_status))
+      target_statuses <- character()
+      if ("aberto" %in% sel_status) target_statuses <- c(target_statuses, "aberto", "encerrando")
+      if ("desconhecido" %in% sel_status) target_statuses <- c(target_statuses, "desconhecido")
+      if ("encerrado" %in% sel_status) target_statuses <- c(target_statuses, "encerrado")
+      if ("em_breve" %in% sel_status) target_statuses <- c(target_statuses, "em_breve")
+      target_statuses <- unique(c(target_statuses, sel_status))
+      df <- df |> dplyr::filter(derived_status %in% target_statuses)
     }
     if (length(input$filter_type) > 0) {
       df <- df |> dplyr::filter(tipo_oportunidade %in% input$filter_type)
     }
     if (length(input$filter_language) > 0) {
       df <- df |> dplyr::filter(idioma %in% input$filter_language)
-    }
-
-    # Filtro de Aderência Naval & Offshore do Sidebar
-    if (!is.null(input$filter_naval_level) && input$filter_naval_level != "Todas") {
-      if (!"aderencia_naval_nivel" %in% names(df)) df$aderencia_naval_nivel <- NA_character_
-      if (!"aderencia_naval_justificativa" %in% names(df)) df$aderencia_naval_justificativa <- NA_character_
-      if (!"ideia_projeto_consorcio" %in% names(df)) df$ideia_projeto_consorcio <- NA_character_
-
-      for (i in seq_len(nrow(df))) {
-        if (is.na(df$aderencia_naval_nivel[[i]]) || !nzchar(df$aderencia_naval_nivel[[i]] %||% "")) {
-          eval_res <- evaluate_naval_offshore_adherence(
-            titulo = df$titulo[[i]],
-            descricao = df$descricao_resumida[[i]],
-            texto_bruto = df$texto_bruto[[i]],
-            entidade = df$entidade[[i]],
-            use_ai = FALSE
-          )
-          df$aderencia_naval_nivel[[i]] <- eval_res$aderencia_naval_nivel %||% "Baixa"
-          df$aderencia_naval_justificativa[[i]] <- eval_res$aderencia_naval_justificativa %||% ""
-          df$ideia_projeto_consorcio[[i]] <- eval_res$ideia_projeto_consorcio %||% NA_character_
-        }
-      }
-      df <- df |> dplyr::filter(aderencia_naval_nivel == input$filter_naval_level)
-    }
-
-    # Filtro de Aderência Sertão & Agro do Sidebar
-    if (!is.null(input$filter_sertao_level) && input$filter_sertao_level != "Todas") {
-      if (!"aderencia_sertao_nivel" %in% names(df)) df$aderencia_sertao_nivel <- NA_character_
-      for (i in seq_len(nrow(df))) {
-        if (is.na(df$aderencia_sertao_nivel[[i]]) || !nzchar(df$aderencia_sertao_nivel[[i]] %||% "")) {
-          eval_res <- evaluate_sertao_adherence(
-            titulo = df$titulo[[i]], descricao = df$descricao_resumida[[i]],
-            texto_bruto = df$texto_bruto[[i]], entidade = df$entidade[[i]], use_ai = FALSE
-          )
-          df$aderencia_sertao_nivel[[i]] <- eval_res$aderencia_sertao_nivel %||% "Baixa"
-        }
-      }
-      df <- df |> dplyr::filter(aderencia_sertao_nivel == input$filter_sertao_level)
-    }
-
-    # Filtro de Aderência Aeroespacial & Defesa do Sidebar
-    if (!is.null(input$filter_aero_level) && input$filter_aero_level != "Todas") {
-      if (!"aderencia_aero_nivel" %in% names(df)) df$aderencia_aero_nivel <- NA_character_
-      for (i in seq_len(nrow(df))) {
-        if (is.na(df$aderencia_aero_nivel[[i]]) || !nzchar(df$aderencia_aero_nivel[[i]] %||% "")) {
-          eval_res <- evaluate_aero_adherence(
-            titulo = df$titulo[[i]], descricao = df$descricao_resumida[[i]],
-            texto_bruto = df$texto_bruto[[i]], entidade = df$entidade[[i]], use_ai = FALSE
-          )
-          df$aderencia_aero_nivel[[i]] <- eval_res$aderencia_aero_nivel %||% "Baixa"
-        }
-      }
-      df <- df |> dplyr::filter(aderencia_aero_nivel == input$filter_aero_level)
-    }
-
-    # Filtro de Aderência Digital & IA do Sidebar
-    if (!is.null(input$filter_digital_level) && input$filter_digital_level != "Todas") {
-      if (!"aderencia_digital_nivel" %in% names(df)) df$aderencia_digital_nivel <- NA_character_
-      for (i in seq_len(nrow(df))) {
-        if (is.na(df$aderencia_digital_nivel[[i]]) || !nzchar(df$aderencia_digital_nivel[[i]] %||% "")) {
-          eval_res <- evaluate_digital_adherence(
-            titulo = df$titulo[[i]], descricao = df$descricao_resumida[[i]],
-            texto_bruto = df$texto_bruto[[i]], entidade = df$entidade[[i]], use_ai = FALSE
-          )
-          df$aderencia_digital_nivel[[i]] <- eval_res$aderencia_digital_nivel %||% "Baixa"
-        }
-      }
-      df <- df |> dplyr::filter(aderencia_digital_nivel == input$filter_digital_level)
-    }
-
-    # Filtro de Aderência Park & Manufatura do Sidebar
-    if (!is.null(input$filter_park_level) && input$filter_park_level != "Todas") {
-      if (!"aderencia_park_nivel" %in% names(df)) df$aderencia_park_nivel <- NA_character_
-      for (i in seq_len(nrow(df))) {
-        if (is.na(df$aderencia_park_nivel[[i]]) || !nzchar(df$aderencia_park_nivel[[i]] %||% "")) {
-          eval_res <- evaluate_park_adherence(
-            titulo = df$titulo[[i]], descricao = df$descricao_resumida[[i]],
-            texto_bruto = df$texto_bruto[[i]], entidade = df$entidade[[i]], use_ai = FALSE
-          )
-          df$aderencia_park_nivel[[i]] <- eval_res$aderencia_park_nivel %||% "Baixa"
-        }
-      }
-      df <- df |> dplyr::filter(aderencia_park_nivel == input$filter_park_level)
-    }
-
-    # Filtro de Aderência Startups & Inovação do Sidebar
-    if (!is.null(input$filter_startups_level) && input$filter_startups_level != "Todas") {
-      if (!"aderencia_startups_nivel" %in% names(df)) df$aderencia_startups_nivel <- NA_character_
-      for (i in seq_len(nrow(df))) {
-        if (is.na(df$aderencia_startups_nivel[[i]]) || !nzchar(df$aderencia_startups_nivel[[i]] %||% "")) {
-          eval_res <- evaluate_startups_adherence(
-            titulo = df$titulo[[i]], descricao = df$descricao_resumida[[i]],
-            texto_bruto = df$texto_bruto[[i]], entidade = df$entidade[[i]], use_ai = FALSE
-          )
-          df$aderencia_startups_nivel[[i]] <- eval_res$aderencia_startups_nivel %||% "Baixa"
-        }
-      }
-      df <- df |> dplyr::filter(aderencia_startups_nivel == input$filter_startups_level)
     }
     
     dplyr::arrange(df, dplyr::desc(score_aderencia), parse_date_safe(data_limite))
@@ -2193,10 +2080,13 @@ server <- function(input, output, session) {
     area_choices <- sort(unique(opps$area_tematica[!is.na(opps$area_tematica) & opps$area_tematica != ""]))
     updateSelectizeInput(session, "filter_area", choices = area_choices, selected = isolate(input$filter_area))
     
-    # Status (derivado em render — BUG-01)
-    status_choices <- unique(derive_status_df(opps))
-    status_choices <- status_choices[status_choices != "" & !is.na(status_choices) & status_choices != "desconhecido"]
-    status_display <- setNames(status_choices, status_display_label(status_choices))
+    # Status do Edital: Abertos, Desconhecidos, Encerrados, Em breve
+    status_display <- c(
+      "Abertos" = "aberto",
+      "Desconhecidos" = "desconhecido",
+      "Encerrados" = "encerrado",
+      "Em breve" = "em_breve"
+    )
     updateSelectizeInput(session, "filter_status", choices = status_display, selected = isolate(input$filter_status))
     
     # Tipo de Oportunidade
@@ -2212,18 +2102,314 @@ server <- function(input, output, session) {
   # Evento para limpar todos os filtros rápidos do sidebar
   observeEvent(input$btn_clear_filters, {
     updateSelectizeInput(session, "filter_campus", selected = character(0))
+    updateSelectizeInput(session, "filter_status", selected = character(0))
     updateSelectizeInput(session, "filter_funder", selected = character(0))
     updateSelectizeInput(session, "filter_area", selected = character(0))
-    updateSelectizeInput(session, "filter_status", selected = character(0))
     updateSelectizeInput(session, "filter_type", selected = character(0))
     updateSelectizeInput(session, "filter_language", selected = character(0))
-    updateSelectInput(session, "filter_naval_level", selected = "Todas")
-    updateSelectInput(session, "filter_sertao_level", selected = "Todas")
-    updateSelectInput(session, "filter_aero_level", selected = "Todas")
-    updateSelectInput(session, "filter_digital_level", selected = "Todas")
-    updateSelectInput(session, "filter_park_level", selected = "Todas")
-    updateSelectInput(session, "filter_startups_level", selected = "Todas")
   })
+
+  # ==============================================================================
+  # GERAÇÃO DE RELATÓRIO DE EDITAIS ABERTOS POR ADERÊNCIA
+  # ==============================================================================
+  rv$report_generated_data <- NULL
+
+  observeEvent(list(input$btn_open_report_modal, input$btn_open_report_top), {
+    # Evita disparo na inicialização
+    req(isTRUE(input$btn_open_report_modal > 0) || isTRUE(input$btn_open_report_top > 0))
+
+    opps <- rv$opportunities
+    has_active_campus <- length(input$filter_campus) > 0 && !"Todos" %in% input$filter_campus
+    has_active_area <- length(input$filter_area) > 0
+    has_active_funder <- length(input$filter_funder) > 0
+    has_active_type <- length(input$filter_type) > 0
+    has_active_query <- nzchar(input$search_query %||% "")
+    has_any_active <- has_active_campus || has_active_area || has_active_funder || has_active_type || has_active_query
+
+    default_cat <- if (has_active_campus) "campus" else if (has_active_area) "area" else if (has_active_funder) "funder" else if (has_any_active) "current" else "campus"
+    rv$report_generated_data <- NULL
+
+    showModal(modalDialog(
+      title = tags$div(
+        style = "display: flex; align-items: center; gap: 10px;",
+        tags$i(class = "fa fa-file-invoice text-primary", style = "font-size: 1.5rem;"),
+        tags$span(style = "font-weight: 700; color: #004691;", "Gerador de Relatório de Editais Abertos")
+      ),
+      size = "l",
+      easyClose = TRUE,
+      tags$div(
+        style = "margin-bottom: 1rem;",
+        tags$p(
+          style = "font-size: 0.95rem; color: #475569; margin-bottom: 0.75rem;",
+          "Gere um relatório formatado com ",
+          tags$strong("até 4 oportunidades abertas de maior aderência"),
+          " para o filtro escolhido."
+        ),
+        tags$div(
+          style = "background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; margin-bottom: 1rem;",
+          tags$label(
+            style = "font-weight: 700; color: #1e293b; margin-bottom: 0.5rem; display: block;",
+            tags$i(class = "fa fa-filter text-primary me-1"), " 1. Critério de Filtragem (Obrigatório):"
+          ),
+          radioButtons(
+            "report_filter_cat",
+            label = NULL,
+            choices = c(
+              "Por Campus CIMATEC" = "campus",
+              "Por Área Temática" = "area",
+              "Por Financiador / Agência" = "funder",
+              "Por Tipo de Oportunidade" = "type",
+              "Usar Filtros Ativos no Painel" = "current"
+            ),
+            selected = default_cat,
+            inline = TRUE
+          ),
+          uiOutput("report_filter_selector_ui")
+        ),
+        actionButton(
+          "btn_do_generate_report",
+          " Gerar Relatório de Editais Abertos",
+          class = "btn-primary w-100",
+          icon = icon("wand-magic-sparkles"),
+          style = "font-weight: 700; padding: 0.75rem; border-radius: 6px;"
+        )
+      ),
+      uiOutput("report_content_container"),
+      footer = tagList(
+        modalButton("Fechar")
+      )
+    ))
+  }, ignoreInit = TRUE)
+
+  output$report_filter_selector_ui <- renderUI({
+    cat_sel <- input$report_filter_cat %||% "campus"
+    opps <- rv$opportunities
+
+    if (identical(cat_sel, "campus")) {
+      sel_val <- if (length(input$filter_campus) > 0) input$filter_campus[[1]] else ""
+      selectInput(
+        "report_filter_val_campus",
+        label = tags$span("Selecione o Campus (Obrigatório):"),
+        choices = c(
+          "Selecione um campus..." = "",
+          "🚀 Aeroespacial" = "Aeroespacial",
+          "🌾 Sertão" = "Sertão",
+          "🌊 Mar (Naval & Offshore)" = "Mar",
+          "💻 Digital (TI & IA)" = "Digital",
+          "🏢 Sede e Park (Manufatura)" = "Sede e Park",
+          "💡 Startups & Inovação" = "Startups"
+        ),
+        selected = sel_val
+      )
+    } else if (identical(cat_sel, "area")) {
+      area_choices <- if (is.null(opps) || nrow(opps) == 0) character() else sort(unique(opps$area_tematica[!is.na(opps$area_tematica) & opps$area_tematica != ""]))
+      sel_val <- if (length(input$filter_area) > 0) input$filter_area[[1]] else ""
+      selectInput(
+        "report_filter_val_area",
+        label = tags$span("Selecione a Área Temática (Obrigatório):"),
+        choices = c("Selecione uma área temática..." = "", area_choices),
+        selected = sel_val
+      )
+    } else if (identical(cat_sel, "funder")) {
+      funder_choices <- if (is.null(opps) || nrow(opps) == 0) character() else sort(unique(opps$entidade[!is.na(opps$entidade) & opps$entidade != ""]))
+      sel_val <- if (length(input$filter_funder) > 0) input$filter_funder[[1]] else ""
+      selectInput(
+        "report_filter_val_funder",
+        label = tags$span("Selecione o Financiador (Obrigatório):"),
+        choices = c("Selecione um financiador..." = "", funder_choices),
+        selected = sel_val
+      )
+    } else if (identical(cat_sel, "type")) {
+      type_choices <- if (is.null(opps) || nrow(opps) == 0) character() else sort(unique(opps$tipo_oportunidade[!is.na(opps$tipo_oportunidade) & opps$tipo_oportunidade != ""]))
+      sel_val <- if (length(input$filter_type) > 0) input$filter_type[[1]] else ""
+      selectInput(
+        "report_filter_val_type",
+        label = tags$span("Selecione o Tipo de Oportunidade (Obrigatório):"),
+        choices = c("Selecione um tipo..." = "", type_choices),
+        selected = sel_val
+      )
+    } else {
+      # current
+      has_active <- length(input$filter_campus) > 0 || length(input$filter_status) > 0 ||
+                     length(input$filter_funder) > 0 || length(input$filter_area) > 0 ||
+                     length(input$filter_type) > 0 || nzchar(input$search_query %||% "")
+      tags$div(
+        style = "margin-top: 0.5rem; padding: 0.75rem; background: #ffffff; border-radius: 6px; border: 1px dashed #cbd5e1;",
+        tags$span(style = "font-weight: 600; color: #334155;", "Filtros atualmente ativos no painel:"),
+        tags$div(
+          style = "margin-top: 0.25rem;",
+          if (length(input$filter_campus) > 0) tags$span(class = "badge bg-primary me-1", paste("Campus:", paste(input$filter_campus, collapse = ", "))),
+          if (length(input$filter_status) > 0) tags$span(class = "badge bg-info text-dark me-1", paste("Status:", paste(input$filter_status, collapse = ", "))),
+          if (length(input$filter_funder) > 0) tags$span(class = "badge bg-secondary me-1", paste("Financiador:", paste(input$filter_funder, collapse = ", "))),
+          if (length(input$filter_area) > 0) tags$span(class = "badge bg-success me-1", paste("Área:", paste(input$filter_area, collapse = ", "))),
+          if (nzchar(input$search_query %||% "")) tags$span(class = "badge bg-warning text-dark me-1", paste("Busca:", input$search_query)),
+          if (!has_active)
+            tags$span(style = "color: #e11d48; font-size: 0.85rem; font-weight: 600;", "⚠️ Nenhum filtro está ativo no painel. Selecione uma opção acima (Campus, Área ou Financiador).")
+        )
+      )
+    }
+  })
+
+  observeEvent(input$btn_do_generate_report, {
+    cat_sel <- input$report_filter_cat %||% "campus"
+    opps <- rv$opportunities
+    req(nrow(opps) > 0)
+
+    # 1. Validação estrita: exige que o filtro seja escolhido!
+    filter_value <- ""
+    filter_label <- ""
+
+    if (identical(cat_sel, "campus")) {
+      filter_value <- input$report_filter_val_campus %||% ""
+      filter_label <- paste("Campus", filter_value)
+    } else if (identical(cat_sel, "area")) {
+      filter_value <- input$report_filter_val_area %||% ""
+      filter_label <- paste("Área Temática", filter_value)
+    } else if (identical(cat_sel, "funder")) {
+      filter_value <- input$report_filter_val_funder %||% ""
+      filter_label <- paste("Financiador", filter_value)
+    } else if (identical(cat_sel, "type")) {
+      filter_value <- input$report_filter_val_type %||% ""
+      filter_label <- paste("Tipo", filter_value)
+    } else if (identical(cat_sel, "current")) {
+      has_any <- length(input$filter_campus) > 0 || length(input$filter_status) > 0 ||
+                 length(input$filter_funder) > 0 || length(input$filter_area) > 0 ||
+                 length(input$filter_type) > 0 || nzchar(input$search_query %||% "")
+      if (has_any) {
+        filter_value <- "current"
+        filter_label <- "Filtros Ativos do Painel"
+      }
+    }
+
+    # Se nenhum filtro foi escolhido, emite aviso claro e não gera!
+    if (!nzchar(filter_value)) {
+      showNotification(
+        "Por favor, selecione obrigatoriamente um filtro (ex.: Campus, Área ou Financiador) para gerar o relatório.",
+        type = "warning",
+        duration = 5
+      )
+      return()
+    }
+
+    # 2. Aplica o filtro selecionado
+    df_filtered <- if (identical(cat_sel, "campus")) {
+      opps |> dplyr::filter(vapply(seq_len(dplyr::n()), function(i) {
+        rec_c <- opps$campus[[i]] %||% ""
+        ttl_i <- opps$titulo[[i]] %||% ""
+        desc_i <- opps$descricao_resumida[[i]] %||% ""
+        area_i <- opps$area_tematica[[i]] %||% ""
+        comb_text <- paste(rec_c, ttl_i, desc_i, area_i)
+        grepl(filter_value, comb_text, ignore.case = TRUE)
+      }, logical(1)))
+    } else if (identical(cat_sel, "area")) {
+      opps |> dplyr::filter(area_tematica == filter_value)
+    } else if (identical(cat_sel, "funder")) {
+      opps |> dplyr::filter(entidade == filter_value)
+    } else if (identical(cat_sel, "type")) {
+      opps |> dplyr::filter(tipo_oportunidade == filter_value)
+    } else {
+      # current
+      filtered_results()
+    }
+
+    # 3. Recalcula aderência para o termo de pesquisa/campus
+    conn <- isolate(rv$conn)
+    query_term <- if (identical(cat_sel, "campus")) filter_value else rv$current_query
+    df_filtered <- compute_adherence_score(df_filtered, conn, query_term, signature = interest_sig())
+
+    # 4. Gera o relatório com no máximo 4 editais abertos
+    rep_result <- generate_adherence_report(df_filtered, max_items = 4L)
+    rep_result$filter_name <- filter_label
+    rv$report_generated_data <- rep_result
+  })
+
+  output$report_content_container <- renderUI({
+    rep_data <- rv$report_generated_data
+    if (is.null(rep_data)) return(NULL)
+
+    if (rep_data$count == 0L) {
+      return(tags$div(
+        class = "alert alert-warning mt-3",
+        tags$i(class = "fa fa-exclamation-triangle me-2"),
+        tags$strong("Atenção: "),
+        "Nenhum edital com status 'Aberto' foi encontrado para o filtro ",
+        tags$strong(rep_data$filter_name %||% "selecionado"),
+        " no momento da geração do relatório."
+      ))
+    }
+
+    tags$div(
+      style = "margin-top: 1.5rem;",
+      tags$div(
+        style = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;",
+        tags$div(
+          tags$span(class = "badge bg-success", style = "font-size: 0.85rem; padding: 0.4rem 0.6rem;",
+                    sprintf("%d edital(is) aberto(s) com maior aderência", rep_data$count)),
+          tags$span(class = "text-muted ms-2", style = "font-size: 0.85rem;",
+                    sprintf("Filtro: %s | %s", rep_data$filter_name, format(Sys.time(), "%d/%m/%Y às %H:%M")))
+        ),
+        tags$div(
+          style = "display: flex; gap: 0.5rem;",
+          tags$button(
+            id = "btn_copy_report",
+            class = "btn btn-sm btn-outline-primary",
+            onclick = "copyReportToClipboard()",
+            tags$i(class = "fa fa-copy me-1"), "Copiar Texto"
+          ),
+          downloadButton("btn_download_report_txt", "Baixar TXT", class = "btn btn-sm btn-outline-secondary"),
+          downloadButton("btn_download_report_md", "Baixar MD", class = "btn btn-sm btn-outline-secondary")
+        )
+      ),
+      tags$textarea(
+        id = "report_raw_text_area",
+        style = "position: absolute; left: -9999px; top: -9999px; opacity: 0;",
+        rep_data$text
+      ),
+      tags$div(
+        style = "background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 1.25rem; max-height: 480px; overflow-y: auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;",
+        lapply(rep_data$items, function(it) {
+          tags$div(
+            style = "border-bottom: 1px dashed #e2e8f0; padding-bottom: 1.25rem; margin-bottom: 1.25rem;",
+            tags$div(
+              style = "display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;",
+              tags$span(style = "font-size: 1.15rem; font-weight: 800; color: #004691;", sprintf("%d:", it$idx)),
+              if (!is.null(it$score) && it$score > 0)
+                tags$span(class = "badge bg-primary", sprintf("Aderência: %d%%", it$score))
+            ),
+            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Edital: "), tags$span(style = "font-weight: 600; color: #1e293b;", it$edital)),
+            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Tipo de oportunidade: "), it$tipo),
+            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("País de origem: "), it$pais),
+            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Prazo limite de submissão: "), tags$span(style = "color: #047857; font-weight: 600;", it$prazo)),
+            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Área temática: "), it$area),
+            tags$p(style = "margin-bottom: 0.5rem; text-align: justify; line-height: 1.5;", tags$strong("Resumo: "), it$resumo),
+            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Orçamento estimado: "), tags$span(style = "color: #b45309; font-weight: 600;", it$orcamento)),
+            tags$p(style = "margin-bottom: 0;", tags$strong("Link de acesso: "), tags$a(href = it$link_url, target = "_blank", it$link_label, tags$i(class = "fa fa-external-link-alt ms-1", style = "font-size: 0.75rem;")))
+          )
+        })
+      )
+    )
+  })
+
+  output$btn_download_report_txt <- downloadHandler(
+    filename = function() {
+      sprintf("relatorio_editais_%s.txt", format(Sys.time(), "%Y%m%d_%H%M%S"))
+    },
+    content = function(file) {
+      txt <- rv$report_generated_data$text %||% "Relatório vazio."
+      writeLines(txt, file, useBytes = TRUE)
+    }
+  )
+
+  output$btn_download_report_md <- downloadHandler(
+    filename = function() {
+      sprintf("relatorio_editais_%s.md", format(Sys.time(), "%Y%m%d_%H%M%S"))
+    },
+    content = function(file) {
+      md <- rv$report_generated_data$markdown %||% "Relatório vazio."
+      writeLines(md, file, useBytes = TRUE)
+    }
+  )
+
 
   # Renderizador de status persistente no header da aplicação (inclui autenticação e perfil)
   output$header_status <- renderUI({

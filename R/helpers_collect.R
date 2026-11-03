@@ -528,7 +528,22 @@ collect_sources_parallel <- function(sources_df, max_pages = 5L, max_records_per
     if (is.na(workers) || workers < 1L) workers <- 1L
   }
 
-  run_one <- function(i) {
+  app_dir <- normalizePath(getwd(), winslash = "/", mustWork = FALSE)
+  helper_files <- c(
+    "R/helpers_utils.R", "R/helpers_db.R", "R/helpers_status.R",
+    "R/helpers_validation.R", "R/helpers_schedule.R", "R/helpers_text.R",
+    "R/helpers_ai.R", "R/helpers_collect.R", "R/helpers_sources_br.R",
+    "R/helpers_sources_br_federal.R", "R/helpers_sanitize.R"
+  )
+
+  run_one <- function(i, app_dir, helper_files) {
+    # Garante que workers criados via multisession carreguem todas as dependencias e helpers
+    if (!exists("source_dispatch", mode = "function")) {
+      for (hf in helper_files) {
+        hpath <- file.path(app_dir, hf)
+        if (file.exists(hpath)) try(source(hpath, encoding = "UTF-8"), silent = TRUE)
+      }
+    }
     src <- sources_df[i, , drop = FALSE]
     sid <- src$id_fonte[[1]]
     effective_max <- if (sid %in% c("horizon_europe", "erc", "quantum")) 100L else max_records_per_source
@@ -546,15 +561,38 @@ collect_sources_parallel <- function(sources_df, max_pages = 5L, max_records_per
   }
 
   if (workers <= 1L || !requireNamespace("future", quietly = TRUE)) {
-    for (i in seq_len(n)) results[[i]] <- run_one(i)
+    for (i in seq_len(n)) results[[i]] <- run_one(i, app_dir, helper_files)
     return(results)
   }
 
   old_plan <- future::plan()
   on.exit(try(future::plan(old_plan), silent = TRUE), add = TRUE)
-  future::plan(future::multisession, workers = workers)
+  
+  # No Linux (GitHub Actions), multicore utiliza forking nativo do SO, instantaneo e estavel;
+  # No Windows/outros, usa multisession garantindo workers independentes.
+  plan_type <- if (.Platform$OS.type != "windows" && future::supportsMulticore()) {
+    future::multicore
+  } else {
+    future::multisession
+  }
+  future::plan(plan_type, workers = workers)
+
   futs <- lapply(seq_len(n), function(i) {
-    future::future({ run_one(i) }, globals = list(run_one = run_one, i = i, sources_df = sources_df, max_pages = max_pages, max_records_per_source = max_records_per_source, use_ai = use_ai, log_path = log_path))
+    future::future(
+      { run_one(i, app_dir, helper_files) },
+      globals = list(
+        run_one = run_one,
+        i = i,
+        app_dir = app_dir,
+        helper_files = helper_files,
+        sources_df = sources_df,
+        max_pages = max_pages,
+        max_records_per_source = max_records_per_source,
+        use_ai = use_ai,
+        log_path = log_path
+      ),
+      seed = TRUE
+    )
   })
   for (i in seq_len(n)) {
     val <- tryCatch(future::value(futs[[i]]), error = function(e) {
@@ -3680,9 +3718,9 @@ truncate_excel_strings <- function(df, max_chars = 32000L) {
       x <- out[[nm]]
       # Clean any invalid UTF-8 bytes that cause nchar/substr or libxlsxwriter C++ errors
       x <- iconv(x, to = "UTF-8", sub = "")
-      nch <- nchar(x, type = "chars")
-      too_long <- !is.na(x) & !is.na(nch) & nch > max_chars
-      if (any(too_long)) {
+      nch <- nchar(x, type = "chars", keepNA = FALSE)
+      too_long <- which(!is.na(x) & !is.na(nch) & nch > max_chars)
+      if (length(too_long) > 0L) {
         x[too_long] <- paste0(substr(x[too_long], 1L, max_chars - 3L), "...")
       }
       out[[nm]] <- x
@@ -3717,8 +3755,9 @@ save_collection_exports <- function(df, export_dir, prefix = "funding_base", log
       export_paths <- c(export_paths, csv_path)
     },
     error = function(e) {
-      export_warnings <<- c(export_warnings, paste0("Falha ao exportar CSV: ", e$message))
-      if (!is.null(log_path)) log_write(log_path, "WARN", export_warnings[[length(export_warnings)]])
+      msg <- paste0("Falha ao exportar CSV: ", e$message)
+      export_warnings <- c(export_warnings, msg)
+      if (!is.null(log_path)) log_write(log_path, "WARN", msg)
     }
   )
 
@@ -3728,8 +3767,9 @@ save_collection_exports <- function(df, export_dir, prefix = "funding_base", log
       export_paths <- c(export_paths, rds_path)
     },
     error = function(e) {
-      export_warnings <<- c(export_warnings, paste0("Falha ao exportar RDS: ", e$message))
-      if (!is.null(log_path)) log_write(log_path, "WARN", export_warnings[[length(export_warnings)]])
+      msg <- paste0("Falha ao exportar RDS: ", e$message)
+      export_warnings <- c(export_warnings, msg)
+      if (!is.null(log_path)) log_write(log_path, "WARN", msg)
     }
   )
 
@@ -3737,36 +3777,43 @@ save_collection_exports <- function(df, export_dir, prefix = "funding_base", log
     {
       xlsx_df <- truncate_excel_strings(clean_df)
       if (is.null(xlsx_df) || !is.data.frame(xlsx_df) || ncol(xlsx_df) == 0 || nrow(xlsx_df) == 0) {
-        export_warnings <<- c(export_warnings, "Exportação XLSX ignorada: dataframe vazio ou inválido.")
-        if (!is.null(log_path)) log_write(log_path, "WARN", export_warnings[[length(export_warnings)]])
+        msg <- "Exportação XLSX ignorada: dataframe vazio ou inválido."
+        export_warnings <- c(export_warnings, msg)
+        if (!is.null(log_path)) log_write(log_path, "WARN", msg)
       } else {
-        # Remover colunas list que writexl não consegue processar
-        list_cols <- vapply(xlsx_df, is.list, logical(1))
-        if (any(list_cols)) {
-          xlsx_df <- xlsx_df[, !list_cols, drop = FALSE]
+        # Normalizar tipos para compatibilidade com libxlsxwriter
+        for (cn in names(xlsx_df)) {
+          col_val <- xlsx_df[[cn]]
+          if (is.factor(col_val) || !is.atomic(col_val)) {
+            xlsx_df[[cn]] <- as.character(col_val)
+          }
         }
         if (ncol(xlsx_df) > 0) {
           writexl::write_xlsx(list(oportunidades = xlsx_df), xlsx_path)
           export_paths <- c(export_paths, xlsx_path)
-          if (any(vapply(names(clean_df), function(nm) {
+          has_trunc <- any(vapply(names(clean_df), function(nm) {
             if (!is.character(clean_df[[nm]])) {
               return(FALSE)
             }
-            nch <- nchar(clean_df[[nm]], type = "chars")
+            nch <- nchar(clean_df[[nm]], type = "chars", keepNA = FALSE)
             any(!is.na(nch) & nch > 32000L, na.rm = TRUE)
-          }, logical(1)))) {
-            export_warnings <<- c(export_warnings, "Exportação XLSX gerada com truncamento de textos acima de 32.000 caracteres.")
-            if (!is.null(log_path)) log_write(log_path, "WARN", export_warnings[[length(export_warnings)]])
+          }, logical(1)))
+          if (has_trunc) {
+            msg <- "Exportação XLSX gerada com truncamento de textos acima de 32.000 caracteres."
+            export_warnings <- c(export_warnings, msg)
+            if (!is.null(log_path)) log_write(log_path, "WARN", msg)
           }
         } else {
-          export_warnings <<- c(export_warnings, "Exportação XLSX ignorada: nenhuma coluna válida após remoção de list columns.")
-          if (!is.null(log_path)) log_write(log_path, "WARN", export_warnings[[length(export_warnings)]])
+          msg <- "Exportação XLSX ignorada: nenhuma coluna válida após remoção de list columns."
+          export_warnings <- c(export_warnings, msg)
+          if (!is.null(log_path)) log_write(log_path, "WARN", msg)
         }
       }
     },
     error = function(e) {
-      export_warnings <<- c(export_warnings, paste0("Falha ao exportar XLSX: ", e$message))
-      if (!is.null(log_path)) log_write(log_path, "WARN", export_warnings[[length(export_warnings)]])
+      msg <- paste0("Falha ao exportar XLSX: ", e$message)
+      export_warnings <- c(export_warnings, msg)
+      if (!is.null(log_path)) log_write(log_path, "WARN", msg)
     }
   )
 

@@ -2132,7 +2132,7 @@ server <- function(input, output, session) {
         tags$p(
           style = "font-size: 0.95rem; color: #475569; margin-bottom: 1rem; line-height: 1.4;",
           "Gera um relatório formatado com ",
-          tags$strong("até 4 oportunidades abertas de maior aderência"),
+          tags$strong("até 3 oportunidades abertas de maior aderência"),
           " para o Campus CIMATEC selecionado."
         ),
         tags$div(
@@ -2218,7 +2218,7 @@ server <- function(input, output, session) {
     }
 
     # 3. Gera o relatório com até 4 oportunidades abertas de maior aderência
-    rep_result <- generate_adherence_report(df_filtered, max_items = 4L)
+    rep_result <- generate_adherence_report(df_filtered, max_items = 3L)
     rep_result$campus_name <- sel_campus
     rv$report_generated_data <- rep_result
   })
@@ -2256,7 +2256,8 @@ server <- function(input, output, session) {
             onclick = "copyReportToClipboard()",
             tags$i(class = "fa fa-copy me-1"), "Copiar Texto"
           ),
-          downloadButton("btn_download_report_docx", "Baixar DOCX", class = "btn btn-sm btn-primary", icon = icon("file-word")),
+          downloadButton("btn_download_report_pdf", "Baixar PDF (Oficial)", class = "btn btn-sm btn-primary", icon = icon("file-pdf")),
+          downloadButton("btn_download_report_docx", "Baixar DOCX", class = "btn btn-sm btn-outline-primary", icon = icon("file-word")),
           downloadButton("btn_download_report_txt", "Baixar TXT", class = "btn btn-sm btn-outline-secondary"),
           downloadButton("btn_download_report_md", "Baixar MD", class = "btn btn-sm btn-outline-secondary")
         )
@@ -2315,6 +2316,18 @@ server <- function(input, output, session) {
       md <- rv$report_generated_data$markdown %||% "Relatório vazio."
       writeLines(md, file, useBytes = TRUE)
     }
+  )
+
+  output$btn_download_report_pdf <- downloadHandler(
+    filename = function() {
+      campus_slug <- gsub("[^a-zA-Z0-9]+", "_", tolower(rv$report_generated_data$campus_name %||% "cimatec"))
+      sprintf("relatorio_editais_%s_%s.pdf", campus_slug, format(Sys.time(), "%Y%m%d_%H%M%S"))
+    },
+    content = function(file) {
+      req(rv$report_generated_data)
+      generate_pdf_report(rv$report_generated_data, file)
+    },
+    contentType = "application/pdf"
   )
 
   output$btn_download_report_docx <- downloadHandler(

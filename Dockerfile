@@ -96,7 +96,7 @@ ENV RETICULATE_PYTHON=/usr/bin/python3
 ENV PLAYWRIGHT_BROWSERS_PATH=/usr/local/share/playwright
 
 # Instala dependências Python (Playwright + Stealth) e baixa o chromium para o local compartilhado
-RUN pip3 install --no-cache-dir playwright playwright-stealth python-docx && \
+RUN pip3 install --no-cache-dir playwright playwright-stealth python-docx docx2pdf && \
     playwright install --with-deps chromium && \
     chmod -R 755 /usr/local/share/playwright
 

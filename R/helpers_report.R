@@ -236,7 +236,7 @@ generate_single_report_item <- function(row, idx = 1L) {
   )
 }
 
-generate_adherence_report <- function(opportunities_df, max_items = 4L) {
+generate_adherence_report <- function(opportunities_df, max_items = 3L) {
   if (is.null(opportunities_df) || nrow(opportunities_df) == 0L) {
     return(list(
       count = 0L,

@@ -1011,3 +1011,10 @@ body.authenticated .auth-overlay-backdrop {
 
 
 
+
+/* ─── Ocultação da aba Boletins & Relatórios (código preservado para reativação futura) ─── */
+.nav-link[data-value="boletins_relatorios"],
+.nav-item:has(> [data-value="boletins_relatorios"]),
+.tab-pane[data-value="boletins_relatorios"] {
+  display: none !important;
+}

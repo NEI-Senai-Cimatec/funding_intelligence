@@ -267,13 +267,6 @@ build_sidebar <- function() {
     ),
     tags$hr(style = "margin: 1rem 0; border-color: #cbd5e1;"),
     actionButton(
-      "btn_open_report_modal", 
-      "Gerar Relatório de Editais", 
-      class = "btn-primary w-100 mb-2", 
-      icon = icon("file-lines"),
-      style = "font-weight: 700; padding: 0.65rem; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,70,145,0.2);"
-    ),
-    actionButton(
       "btn_clear_filters", 
       "Limpar Filtros", 
       class = "btn-outline-secondary w-100", 
@@ -339,7 +332,6 @@ ui <- bslib::page_sidebar(
       actionButton("btn_search", "Buscar", class = "btn-primary", icon = icon("search")),
       actionButton("btn_advanced", "Busca avançada", class = "btn-outline-primary", icon = icon("sliders-h")),
       actionButton("btn_save_search", "Salvar busca", class = "btn-outline-secondary", icon = icon("bookmark")),
-      actionButton("btn_open_report_top", "Relatório de Editais", class = "btn-outline-info", icon = icon("file-lines")),
       uiOutput("btn_collect_container")
     )
   ),
@@ -369,20 +361,21 @@ ui <- bslib::page_sidebar(
           style = "display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding: 5px 0;",
           tags$strong(style = "font-size: 0.8rem; color: #475569; text-transform: uppercase;", "Exportar:"),
           downloadButton("btn_export_xlsx", "XLSX", class = "btn-sm btn-outline-success", style = "font-size: 0.75rem;"),
-          downloadButton("btn_export_csv", "CSV", class = "btn-sm btn-outline-primary", style = "font-size: 0.75rem;")
+          downloadButton("btn_export_csv", "CSV", class = "btn-sm btn-outline-primary", style = "font-size: 0.75rem;"),
+          actionButton("btn_open_report_modal", "Gerar Relatório", class = "btn-sm btn-outline-info", icon = icon("file-lines"), style = "font-size: 0.75rem; font-weight: 600;")
         ),
         shinycssloaders::withSpinner(DTOutput("results_table"), type = 6, color = "#004691")
       )
     ),
     bslib::nav_panel(
-      title = tags$span(tags$i(class = "fa fa-anchor"), " Núcleo Naval & Offshore"),
+      title = tags$span(tags$i(class = "fa fa-anchor"), " Cimatec Mar"),
       value = "nucleo_naval",
       bslib::card(
         style = "background: linear-gradient(135deg, #004691 0%, #0f172a 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;",
         tags$div(
           style = "display: flex; justify-content: space-between; align-items: center;",
           tags$div(
-            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "⚓ Núcleo Naval & Offshore de PD&I"),
+            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "⚓ Cimatec Mar"),
             p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e geração automática de propostas para os 7 Eixos Estratégicos Marítimos.")
           ),
           tags$div(
@@ -406,14 +399,14 @@ ui <- bslib::page_sidebar(
       )
     ),
     bslib::nav_panel(
-      title = tags$span(tags$i(class = "fa fa-leaf"), " Núcleo Sertão & Agro"),
+      title = tags$span(tags$i(class = "fa fa-leaf"), " Cimatec Sertão"),
       value = "cimatec_sertao",
       bslib::card(
         style = "background: linear-gradient(135deg, #15803d 0%, #064e3b 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;",
         tags$div(
           style = "display: flex; justify-content: space-between; align-items: center;",
           tags$div(
-            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "🌾 Núcleo Sertão & Agro de PD&I"),
+            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "🌾 Cimatec Sertão"),
             p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e propostas para Agro, Recursos Hídricos, Convivência com o Semiárido e Energias Renováveis.")
           ),
           tags$div(
@@ -437,14 +430,14 @@ ui <- bslib::page_sidebar(
       )
     ),
     bslib::nav_panel(
-      title = tags$span(tags$i(class = "fa fa-rocket"), " Núcleo Aeroespacial & Defesa"),
+      title = tags$span(tags$i(class = "fa fa-rocket"), " Cimatec Aeroespacial"),
       value = "cimatec_aeroespacial",
       bslib::card(
         style = "background: linear-gradient(135deg, #0284c7 0%, #0f172a 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;",
         tags$div(
           style = "display: flex; justify-content: space-between; align-items: center;",
           tags$div(
-            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "🚀 Núcleo Aeroespacial & Defesa de PD&I"),
+            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "🚀 Cimatec Aeroespacial"),
             p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e propostas para VANTs/Drones, Tecnologias Espaciais, Satélites e Defesa Nacional.")
           ),
           tags$div(
@@ -468,14 +461,14 @@ ui <- bslib::page_sidebar(
       )
     ),
     bslib::nav_panel(
-      title = tags$span(tags$i(class = "fa fa-laptop-code"), " Núcleo Digital & IA"),
+      title = tags$span(tags$i(class = "fa fa-laptop-code"), " Cimatec Digital"),
       value = "cimatec_digital",
       bslib::card(
         style = "background: linear-gradient(135deg, #4f46e5 0%, #1e1b4b 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;",
         tags$div(
           style = "display: flex; justify-content: space-between; align-items: center;",
           tags$div(
-            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "💻 Núcleo Digital & IA de PD&I"),
+            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "💻 Cimatec Digital"),
             p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e propostas para Inteligência Artificial, Cibersegurança, HPC, Quântica e Tecnologias Digitais.")
           ),
           tags$div(
@@ -499,14 +492,14 @@ ui <- bslib::page_sidebar(
       )
     ),
     bslib::nav_panel(
-      title = tags$span(tags$i(class = "fa fa-industry"), " Núcleo Park & Manufatura"),
+      title = tags$span(tags$i(class = "fa fa-industry"), " Cimatec Park"),
       value = "cimatec_park",
       bslib::card(
         style = "background: linear-gradient(135deg, #d97706 0%, #451a03 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;",
         tags$div(
           style = "display: flex; justify-content: space-between; align-items: center;",
           tags$div(
-            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "🏭 Núcleo Park & Manufatura de PD&I"),
+            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "🏭 Cimatec Park"),
             p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e propostas para Manufatura Avançada, Materiais, Eletromobilidade, Química e Indústria 4.0.")
           ),
           tags$div(
@@ -530,14 +523,14 @@ ui <- bslib::page_sidebar(
       )
     ),
     bslib::nav_panel(
-      title = tags$span(tags$i(class = "fa fa-lightbulb"), " Núcleo Startups & Inovação"),
+      title = tags$span(tags$i(class = "fa fa-lightbulb"), " Cimatec Startups"),
       value = "cimatec_startups",
       bslib::card(
         style = "background: linear-gradient(135deg, #7c3aed 0%, #3b0764 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;",
         tags$div(
           style = "display: flex; justify-content: space-between; align-items: center;",
           tags$div(
-            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "💡 Núcleo de Startups & Inovação Aberta"),
+            h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "💡 Cimatec Startups"),
             p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e propostas para Startups, Deep Techs, MPEs, Inovação Aberta e Venture Capital.")
           ),
           tags$div(
@@ -2115,8 +2108,8 @@ server <- function(input, output, session) {
   # ==============================================================================
   rv$report_generated_data <- NULL
 
-  observeEvent(list(input$btn_open_report_modal, input$btn_open_report_top), {
-    req(isTRUE(input$btn_open_report_modal > 0) || isTRUE(input$btn_open_report_top > 0))
+  observeEvent(input$btn_open_report_modal, {
+    req(isTRUE(input$btn_open_report_modal > 0))
 
     sel_default <- if (length(input$filter_campus) > 0 && !"Todos" %in% input$filter_campus) {
       input$filter_campus[[1]]

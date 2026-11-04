@@ -4340,7 +4340,7 @@
       "checksum": "920bb45a52793e9975d06b92d6676e1f"
     },
     "R/helpers_docx.R": {
-      "checksum": "512ac055cc6005179ae01a707e4066ec"
+      "checksum": "b1098a181090d452158fa260fdbde2e8"
     },
     "R/helpers_enrichment.R": {
       "checksum": "59852cc16b86199a9f9a9741700383dc"
@@ -4776,6 +4776,9 @@
     },
     "templates/modelo_editais.docx": {
       "checksum": "84ab51b01934bd6322be61b38c2575f2"
+    },
+    "templates/modelo_editais_bg.png": {
+      "checksum": "bea88267a4f435d1fece29fd28778817"
     },
     "tests/helper-sources.R": {
       "checksum": "5e0d400943c1cac2bb6e402f43c1f34b"

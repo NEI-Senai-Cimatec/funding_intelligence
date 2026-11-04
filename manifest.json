@@ -4198,14 +4198,17 @@
     ".agents/skills/neon-ai-gateway/SKILL.md": {
       "checksum": "46216e616bb8305808e035acea3564b5"
     },
+    ".agents/skills/neon-auth/SKILL.md": {
+      "checksum": "274304418cba725d687cabca3c42cb3b"
+    },
     ".agents/skills/neon-auth/references/managed-auth.md": {
       "checksum": "3eb67cc2f73534419f34cbb60b96fa19"
     },
     ".agents/skills/neon-auth/references/self-managed.md": {
       "checksum": "416c6b7cb68584aa4db818d29c856566"
     },
-    ".agents/skills/neon-auth/SKILL.md": {
-      "checksum": "274304418cba725d687cabca3c42cb3b"
+    ".agents/skills/neon-functions/SKILL.md": {
+      "checksum": "28aec2e6663b69a918e0d9b203099eed"
     },
     ".agents/skills/neon-functions/references/ai-sdk.md": {
       "checksum": "46ea91133ad0de0c6073ad59b7f2856d"
@@ -4228,9 +4231,6 @@
     ".agents/skills/neon-functions/references/sse.md": {
       "checksum": "bc7110c6d9f383efa09fc453bcb70f43"
     },
-    ".agents/skills/neon-functions/SKILL.md": {
-      "checksum": "28aec2e6663b69a918e0d9b203099eed"
-    },
     ".agents/skills/neon-object-storage/SKILL.md": {
       "checksum": "fa8d8bcbac7c1dea555bc7089ef485f5"
     },
@@ -4239,6 +4239,9 @@
     },
     ".agents/skills/neon-postgres-egress-optimizer/SKILL.md": {
       "checksum": "241b9f0e67045c36b744811ad87fe87c"
+    },
+    ".agents/skills/neon-postgres/SKILL.md": {
+      "checksum": "b8ce6f709e353947728ebec6327d02dd"
     },
     ".agents/skills/neon-postgres/references/full-text-search.md": {
       "checksum": "a588b8d49cdd372ada345963d475d461"
@@ -4252,8 +4255,8 @@
     ".agents/skills/neon-postgres/references/vector-search.md": {
       "checksum": "1b16c8b0ec9fca17b71d7f5562cd81be"
     },
-    ".agents/skills/neon-postgres/SKILL.md": {
-      "checksum": "b8ce6f709e353947728ebec6327d02dd"
+    ".agents/skills/neon/SKILL.md": {
+      "checksum": "4267e1ff1f91cd86145a7b7c55ea5dad"
     },
     ".agents/skills/neon/references/auth.md": {
       "checksum": "c1159564e19b2cfd9e3fb63753c5924c"
@@ -4273,14 +4276,11 @@
     ".agents/skills/neon/references/sdk.md": {
       "checksum": "ccc86d23d49e0f7f27c1fca42feab973"
     },
-    ".agents/skills/neon/SKILL.md": {
-      "checksum": "4267e1ff1f91cd86145a7b7c55ea5dad"
-    },
     ".dockerignore": {
       "checksum": "2c5f90ef093c15c34ee1ad90d5e65203"
     },
     ".gitignore": {
-      "checksum": "0ecc4e12da66021ddcfa9e84781fc717"
+      "checksum": "f5a42856e0d0ca8f8f108d3e4ec10391"
     },
     ".opencode/commands/opsx-apply.md": {
       "checksum": "a4cc3b67b816763d6d472a9351a2ab28"
@@ -4318,20 +4318,80 @@
     ".opencode/skills/openspec-update-change/SKILL.md": {
       "checksum": "5f2ae8b55d3f7fb9ae15db7fc7b05cd0"
     },
-    "app.R": {
-      "checksum": "504a329f9e29e4247562f6475affe6e4"
-    },
     "CHANGELOG.md": {
-      "checksum": "87eac34e699da65b0153d262f3c38822"
+      "checksum": "f758c1d0170f04aa097f0ed64c87ad82"
+    },
+    "Dockerfile": {
+      "checksum": "524f03d72b77c39dbeb299e38970fe7f"
+    },
+    "R/helpers_ai.R": {
+      "checksum": "1b8e6db26fa7a21c3ffcee076bd2a069"
+    },
+    "R/helpers_auth.R": {
+      "checksum": "44a808078a13f62f31406ea3aadc8a05"
+    },
+    "R/helpers_auto_scheduler.R": {
+      "checksum": "fc733ee3324745da701100ca10a95165"
+    },
+    "R/helpers_collect.R": {
+      "checksum": "4e0563130a6aa4c16819846fd69715ea"
+    },
+    "R/helpers_db.R": {
+      "checksum": "920bb45a52793e9975d06b92d6676e1f"
+    },
+    "R/helpers_docx.R": {
+      "checksum": "9c77c1b41f0dea2148a58f468263e3d0"
+    },
+    "R/helpers_enrichment.R": {
+      "checksum": "59852cc16b86199a9f9a9741700383dc"
+    },
+    "R/helpers_export.R": {
+      "checksum": "06e9d3311f60c3965f1406ad65941abd"
+    },
+    "R/helpers_recommend.R": {
+      "checksum": "5e64f74455b5b6e3119208008f15facc"
+    },
+    "R/helpers_report.R": {
+      "checksum": "eeb277893b938c9e957f10cd0a413737"
+    },
+    "R/helpers_reports.R": {
+      "checksum": "0b3781b128f72d3ff3c3aaecf40daa16"
+    },
+    "R/helpers_sanitize.R": {
+      "checksum": "a39501190faf1933e3e5b8400910472c"
+    },
+    "R/helpers_schedule.R": {
+      "checksum": "a269e57d81894394eab3d15600df80c5"
+    },
+    "R/helpers_sources_br.R": {
+      "checksum": "b9e432ea529d8754c7f928be6c953c90"
+    },
+    "R/helpers_sources_br_federal.R": {
+      "checksum": "da0ed9088354f018261f25a2d93c1e31"
+    },
+    "R/helpers_status.R": {
+      "checksum": "daced8330393859b594229961e6e5f33"
+    },
+    "R/helpers_text.R": {
+      "checksum": "4729106e072c38619573dd987536aeb7"
+    },
+    "R/helpers_utils.R": {
+      "checksum": "214cf54d6296c9596d4c02447d174d95"
+    },
+    "R/helpers_validation.R": {
+      "checksum": "9a6d9c4f2d458381f0b253e5641d944f"
+    },
+    "README.md": {
+      "checksum": "1dc5ae447e4ce23820d9abca4c38ede6"
+    },
+    "app.R": {
+      "checksum": "f7b2c1532a3ea700672e41777772a35b"
     },
     "docker-compose.yml": {
       "checksum": "2fe19b0063a2bea345fb34b3f2f57cb1"
     },
-    "Dockerfile": {
-      "checksum": "ceb43b8b5ce917d37a57849c94e75a4f"
-    },
     "docs/ARCHITECTURE.md": {
-      "checksum": "337f77c93ea7b99d5558adc01222cb7f"
+      "checksum": "f94955840c9927f14357b3ed5a32ba4b"
     },
     "logos/logo fieb.png": {
       "checksum": "2cbbc84f8e704dde2a628541e8bd152a"
@@ -4343,13 +4403,13 @@
       "checksum": "dd43aae35d14417322fdd24fde680eaa"
     },
     "manifest.json": {
-      "checksum": "933c38ddb9d2bfd47ea3c156701135c5"
+      "checksum": "fafa81162405f64bdce0e86e4eef5323"
     },
     "migrate_to_neon.R": {
-      "checksum": "55182b85703b8127c94f8a3f05f76072"
+      "checksum": "0cbbb47b30827eac910f5983fde9c70d"
     },
     "neon.ts": {
-      "checksum": "ba2309dece9a73067cffb67089bc94d3"
+      "checksum": "7824c351db1c69f022d2f8a405fc5661"
     },
     "openspec/baseline-spec.md": {
       "checksum": "042666128193bc0519d38886083b6484"
@@ -4487,7 +4547,7 @@
       "checksum": "e7fc44669b1c451f510e0d84ce117c4e"
     },
     "openspec/specs/collection-pipeline/spec.md": {
-      "checksum": "07ea7854c32ccb300ce32d99157fe345"
+      "checksum": "562bea546bc52fdcbf0b7649a1a0e87e"
     },
     "openspec/specs/data-export/spec.md": {
       "checksum": "4e7ad4d5613c6a766905d6384f5c68a5"
@@ -4513,35 +4573,8 @@
     "openspec/specs/world-bank-source/spec.md": {
       "checksum": "f3c61e330fbc730143a5b6acad6d10c3"
     },
-    "R/helpers_ai.R": {
-      "checksum": "d63cfe734296b32e467a55dc8d24993e"
-    },
-    "R/helpers_collect.R": {
-      "checksum": "bb6401a914235f49bf9be0ef152c01c2"
-    },
-    "R/helpers_db.R": {
-      "checksum": "fc6112ab03a3e49bfc2aa49319c7c06c"
-    },
-    "R/helpers_export.R": {
-      "checksum": "06e9d3311f60c3965f1406ad65941abd"
-    },
-    "R/helpers_recommend.R": {
-      "checksum": "87f837716e4c61c7b4f18ac95aa84f5b"
-    },
-    "R/helpers_status.R": {
-      "checksum": "ec0927f7e9b26dde86eea60a270cc73a"
-    },
-    "R/helpers_text.R": {
-      "checksum": "3c1e99b3cbd01fc13bfe0b24e4305b5a"
-    },
-    "R/helpers_utils.R": {
-      "checksum": "f2952e5a8602e95da459eb21946ff049"
-    },
-    "README.md": {
-      "checksum": "724fdd8963f8ac8f721c09e0a671dd9f"
-    },
     "schema.sql": {
-      "checksum": "b279eae773d8723a4d39bf2880015ce2"
+      "checksum": "750a7a4f7601e1ccea15803cba8f94b4"
     },
     "scratch/add_new_sources_db.py": {
       "checksum": "aad9de75d68e49db1420dff4956467d1"
@@ -4586,7 +4619,7 @@
       "checksum": "85bf5688c38b40fcbedb4a67ea01fac8"
     },
     "scratch/qa_cnpq_capes_integration.R": {
-      "checksum": "fe766f42e526cb050dc2f291ae998d2d"
+      "checksum": "c4e78cd1e726bea47cc5ae5c47f7ef76"
     },
     "scratch/search_js.R": {
       "checksum": "545abd6223ce6ad47a70af64ccc0c36b"
@@ -4736,13 +4769,16 @@
       "checksum": "a20cf097dfe015ea896c2b5575e60831"
     },
     "skills-lock.json": {
-      "checksum": "5daec37ada1979b0275b5969f4e8ad7a"
+      "checksum": "efac05b81a738e26486668f4c3b48639"
     },
     "temp_design.md": {
       "checksum": "6fbffa68fa200a4d6953b159d92fb1ac"
     },
+    "templates/modelo_editais.docx": {
+      "checksum": "84ab51b01934bd6322be61b38c2575f2"
+    },
     "tests/helper-sources.R": {
-      "checksum": "4d43e05712bf727a250d976249da4e93"
+      "checksum": "5e0d400943c1cac2bb6e402f43c1f34b"
     },
     "tests/testthat.R": {
       "checksum": "6b2a4b1fd11c607c0c705b21f2c51096"
@@ -4754,19 +4790,34 @@
       "checksum": "764281f432e30d809029b467aca0d320"
     },
     "tests/testthat/test-collect-usa-sources.R": {
-      "checksum": "2099bc22b1f701f4cae4d45b1b10c80a"
+      "checksum": "1793c37d9b00e47b8a19a2b723239ad4"
     },
     "tests/testthat/test-fapesb-deadline.R": {
-      "checksum": "701cf5fbec51c478d74303a12178b893"
+      "checksum": "35d3f9bf3a05e14c5ce5ac21d7708b3c"
     },
     "tests/testthat/test-utils.R": {
       "checksum": "a242b21cb2dcc402e7f20c89e9a95f93"
     },
-    "tools/stealth_fetch.py": {
-      "checksum": "362f05a149d7589639a1f44da8633da8"
+    "tools/auto_collect.R": {
+      "checksum": "ff502d61ab6e170414e8a59a26fcef24"
     },
-    "www/logotipo-SENAI-CIMATEC-Vjul2025 1.png": {
-      "checksum": "270b2a2cc909d974cd7e9c8a3fb39fd7"
+    "tools/capture_fixture.py": {
+      "checksum": "06a1e4eed1832a0e2dfeb4511cb47235"
+    },
+    "tools/clean_database.py": {
+      "checksum": "ceb6d4f7f791d5e9a1beaefa4a3af990"
+    },
+    "tools/sqlite_recover.py": {
+      "checksum": "47303a4035e8c7cc78d2235557914c09"
+    },
+    "tools/stealth_fetch.py": {
+      "checksum": "34b24dbf55628f1540a9463c4780c380"
+    },
+    "tools/test_supabase_ping.py": {
+      "checksum": "61fb2b915f9d9b1c6f1bed4792747ab3"
+    },
+    "tools/update_startups_campus.py": {
+      "checksum": "624013adc10b13467827a14c0b99e826"
     },
     "www/NEI (2).png": {
       "checksum": "2374926e8cb54409ca7dc7ad301d5109"
@@ -4774,11 +4825,17 @@
     "www/NEI SEM FUNDO.png": {
       "checksum": "9a1553ea9fcfe5163922f2f80087d4b4"
     },
+    "www/auth.js": {
+      "checksum": "452f51ccc26dfbf18d234a01451f4e74"
+    },
+    "www/logotipo-SENAI-CIMATEC-Vjul2025 1.png": {
+      "checksum": "270b2a2cc909d974cd7e9c8a3fb39fd7"
+    },
     "www/senai_cimatec.jpg": {
       "checksum": "5134d2e95151c3e1ca2d55024154fe5f"
     },
     "www/styles.css": {
-      "checksum": "bb05d39cbeff2d1f7734b652112cfa39"
+      "checksum": "66f7b2ac550621af503660342cfbfdc3"
     }
   },
   "users": null

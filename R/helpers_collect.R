@@ -548,14 +548,18 @@ collect_sources_parallel <- function(sources_df, max_pages = 5L, max_records_per
     sid <- src$id_fonte[[1]]
     effective_max <- if (sid %in% c("horizon_europe", "erc", "quantum")) 100L else max_records_per_source
     tryCatch(
-      source_dispatch(
-        source_row = src,
-        max_pages = max_pages,
-        max_records = effective_max,
-        use_ai = use_ai,
-        log_path = log_path,
-        conn = NULL
-      ),
+      {
+        setTimeLimit(elapsed = 180, transient = TRUE)
+        on.exit(setTimeLimit(elapsed = Inf, transient = FALSE), add = TRUE)
+        source_dispatch(
+          source_row = src,
+          max_pages = max_pages,
+          max_records = effective_max,
+          use_ai = use_ai,
+          log_path = log_path,
+          conn = NULL
+        )
+      },
       error = function(e) list(error = conditionMessage(e), source_id = sid, records = NULL, pages_visited = 0L, last_url = "")
     )
   }

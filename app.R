@@ -145,6 +145,7 @@ safe_source("R/helpers_auth.R")
 safe_source("R/helpers_reports.R")
 safe_source("R/helpers_report.R")
 safe_source("R/helpers_auto_scheduler.R")
+safe_source("R/helpers_docx.R")
 
 # Registra a pasta logos como recurso estático do Shiny
 shiny::addResourcePath("logos", app_file("logos"))
@@ -2255,6 +2256,7 @@ server <- function(input, output, session) {
             onclick = "copyReportToClipboard()",
             tags$i(class = "fa fa-copy me-1"), "Copiar Texto"
           ),
+          downloadButton("btn_download_report_docx", "Baixar DOCX", class = "btn btn-sm btn-primary", icon = icon("file-word")),
           downloadButton("btn_download_report_txt", "Baixar TXT", class = "btn btn-sm btn-outline-secondary"),
           downloadButton("btn_download_report_md", "Baixar MD", class = "btn btn-sm btn-outline-secondary")
         )
@@ -2312,6 +2314,17 @@ server <- function(input, output, session) {
     content = function(file) {
       md <- rv$report_generated_data$markdown %||% "Relatório vazio."
       writeLines(md, file, useBytes = TRUE)
+    }
+  )
+
+  output$btn_download_report_docx <- downloadHandler(
+    filename = function() {
+      campus_slug <- gsub("[^a-zA-Z0-9]+", "_", tolower(rv$report_generated_data$campus_name %||% "cimatec"))
+      sprintf("relatorio_editais_%s_%s.docx", campus_slug, format(Sys.time(), "%Y%m%d_%H%M%S"))
+    },
+    content = function(file) {
+      req(rv$report_generated_data)
+      generate_docx_report(rv$report_generated_data, file)
     }
   )
 

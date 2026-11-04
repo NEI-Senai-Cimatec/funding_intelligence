@@ -269,60 +269,115 @@ generate_fallback_institutional_pdf <- function(report_data, output_pdf) {
   )
   on.exit(grDevices::dev.off(), add = TRUE)
 
-  # Configurações de layout
-  graphics::par(mar = c(2, 2.5, 2, 2.5), oma = c(0, 0, 0, 0))
+  # Layout: margens precisas para página A4 (coordenadas em mm de 0 a 210 x 297)
+  graphics::par(mar = c(1.5, 2, 1.5, 2), oma = c(0, 0, 0, 0))
   graphics::plot.new()
-  graphics::plot.window(xlim = c(0, 100), ylim = c(0, 100))
+  graphics::plot.window(xlim = c(0, 210), ylim = c(0, 297))
 
-  # Cabeçalho Institucional
-  graphics::rect(0, 93, 100, 100, col = "#003366", border = NA)
-  graphics::text(5, 96.5, "SENAI CIMATEC | FUNDING INTELLIGENCE", col = "#FFFFFF", font = 2, cex = 1.3, adj = 0)
-  graphics::text(5, 94.2, sprintf("RELATÓRIO OFICIAL DE OPORTUNIDADES ABERTAS - %s", campus_title), col = "#DCE8F5", font = 1, cex = 0.85, adj = 0)
-  graphics::text(95, 95.5, sprintf("Gerado em: %s", data_geracao), col = "#E0E0E0", font = 3, cex = 0.75, adj = 1)
-
-  y_curr <- 89
+  # 1. CABEÇALHO INSTITUCIONAL (faixa azul escura)
+  graphics::rect(10, 270, 200, 288, col = "#003366", border = NA)
+  graphics::text(14, 282, "SENAI CIMATEC | FUNDING INTELLIGENCE", col = "#FFFFFF", font = 2, cex = 1.05, adj = 0)
+  graphics::text(196, 282, sprintf("Gerado em: %s", data_geracao), col = "#CBD5E1", font = 3, cex = 0.68, adj = 1)
+  graphics::text(14, 275, sprintf("RELATÓRIO OFICIAL DE OPORTUNIDADES ABERTAS - %s", campus_title), col = "#93C5FD", font = 1, cex = 0.8, adj = 0)
 
   if (length(items) == 0) {
-    graphics::text(50, 50, "Nenhuma oportunidade aberta encontrada para os critérios selecionados.", cex = 1.1, col = "#555555")
+    graphics::text(105, 150, "Nenhuma oportunidade aberta encontrada para os critérios selecionados.", cex = 1.0, col = "#475569")
     return(TRUE)
   }
 
+  # 2. CARDS DOS EDITAIS (com cálculo de fluxo dinâmico sem sobreposição)
+  y_top <- 264
+  card_w <- 190
+  x_left <- 10
+
   for (idx in seq_along(items)) {
     it <- items[[idx]]
-    
-    # Caixa de destaque do Edital
-    graphics::rect(2, y_curr - 26, 98, y_curr, col = "#F8F9FA", border = "#D0D7DE", lwd = 1.2)
-    graphics::rect(2, y_curr - 4.5, 98, y_curr, col = "#E9ECEF", border = NA)
+    card_start_y <- y_top
 
-    # Título do Edital
-    edital_titulo <- paste(strwrap(it$edital %||% "Edital sem título", width = 85), collapse = "\n")
-    graphics::text(4, y_curr - 2.5, sprintf("Edital: %s", edital_titulo), col = "#003366", font = 2, cex = 0.9, adj = 0)
+    # Quebra o título do edital (máx 75 caracteres por linha)
+    edital_lines <- strwrap(sprintf("Edital: %s", it$edital %||% "Edital sem título"), width = 75)
+    if (length(edital_lines) > 2) {
+      edital_lines <- c(edital_lines[1], paste0(substr(edital_lines[2], 1, 71), "..."))
+    }
+    header_box_h <- 4.0 + (length(edital_lines) * 4.6)
 
-    # Metadados
-    graphics::text(4, y_curr - 6.5, sprintf("Tipo de oportunidade: %s", it$tipo %||% "N/A"), col = "#333333", cex = 0.8, adj = 0)
-    graphics::text(55, y_curr - 6.5, sprintf("País de origem: %s", it$pais %||% "N/A"), col = "#333333", cex = 0.8, adj = 0)
+    # Quebra o resumo (máx 92 caracteres por linha, máx 3 linhas)
+    resumo_raw <- it$resumo %||% "Sem resumo cadastrado."
+    resumo_lines <- strwrap(resumo_raw, width = 92)
+    if (length(resumo_lines) > 3) {
+      resumo_lines <- c(resumo_lines[1:2], paste0(substr(resumo_lines[3], 1, 88), "..."))
+    }
 
-    graphics::text(4, y_curr - 9.5, sprintf("Prazo limite: %s", it$prazo %||% "N/A"), col = "#854F06", font = 2, cex = 0.8, adj = 0)
-    graphics::text(55, y_curr - 9.5, sprintf("Área temática: %s", it$area %||% "N/A"), col = "#333333", cex = 0.8, adj = 0)
-
-    graphics::text(4, y_curr - 12.5, sprintf("Orçamento estimado: %s", it$orcamento %||% "N/A"), col = "#1F7A3F", font = 2, cex = 0.8, adj = 0)
-
-    # Resumo com quebra automática de linha
-    resumo_txt <- it$resumo %||% "Sem resumo cadastrado."
-    wrapped_resumo <- paste(utils::head(strwrap(resumo_txt, width = 95), 4), collapse = "\n")
-    graphics::text(4, y_curr - 17, sprintf("Resumo:\n%s", wrapped_resumo), col = "#444444", cex = 0.75, adj = c(0, 1))
-
-    # Link de acesso
-    link_url <- it$link_url %||% ""
+    # Quebra do link (label + url)
     link_lbl <- it$link_label %||% "Acessar Portal Oficial"
-    graphics::text(4, y_curr - 24, sprintf("Link de acesso: %s (%s)", link_lbl, link_url), col = "#0969DA", font = 2, cex = 0.8, adj = 0)
+    link_url <- it$link_url %||% ""
+    disp_url <- if (nchar(link_url) > 75) paste0(substr(link_url, 1, 72), "...") else link_url
 
-    y_curr <- y_curr - 29
+    # Altura do conteúdo calculada com folga respirável
+    card_h <- header_box_h + (4 * 4.6) + 4.0 + (length(resumo_lines) * 3.8) + 4.2 + (if (nzchar(disp_url)) 3.6 else 0) + 4.5
+    card_bottom_y <- card_start_y - card_h
+
+    # Fundo do card e borda
+    graphics::rect(x_left, card_bottom_y, x_left + card_w, card_start_y, col = "#F8F9FA", border = "#D0D7DE", lwd = 1.2)
+    # Faixa superior de destaque do título
+    graphics::rect(x_left, card_start_y - header_box_h, x_left + card_w, card_start_y, col = "#EEF2F6", border = NA)
+    graphics::lines(c(x_left, x_left + card_w), c(card_start_y - header_box_h, card_start_y - header_box_h), col = "#CBD5E1", lwd = 0.8)
+
+    # Título do edital
+    curr_y <- card_start_y - 4.2
+    for (el in edital_lines) {
+      graphics::text(x_left + 4, curr_y, el, col = "#003366", font = 2, cex = 0.85, adj = 0)
+      curr_y <- curr_y - 4.6
+    }
+
+    # Metadados com espaçamento vertical estrito de 4.6 mm para legibilidade
+    curr_y <- card_start_y - header_box_h - 4.2
+
+    # Linha 1: Tipo e País (em colunas separadas com corte rígido)
+    tipo_txt <- paste0("Tipo: ", substr(it$tipo %||% "N/A", 1, 35))
+    pais_txt <- paste0("País: ", substr(it$pais %||% "N/A", 1, 38))
+    graphics::text(x_left + 4, curr_y, tipo_txt, col = "#334155", font = 1, cex = 0.77, adj = 0)
+    graphics::text(x_left + 95, curr_y, pais_txt, col = "#334155", font = 1, cex = 0.77, adj = 0)
+    curr_y <- curr_y - 4.6
+
+    # Linha 2: Prazo limite (destaque âmbar em linha exclusiva para nunca colidir)
+    prazo_txt <- paste0("Prazo limite: ", it$prazo %||% "N/A")
+    graphics::text(x_left + 4, curr_y, prazo_txt, col = "#854F06", font = 2, cex = 0.77, adj = 0)
+    curr_y <- curr_y - 4.6
+
+    # Linha 3: Área temática (linha inteira para nunca colidir)
+    area_txt <- paste0("Área temática: ", it$area %||% "N/A")
+    graphics::text(x_left + 4, curr_y, area_txt, col = "#334155", font = 1, cex = 0.77, adj = 0)
+    curr_y <- curr_y - 4.6
+
+    # Linha 4: Orçamento estimado (destaque verde)
+    orc_txt <- paste0("Orçamento estimado: ", it$orcamento %||% "N/A")
+    graphics::text(x_left + 4, curr_y, orc_txt, col = "#15803D", font = 2, cex = 0.77, adj = 0)
+    curr_y <- curr_y - 4.6
+
+    # Resumo
+    graphics::text(x_left + 4, curr_y, "Resumo:", col = "#475569", font = 2, cex = 0.74, adj = 0)
+    curr_y <- curr_y - 3.8
+    for (rl in resumo_lines) {
+      graphics::text(x_left + 4, curr_y, rl, col = "#334155", font = 1, cex = 0.72, adj = 0)
+      curr_y <- curr_y - 3.8
+    }
+
+    # Link de acesso (100% isolado abaixo do resumo)
+    curr_y <- curr_y - 1.0
+    graphics::text(x_left + 4, curr_y, paste0("Link de acesso: ", link_lbl), col = "#0969DA", font = 2, cex = 0.75, adj = 0)
+    if (nzchar(disp_url)) {
+      curr_y <- curr_y - 3.6
+      graphics::text(x_left + 4, curr_y, paste0("URL: ", disp_url), col = "#2563EB", font = 1, cex = 0.70, adj = 0)
+    }
+
+    # Próximo card com espaçamento respirável de 6.5 mm
+    y_top <- card_bottom_y - 6.5
   }
 
-  # Rodapé Institucional
-  graphics::rect(0, 0, 100, 3, col = "#F0F4F8", border = NA)
-  graphics::text(50, 1.5, "QuIIN - Núcleo de Inteligência e Inovação | SENAI CIMATEC | Uso Exclusivo Institucional", col = "#666666", cex = 0.75, font = 3)
+  # 3. RODAPÉ INSTITUCIONAL
+  graphics::rect(10, 8, 200, 13, col = "#F1F5F9", border = "#E2E8F0", lwd = 0.8)
+  graphics::text(105, 10.5, "QuIIN - Núcleo de Inteligência e Inovação | SENAI CIMATEC | Uso Exclusivo Institucional", col = "#64748B", cex = 0.70, font = 3)
 
   return(TRUE)
 }

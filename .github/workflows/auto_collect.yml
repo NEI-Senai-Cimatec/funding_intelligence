@@ -17,7 +17,7 @@ jobs:
   collect:
     name: 🚀 Coletar e Atualizar Oportunidades
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+timeout-minutes: 120
 
     steps:
       - name: 📥 Clonar repositório

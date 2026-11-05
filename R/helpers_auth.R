@@ -871,9 +871,30 @@ get_user_access_logs <- function(conn, limit = 200) {
   }, error = function(e) tibble::tibble())
 }
 
+# Converte imagem de www/ para Data URI base64 (evita erro 404 no Republish do RStudio/Posit Connect)
+auth_img_data_uri <- function(filename, mime = "image/png") {
+  candidates <- c(
+    file.path("www", filename),
+    filename
+  )
+  found <- Filter(file.exists, candidates)
+  if (length(found) > 0L) {
+    p <- found[[1]]
+    sz <- file.info(p)$size
+    if (!is.na(sz) && sz > 0 && sz < 2 * 1024 * 1024) {
+      raw_b <- readBin(p, what = "raw", n = sz)
+      b64 <- gsub("[\r\n]", "", jsonlite::base64_enc(raw_b))
+      return(paste0("data:", mime, ";base64,", b64))
+    }
+  }
+  filename
+}
+
 # Renderiza a tela de login em tela cheia (Overlay que bloqueia visualização de editais)
 render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_mode = "login") {
   cfg <- supabase_get_config()
+  radar_logo_src <- auth_img_data_uri("radar_inovacao_logo.png", "image/png")
+  cimatec_logo_src <- auth_img_data_uri("logotipo-SENAI-CIMATEC-Vjul2025 1.png", "image/png")
   
   htmltools::tags$div(
     id = "auth_overlay_root",
@@ -898,7 +919,7 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
     ),
     htmltools::tags$div(
       class = "auth-footer-logos",
-      htmltools::tags$img(src = "logotipo-SENAI-CIMATEC-Vjul2025 1.png", alt = "SENAI CIMATEC")
+      htmltools::tags$img(src = cimatec_logo_src, alt = "SENAI CIMATEC")
     ),
     htmltools::tags$div(
       class = "auth-card",
@@ -906,7 +927,7 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
       # Cabeçalho com a marca do Radar da Inovação
       htmltools::tags$div(
         class = "auth-header",
-        htmltools::tags$img(src = "radar_inovacao_logo.png", class = "auth-logo-img auth-logo-radar", alt = "Radar da Inovação - Plataforma de Inteligência de Fomento à P&D+I")
+        htmltools::tags$img(src = radar_logo_src, class = "auth-logo-img auth-logo-radar", alt = "Radar da Inovação - Plataforma de Inteligência de Fomento à P&D+I")
       ),
       
       # Alerta se o Supabase não estiver configurado no .Renviron

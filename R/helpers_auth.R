@@ -889,9 +889,7 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
     ),
     htmltools::tags$div(
       class = "auth-footer-logos",
-      htmltools::tags$img(src = "nei_logo_login.jpg", alt = "NEI - Núcleo de Economia Industrial"),
-      htmltools::tags$img(src = "senai_cimatec.jpg", alt = "SENAI CIMATEC"),
-      htmltools::tags$img(src = "logos/logo fieb.png", alt = "FIEB")
+      htmltools::tags$img(src = "senai_cimatec.jpg", alt = "SENAI CIMATEC")
     ),
     htmltools::tags$div(
       class = "auth-card",
@@ -1464,8 +1462,7 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
       # Rodapé Informativo
       htmltools::tags$div(
         class = "auth-footer",
-        htmltools::tags$p(style = "margin: 0 0 4px 0;", "Apenas usuários autorizados podem visualizar os editais e chamadas de fomento."),
-        htmltools::tags$p(style = "margin: 0; color: #64748b;", "SENAI CIMATEC – Núcleo de Economia Industrial (NEI)")
+        htmltools::tags$p(style = "margin: 0;", "Apenas usuários autorizados podem visualizar os editais e chamadas de fomento.")
       )
     )
   )

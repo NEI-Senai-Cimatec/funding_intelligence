@@ -2434,7 +2434,6 @@ server <- function(input, output, session) {
       shown <- tibble::tibble(
         ID = character(),
         Título = character(),
-        Campus = character(),
         Financiador = factor(),
         `Aderência <i class='fa fa-info-circle text-info' title='Afinidade semântica calculada dinamicamente com base nos termos de busca.'></i>` = character(),
         Prazo = character(),
@@ -2443,12 +2442,8 @@ server <- function(input, output, session) {
         Ações = character()
       )
     } else {
-      # Defensivo: bancos antigos podem não ter a coluna campus (migração ausente);
-      # campus_badge_html trata NA/vazio com o badge padrão "Sede e Park".
-      campus_vec <- if ("campus" %in% names(df)) df$campus else rep(NA_character_, nrow(df))
       shown <- df |>
         dplyr::mutate(
-          Campus = vapply(campus_vec, campus_badge_html, character(1)),
           Aderência = vapply(score_aderencia, score_bar_html, character(1)),
           Prazo = format_date_br(data_limite),
           `Qualidade <i class='fa fa-shield-halved text-info' title='Score de qualidade dos metadados extraídos.'></i>` = vapply(seq_len(nrow(df)), function(i) {
@@ -2467,7 +2462,6 @@ server <- function(input, output, session) {
         dplyr::transmute(
           ID = id_registro,
           Título,
-          Campus,
           Financiador,
           `Aderência <i class='fa fa-info-circle text-info' title='Afinidade semântica calculada dinamicamente com base nos termos de busca.'></i>` = Aderência,
           Prazo,
@@ -2489,7 +2483,7 @@ server <- function(input, output, session) {
         columnDefs = list(
           list(targets = 0, visible = FALSE),
           list(
-            targets = 6,
+            targets = 5,
             render = DT::JS("
               function(data, type, row, meta) {
                 if (type === 'display') {
@@ -2505,7 +2499,7 @@ server <- function(input, output, session) {
               }
             ")
           ),
-          list(targets = c(0, 8), searchable = FALSE, orderable = FALSE)
+          list(targets = c(0, 7), searchable = FALSE, orderable = FALSE)
         )
       )
     )

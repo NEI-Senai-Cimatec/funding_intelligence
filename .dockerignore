@@ -11,5 +11,11 @@ data_exports/*
 Dockerfile
 docker-compose.yml
 .env
+.env.local
+.Renviron
+.neon
+backups/
+.playwright-mcp/
+nul
 gdrive_credentials.json
 *.json

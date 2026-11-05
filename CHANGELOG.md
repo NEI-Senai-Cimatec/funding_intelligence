@@ -14,11 +14,18 @@ versionamento [SemVer](https://semver.org/lang/pt-BR/).
 - Migração idempotente `migrate_tipo_oportunidade()` (marker
   `tipo_oportunidade_v1`) e script operacional
   `migrations/2026-11-05_tipo_oportunidade.R`, com backup e relatório.
+- Backend PostgreSQL/Neon via `DATA_BASE_URL` (com fallback legado para
+  `DATABASE_URL`), usando `RPostgres`; DDL, placeholders `$1`, sequences e
+  métricas adaptados para Postgres.
+- Script `migrations/2026-11-05_sqlite_to_neon.R` para migrar a base SQLite
+  local para o Neon em uma transação, com verificação de contagens.
 
 ### Changed
 - Filtro rápido, busca avançada, cards, tabela de financiadores e recomendações
   passaram a exibir/filtrar pela categoria canônica; valores antigos de buscas
   salvas continuam funcionando.
+- Com `DATA_BASE_URL` definida, o Google Drive é ignorado (o banco é remoto) e
+  o job `callr` de coleta usa a mesma conexão Postgres do app.
 
 ### Fixed
 - Variações de escrita do tipo (`Edital`/`edital`, `chamada pública`/

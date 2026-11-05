@@ -35,7 +35,7 @@ Centraliza **21 fontes de fomento** (CNPq, CAPES, FINEP, FAPESB, Horizon Europe,
 ```r
 install.packages(c(
   "shiny", "bslib", "DT", "dplyr", "tidyr", "purrr", "stringr", "stringi",
-  "lubridate", "ggplot2", "plotly", "DBI", "RSQLite", "jsonlite", "digest",
+  "lubridate", "ggplot2", "plotly", "DBI", "RSQLite", "RPostgres", "jsonlite", "digest",
   "htmltools", "rvest", "xml2", "httr2", "tibble", "readr", "writexl",
   "janitor", "glue", "progress", "pdftools", "polite", "callr",
   "shinycssloaders", "reticulate", "chromote", "googledrive", "httr",
@@ -546,6 +546,38 @@ Deve retornar JSON com `"totalResults"` > 0.
 | `GDRIVE_SERVICE_ACCOUNT_CONTENT` | Conteúdo JSON inline da Service Account |
 | `GDRIVE_FILE_ID` | ID do arquivo SQLite no Google Drive |
 
+### Banco de dados (Neon/Postgres no Posit Cloud)
+
+Por padrão, o app usa SQLite local (`funding_intelligence.sqlite`). Para usar
+Neon/Postgres, defina a variável:
+
+| Variável | Descrição | Padrão |
+|---|---|---|
+| `DATA_BASE_URL` | Connection string Postgres/Neon (`postgresql://user:pass@host/db?sslmode=require`). O legado `DATABASE_URL` também é aceito. | (vazio = SQLite local) |
+
+No **Posit Cloud**:
+
+1. Instale `RPostgres` no projeto (o app também tenta instalar no startup).
+2. Em **Project Settings → Environment Variables**, adicione `DATA_BASE_URL`
+   com a connection string do Neon.
+3. Reinicie o app. Com `DATA_BASE_URL` definida, o Google Drive é ignorado
+   (o banco é remoto) e o job de coleta em background usa a mesma conexão.
+4. O `init_database()` roda no startup: cria tabelas se faltarem, aplica as
+   migrações idempotentes e semeia dados apenas em base vazia.
+
+Para migrar a base SQLite local para o Neon:
+
+```powershell
+$env:DATA_BASE_URL = "postgresql://user:pass@host/db?sslmode=require"
+Rscript migrations/2026-11-05_sqlite_to_neon.R
+```
+
+O script cria o schema, copia todas as tabelas em uma transação, reseta as
+sequences e confere as contagens. Use `--force` para truncar e recopiar um
+destino que já tenha dados. O script
+`migrations/2026-11-05_tipo_oportunidade.R` também detecta `DATA_BASE_URL` e
+roda a taxonomia canônica diretamente no Postgres.
+
 ### API Europeia (necessário para Posit Connect)
 
 | Variável | Descrição | Padrão |
@@ -648,6 +680,9 @@ SCRAPE_WORKERS=4
 # Google Drive (opcional)
 # GDRIVE_SERVICE_ACCOUNT_JSON=gdrive_credentials.json
 # GDRIVE_FILE_ID=...
+
+# Banco remoto (Neon/Postgres; opcional — sem isso usa SQLite local)
+# DATA_BASE_URL=postgresql://user:pass@host/db?sslmode=require
 ```
 
 - **Migração:** ao subir, o app adiciona idempotentemente as colunas `enrichment_status/model/at/error` e recalcula os hashes de deduplicação (sem `data_limite`). Não há perda de dados.

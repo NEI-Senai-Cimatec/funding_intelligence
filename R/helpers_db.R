@@ -1,12 +1,122 @@
+# ─── Backend de banco: SQLite local x PostgreSQL/Neon (DATA_BASE_URL) ─────────
+
+data_base_url <- function() {
+  url <- Sys.getenv("DATA_BASE_URL", unset = "")
+  if (!nzchar(url)) url <- Sys.getenv("DATABASE_URL", unset = "")
+  trimws(url)
+}
+
+using_postgres <- function() nzchar(data_base_url())
+
+db_backend_name <- function(dbms) {
+  if (grepl("postgres", tolower(paste(dbms %||% "", collapse = " ")))) "postgres" else "sqlite"
+}
+
+db_backend <- function(conn = NULL) {
+  if (is.null(conn)) {
+    return(if (using_postgres()) "postgres" else "sqlite")
+  }
+  if (inherits(conn, "PqConnection")) return("postgres")
+  if (inherits(conn, "SQLiteConnection")) return("sqlite")
+  info <- tryCatch(DBI::dbGetInfo(conn), error = function(e) NULL)
+  db_backend_name(info$dbms %||% "")
+}
+
+connect_postgres <- function(url) {
+  u <- httr::parse_url(url)
+  if (is.null(u$hostname) || !nzchar(u$hostname)) {
+    stop("DATA_BASE_URL inválida: host ausente.", call. = FALSE)
+  }
+  q <- u$query %||% list()
+  args <- list(
+    drv = RPostgres::Postgres(),
+    host = u$hostname,
+    port = if (is.null(u$port) || !nzchar(as.character(u$port))) 5432L else as.integer(u$port),
+    user = utils::URLdecode(u$username %||% ""),
+    password = utils::URLdecode(u$password %||% ""),
+    dbname = utils::URLdecode(u$path %||% ""),
+    sslmode = q$sslmode %||% "require",
+    connect_timeout = 15
+  )
+  if (!is.null(q$channel_binding) && nzchar(q$channel_binding)) {
+    args$channel_binding <- q$channel_binding
+  }
+  do.call(DBI::dbConnect, args)
+}
+
+# RPostgres usa $1/$2; o restante do app fala ?. Converte apenas fora de strings.
+sql_placeholders_to_postgres <- function(sql) {
+  if (!nzchar(sql)) return(sql)
+  chars <- strsplit(sql, "", fixed = TRUE)[[1]]
+  out <- character(length(chars))
+  in_single <- FALSE
+  in_double <- FALSE
+  idx <- 0L
+  for (i in seq_along(chars)) {
+    ch <- chars[[i]]
+    if (ch == "'" && !in_double) {
+      in_single <- !in_single
+      out[[i]] <- ch
+      next
+    }
+    if (ch == '"' && !in_single) {
+      in_double <- !in_double
+      out[[i]] <- ch
+      next
+    }
+    if (ch == "?" && !in_single && !in_double) {
+      idx <- idx + 1L
+      out[[i]] <- paste0("$", idx)
+      next
+    }
+    out[[i]] <- ch
+  }
+  paste(out, collapse = "")
+}
+
+coerce_integer64 <- function(df) {
+  if (!is.data.frame(df) || nrow(df) == 0L) return(df)
+  for (nm in names(df)) {
+    if (inherits(df[[nm]], "integer64")) {
+      df[[nm]] <- as.numeric(df[[nm]])
+    }
+  }
+  df
+}
+
+db_execute <- function(conn, sql, params = NULL) {
+  if (identical(db_backend(conn), "postgres")) {
+    sql <- sql_placeholders_to_postgres(sql)
+    if (!is.null(params)) params <- unname(params)
+  }
+  if (is.null(params)) DBI::dbExecute(conn, sql) else DBI::dbExecute(conn, sql, params = params)
+}
+
+db_get_query <- function(conn, sql, params = NULL) {
+  is_postgres <- identical(db_backend(conn), "postgres")
+  if (is_postgres) {
+    sql <- sql_placeholders_to_postgres(sql)
+    if (!is.null(params)) params <- unname(params)
+  }
+  res <- if (is.null(params)) DBI::dbGetQuery(conn, sql) else DBI::dbGetQuery(conn, sql, params = params)
+  if (is_postgres) res <- coerce_integer64(res)
+  res
+}
+
 get_db_connection <- function(db_path) {
+  url <- data_base_url()
+  if (nzchar(url) && !identical(db_path, ":memory:")) {
+    return(connect_postgres(url))
+  }
+
   ensure_dir(dirname(db_path))
   conn <- DBI::dbConnect(RSQLite::SQLite(), db_path)
   # Ativar WAL mode e timeout de concorrência (10s) para evitar "database locked"
   try(
     {
-      DBI::dbExecute(conn, "PRAGMA journal_mode = WAL;")
-      DBI::dbExecute(conn, "PRAGMA busy_timeout = 10000;")
-      DBI::dbExecute(conn, "PRAGMA encoding = 'UTF-8';")
+      db_execute(conn, "PRAGMA journal_mode = WAL;")
+      db_execute(conn, "PRAGMA busy_timeout = 10000;")
+      db_execute(conn, "PRAGMA encoding = 'UTF-8';")
     },
     silent = TRUE
   )
@@ -40,8 +150,180 @@ source_catalog <- function() {
   )
 }
 
+postgres_schema_statements <- function() {
+  c(
+    r"(CREATE TABLE IF NOT EXISTS fontes_financiamento (
+      id_fonte TEXT PRIMARY KEY,
+      nome_fonte TEXT,
+      sigla TEXT,
+      pais TEXT,
+      categoria TEXT,
+      tipo_financiador TEXT,
+      url_principal TEXT,
+      url_oportunidades TEXT,
+      metodo_coleta TEXT,
+      idioma TEXT,
+      periodicidade_atualizacao TEXT,
+      observacoes TEXT
+    ))",
+
+    r"(CREATE TABLE IF NOT EXISTS oportunidades (
+      id_registro TEXT PRIMARY KEY,
+      entidade TEXT,
+      pais_origem TEXT,
+      titulo TEXT,
+      subtitulo TEXT,
+      descricao_resumida TEXT,
+      descricao_completa TEXT,
+      tipo_oportunidade TEXT,
+      tipo_oportunidade_original TEXT,
+      tipo_oportunidade_categoria TEXT,
+      tipo_oportunidade_categoria_origem TEXT,
+      modalidade TEXT,
+      area_tematica TEXT,
+      palavras_chave TEXT,
+      elegibilidade TEXT,
+      publico_alvo TEXT,
+      nivel_academico TEXT,
+      instituicao_financiadora TEXT,
+      valor_financiado DOUBLE PRECISION,
+      moeda TEXT,
+      data_publicacao TEXT,
+      data_abertura TEXT,
+      data_limite TEXT,
+      data_encerramento TEXT,
+      status_oportunidade TEXT,
+      link_origem TEXT,
+      link_detalhe TEXT,
+      link_documento_pdf TEXT,
+      idioma TEXT,
+      localidade TEXT,
+      observacoes TEXT,
+      texto_bruto TEXT,
+      pagina_coletada INTEGER,
+      fonte_oficial TEXT,
+      data_hora_coleta TEXT,
+      hash_deduplicacao TEXT UNIQUE,
+      campos_inferidos_ia TEXT,
+      enrichment_status TEXT DEFAULT 'pendente',
+      enrichment_model TEXT,
+      enrichment_at TEXT,
+      enrichment_error TEXT
+    ))",
+
+    r"(CREATE TABLE IF NOT EXISTS migration_flags (
+      flag TEXT PRIMARY KEY,
+      applied_at TEXT
+    ))",
+
+    r"(CREATE TABLE IF NOT EXISTS buscas_salvas (
+      id BIGSERIAL PRIMARY KEY,
+      nome_busca TEXT,
+      query_text TEXT,
+      payload_avancado TEXT,
+      alerta_ativo INTEGER,
+      created_at TEXT,
+      last_run_at TEXT
+    ))",
+
+    r"(CREATE TABLE IF NOT EXISTS editais_rastreados (
+      id BIGSERIAL PRIMARY KEY,
+      id_oportunidade TEXT UNIQUE,
+      status_usuario TEXT,
+      observacoes TEXT,
+      tracked_at TEXT,
+      updated_at TEXT
+    ))",
+
+    r"(CREATE TABLE IF NOT EXISTS perfil_usuario (
+      id BIGSERIAL PRIMARY KEY,
+      nome_usuario TEXT,
+      instituicao TEXT,
+      palavras_chave_preferidas TEXT,
+      areas_preferidas TEXT,
+      paises_preferidos TEXT,
+      financiadores_preferidos TEXT,
+      tipos_oportunidade_preferidos TEXT,
+      elegibilidade_preferida TEXT,
+      updated_at TEXT
+    ))",
+
+    r"(CREATE TABLE IF NOT EXISTS historico_buscas (
+      id BIGSERIAL PRIMARY KEY,
+      query_text TEXT,
+      filtros_json TEXT,
+      executed_at TEXT
+    ))",
+
+    r"(CREATE TABLE IF NOT EXISTS colaboradores (
+      id BIGSERIAL PRIMARY KEY,
+      nome TEXT,
+      instituicao TEXT,
+      pais TEXT,
+      area TEXT,
+      palavras_chave TEXT,
+      email TEXT
+    ))",
+
+    r"(CREATE TABLE IF NOT EXISTS logs_coleta (
+      id BIGSERIAL PRIMARY KEY,
+      fonte TEXT,
+      metodo_coleta TEXT,
+      status_execucao TEXT,
+      mensagem TEXT,
+      n_paginas INTEGER,
+      n_registros INTEGER,
+      url TEXT,
+      data_execucao TEXT
+    ))",
+
+    r"(CREATE TABLE IF NOT EXISTS pesquisadores_vencedores (
+      id BIGSERIAL PRIMARY KEY,
+      nome TEXT,
+      email TEXT,
+      instituicao TEXT,
+      expertise TEXT
+    ))",
+
+    r"(CREATE TABLE IF NOT EXISTS projetos_aprovados (
+      id BIGSERIAL PRIMARY KEY,
+      titulo_projeto TEXT,
+      pesquisador_id BIGINT,
+      edital_titulo TEXT,
+      ano INTEGER,
+      palavras_chave TEXT,
+      FOREIGN KEY(pesquisador_id) REFERENCES pesquisadores_vencedores(id)
+    ))",
+
+    r"(CREATE TABLE IF NOT EXISTS metrics_coleta (
+      id BIGSERIAL PRIMARY KEY,
+      fonte TEXT,
+      "timestamp" TEXT,
+      metric_type TEXT,
+      metric_value DOUBLE PRECISION,
+      context TEXT
+    ))"
+  )
+}
+
+create_postgres_tables <- function(conn) {
+  suppressMessages({
+    for (sql in postgres_schema_statements()) {
+      db_execute(conn, sql)
+    }
+  })
+  invisible(TRUE)
+}
+
 create_tables <- function(conn) {
-  DBI::dbExecute(conn, "
+  if (identical(db_backend(conn), "postgres")) {
+    return(create_postgres_tables(conn))
+  }
+  create_sqlite_tables(conn)
+}
+
+create_sqlite_tables <- function(conn) {
+  db_execute(conn, "
     CREATE TABLE IF NOT EXISTS fontes_financiamento (
       id_fonte TEXT PRIMARY KEY,
       nome_fonte TEXT,
@@ -57,7 +339,7 @@ create_tables <- function(conn) {
       observacoes TEXT
     )")
 
-  DBI::dbExecute(conn, "
+  db_execute(conn, "
     CREATE TABLE IF NOT EXISTS oportunidades (
       id_registro TEXT PRIMARY KEY,
       entidade TEXT,
@@ -102,13 +384,13 @@ create_tables <- function(conn) {
       enrichment_error TEXT
     )")
 
-  DBI::dbExecute(conn, "
+  db_execute(conn, "
     CREATE TABLE IF NOT EXISTS migration_flags (
       flag TEXT PRIMARY KEY,
       applied_at TEXT
     )")
 
-  DBI::dbExecute(conn, "
+  db_execute(conn, "
     CREATE TABLE IF NOT EXISTS buscas_salvas (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       nome_busca TEXT,
@@ -119,7 +401,7 @@ create_tables <- function(conn) {
       last_run_at TEXT
     )")
 
-  DBI::dbExecute(conn, "
+  db_execute(conn, "
     CREATE TABLE IF NOT EXISTS editais_rastreados (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       id_oportunidade TEXT UNIQUE,
@@ -129,7 +411,7 @@ create_tables <- function(conn) {
       updated_at TEXT
     )")
 
-  DBI::dbExecute(conn, "
+  db_execute(conn, "
     CREATE TABLE IF NOT EXISTS perfil_usuario (
       id INTEGER PRIMARY KEY,
       nome_usuario TEXT,
@@ -143,7 +425,7 @@ create_tables <- function(conn) {
       updated_at TEXT
     )")
 
-  DBI::dbExecute(conn, "
+  db_execute(conn, "
     CREATE TABLE IF NOT EXISTS historico_buscas (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       query_text TEXT,
@@ -151,7 +433,7 @@ create_tables <- function(conn) {
       executed_at TEXT
     )")
 
-  DBI::dbExecute(conn, "
+  db_execute(conn, "
     CREATE TABLE IF NOT EXISTS colaboradores (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       nome TEXT,
@@ -162,7 +444,7 @@ create_tables <- function(conn) {
       email TEXT
     )")
 
-  DBI::dbExecute(conn, "
+  db_execute(conn, "
     CREATE TABLE IF NOT EXISTS logs_coleta (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       fonte TEXT,
@@ -175,7 +457,7 @@ create_tables <- function(conn) {
       data_execucao TEXT
     )")
 
-  DBI::dbExecute(conn, "
+  db_execute(conn, "
     CREATE TABLE IF NOT EXISTS pesquisadores_vencedores (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       nome TEXT,
@@ -184,7 +466,7 @@ create_tables <- function(conn) {
       expertise TEXT
     )")
 
-  DBI::dbExecute(conn, "
+  db_execute(conn, "
     CREATE TABLE IF NOT EXISTS projetos_aprovados (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       titulo_projeto TEXT,
@@ -195,7 +477,7 @@ create_tables <- function(conn) {
       FOREIGN KEY(pesquisador_id) REFERENCES pesquisadores_vencedores(id)
     )")
 
-  DBI::dbExecute(conn, "
+  db_execute(conn, "
     CREATE TABLE IF NOT EXISTS metrics_coleta (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       fonte TEXT,
@@ -210,10 +492,10 @@ seed_sources <- function(conn) {
   src <- source_catalog()
   purrr::pwalk(src, function(...) {
     row <- list(...)
-    DBI::dbExecute(
+    db_execute(
       conn,
-      "INSERT INTO fontes_financiamento (id_fonte, nome_fonte, sigla, pais, categoria, tipo_financiador, url_principal, url_oportunidades, metodo_coleta, idioma, periodicidade_atualizacao, observacoes) VALUES (:id_fonte, :nome_fonte, :sigla, :pais, :categoria, :tipo_financiador, :url_principal, :url_oportunidades, :metodo_coleta, :idioma, :periodicidade_atualizacao, :observacoes) ON CONFLICT(id_fonte) DO UPDATE SET nome_fonte = excluded.nome_fonte, sigla = excluded.sigla, pais = excluded.pais, categoria = excluded.categoria, tipo_financiador = excluded.tipo_financiador, url_principal = excluded.url_principal, url_oportunidades = excluded.url_oportunidades, metodo_coleta = excluded.metodo_coleta, idioma = excluded.idioma, periodicidade_atualizacao = excluded.periodicidade_atualizacao, observacoes = excluded.observacoes",
-      params = row
+      "INSERT INTO fontes_financiamento (id_fonte, nome_fonte, sigla, pais, categoria, tipo_financiador, url_principal, url_oportunidades, metodo_coleta, idioma, periodicidade_atualizacao, observacoes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id_fonte) DO UPDATE SET nome_fonte = excluded.nome_fonte, sigla = excluded.sigla, pais = excluded.pais, categoria = excluded.categoria, tipo_financiador = excluded.tipo_financiador, url_principal = excluded.url_principal, url_oportunidades = excluded.url_oportunidades, metodo_coleta = excluded.metodo_coleta, idioma = excluded.idioma, periodicidade_atualizacao = excluded.periodicidade_atualizacao, observacoes = excluded.observacoes",
+      params = unname(row)
     )
   })
   invisible(TRUE)
@@ -232,13 +514,13 @@ seed_profile <- function(conn) {
     elegibilidade_preferida = "ICTs; universidades; pesquisadores; empresas",
     updated_at = as.character(Sys.time())
   )
-  DBI::dbExecute(conn, "DELETE FROM perfil_usuario WHERE id = 1")
+  db_execute(conn, "DELETE FROM perfil_usuario WHERE id = 1")
   DBI::dbWriteTable(conn, "perfil_usuario", profile, append = TRUE)
   invisible(TRUE)
 }
 
 seed_saved_searches <- function(conn) {
-  existing <- DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM buscas_salvas")$n[[1]]
+  existing <- db_get_query(conn, "SELECT COUNT(*) AS n FROM buscas_salvas")$n[[1]]
   if (existing > 0) {
     return(invisible(FALSE))
   }
@@ -252,7 +534,7 @@ seed_saved_searches <- function(conn) {
 }
 
 seed_search_history <- function(conn) {
-  existing <- DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM historico_buscas")$n[[1]]
+  existing <- db_get_query(conn, "SELECT COUNT(*) AS n FROM historico_buscas")$n[[1]]
   if (existing > 0) {
     return(invisible(FALSE))
   }
@@ -265,7 +547,7 @@ seed_search_history <- function(conn) {
 }
 
 seed_collaborators <- function(conn) {
-  existing <- DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM colaboradores")$n[[1]]
+  existing <- db_get_query(conn, "SELECT COUNT(*) AS n FROM colaboradores")$n[[1]]
   if (existing > 0) {
     return(invisible(FALSE))
   }
@@ -279,7 +561,7 @@ seed_collaborators <- function(conn) {
 }
 
 seed_pesquisadores_vencedores <- function(conn) {
-  existing <- DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM pesquisadores_vencedores")$n[[1]]
+  existing <- db_get_query(conn, "SELECT COUNT(*) AS n FROM pesquisadores_vencedores")$n[[1]]
   if (existing > 0) {
     return(invisible(FALSE))
   }
@@ -297,12 +579,12 @@ seed_pesquisadores_vencedores <- function(conn) {
 }
 
 seed_projetos_aprovados <- function(conn) {
-  existing <- DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM projetos_aprovados")$n[[1]]
+  existing <- db_get_query(conn, "SELECT COUNT(*) AS n FROM projetos_aprovados")$n[[1]]
   if (existing > 0) {
     return(invisible(FALSE))
   }
 
-  pesq <- DBI::dbGetQuery(conn, "SELECT id, nome FROM pesquisadores_vencedores")
+  pesq <- db_get_query(conn, "SELECT id, nome FROM pesquisadores_vencedores")
 
   get_id <- function(nome_pesq) {
     id <- pesq$id[pesq$nome == nome_pesq]
@@ -327,7 +609,7 @@ seed_projetos_aprovados <- function(conn) {
 
 
 seed_demo_opportunities <- function(conn) {
-  existing <- DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM oportunidades")$n[[1]]
+  existing <- db_get_query(conn, "SELECT COUNT(*) AS n FROM oportunidades")$n[[1]]
   if (existing > 0) {
     return(invisible(FALSE))
   }
@@ -364,7 +646,7 @@ seed_demo_opportunities <- function(conn) {
 migration_marker <- function(conn, flag) {
   tryCatch(
     {
-      res <- DBI::dbGetQuery(conn, "SELECT 1 AS ok FROM migration_flags WHERE flag = ?", params = list(flag))
+      res <- db_get_query(conn, "SELECT 1 AS ok FROM migration_flags WHERE flag = ?", params = list(flag))
       nrow(res) > 0L
     },
     error = function(e) TRUE
@@ -374,9 +656,9 @@ migration_marker <- function(conn, flag) {
 set_migration_marker <- function(conn, flag) {
   try(
     {
-      DBI::dbExecute(
+      db_execute(
         conn,
-        "INSERT OR REPLACE INTO migration_flags (flag, applied_at) VALUES (?, ?)",
+        "INSERT INTO migration_flags (flag, applied_at) VALUES (?, ?) ON CONFLICT(flag) DO UPDATE SET applied_at = excluded.applied_at",
         params = list(flag, as.character(Sys.time()))
       )
     },
@@ -388,7 +670,7 @@ migrate_enrichment_columns <- function(conn) {
   cols <- tryCatch(DBI::dbListFields(conn, "oportunidades"), error = function(e) character())
   for (nm in names(.enrichment_columns)) {
     if (!nm %in% cols) {
-      DBI::dbExecute(conn, sprintf("ALTER TABLE oportunidades ADD COLUMN %s %s", nm, .enrichment_columns[[nm]]))
+      db_execute(conn, sprintf("ALTER TABLE oportunidades ADD COLUMN %s %s", nm, .enrichment_columns[[nm]]))
       message(sprintf("[Migration] Coluna '%s' adicionada a oportunidades.", nm))
     }
   }
@@ -399,7 +681,7 @@ migrate_dedup_hashes <- function(conn) {
   if (!isTRUE(migration_marker(conn, "dedup_hash_v2"))) {
     res <- tryCatch(
       {
-        DBI::dbGetQuery(conn, "SELECT id_registro, entidade, titulo, link_detalhe, link_documento_pdf, link_origem, hash_deduplicacao FROM oportunidades")
+        db_get_query(conn, "SELECT id_registro, entidade, titulo, link_detalhe, link_documento_pdf, link_origem, hash_deduplicacao FROM oportunidades")
       },
       error = function(e) NULL
     )
@@ -411,7 +693,7 @@ migrate_dedup_hashes <- function(conn) {
         if (!identical(res$hash_deduplicacao[[i]], new_hash)) {
           tryCatch(
             {
-              DBI::dbExecute(
+              db_execute(
                 conn,
                 "UPDATE oportunidades SET hash_deduplicacao = ?, id_registro = CASE WHEN id_registro IS NULL OR id_registro = '' THEN ? ELSE id_registro END WHERE id_registro = ?",
                 params = list(new_hash, paste0("auto_", substr(new_hash, 1, 16)), res$id_registro[[i]])
@@ -439,7 +721,7 @@ migrate_tipo_oportunidade <- function(conn, force = FALSE) {
     stop("Tabela 'oportunidades' não encontrada para a migração de tipo_oportunidade.", call. = FALSE)
   }
   if (!"migration_flags" %in% DBI::dbListTables(conn)) {
-    DBI::dbExecute(conn, "
+    db_execute(conn, "
       CREATE TABLE IF NOT EXISTS migration_flags (
         flag TEXT PRIMARY KEY,
         applied_at TEXT
@@ -473,12 +755,12 @@ migrate_tipo_oportunidade <- function(conn, force = FALSE) {
   )
   for (nm in names(novas_colunas)) {
     if (!nm %in% cols) {
-      DBI::dbExecute(conn, sprintf("ALTER TABLE oportunidades ADD COLUMN %s %s", nm, novas_colunas[[nm]]))
+      db_execute(conn, sprintf("ALTER TABLE oportunidades ADD COLUMN %s %s", nm, novas_colunas[[nm]]))
       message(sprintf("[Migration] Coluna '%s' adicionada a oportunidades.", nm))
     }
   }
 
-  rows <- DBI::dbGetQuery(
+  rows <- db_get_query(
     conn,
     "SELECT id_registro, tipo_oportunidade, tipo_oportunidade_original, titulo, fonte_oficial
        FROM oportunidades"
@@ -528,7 +810,7 @@ migrate_tipo_oportunidade <- function(conn, force = FALSE) {
   )
 
   for (i in seq_len(nrow(rows))) {
-    DBI::dbExecute(
+    db_execute(
       conn,
       "UPDATE oportunidades
           SET tipo_oportunidade_original = ?,
@@ -612,7 +894,7 @@ migrate_tipo_oportunidade <- function(conn, force = FALSE) {
 migrate_existing_keywords <- function(conn) {
   res <- tryCatch(
     {
-      DBI::dbGetQuery(conn, "SELECT id_registro, titulo, subtitulo, descricao_resumida, descricao_completa, palavras_chave, campos_inferidos_ia FROM oportunidades")
+      db_get_query(conn, "SELECT id_registro, titulo, subtitulo, descricao_resumida, descricao_completa, palavras_chave, campos_inferidos_ia FROM oportunidades")
     },
     error = function(e) NULL
   )
@@ -642,7 +924,7 @@ migrate_existing_keywords <- function(conn) {
       if (!identical(kw, new_kw)) {
         tryCatch(
           {
-            DBI::dbExecute(
+            db_execute(
               conn,
               "UPDATE oportunidades SET palavras_chave = ? WHERE id_registro = ?",
               params = list(new_kw, id)
@@ -665,7 +947,7 @@ cleanup_database_opportunities <- function(conn) {
   # 1. Limpeza por Heurísticas Estáticas (incluindo novos filtros de retificações e Finep)
   res <- tryCatch(
     {
-      DBI::dbGetQuery(conn, "SELECT id_registro, titulo, descricao_resumida, link_origem, link_detalhe, texto_bruto FROM oportunidades")
+      db_get_query(conn, "SELECT id_registro, titulo, descricao_resumida, link_origem, link_detalhe, texto_bruto FROM oportunidades")
     },
     error = function(e) NULL
   )
@@ -703,7 +985,7 @@ cleanup_database_opportunities <- function(conn) {
     for (id in to_delete) {
       tryCatch(
         {
-          DBI::dbExecute(conn, "DELETE FROM oportunidades WHERE id_registro = ?", params = list(id))
+          db_execute(conn, "DELETE FROM oportunidades WHERE id_registro = ?", params = list(id))
         },
         error = function(e) NULL
       )
@@ -713,7 +995,7 @@ cleanup_database_opportunities <- function(conn) {
   # 2. Deduplicação Retroativa de Editais com o Mesmo Nome por Entidade
   res_dedupe <- tryCatch(
     {
-      DBI::dbGetQuery(conn, "SELECT id_registro, entidade, titulo, status_oportunidade, data_limite, texto_bruto, descricao_resumida FROM oportunidades")
+      db_get_query(conn, "SELECT id_registro, entidade, titulo, status_oportunidade, data_limite, texto_bruto, descricao_resumida FROM oportunidades")
     },
     error = function(e) NULL
   )
@@ -746,7 +1028,7 @@ cleanup_database_opportunities <- function(conn) {
       for (id in to_delete_dedupe) {
         tryCatch(
           {
-            DBI::dbExecute(conn, "DELETE FROM oportunidades WHERE id_registro = ?", params = list(id))
+            db_execute(conn, "DELETE FROM oportunidades WHERE id_registro = ?", params = list(id))
           },
           error = function(e) NULL
         )
@@ -763,8 +1045,8 @@ init_database <- function(db_path) {
   create_tables(conn)
   try(migrate_tipo_oportunidade(conn), silent = TRUE)
   seed_sources(conn)
-  try(DBI::dbExecute(conn, "DELETE FROM fontes_financiamento WHERE id_fonte NOT IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", params = list("cnpq", "capes", "finep", "fapesb", "horizon_europe", "erc", "sigitec", "undp", "embrapii", "daad", "quantum", "humboldt", "grants_gov", "doe_ascr", "nsf_international", "nsf_qise", "nsf_cise", "doe_quantum_genesis", "doe_genesis", "nsf_nqni", "darpa_quantum_benchmarking")), silent = TRUE)
-  try(DBI::dbExecute(conn, "UPDATE oportunidades SET pais_origem = 'União Europeia' WHERE pais_origem = 'Uniao Europeia'"), silent = TRUE)
+  try(db_execute(conn, "DELETE FROM fontes_financiamento WHERE id_fonte NOT IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", params = list("cnpq", "capes", "finep", "fapesb", "horizon_europe", "erc", "sigitec", "undp", "embrapii", "daad", "quantum", "humboldt", "grants_gov", "doe_ascr", "nsf_international", "nsf_qise", "nsf_cise", "doe_quantum_genesis", "doe_genesis", "nsf_nqni", "darpa_quantum_benchmarking")), silent = TRUE)
+  try(db_execute(conn, "UPDATE oportunidades SET pais_origem = 'União Europeia' WHERE pais_origem = 'Uniao Europeia'"), silent = TRUE)
   seed_profile(conn)
   seed_saved_searches(conn)
   seed_search_history(conn)
@@ -779,7 +1061,7 @@ init_database <- function(db_path) {
   invisible(TRUE)
 }
 
-read_table <- function(conn, table_name) DBI::dbReadTable(conn, table_name)
+read_table <- function(conn, table_name) coerce_integer64(DBI::dbReadTable(conn, table_name))
 
 read_app_data <- function(conn) {
   opps <- tibble::as_tibble(read_table(conn, "oportunidades"))
@@ -876,10 +1158,11 @@ upsert_opportunities <- function(conn, opportunities_df) {
   update_clause <- paste(paste0(cols_no_pk, " = excluded.", cols_no_pk), collapse = ", ")
   sql_upsert <- paste0(
     "INSERT INTO oportunidades (", paste(cols, collapse = ", "), ") VALUES (",
-    paste(paste0(":", cols), collapse = ", "), ") ON CONFLICT(id_registro) DO UPDATE SET ",
+    paste(rep("?", length(cols)), collapse = ", "), ") ON CONFLICT(id_registro) DO UPDATE SET ",
     update_clause
   )
 
+  is_postgres <- identical(db_backend(conn), "postgres")
   inserted <- 0L
   in_transaction <- FALSE
   DBI::dbBegin(conn)
@@ -924,16 +1207,23 @@ upsert_opportunities <- function(conn, opportunities_df) {
       row$id_registro <- paste0("auto_", substr(row$hash_deduplicacao, 1, 16))
     }
 
+    if (is_postgres) {
+      try(db_execute(conn, "SAVEPOINT fi_upsert_row"), silent = TRUE)
+    }
+
     affected <- tryCatch(
       {
-        DBI::dbExecute(conn, sql_upsert, params = row)
+        db_execute(conn, sql_upsert, params = unname(row))
       },
       error = function(e) {
+        if (is_postgres) {
+          try(db_execute(conn, "ROLLBACK TO SAVEPOINT fi_upsert_row"), silent = TRUE)
+        }
         # Loga colisão de hash_deduplicacao UNIQUE sem abortar transação (observabilidade)
         try(
           {
             msg <- conditionMessage(e)
-            if (grepl("UNIQUE constraint failed.*hash_deduplicacao|hash_deduplicacao.*UNIQUE", msg, ignore.case = TRUE)) {
+            if (grepl("UNIQUE constraint failed.*hash_deduplicacao|hash_deduplicacao.*UNIQUE|duplicate key value violates unique constraint.*hash_deduplicacao|hash_deduplicacao.*duplicate key", msg, ignore.case = TRUE)) {
               warning(sprintf("[upsert] hash colisão ignorada id=%s titulo='%s' hash=%s", row$id_registro %||% "NA", substr(row$titulo %||% "", 1, 60), row$hash_deduplicacao %||% "NA"), call. = FALSE)
             }
           },
@@ -942,6 +1232,10 @@ upsert_opportunities <- function(conn, opportunities_df) {
         0L
       }
     )
+
+    if (is_postgres) {
+      try(db_execute(conn, "RELEASE SAVEPOINT fi_upsert_row"), silent = TRUE)
+    }
 
     if (affected > 0) inserted <- inserted + 1L
   }
@@ -952,7 +1246,7 @@ upsert_opportunities <- function(conn, opportunities_df) {
 }
 
 log_collection <- function(conn, fonte, metodo_coleta, status_execucao, mensagem, n_paginas = 0L, n_registros = 0L, url = NA_character_) {
-  DBI::dbExecute(
+  db_execute(
     conn,
     "INSERT INTO logs_coleta (fonte, metodo_coleta, status_execucao, mensagem, n_paginas, n_registros, url, data_execucao) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     params = list(fonte, metodo_coleta, status_execucao, mensagem, as.integer(n_paginas), as.integer(n_registros), url, as.character(Sys.time()))
@@ -960,19 +1254,19 @@ log_collection <- function(conn, fonte, metodo_coleta, status_execucao, mensagem
 }
 
 save_search_record <- function(conn, query_text, filters_json = "{}") {
-  DBI::dbExecute(conn, "INSERT INTO historico_buscas (query_text, filtros_json, executed_at) VALUES (?, ?, ?)", params = list(query_text, filters_json, as.character(Sys.time())))
+  db_execute(conn, "INSERT INTO historico_buscas (query_text, filtros_json, executed_at) VALUES (?, ?, ?)", params = list(query_text, filters_json, as.character(Sys.time())))
 }
 
 save_named_search <- function(conn, nome_busca, query_text, payload_avancado = "{}", alerta_ativo = 0L) {
-  DBI::dbExecute(conn, "INSERT INTO buscas_salvas (nome_busca, query_text, payload_avancado, alerta_ativo, created_at, last_run_at) VALUES (?, ?, ?, ?, ?, ?)", params = list(nome_busca, query_text, payload_avancado, as.integer(alerta_ativo), as.character(Sys.time()), as.character(Sys.time())))
+  db_execute(conn, "INSERT INTO buscas_salvas (nome_busca, query_text, payload_avancado, alerta_ativo, created_at, last_run_at) VALUES (?, ?, ?, ?, ?, ?)", params = list(nome_busca, query_text, payload_avancado, as.integer(alerta_ativo), as.character(Sys.time()), as.character(Sys.time())))
 }
 
 mark_saved_search_run <- function(conn, id) {
-  DBI::dbExecute(conn, "UPDATE buscas_salvas SET last_run_at = ? WHERE id = ?", params = list(as.character(Sys.time()), id))
+  db_execute(conn, "UPDATE buscas_salvas SET last_run_at = ? WHERE id = ?", params = list(as.character(Sys.time()), id))
 }
 
 track_opportunity <- function(conn, id_oportunidade, status_usuario = "avaliar", observacoes = "") {
-  DBI::dbExecute(
+  db_execute(
     conn,
     "INSERT INTO editais_rastreados (id_oportunidade, status_usuario, observacoes, tracked_at, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id_oportunidade) DO UPDATE SET status_usuario = excluded.status_usuario, observacoes = excluded.observacoes, updated_at = excluded.updated_at",
     params = list(id_oportunidade, status_usuario, observacoes, as.character(Sys.time()), as.character(Sys.time()))
@@ -980,22 +1274,26 @@ track_opportunity <- function(conn, id_oportunidade, status_usuario = "avaliar",
 }
 
 update_tracked_opportunity <- function(conn, id_oportunidade, status_usuario, observacoes = "") {
-  DBI::dbExecute(conn, "UPDATE editais_rastreados SET status_usuario = ?, observacoes = ?, updated_at = ? WHERE id_oportunidade = ?", params = list(status_usuario, observacoes, as.character(Sys.time()), id_oportunidade))
+  db_execute(conn, "UPDATE editais_rastreados SET status_usuario = ?, observacoes = ?, updated_at = ? WHERE id_oportunidade = ?", params = list(status_usuario, observacoes, as.character(Sys.time()), id_oportunidade))
 }
 
 delete_tracked_opportunity <- function(conn, id_oportunidade) {
-  DBI::dbExecute(conn, "DELETE FROM editais_rastreados WHERE id_oportunidade = ?", params = list(id_oportunidade))
+  db_execute(conn, "DELETE FROM editais_rastreados WHERE id_oportunidade = ?", params = list(id_oportunidade))
 }
 
 
 # --- Métricas de Performance ---
 
+metric_cutoff <- function(hours = 24) {
+  format(Sys.time() - as.difftime(hours, units = "hours"), "%Y-%m-%d %H:%M:%S")
+}
+
 log_metric <- function(conn, fonte, metric_type, value, context = NULL) {
   tryCatch(
     {
       ctx_json <- if (!is.null(context)) jsonlite::toJSON(context, auto_unbox = TRUE) else NULL
-      DBI::dbExecute(conn,
-        "INSERT INTO metrics_coleta (fonte, timestamp, metric_type, metric_value, context) VALUES (?, ?, ?, ?, ?)",
+      db_execute(conn,
+        "INSERT INTO metrics_coleta (fonte, \"timestamp\", metric_type, metric_value, context) VALUES (?, ?, ?, ?, ?)",
         params = list(fonte, as.character(Sys.time()), metric_type, value, ctx_json)
       )
     },
@@ -1006,12 +1304,12 @@ log_metric <- function(conn, fonte, metric_type, value, context = NULL) {
 get_latency_by_source <- function(conn, hours = 24) {
   tryCatch(
     {
-      DBI::dbGetQuery(conn, "
+      db_get_query(conn, "
       SELECT fonte, AVG(metric_value) as avg_latency, COUNT(*) as n_requests
       FROM metrics_coleta
-      WHERE metric_type = 'http_latency' AND timestamp > datetime('now', ?)
+      WHERE metric_type = 'http_latency' AND \"timestamp\" > ?
       GROUP BY fonte ORDER BY avg_latency DESC
-    ", params = list(paste0("-", hours, " hours")))
+    ", params = list(metric_cutoff(hours)))
     },
     error = function(e) data.frame()
   )
@@ -1020,15 +1318,21 @@ get_latency_by_source <- function(conn, hours = 24) {
 get_block_rate <- function(conn, hours = 24) {
   tryCatch(
     {
-      DBI::dbGetQuery(conn, "
+      blocked_expr <- if (identical(db_backend(conn), "postgres")) {
+        "(context::jsonb ->> 'blocked')::int"
+      } else {
+        "json_extract(context, '$.blocked')"
+      }
+      sql <- sprintf("
       SELECT fonte,
-             SUM(CASE WHEN json_extract(context, '$.blocked') = 1 THEN 1 ELSE 0 END) as blocks,
+             SUM(CASE WHEN %s = 1 THEN 1 ELSE 0 END) as blocks,
              COUNT(*) as total,
-             ROUND(100.0 * SUM(CASE WHEN json_extract(context, '$.blocked') = 1 THEN 1 ELSE 0 END) / COUNT(*), 2) as block_pct
+             ROUND(100.0 * SUM(CASE WHEN %s = 1 THEN 1 ELSE 0 END) / COUNT(*), 2) as block_pct
       FROM metrics_coleta
-      WHERE metric_type = 'http_request' AND timestamp > datetime('now', ?)
+      WHERE metric_type = 'http_request' AND \"timestamp\" > ?
       GROUP BY fonte
-    ", params = list(paste0("-", hours, " hours")))
+    ", blocked_expr, blocked_expr)
+      db_get_query(conn, sql, params = list(metric_cutoff(hours)))
     },
     error = function(e) data.frame()
   )
@@ -1037,14 +1341,20 @@ get_block_rate <- function(conn, hours = 24) {
 get_ai_provider_usage <- function(conn, hours = 24) {
   tryCatch(
     {
-      DBI::dbGetQuery(conn, "
-      SELECT json_extract(context, '$.provider') as provider,
+      provider_expr <- if (identical(db_backend(conn), "postgres")) {
+        "context::jsonb ->> 'provider'"
+      } else {
+        "json_extract(context, '$.provider')"
+      }
+      sql <- sprintf("
+      SELECT %s as provider,
              AVG(metric_value) as avg_latency,
              COUNT(*) as n_requests
       FROM metrics_coleta
-      WHERE metric_type = 'ai_request' AND timestamp > datetime('now', ?)
+      WHERE metric_type = 'ai_request' AND \"timestamp\" > ?
       GROUP BY provider
-    ", params = list(paste0("-", hours, " hours")))
+    ", provider_expr)
+      db_get_query(conn, sql, params = list(metric_cutoff(hours)))
     },
     error = function(e) data.frame()
   )
@@ -1053,13 +1363,13 @@ get_ai_provider_usage <- function(conn, hours = 24) {
 get_collection_throughput <- function(conn, hours = 24) {
   tryCatch(
     {
-      DBI::dbGetQuery(conn, "
+      db_get_query(conn, "
       SELECT fonte, SUM(metric_value) as total_records,
              COUNT(*) as n_sources
       FROM metrics_coleta
-      WHERE metric_type = 'source_records' AND timestamp > datetime('now', ?)
+      WHERE metric_type = 'source_records' AND \"timestamp\" > ?
       GROUP BY fonte ORDER BY total_records DESC
-    ", params = list(paste0("-", hours, " hours")))
+    ", params = list(metric_cutoff(hours)))
     },
     error = function(e) data.frame()
   )

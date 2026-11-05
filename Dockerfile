@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpoppler-cpp-dev \
     sqlite3 \
     libsqlite3-dev \
+    libpq-dev \
     libpng-dev \
     libjpeg-dev \
     libtiff-dev \
@@ -38,7 +39,7 @@ RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux
     'janitor', 'glue', 'progress', 'pdftools', 'polite', \
     'callr', 'shinycssloaders', 'reticulate', 'chromote', \
     'googledrive', 'httr', 'memoise', 'ratelimitr', 'uuid', \
-    'readxl', 'base64enc', 'tesseract' \
+    'readxl', 'base64enc', 'tesseract', 'RPostgres' \
   ); \
   suppressMessages(install.packages(pkgs, dependencies = TRUE)); \
   tryCatch(remove.packages('otelsdk'), error = function(e) invisible(NULL)); \
@@ -68,6 +69,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpoppler-cpp9v5 \
     sqlite3 \
     libsqlite3-0 \
+    libpq5 \
     libpng16-16 \
     libjpeg62-turbo \
     libtiff5 \

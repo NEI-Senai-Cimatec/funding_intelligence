@@ -6,9 +6,11 @@
 #   Rscript migrations/2026-11-05_tipo_oportunidade.R caminho/para/base.sqlite
 #   Rscript migrations/2026-11-05_tipo_oportunidade.R --force
 #
-# A migração é idempotente: se o marker `tipo_oportunidade_v1` já existir,
-# ela não faz nada (use --force para reaplicar o mapa).
-# Um backup da base é criado em backups/ antes de qualquer alteração.
+# Se DATA_BASE_URL estiver definida, o alvo é o Postgres/Neon. Caso contrário,
+# o alvo é o SQLite local. A migração é idempotente: se o marker
+# `tipo_oportunidade_v1` já existir, ela não faz nada (use --force para
+# reaplicar o mapa). Para SQLite, um backup é criado em backups/ antes de
+# qualquer alteração; no Neon, use branch/snapshot do próprio Neon.
 
 args <- commandArgs(trailingOnly = TRUE)
 force <- "--force" %in% args
@@ -24,24 +26,33 @@ if (!file.exists(file.path(root, "app.R"))) {
 }
 setwd(root)
 
-db_path <- if (length(args_posicionais) >= 1L) {
-  args_posicionais[[1]]
-} else {
-  file.path(root, "funding_intelligence.sqlite")
-}
-if (!file.exists(db_path)) {
-  stop(sprintf("Base não encontrada: %s", db_path), call. = FALSE)
-}
-db_path <- normalizePath(db_path, winslash = "/", mustWork = TRUE)
-
 source(file.path(root, "R", "helpers_utils.R"), encoding = "UTF-8")
 source(file.path(root, "R", "helpers_taxonomy.R"), encoding = "UTF-8")
 source(file.path(root, "R", "helpers_db.R"), encoding = "UTF-8")
 
-cat(sprintf("Base: %s\n", db_path))
+is_postgres <- nzchar(data_base_url())
+
+if (is_postgres) {
+  db_path <- NA_character_
+  u <- httr::parse_url(data_base_url())
+  target_desc <- sprintf("Postgres/Neon: %s/%s", u$hostname, u$path)
+} else {
+  db_path <- if (length(args_posicionais) >= 1L) {
+    args_posicionais[[1]]
+  } else {
+    file.path(root, "funding_intelligence.sqlite")
+  }
+  if (!file.exists(db_path)) {
+    stop(sprintf("Base não encontrada: %s", db_path), call. = FALSE)
+  }
+  db_path <- normalizePath(db_path, winslash = "/", mustWork = TRUE)
+  target_desc <- sprintf("Base SQLite: %s", db_path)
+}
+
+cat(target_desc, "\n")
 cat(sprintf("Force: %s\n\n", force))
 
-conn <- get_db_connection(db_path)
+conn <- get_db_connection(if (is_postgres) "ignored.sqlite" else db_path)
 on.exit(DBI::dbDisconnect(conn), add = TRUE)
 
 if (!force && isTRUE(migration_marker(conn, "tipo_oportunidade_v1"))) {
@@ -49,40 +60,44 @@ if (!force && isTRUE(migration_marker(conn, "tipo_oportunidade_v1"))) {
   quit(status = 0L)
 }
 
-backup_dir <- file.path(root, "backups")
-ensure_dir(backup_dir)
-backup_path <- file.path(
-  backup_dir,
-  sprintf(
-    "%s.pre_tipo_oportunidade_%s.sqlite",
-    tools::file_path_sans_ext(basename(db_path)),
-    format(Sys.time(), "%Y%m%d_%H%M%S")
-  )
-)
-backup_path_sql <- normalizePath(backup_path, winslash = "/", mustWork = FALSE)
-backup_ok <- tryCatch(
-  {
-    DBI::dbExecute(conn, sprintf("VACUUM INTO '%s'", gsub("'", "''", backup_path_sql)))
-    TRUE
-  },
-  error = function(e) {
-    message(sprintf("Backup via VACUUM INTO falhou (%s); tentando cópia simples.", conditionMessage(e)))
-    tryCatch(
-      {
-        DBI::dbExecute(conn, "PRAGMA wal_checkpoint(FULL)")
-        file.copy(db_path, backup_path, overwrite = FALSE)
-      },
-      error = function(e2) {
-        message(sprintf("Backup também falhou: %s", conditionMessage(e2)))
-        FALSE
-      }
+if (!is_postgres) {
+  backup_dir <- file.path(root, "backups")
+  ensure_dir(backup_dir)
+  backup_path <- file.path(
+    backup_dir,
+    sprintf(
+      "%s.pre_tipo_oportunidade_%s.sqlite",
+      tools::file_path_sans_ext(basename(db_path)),
+      format(Sys.time(), "%Y%m%d_%H%M%S")
     )
+  )
+  backup_path_sql <- normalizePath(backup_path, winslash = "/", mustWork = FALSE)
+  backup_ok <- tryCatch(
+    {
+      DBI::dbExecute(conn, sprintf("VACUUM INTO '%s'", gsub("'", "''", backup_path_sql)))
+      TRUE
+    },
+    error = function(e) {
+      message(sprintf("Backup via VACUUM INTO falhou (%s); tentando cópia simples.", conditionMessage(e)))
+      tryCatch(
+        {
+          DBI::dbExecute(conn, "PRAGMA wal_checkpoint(FULL)")
+          file.copy(db_path, backup_path, overwrite = FALSE)
+        },
+        error = function(e2) {
+          message(sprintf("Backup também falhou: %s", conditionMessage(e2)))
+          FALSE
+        }
+      )
+    }
+  )
+  if (isTRUE(backup_ok)) {
+    cat(sprintf("Backup: %s\n", backup_path))
+  } else {
+    stop("Não foi possível criar o backup; migração abortada.", call. = FALSE)
   }
-)
-if (isTRUE(backup_ok)) {
-  cat(sprintf("Backup: %s\n", backup_path))
 } else {
-  stop("Não foi possível criar o backup; migração abortada.", call. = FALSE)
+  cat("Backup: Neon (use branch/snapshot do projeto para rollback).\n")
 }
 
 res <- tryCatch(

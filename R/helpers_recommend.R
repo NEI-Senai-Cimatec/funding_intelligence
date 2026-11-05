@@ -1,7 +1,7 @@
 
 read_profile <- function(conn) {
   if (is.null(conn)) return(NULL)
-  profile <- DBI::dbGetQuery(conn, "SELECT * FROM perfil_usuario LIMIT 1")
+  profile <- db_get_query(conn, "SELECT * FROM perfil_usuario LIMIT 1")
   if (nrow(profile) == 0) return(NULL)
   profile
 }
@@ -21,8 +21,8 @@ profile_to_lists <- function(profile_row) {
 collect_interest_signature <- function(conn, current_query = "") {
   profile <- read_profile(conn)
   profile_lists <- profile_to_lists(profile)
-  history <- if (is.null(conn)) data.frame(query_text = character()) else DBI::dbGetQuery(conn, "SELECT query_text FROM historico_buscas ORDER BY executed_at DESC LIMIT 10")
-  tracked <- if (is.null(conn)) data.frame() else DBI::dbGetQuery(conn, "SELECT o.palavras_chave, o.area_tematica, o.entidade FROM editais_rastreados t JOIN oportunidades o ON o.id_registro = t.id_oportunidade")
+  history <- if (is.null(conn)) data.frame(query_text = character()) else db_get_query(conn, "SELECT query_text FROM historico_buscas ORDER BY executed_at DESC LIMIT 10")
+  tracked <- if (is.null(conn)) data.frame() else db_get_query(conn, "SELECT o.palavras_chave, o.area_tematica, o.entidade FROM editais_rastreados t JOIN oportunidades o ON o.id_registro = t.id_oportunidade")
   history_terms <- unique(unlist(lapply(history$query_text, extract_query_terms)))
   tracked_terms <- unique(c(safe_split(tracked$palavras_chave), safe_split(tracked$area_tematica), tracked$entidade))
   current_terms <- extract_query_terms(current_query)
@@ -91,7 +91,7 @@ compute_adherence_score <- function(df, conn, current_query = "", signature = NU
 recommend_opportunities <- function(conn, opportunities_df, current_query = "", top_n = 10, signature = NULL) {
   if (nrow(opportunities_df) == 0) return(opportunities_df)
   scored <- compute_adherence_score(opportunities_df, conn, current_query, signature = signature)
-  tracked_ids <- if (is.null(conn)) character() else DBI::dbGetQuery(conn, "SELECT id_oportunidade FROM editais_rastreados")$id_oportunidade
+  tracked_ids <- if (is.null(conn)) character() else db_get_query(conn, "SELECT id_oportunidade FROM editais_rastreados")$id_oportunidade
   # BUG-01/11: recomendações usam status DERIVADO (nunca o campo congelado)
   scored$derived_status <- derive_status_vec(scored$data_limite, scored$data_abertura, scored$texto_bruto)
   scored |>
@@ -118,7 +118,7 @@ recommend_partners_for_opportunity <- function(conn, opportunity_id, top_n = 5) 
     return(tibble::tibble())
   }
   
-  opp <- DBI::dbGetQuery(
+  opp <- db_get_query(
     conn, 
     "SELECT titulo, descricao_resumida, palavras_chave, area_tematica FROM oportunidades WHERE id_registro = ?",
     params = list(opportunity_id)
@@ -126,10 +126,10 @@ recommend_partners_for_opportunity <- function(conn, opportunity_id, top_n = 5) 
   
   if (nrow(opp) == 0) return(tibble::tibble())
   
-  researchers <- DBI::dbGetQuery(conn, "SELECT id, nome, email, instituicao, expertise FROM pesquisadores_vencedores")
+  researchers <- db_get_query(conn, "SELECT id, nome, email, instituicao, expertise FROM pesquisadores_vencedores")
   if (nrow(researchers) == 0) return(tibble::tibble())
   
-  projects <- DBI::dbGetQuery(conn, "SELECT pesquisador_id, titulo_projeto, palavras_chave FROM projetos_aprovados")
+  projects <- db_get_query(conn, "SELECT pesquisador_id, titulo_projeto, palavras_chave FROM projetos_aprovados")
   
   opp_text <- paste(opp$titulo[[1]], opp$descricao_resumida[[1]], opp$palavras_chave[[1]], opp$area_tematica[[1]], collapse = " ")
   

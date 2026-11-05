@@ -1261,8 +1261,8 @@ enrich_records_parallel <- function(df, log_path = NULL, conn = NULL) {
   # 1. Cache Lógico (Deduplicação)
   if (is.null(conn)) {
     db_path <- file.path(getwd(), "funding_intelligence.sqlite")
-    if (file.exists(db_path)) {
-      conn <- tryCatch(DBI::dbConnect(RSQLite::SQLite(), db_path), error = function(e) NULL)
+    if (using_postgres() || file.exists(db_path)) {
+      conn <- tryCatch(get_db_connection(db_path), error = function(e) NULL)
       on.exit({
         if (!is.null(conn) && DBI::dbIsValid(conn)) DBI::dbDisconnect(conn)
       })
@@ -1279,7 +1279,7 @@ enrich_records_parallel <- function(df, log_path = NULL, conn = NULL) {
 
       existing <- tryCatch(
         {
-          DBI::dbGetQuery(
+          db_get_query(
             conn,
             "SELECT id_registro, descricao_resumida, campos_inferidos_ia FROM oportunidades WHERE id_registro = ? OR hash_deduplicacao = ?",
             params = list(id, hash_val)
@@ -1297,7 +1297,7 @@ enrich_records_parallel <- function(df, log_path = NULL, conn = NULL) {
           # Carrega o registro completo do banco
           existing_full <- tryCatch(
             {
-              DBI::dbGetQuery(conn, "SELECT * FROM oportunidades WHERE id_registro = ?", params = list(existing$id_registro[[1]]))
+              db_get_query(conn, "SELECT * FROM oportunidades WHERE id_registro = ?", params = list(existing$id_registro[[1]]))
             },
             error = function(e) NULL
           )
@@ -3553,7 +3553,7 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
   # Limpar erros antigos de logs_coleta para evitar falsos positivos no modal de alerta
   tryCatch(
     {
-      DBI::dbExecute(conn, "DELETE FROM logs_coleta WHERE status_execucao = 'erro'")
+      db_execute(conn, "DELETE FROM logs_coleta WHERE status_execucao = 'erro'")
       log_write(log_path, "INFO", "Logs de erro antigos removidos de logs_coleta.")
     },
     error = function(e) {

@@ -11,6 +11,18 @@
 
 # Environment variables containing sensitive keys
 .Renviron
+.env.local
+.env.*.local
+.neon
+
+# Local database backups / browser artifacts
+backups/
+.playwright-mcp/
+scratch/*.sqlite
+scratch/run_app.R
+
+# Windows reserved NUL device entry (cannot be indexed by Git)
+nul
 
 # Local database file
 funding_intelligence.sqlite

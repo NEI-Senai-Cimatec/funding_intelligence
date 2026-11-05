@@ -8,7 +8,7 @@ required_packages <- c(
   "ggplot2", "plotly", "DBI", "RSQLite", "jsonlite", "digest", "htmltools",
   "rvest", "xml2", "httr", "httr2", "tibble", "tools", "readr", "writexl", "janitor",
   "glue", "progress", "pdftools", "polite", "callr", "shinycssloaders", "googledrive",
-  "readxl", "base64enc"
+  "readxl", "base64enc", "RPostgres"
 )
 
 install_missing_packages <- function(pkgs) {
@@ -138,15 +138,29 @@ log_path <- app_file("logs", "funding_collection.log")
 ensure_dir(export_dir)
 ensure_dir(dirname(log_path))
 
-# Baixa a base de dados atualizada do Google Drive, se configurado
-try(drive_download_db(db_path), silent = TRUE)
+# Baixa a base de dados atualizada do Google Drive, se configurado.
+# Com DATA_BASE_URL (Postgres/Neon), o banco é remoto e o Drive não é usado.
+if (!using_postgres()) {
+  try(drive_download_db(db_path), silent = TRUE)
+}
 
-try(init_database(db_path), silent = TRUE)
-conn <- tryCatch(get_db_connection(db_path), error = function(e) NULL)
+tryCatch(
+  init_database(db_path),
+  error = function(e) message("[DB] init_database falhou: ", conditionMessage(e))
+)
+conn <- tryCatch(
+  get_db_connection(db_path),
+  error = function(e) {
+    message("[DB] falha ao conectar: ", conditionMessage(e))
+    NULL
+  }
+)
 onStop(function() {
   if (!is.null(conn) && DBI::dbIsValid(conn)) DBI::dbDisconnect(conn)
   # Sincroniza a base local com o Google Drive ao fechar a aplicação
-  try(drive_upload_db(db_path), silent = TRUE)
+  if (!using_postgres()) {
+    try(drive_upload_db(db_path), silent = TRUE)
+  }
 })
 
 # Rodar testes automaticamente no startup (se configurado)
@@ -438,6 +452,10 @@ server <- function(input, output, session) {
 
   # Wrapper para upload seguro no Google Drive com atualização de status visual
   safe_drive_upload <- function() {
+    if (using_postgres()) {
+      rv$drive_status <- "idle"
+      return(invisible(FALSE))
+    }
     rv$drive_status <- "uploading"
     shiny::withProgress(message = "Sincronizando com Google Drive...", {
       tryCatch({
@@ -550,14 +568,21 @@ server <- function(input, output, session) {
           progress_rv$detail <- "Coleta finalizada — nenhum registro novo. Verifique filtros/ano ou logs."
         } else {
           progress_rv$status <- "done"
-          progress_rv$detail <- "Coleta concluída! Sincronizando com o Google Drive..."
+          progress_rv$detail <- if (using_postgres()) {
+            "Coleta concluída! Gravando no banco remoto..."
+          } else {
+            "Coleta concluída! Sincronizando com o Google Drive..."
+          }
         }
         progress_rv$percentage <- 100
         
-        # Sincroniza a base coletada com o Google Drive, se configurado
-        safe_drive_upload()
-        
-        progress_rv$detail <- "Sincronização com Google Drive concluída!"
+        # Sincroniza com o Google Drive apenas no modo SQLite local.
+        if (using_postgres()) {
+          progress_rv$detail <- "Coleta concluída! Dados gravados no banco remoto."
+        } else {
+          safe_drive_upload()
+          progress_rv$detail <- "Sincronização com Google Drive concluída!"
+        }
         rv$last_collect_summary <- result
         refresh_data(notify = TRUE)
         
@@ -960,6 +985,7 @@ server <- function(input, output, session) {
       log_path_bg     = log_path,
       do_export_bg    = isTRUE(input$collect_export),
       db_path_bg      = db_path,
+      data_base_url_bg = data_base_url(),
       helper_files_bg = COLLECTOR_HELPER_FILES,
       status_file_bg  = normalizePath(status_file, winslash = "/", mustWork = FALSE),
       log_file_bg     = normalizePath(log_file, winslash = "/", mustWork = FALSE),
@@ -986,7 +1012,8 @@ server <- function(input, output, session) {
     rv$bg_process <- callr::r_bg(
       func = function(app_dir_bg, source_ids_bg, max_pages_bg, max_records_bg,
                       use_ai_bg, export_dir_bg, log_path_bg, do_export_bg,
-                      db_path_bg, helper_files_bg, status_file_bg, log_file_bg, ai_env_vars) {
+                      db_path_bg, helper_files_bg, status_file_bg, log_file_bg,
+                      ai_env_vars, data_base_url_bg) {
         
         # Configura biblioteca local no processo filho
         local_libs_bg <- file.path(app_dir_bg, "R_libs")
@@ -994,11 +1021,17 @@ server <- function(input, output, session) {
           .libPaths(c(local_libs_bg, .libPaths()))
         }
 
-        # Carrega pacotes essenciais
-        for (pkg in c("DBI", "RSQLite", "jsonlite", "digest", "dplyr", "purrr",
-                      "stringr", "httr2", "rvest", "xml2", "lubridate", "tibble",
-                      "readr", "writexl")) {
+        # Carrega pacotes essenciais (RPostgres só quando o banco é remoto)
+        bg_pkgs <- c("DBI", "RSQLite", "jsonlite", "digest", "dplyr", "purrr",
+                     "stringr", "httr2", "rvest", "xml2", "lubridate", "tibble",
+                     "readr", "writexl")
+        if (nzchar(data_base_url_bg)) bg_pkgs <- c(bg_pkgs, "RPostgres")
+        for (pkg in bg_pkgs) {
           library(pkg, character.only = TRUE)
+        }
+
+        if (nzchar(data_base_url_bg)) {
+          Sys.setenv(DATA_BASE_URL = data_base_url_bg)
         }
 
         # Configura variáveis de ambiente de IA
@@ -1021,8 +1054,8 @@ server <- function(input, output, session) {
           source(helper_path_bg, local = TRUE, encoding = "UTF-8")
         }
 
-        # Conexão SQLite própria do processo filho
-        bg_conn <- DBI::dbConnect(RSQLite::SQLite(), db_path_bg)
+        # Conexão própria do processo filho (SQLite local ou Postgres/Neon)
+        bg_conn <- get_db_connection(db_path_bg)
         on.exit(DBI::dbDisconnect(bg_conn), add = TRUE)
 
         collect_all_sources(
@@ -1165,7 +1198,14 @@ server <- function(input, output, session) {
     if (progress_rv$status == "running" || progress_rv$status == "done" || progress_rv$status == "error") {
       show_progress_modal()
     } else {
-      showNotification("A base local está atualizada e sincronizada com o Google Drive.", type = "message")
+      showNotification(
+        if (using_postgres()) {
+          "A base remota está atualizada."
+        } else {
+          "A base local está atualizada e sincronizada com o Google Drive."
+        },
+        type = "message"
+      )
     }
   })
 

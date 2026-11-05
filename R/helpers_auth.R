@@ -882,7 +882,8 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
     # institucional no canto superior e faixa de logos no rodapé.
     htmltools::tags$div(
       class = "auth-corner-text",
-      htmltools::tags$div("SENAI CIMATEC – Superintendência de Planejamento e Novos Negócios"),
+      htmltools::tags$div("SENAI CIMATEC"),
+      htmltools::tags$div("Superintendência de Planejamento e Novos Negócios"),
       htmltools::tags$div("NEI - Núcleo de Economia Industrial"),
       htmltools::tags$div("Radar da Inovação")
     ),

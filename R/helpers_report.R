@@ -127,19 +127,15 @@ generate_single_report_item <- function(row, idx = 1L) {
   }
 
   # 2. Tipo de oportunidade
-  tipo_raw <- tolower(safe_report_val(row, "tipo_oportunidade", "financiamento"))
-  tipo <- if (grepl("grant|coopera|internacional", tipo_raw)) {
-    "Financiamento Cooperação Internacional"
-  } else if (grepl("bolsa|fellowship", tipo_raw)) {
-    "Bolsa"
-  } else if (grepl("subvenc", tipo_raw)) {
-    "Subvenção Econômica"
-  } else if (grepl("premio|award", tipo_raw)) {
-    "Prêmio / Reconhecimento"
-  } else if (grepl("licita", tipo_raw)) {
-    "Licitação / Encomenda Tecnológica"
+  tipo_raw <- safe_report_val(row, "tipo_oportunidade", "")
+  tipo <- if (exists("TIPOS_OPORTUNIDADE") && tipo_raw %in% TIPOS_OPORTUNIDADE) {
+    tipo_raw
+  } else if (exists("classify_tipo_oportunidade", mode = "function")) {
+    classify_tipo_oportunidade(tipo_raw, paste(tit, safe_report_val(row, "descricao_resumida", "")), titulo = tit, entidade = entidade)
+  } else if (nzchar(tipo_raw)) {
+    tipo_raw
   } else {
-    "Financiamento"
+    "Outros"
   }
 
   # 3. País de origem
@@ -275,6 +271,11 @@ generate_adherence_report <- function(opportunities_df, max_items = 3L) {
   } else {
     open_df$score_aderencia <- suppressWarnings(as.numeric(open_df$score_aderencia %||% 0))
     open_df$score_aderencia[is.na(open_df$score_aderencia)] <- 0
+  }
+
+  # Prioriza editais com aderência positiva (> 0), descartando os de aderência 0 quando houver candidatos aderentes
+  if (any(open_df$score_aderencia > 0, na.rm = TRUE)) {
+    open_df <- open_df |> dplyr::filter(score_aderencia > 0)
   }
 
   # Ordena pelos editais com maiores aderências (score desc) e prazo de encerramento mais próximo

@@ -4325,10 +4325,10 @@
       "checksum": "524f03d72b77c39dbeb299e38970fe7f"
     },
     "R/helpers_ai.R": {
-      "checksum": "1b8e6db26fa7a21c3ffcee076bd2a069"
+      "checksum": "2070695e87476240863b5a2109f86a79"
     },
     "R/helpers_auth.R": {
-      "checksum": "44a808078a13f62f31406ea3aadc8a05"
+      "checksum": "4f313fc2b928025644f8579b75aadea3"
     },
     "R/helpers_auto_scheduler.R": {
       "checksum": "fc733ee3324745da701100ca10a95165"
@@ -4337,10 +4337,10 @@
       "checksum": "4e0563130a6aa4c16819846fd69715ea"
     },
     "R/helpers_db.R": {
-      "checksum": "920bb45a52793e9975d06b92d6676e1f"
+      "checksum": "82e22e6c5165a7a90ade1beeb00515cb"
     },
     "R/helpers_docx.R": {
-      "checksum": "b1098a181090d452158fa260fdbde2e8"
+      "checksum": "c355590b478a46b3e5f6ed876672fac2"
     },
     "R/helpers_enrichment.R": {
       "checksum": "59852cc16b86199a9f9a9741700383dc"
@@ -4352,7 +4352,7 @@
       "checksum": "5e64f74455b5b6e3119208008f15facc"
     },
     "R/helpers_report.R": {
-      "checksum": "eeb277893b938c9e957f10cd0a413737"
+      "checksum": "0b335e48de17305104ab4d4d9aedc38b"
     },
     "R/helpers_reports.R": {
       "checksum": "0b3781b128f72d3ff3c3aaecf40daa16"
@@ -4370,13 +4370,13 @@
       "checksum": "da0ed9088354f018261f25a2d93c1e31"
     },
     "R/helpers_status.R": {
-      "checksum": "daced8330393859b594229961e6e5f33"
+      "checksum": "a9310850949dc79e69371a9f6f077aea"
     },
     "R/helpers_text.R": {
       "checksum": "4729106e072c38619573dd987536aeb7"
     },
     "R/helpers_utils.R": {
-      "checksum": "214cf54d6296c9596d4c02447d174d95"
+      "checksum": "d194f9395acca6bc8517a96f156b7a2d"
     },
     "R/helpers_validation.R": {
       "checksum": "9a6d9c4f2d458381f0b253e5641d944f"
@@ -4385,7 +4385,7 @@
       "checksum": "1dc5ae447e4ce23820d9abca4c38ede6"
     },
     "app.R": {
-      "checksum": "f7b2c1532a3ea700672e41777772a35b"
+      "checksum": "ede351ee1717afccb0c8c687b3cfb834"
     },
     "docker-compose.yml": {
       "checksum": "2fe19b0063a2bea345fb34b3f2f57cb1"
@@ -4838,7 +4838,16 @@
       "checksum": "5134d2e95151c3e1ca2d55024154fe5f"
     },
     "www/styles.css": {
-      "checksum": "66f7b2ac550621af503660342cfbfdc3"
+      "checksum": "a4e9f375746aeaa774fc89db66edec82"
+    },
+    "www/login_bg.jpg": {
+      "checksum": "c1dddf1de766a2502a9e2f2aec534e95"
+    },
+    "www/nei_logo_login.jpg": {
+      "checksum": "8bb644b63456d3735e205dc76aa7f9a3"
+    },
+    "www/radar_inovacao_logo.jpg": {
+      "checksum": "6ad7cee125c703c471014df71b516bdd"
     }
   },
   "users": null

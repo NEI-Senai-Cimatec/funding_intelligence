@@ -1,11 +1,11 @@
 # helpers_export.R
-# Export utility functions for QuIIN platform
+# Export utility functions for Radar da Inovação (NEI - SENAI CIMATEC)
 
 #' Generate timestamped filename for exports
 #' @param prefix Filename prefix
 #' @param extension File extension (xlsx or csv)
 #' @return Character string with timestamped filename
-generate_export_filename <- function(prefix = "quiiin_export", extension = "xlsx") {
+generate_export_filename <- function(prefix = "relatorio_nei", extension = "xlsx") {
   timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
   sprintf("%s_%s.%s", prefix, timestamp, extension)
 }
@@ -23,7 +23,7 @@ export_to_xlsx <- function(data, filename = NULL, path = app_file("data_exports"
   ensure_dir(path)
   
   if (is.null(filename)) {
-    filename <- generate_export_filename("quiiin_export", "xlsx")
+    filename <- generate_export_filename("relatorio_nei", "xlsx")
   }
   
   filepath <- file.path(path, filename)
@@ -42,7 +42,7 @@ export_to_csv <- function(data, filename = NULL, path = app_file("data_exports")
   ensure_dir(path)
   
   if (is.null(filename)) {
-    filename <- generate_export_filename("quiiin_export", "csv")
+    filename <- generate_export_filename("relatorio_nei", "csv")
   }
   
   filepath <- file.path(path, filename)

@@ -1085,3 +1085,176 @@ campus_badge_html <- function(campus_str) {
   }, character(1))
   paste(badges, collapse = " ")
 }
+
+
+# ─── Tipologia padronizada de oportunidades (Radar da Inovação / NEI) ─────────
+# As fontes gravam `tipo_oportunidade` em formatos heterogêneos ("grant",
+# "edital", "chamada_publica", "Edital de Fomento", "bolsa_estudo", "award"...).
+# Esta função converte qualquer valor bruto + título/descrição para a lista
+# oficial de categorias definida pelo NEI:
+TIPOS_OPORTUNIDADE <- c(
+  "Bolsas",
+  "Fomento à pesquisa",
+  "Fomento a eventos",
+  "Financiamento",
+  "Subvenção econômica",
+  "Prêmio",
+  "Licitação",
+  "Incentivos fiscais à PD&I",
+  "Capital de risco",
+  "Outros"
+)
+
+.tipo_norm <- function(x) {
+  x <- as.character(x)
+  x[is.na(x)] <- ""
+  x <- stringi::stri_trans_general(x, "Latin-ASCII")
+  x <- tolower(gsub("[_\\s]+", " ", x, perl = TRUE))
+  trimws(x)
+}
+
+# tipo: valor bruto da coluna tipo_oportunidade
+# texto: título (+ descrição) usado para desambiguar tipos genéricos
+classify_tipo_oportunidade <- function(tipo, texto = "", titulo = texto, entidade = "") {
+  n <- max(length(tipo), length(texto), length(titulo), length(entidade))
+  if (n == 0L) return(character())
+  tipo <- rep_len(as.character(tipo), n)
+  texto <- rep_len(as.character(texto), n)
+  t <- .tipo_norm(tipo)
+  x <- .tipo_norm(texto)
+  ttl <- .tipo_norm(rep_len(as.character(titulo), n))
+  ent <- .tipo_norm(rep_len(as.character(entidade), n))
+  both <- paste(t, x)
+
+  out <- rep(NA_character_, n)
+  set <- function(cond, val) {
+    cond <- cond & is.na(out)
+    cond[is.na(cond)] <- FALSE
+    out[cond] <<- val
+  }
+  has <- function(s, pat) grepl(pat, s, perl = TRUE)
+
+  # 0. Já está na tipologia oficial
+  ja_ok <- match(.tipo_norm(tipo), .tipo_norm(TIPOS_OPORTUNIDADE))
+  out[!is.na(ja_ok)] <- TIPOS_OPORTUNIDADE[ja_ok[!is.na(ja_ok)]]
+
+  # 1. Pelo tipo informado pela fonte (sinais inequívocos)
+  set(has(t, "licita|pregao|cpsi|encomenda tecnologica|compra publica|procurement|tender"), "Licitação")
+  set(has(t, "premi|award|prize|recogni"), "Prêmio")
+  set(has(t, "lei do bem|incentivo fiscal|tax"), "Incentivos fiscais à PD&I")
+  set(has(t, "capital de risco|venture|equity|investimento"), "Capital de risco")
+  set(has(t, "^subven|subvencao economica"), "Subvenção econômica")
+  set(has(t, "bolsa|beca|fellowship|scholarship|msca|doctoral|estagio|pos-?doutor"), "Bolsas")
+  set(has(t, "^financiamento|reembolsavel$") & !has(t, "nao reembolsavel"), "Financiamento")
+
+  # 2. Pelo conteúdo (título/descrição), para tipos genéricos (edital, grant, chamada, vazio)
+  set(has(x, "\\b(licitacao|pregao eletronico|pregao|tomada de precos|concorrencia publica|dispensa de licitacao|cpsi|contrato publico para solucao inovadora|encomenda tecnologica)\\b"), "Licitação")
+  set(has(x, "\\b(premio|premiacao|prize)\\b") | has(ttl, "\\baward\\b") & !has(ttl, "manage your award"), "Prêmio")
+  set(has(x, "\\b(lei do bem|incentivos? fisca(l|is)|rota 2030|programa mover|beneficio fiscal|deducao fiscal)\\b"), "Incentivos fiscais à PD&I")
+  set(has(ttl, "^fip\\b|\\bfip ") | has(x, "\\b(capital de risco|venture capital|corporate venture|capital semente|seed capital|fundo de investimento|investimento em startups?|equity)\\b"), "Capital de risco")
+  set(has(ttl, "\\b(apoio|promocao|realizacao|organizacao|participacao)( (a|de|em|para))? (eventos?|congressos?|seminarios?|simposios?|workshops?|conferencias?|feiras?|olimpiadas?|reunioes cientificas)\\b|\\b(paep|arc)\\b|support for (conferences?|workshops?|events?)|conference support|travel grants?"), "Fomento a eventos")
+  set(has(x, "\\b(bolsas?|fellowships?|scholarships?|becas?|pos-?doutorado|postdoc(toral)?|doutorado sanduiche|mestrado|iniciacao cientifica|marie sklodowska|msca|estagio)\\b"), "Bolsas")
+  set(has(x, "\\b(subvencao|subvencao economica|tecnova|centelha|catalisa|mais inovacao|pipe)\\b"), "Subvenção econômica")
+  set(has(x, "\\b(financiamento reembolsavel|linha de credito|credito|emprestimo|reembolsavel|bndes (mais inovacao|fundo clima)|finame|loan)\\b") &
+        !has(x, "nao reembolsavel|non-?reimbursable"), "Financiamento")
+
+  # 3. Tipos genéricos de chamada de P&D => Fomento à pesquisa
+  set(has(t, "^(edital|chamada|chamada publica|grant|grants|apoio institucional|nao reembolsavel|cooperacao|research)") |
+        has(t, "fomento|pesquisa|desenvolvimento|cientific"), "Fomento à pesquisa")
+  set(has(x, "\\b(chamada|edital|grant|funding opportunity|call for proposals|nofo|horizon|pesquisa|research|p&d|pd&i|inovacao)\\b"), "Fomento à pesquisa")
+
+  # 4. Sem tipo informado, mas publicado por agência de fomento à pesquisa
+  set(has(ent, "horizon|european commission|comissao europeia|\\berc\\b|\\beic\\b|cnpq|capes|\\bfap|finep|\\bnsf\\b|\\bdoe\\b|darpa|embrapii|grants\\.gov|daad|humboldt|undp|sigitec"), "Fomento à pesquisa")
+
+  out[is.na(out)] <- "Outros"
+  out
+}
+
+# Aplica a tipologia a um data.frame de oportunidades, preservando o valor bruto
+# em `tipo_oportunidade_fonte` para auditoria.
+normalize_tipo_oportunidade_df <- function(df) {
+  if (is.null(df) || !is.data.frame(df) || nrow(df) == 0L) return(df)
+  if (!"tipo_oportunidade" %in% names(df)) df$tipo_oportunidade <- NA_character_
+  col <- function(nm) if (nm %in% names(df)) as.character(df[[nm]]) else rep("", nrow(df))
+  if (!"tipo_oportunidade_fonte" %in% names(df)) df$tipo_oportunidade_fonte <- df$tipo_oportunidade
+  texto <- paste(col("titulo"), col("descricao_resumida"))
+  df$tipo_oportunidade <- classify_tipo_oportunidade(
+    df$tipo_oportunidade_fonte, texto,
+    titulo = col("titulo"),
+    entidade = paste(col("entidade"), col("fonte_oficial"))
+  )
+  df
+}
+
+# Texto curto para a coluna "Objeto de Financiamento" das abas temáticas:
+# descreve o que o edital financia, a partir do resumo da oportunidade.
+objeto_financiamento_curto <- function(descricao, max_chars = 220L) {
+  x <- as.character(descricao)
+  x[is.na(x)] <- ""
+  x <- gsub("<[^>]+>", " ", x)
+  x <- gsub("\\s+", " ", trimws(x))
+  vazio <- !nzchar(x) | x %in% c("NA", "Resumo não disponível.", "Resumo não disponível")
+  x <- ifelse(nchar(x) > max_chars, paste0(substr(x, 1L, max_chars - 3L), "..."), x)
+  x <- htmltools::htmlEscape(x)
+  x[vazio] <- "Consulte o edital para o objeto de financiamento."
+  x
+}
+
+
+# ─── Palavras-chave de busca por campus (revisão NEI, nov/2026) ──────────────
+# Consultas booleanas oficiais. Usadas (1) no filtro "Campi SENAI CIMATEC" do
+# sidebar e no gerador de relatório e (2) como Buscas Salvas pré-cadastradas.
+CAMPUS_SEARCH_QUERIES <- list(
+  "Sertão" = "(semiárido OR \"semi-arid\" OR semiárido OR sertão OR seca OR drought OR sequía OR estiagem OR dessalinização OR desalination OR desalinización OR \"reúso de água\" OR \"water reuse\" OR \"reutilización de agua\" OR cisternas OR irrigação OR irrigation OR irrigación OR gotejamento OR \"drip irrigation\" OR \"riego por goteo\" OR \"agricultura familiar\" OR \"family farming\" OR \"agricultura familiar\" OR PRONAMP OR agroecologia OR agroecology OR agroecología OR caprino OR ovinocultura OR \"goat farming\" OR \"sheep farming\" OR apicultura OR beekeeping OR apicultura OR mandioca OR cassava OR yuca OR \"palma forrageira\" OR \"prickly pear\" OR \"convivência com o semiárido\" OR \"segurança alimentar\" OR \"food security\" OR \"seguridad alimentaria\" OR \"energia solar\" OR \"solar energy\" OR \"energía solar\" OR fotovoltaica OR photovoltaic OR fotovoltaica OR \"energia eólica\" OR \"wind energy\" OR \"energía eólica\" OR biomassa OR biomass OR biomasa OR biogás OR biogas OR biogás OR \"tecnologia social\" OR \"social technology\" OR \"tecnología social\" OR \"inclusão produtiva\" OR desertificação OR desertification OR desertificación OR caatinga OR fitoterapia OR phytotherapy OR fitoterapia OR \"plantas medicinais\" OR \"medicinal plants\" OR \"plantas medicinales\" OR \"cerâmica vermelha\" OR \"cooperativismo rural\" OR \"economia solidária\" OR \"solidarity economy\" OR \"economía solidaria\" OR \"saneamento rural\" OR \"rural sanitation\" OR \"saneamiento rural\" OR \"adaptação climática\" OR \"climate adaptation\" OR \"adaptación climática\" OR \"resiliência hídrica\" OR \"water resilience\" OR \"resiliencia hídrica\" OR \"barragem subterrânea\" OR \"captação de água de chuva\" OR \"rainwater harvesting\" OR \"cosecha de agua de lluvia\" OR \"poço artesiano\" OR \"pecuária de sequeiro\" OR \"dryland livestock\" OR silagem OR silage OR ensilaje OR fenação OR \"quintais produtivos\" OR umbu OR licuri OR sisal OR \"algodão agroecológico\" OR \"recarga de aquífero\" OR \"aquifer recharge\" OR \"recarga de acuífero\" OR \"São Francisco\" OR \"revitalização do São Francisco\" OR \"mandala produtiva\")",
+  "Aeroespacial" = "(aeroespacial OR aerospace OR aeroespacial OR aviação OR aviation OR aviación OR aeronáutica OR aeronautics OR aeronáutica OR propulsão OR propulsion OR propulsión OR foguete OR rocket OR cohete OR lançador OR launcher OR lanzador OR satélite OR satellite OR satélite OR orbital OR suborbital OR \"compósitos aeroespaciais\" OR \"aerospace composites\" OR \"compuestos aeroespaciales\" OR \"fibra de carbono\" OR \"carbon fiber\" OR \"fibra de carbono\" OR \"manufatura aditiva aeroespacial\" OR \"aerospace additive manufacturing\" OR \"impressão 3D metálica\" OR \"metal 3D printing\" OR aviónica OR avionics OR aviónica OR drone OR drones OR VANT OR UAV OR UAS OR RPAS OR fuselagem OR fuselage OR fuselaje OR aerodinâmica OR aerodynamics OR aerodinámica OR aeroestruturas OR aerostructures OR aeroestructuras OR \"turbina aeronáutica\" OR \"aircraft turbine\" OR \"motor foguete\" OR \"rocket engine\" OR \"motor cohete\" OR \"propelente sólido\" OR \"solid propellant\" OR \"propelente líquido\" OR \"liquid propellant\" OR \"ensaios não destrutivos\" OR \"non-destructive testing\" OR NDT OR \"ensayos no destructivos\" OR \"certificação aeronáutica\" OR \"aeronautical certification\" OR \"certificación aeronáutica\" OR \"navegação inercial\" OR \"inertial navigation\" OR \"navegación inercial\" OR telemetria OR telemetry OR telemetría OR radar OR \"imageamento orbital\" OR \"orbital imaging\" OR \"guerra eletrônica\" OR \"electronic warfare\" OR \"guerra electrónica\" OR \"munição inteligente\" OR \"smart munition\" OR \"blindagem balística\" OR \"ballistic armor\" OR \"blindaje balístico\" OR C4ISR OR MRO OR \"manutenção aeronáutica\" OR \"aircraft maintenance\" OR \"mantenimiento aeronáutico\" OR microgravidade OR microgravity OR microgravedad OR \"observação da Terra\" OR \"Earth observation\" OR \"observación de la Tierra\" OR \"comunicação por satélite\" OR \"satellite communication\" OR \"comunicación por satélite\" OR Alcântara OR AEB OR DCTA OR INPE OR \"órbita LEO\" OR \"órbita GEO\" OR \"constelação de satélites\" OR \"satellite constellation\" OR \"constelación de satélites\" OR \"estação terrena\" OR \"ground station\" OR \"estación terrena\" OR GNSS OR payload OR \"carga útil\" OR \"controle de voo\" OR \"flight control\" OR \"control de vuelo\" OR \"veículo aéreo autônomo\" OR \"autonomous aerial vehicle\" OR \"vehículo aéreo autónomo\" OR \"proteção térmica\" OR \"thermal protection\" OR \"protección térmica\")",
+  "Mar" = "(oceanografia OR oceanography OR oceanografía OR \"economia azul\" OR \"blue economy\" OR \"economía azul\" OR aquicultura OR aquaculture OR acuicultura OR maricultura OR mariculture OR maricultura OR \"biotecnologia marinha\" OR \"marine biotechnology\" OR \"biotecnología marina\" OR \"microalgas marinhas\" OR \"marine microalgae\" OR \"microalgas marinas\" OR manguezal OR mangrove OR manglar OR \"recifes de coral\" OR \"coral reefs\" OR \"arrecifes de coral\" OR \"energia maremotriz\" OR \"tidal energy\" OR \"energía mareomotriz\" OR \"eólica offshore\" OR \"offshore wind\" OR \"eólica offshore\" OR \"engenharia naval\" OR \"naval engineering\" OR \"ingeniería naval\" OR \"construção naval\" OR shipbuilding OR \"construcción naval\" OR \"plataforma offshore\" OR \"offshore platform\" OR \"plataforma offshore\" OR ROV OR AUV OR \"veículo subaquático\" OR \"underwater vehicle\" OR \"vehículo subacuático\" OR \"robótica submarina\" OR \"underwater robotics\" OR \"robótica submarina\" OR \"pré-sal\" OR \"pre-salt\" OR \"presal\" OR subsea OR \"dutos submarinos\" OR \"subsea pipelines\" OR \"ductos submarinos\" OR risers OR \"descomissionamento offshore\" OR \"offshore decommissioning\" OR \"desmantelamiento offshore\" OR \"sísmica marinha\" OR \"marine seismic\" OR \"sísmica marina\" OR hidrografia OR hydrography OR hidrografía OR batimetria OR bathymetry OR batimetría OR \"monitoramento costeiro\" OR \"coastal monitoring\" OR \"monitoreo costero\" OR \"poluição marinha\" OR \"marine pollution\" OR \"contaminación marina\" OR \"derramamento de óleo\" OR \"oil spill\" OR \"derrame de petróleo\" OR \"remediação marinha\" OR \"dessalinização de água do mar\" OR \"seawater desalination\" OR \"desalinización de agua de mar\" OR \"mineração submarina\" OR \"deep sea mining\" OR \"minería submarina\" OR \"erosão costeira\" OR \"coastal erosion\" OR \"erosión costera\" OR \"carbono azul\" OR \"blue carbon\" OR \"carbono azul\" OR sonar OR \"acústica submarina\" OR \"underwater acoustics\" OR \"acústica submarina\" OR \"cabos submarinos\" OR \"submarine cables\" OR \"cables submarinos\" OR carcinicultura OR \"shrimp farming\" OR camaronicultura OR \"piscicultura marinha\" OR \"marine fish farming\" OR \"piscicultura marina\" OR ostreicultura OR \"oyster farming\" OR ostricultura OR aquaponia OR aquaponics OR acuaponía OR \"terminal portuário\" OR \"port terminal\" OR \"terminal portuario\" OR dragagem OR dredging OR dragado OR \"cabotagem\" OR \"cabotage\" OR cabotaje OR FPSO OR FLNG OR \"umbilical submarino\" OR \"subsea umbilical\" OR \"árvore de natal molhada\" OR \"subsea christmas tree\" OR BOP OR \"blowout preventer\" OR \"perfuração offshore\" OR \"offshore drilling\" OR \"perforación offshore\" OR \"completação submarina\" OR \"subsea completion\" OR \"mergulho saturado\" OR \"saturation diving\" OR \"buceo de saturación\" OR \"plataforma continental\" OR \"continental shelf\" OR \"plataforma continental\" OR \"zona econômica exclusiva\" OR ZEE OR EEZ OR \"Amazônia Azul\" OR CIRM OR PROMAR OR \"biodiversidade marinha\" OR \"marine biodiversity\" OR \"biodiversidad marina\")",
+  "Digital" = "(\"transformação digital\" OR \"digital transformation\" OR \"transformación digital\" OR \"indústria 4.0\" OR \"industry 4.0\" OR \"industria 4.0\" OR \"indústria 5.0\" OR \"industry 5.0\" OR \"industria 5.0\" OR \"IoT industrial\" OR \"industrial IoT\" OR IIoT OR \"inteligência artificial\" OR \"artificial intelligence\" OR \"inteligencia artificial\" OR \"machine learning\" OR \"aprendizado de máquina\" OR \"aprendizaje automático\" OR \"deep learning\" OR \"aprendizado profundo\" OR \"aprendizaje profundo\" OR \"redes neurais artificiais\" OR \"artificial neural networks\" OR \"redes neuronales artificiales\" OR \"visão computacional\" OR \"computer vision\" OR \"visión computacional\" OR \"processamento de linguagem natural\" OR \"natural language processing\" OR NLP OR \"ciência de dados\" OR \"data science\" OR \"ciencia de datos\" OR \"big data\" OR analytics OR \"computação em nuvem\" OR \"cloud computing\" OR \"computación en la nube\" OR \"edge computing\" OR \"cibersegurança industrial\" OR \"industrial cybersecurity\" OR \"ciberseguridad industrial\" OR \"segurança da informação\" OR \"information security\" OR \"seguridad de la información\" OR LGPD OR GDPR OR blockchain OR \"automação industrial\" OR \"industrial automation\" OR \"automatización industrial\" OR RPA OR cobot OR \"gêmeo digital\" OR \"digital twin\" OR \"gemelo digital\" OR \"realidade aumentada\" OR \"augmented reality\" OR \"realidad aumentada\" OR \"realidade virtual\" OR \"virtual reality\" OR \"realidad virtual\" OR \"5G industrial\" OR 6G OR \"computação quântica\" OR \"quantum computing\" OR \"computación cuántica\" OR semicondutores OR semiconductors OR semiconductores OR microeletrônica OR microelectronics OR microelectrónica OR FPGA OR \"manufatura inteligente\" OR \"smart manufacturing\" OR \"manufactura inteligente\" OR \"smart factory\" OR \"fábrica inteligente\" OR \"cidade inteligente\" OR \"smart city\" OR \"ciudad inteligente\" OR SCADA OR PLC OR CLP OR \"OPC UA\" OR MQTT OR \"data lake\" OR \"data warehouse\" OR MLOps OR \"IA generativa\" OR \"generative AI\" OR \"IA generativa\" OR LLM OR \"sistemas ciber-físicos\" OR \"cyber-physical systems\" OR \"sistemas ciberfísicos\" OR MES OR \"manutenção preditiva\" OR \"predictive maintenance\" OR \"mantenimiento predictivo\" OR \"manutenção prescritiva\" OR \"prescriptive maintenance\" OR \"machine vision\" OR \"rastreabilidade digital\" OR \"digital traceability\" OR \"trazabilidad digital\" OR \"digital thread\" OR \"fábrica conectada\" OR \"connected factory\" OR \"fábrica conectada\" OR \"integração OT-IT\" OR \"OT-IT integration\" OR \"integración OT-IT\" OR PROFINET OR \"EtherNet/IP\" OR TSN OR \"time sensitive networking\")",
+  "SENAI CIMATEC (amplo)" = "(\"pesquisa aplicada\" OR \"applied research\" OR \"investigación aplicada\" OR \"desenvolvimento tecnológico\" OR \"technological development\" OR \"desarrollo tecnológico\" OR PD&I OR R&D OR I+D OR \"manufatura avançada\" OR \"advanced manufacturing\" OR \"manufactura avanzada\" OR \"metrologia industrial\" OR \"industrial metrology\" OR \"metrología industrial\" OR \"ensaio laboratorial\" OR \"laboratory testing\" OR \"ensayo de laboratorio\" OR calibração OR calibration OR calibración OR \"certificação de produto\" OR \"product certification\" OR \"certificación de producto\" OR prototipagem OR prototyping OR prototipado OR escalonamento OR \"scale-up\" OR escalamiento OR \"planta piloto\" OR \"pilot plant\" OR \"planta piloto\" OR \"transferência de tecnologia\" OR \"technology transfer\" OR \"transferencia de tecnología\" OR \"propriedade intelectual\" OR \"intellectual property\" OR \"propiedad intelectual\" OR patente OR patent OR patente OR \"extensão tecnológica\" OR \"technological extension\" OR \"extensión tecnológica\" OR \"consultoria tecnológica\" OR \"descarbonização industrial\" OR \"industrial decarbonization\" OR \"descarbonización industrial\" OR \"hidrogênio verde\" OR \"green hydrogen\" OR \"hidrógeno verde\" OR \"economia circular\" OR \"circular economy\" OR \"economía circular\" OR bioeconomia OR bioeconomy OR bioeconomía OR \"biotecnologia industrial\" OR \"industrial biotechnology\" OR \"biotecnología industrial\" OR petroquímica OR petrochemicals OR petroquímica OR automotivo OR automotive OR automotriz OR \"dispositivos médicos\" OR \"medical devices\" OR \"dispositivos médicos\" OR fármacos OR pharmaceuticals OR fármacos OR \"formação profissional tecnológica\" OR \"mestrado profissional\" OR \"doutorado industrial\" OR \"industrial doctorate\" OR \"doctorado industrial\" OR EMBRAPII OR FINEP OR CNPq OR FAPESB OR BNDES OR MCTI OR \"subvenção econômica\" OR \"chamada pública\" OR \"public call\" OR \"convocatoria pública\" OR \"edital de inovação\" OR \"innovation call\" OR \"encomenda tecnológica\" OR ETEC OR ICT OR \"Lei do Bem\" OR \"marco legal de CT&I\" OR \"Rota 2030\" OR \"hub de inovação\" OR \"innovation hub\" OR aceleradora OR accelerator OR aceleradora OR incubadora OR incubator OR incubadora OR \"startup industrial\" OR \"spin-off\" OR \"arranjo produtivo local\" OR APL OR \"cooperação universidade-empresa\" OR \"university-industry cooperation\" OR \"cooperación universidad-empresa\" OR \"parceria público-privada\" OR \"public-private partnership\" OR \"asociación público-privada\")"
+)
+
+# Lista de padrões (um por termo) de uma consulta booleana de campus (cacheada).
+.campus_pattern_cache <- new.env(parent = emptyenv())
+campus_query_patterns <- function(query) {
+  key <- digest::digest(query)
+  if (!is.null(.campus_pattern_cache[[key]])) return(.campus_pattern_cache[[key]])
+  # As consultas de campus são listas "termo OR termo OR ...": tokeniza sem montar a AST
+  # (o parser recursivo estoura a pilha com centenas de termos).
+  tokens <- tokenize_boolean_query(query)
+  terms <- tokens[!tokens %in% c("AND", "OR", "NOT", "(", ")")]
+  terms <- unique(normalize_text(gsub('^"|"$', "", terms)))
+  terms <- terms[nzchar(trimws(terms))]
+  # Termo inteiro (ou frase inteira) com limite de palavra nas duas pontas
+  pats <- vapply(terms, function(t) paste0("(?<![a-z0-9])", regex_escape(t), "(?![a-z0-9])"), character(1))
+  names(pats) <- terms
+  .campus_pattern_cache[[key]] <- pats
+  pats
+}
+
+# Quais termos da consulta aparecem em cada texto (vetorizado por termo)
+campus_query_hits <- function(query, search_txt) {
+  pats <- campus_query_patterns(query)
+  hit <- matrix(FALSE, nrow = length(search_txt), ncol = length(pats), dimnames = list(NULL, names(pats)))
+  for (j in seq_along(pats)) hit[, j] <- stringi::stri_detect_regex(search_txt, pats[[j]])
+  hit
+}
+
+# TRUE para os registros que pertencem a algum dos campi selecionados:
+# campus classificado no registro OU palavras-chave oficiais do campus no texto.
+campus_match_mask <- function(df, sel_campi) {
+  n <- nrow(df)
+  if (is.null(n) || n == 0L || !length(sel_campi)) return(rep(TRUE, n %||% 0L))
+  campus_col <- if ("campus" %in% names(df)) as.character(df$campus) else rep("", n)
+  campus_col[is.na(campus_col)] <- ""
+  search_txt <- NULL
+  mask <- rep(FALSE, n)
+  for (sc in sel_campi) {
+    tags_ok <- vapply(strsplit(campus_col, "[;,]"), function(v) sc %in% trimws(v), logical(1))
+    mask <- mask | tags_ok
+    q <- CAMPUS_SEARCH_QUERIES[[sc]]
+    if (!is.null(q)) {
+      if (is.null(search_txt)) search_txt <- build_search_text(df, text_cols = c("titulo", "subtitulo", "descricao_resumida", "palavras_chave", "area_tematica"))
+      mask <- mask | (rowSums(campus_query_hits(q, search_txt)) > 0)
+    }
+  }
+  mask
+}

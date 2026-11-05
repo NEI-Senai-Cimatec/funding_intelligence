@@ -29,6 +29,40 @@ escape_xml_entities <- function(s) {
   s
 }
 
+#' Junta os runs do Word que quebram um marcador {{campo_n}} em vários pedaços
+#'
+#' O Word divide o texto em vários <w:r> (revisão ortográfica, rsid, idioma...).
+#' Ex.: <w:t>{</w:t></w:r><w:r><w:t>{edital_1}}</w:t>. Aqui removemos marcas
+#' que não carregam texto e unimos apenas os runs que estão DENTRO de um marcador
+#' aberto, preservando a formatação (negrito dos rótulos etc.) do restante.
+docx_merge_split_placeholders <- function(xml) {
+  xml <- gsub("<w:proofErr\\b[^>]*/>", "", xml, perl = TRUE)
+  xml <- gsub("<w:bookmark(Start|End)\\b[^>]*/>", "", xml, perl = TRUE)
+  xml <- gsub("<w:lastRenderedPageBreak/>", "", xml, fixed = TRUE)
+  xml <- gsub("<w:noProof/>", "", xml, fixed = TRUE)
+  boundary <- "</w:t></w:r><w:r\\b[^>]*>(?:<w:rPr>(?:(?!</w:rPr>).)*</w:rPr>)?<w:t\\b[^>]*>"
+  # "{" seguido de "{" em outro run
+  for (k in 1:5) {
+    xml <- gsub(paste0("\\{", boundary, "\\{"), "{{", xml, perl = TRUE)
+  }
+  # marcador aberto ("{{campo") cujo restante está nos runs seguintes
+  for (k in 1:10) {
+    novo <- gsub(paste0("(\\{\\{[^{}<]{0,40})", boundary), "\\1", xml, perl = TRUE)
+    if (identical(novo, xml)) break
+    xml <- novo
+  }
+  xml
+}
+
+#' Envolve valor substituído em um run XML explícito sem negrito (Sora Light 9pt)
+wrap_nonbold_docx_run <- function(escaped_val) {
+  if (!nzchar(escaped_val)) return("")
+  sprintf(
+    '</w:t></w:r><w:r><w:rPr><w:rFonts w:ascii="Sora Light" w:hAnsi="Sora Light" w:cs="Sora Light"/><w:b w:val="0"/><w:bCs w:val="0"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t xml:space="preserve">%s</w:t></w:r><w:r><w:t>',
+    escaped_val
+  )
+}
+
 #' Gera relatório Word (.docx) preenchendo o modelo institucional oficial em R Puro
 #'
 #' @param report_data Lista com os dados do relatório (estrutura retornada por generate_adherence_report)
@@ -78,43 +112,44 @@ generate_docx_report <- function(report_data, output_file, template_path = "temp
   }
 
   # 2. Normaliza os placeholders que o MS Word quebra entre múltiplos tags/runs
-  # Exemplo: <w:t>{</w:t></w:r><w:r ...><w:t>{edital_1}}</w:t> -> {{edital_1}}
-  for (k in 1:10) {
-    clean_xml <- gsub("</w:t></w:r><w:r\\b[^>]*>(?:<w:rPr\\b[^>]*>.*?</w:rPr>)?<w:t\\b[^>]*>", "", clean_xml, perl = TRUE)
-  }
+  clean_xml <- docx_merge_split_placeholders(clean_xml)
 
   extra_rels <- character(0)
 
-  # 3. Substitui os placeholders dos 3 editais
+  # 3. Substitui os placeholders dos 3 editais garantindo rótulos em negrito e valores sem negrito
   for (i in 1:3) {
     it <- if (i <= n_items) items[[i]] else NULL
 
-    edital_val <- if (!is.null(it)) escape_xml_entities(it$edital) else ""
-    tipo_val   <- if (!is.null(it)) escape_xml_entities(it$tipo) else ""
-    pais_val   <- if (!is.null(it)) escape_xml_entities(it$pais) else ""
-    prazo_val  <- if (!is.null(it)) escape_xml_entities(it$prazo) else ""
-    area_val   <- if (!is.null(it)) escape_xml_entities(it$area) else ""
-    resumo_val <- if (!is.null(it)) escape_xml_entities(it$resumo) else ""
-    orc_val    <- if (!is.null(it)) escape_xml_entities(it$orcamento) else ""
+    edital_val <- if (!is.null(it)) wrap_nonbold_docx_run(escape_xml_entities(it$edital)) else ""
+    tipo_val   <- if (!is.null(it)) wrap_nonbold_docx_run(escape_xml_entities(it$tipo)) else ""
+    pais_val   <- if (!is.null(it)) wrap_nonbold_docx_run(escape_xml_entities(it$pais)) else ""
+    prazo_val  <- if (!is.null(it)) wrap_nonbold_docx_run(escape_xml_entities(it$prazo)) else ""
+    area_val   <- if (!is.null(it)) wrap_nonbold_docx_run(escape_xml_entities(it$area)) else ""
+    resumo_val <- if (!is.null(it)) wrap_nonbold_docx_run(escape_xml_entities(it$resumo)) else ""
+    orc_val    <- if (!is.null(it)) wrap_nonbold_docx_run(escape_xml_entities(it$orcamento)) else ""
 
     link_url   <- if (!is.null(it)) trimws(it$link_url %||% "") else ""
     link_lbl   <- if (!is.null(it)) trimws(it$link_label %||% "") else ""
-    if (!nzchar(link_lbl) && nzchar(link_url)) link_lbl <- link_url
-    if (!nzchar(link_lbl)) link_lbl <- "Acessar Edital"
+    if (!is.null(it)) {
+      if (!nzchar(link_lbl) && nzchar(link_url)) link_lbl <- link_url
+      if (!nzchar(link_lbl)) link_lbl <- "Acessar Edital"
+    }
 
-    # Injeção de hiperlink real em OpenXML se a URL for válida
-    if (nzchar(link_url) && !identical(link_url, "#") && grepl("^https?://", link_url)) {
+    # Injeção de hiperlink real em OpenXML se a URL for válida (sem negrito no valor do link)
+    if (!is.null(it) && nzchar(link_url) && !identical(link_url, "#") && grepl("^https?://", link_url)) {
       rel_id <- paste0("rIdFundingHl", i)
       extra_rels <- c(extra_rels, sprintf(
         '<Relationship Id="%s" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="%s" TargetMode="External"/>',
         rel_id, escape_xml_entities(link_url)
       ))
       link_val_xml <- sprintf(
-        '</w:t></w:r><w:hyperlink r:id="%s" w:history="1"><w:r><w:rPr><w:rStyle w:val="Hyperlink"/><w:color w:val="0563C1"/><w:u w:val="single"/></w:rPr><w:t>%s</w:t></w:r></w:hyperlink><w:r><w:t>',
+        '</w:t></w:r><w:hyperlink r:id="%s" w:history="1"><w:r><w:rPr><w:rStyle w:val="Hyperlink"/><w:rFonts w:ascii="Sora Light" w:hAnsi="Sora Light" w:cs="Sora Light"/><w:b w:val="0"/><w:bCs w:val="0"/><w:color w:val="0563C1"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:u w:val="single"/></w:rPr><w:t xml:space="preserve">%s</w:t></w:r></w:hyperlink><w:r><w:t>',
         rel_id, escape_xml_entities(link_lbl)
       )
+    } else if (!is.null(it) && nzchar(link_lbl)) {
+      link_val_xml <- wrap_nonbold_docx_run(escape_xml_entities(link_lbl))
     } else {
-      link_val_xml <- escape_xml_entities(link_lbl)
+      link_val_xml <- ""
     }
 
     clean_xml <- gsub(paste0("\\{\\{edital_", i, "\\}\\}"), edital_val, clean_xml, perl = TRUE)
@@ -124,22 +159,13 @@ generate_docx_report <- function(report_data, output_file, template_path = "temp
     clean_xml <- gsub(paste0("\\{\\{(área|area)_", i, "\\}\\}"), area_val, clean_xml, perl = TRUE)
     clean_xml <- gsub(paste0("\\{\\{(orçamento|orcamento)_", i, "\\}\\}"), orc_val, clean_xml, perl = TRUE)
     clean_xml <- gsub(paste0("\\{\\{link_", i, "\\}\\}"), link_val_xml, clean_xml, perl = TRUE)
-
-    # Tratamento específico do slot 2 que possui {{resumo_1}} no modelo original
-    if (i == 2) {
-      parts <- strsplit(clean_xml, "\\{\\{resumo_1\\}\\}")[[1]]
-      if (length(parts) >= 3) {
-        clean_xml <- paste0(parts[1], escape_xml_entities(if (n_items >= 1) items[[1]]$resumo else ""),
-                            parts[2], resumo_val,
-                            paste(parts[3:length(parts)], collapse = ""))
-      }
-    } else if (i == 3) {
-      clean_xml <- gsub("\\{\\{resumo_3\\}\\}", resumo_val, clean_xml, perl = TRUE)
-    }
+    clean_xml <- gsub(paste0("\\{\\{resumo_", i, "\\}\\}"), resumo_val, clean_xml, perl = TRUE)
   }
 
-  if (n_items >= 1) {
-    clean_xml <- gsub("\\{\\{resumo_1\\}\\}", escape_xml_entities(items[[1]]$resumo), clean_xml, perl = TRUE)
+  # Nenhum marcador {{...}} pode sobrar no documento final
+  sobras <- regmatches(clean_xml, gregexpr("\\{\\{[^{}<]{1,40}\\}\\}", clean_xml, perl = TRUE))[[1]]
+  if (length(sobras) > 0L) {
+    clean_xml <- gsub("\\{\\{[^{}<]{1,40}\\}\\}", "", clean_xml, perl = TRUE)
   }
 
   # Injeta os relacionamentos de hyperlink no document.xml.rels
@@ -172,8 +198,8 @@ generate_docx_report <- function(report_data, output_file, template_path = "temp
 #'
 #' Tenta conversão direta do DOCX para manter 100% a identidade visual do template.
 #' Se o servidor (como Posit Connect Linux) não possuir Word ou LibreOffice,
-#' gera um PDF institucional oficial diretamente via R para garantir que o download
-#' nunca falhe com erro HTTP 404.
+#' gera um PDF institucional oficial diretamente via R com o modelo Radar da Inovação
+#' (NEI - SENAI CIMATEC), chaves em negrito, valores sem negrito e links clicáveis.
 #'
 #' @param report_data Lista com dados do relatório
 #' @param output_pdf Caminho do arquivo PDF de saída
@@ -182,6 +208,7 @@ generate_docx_report <- function(report_data, output_file, template_path = "temp
 generate_pdf_report <- function(report_data, output_pdf, template_path = "templates/modelo_editais.docx") {
   output_pdf <- normalizePath(output_pdf, winslash = "/", mustWork = FALSE)
   ensure_dir(dirname(output_pdf))
+  if (file.exists(output_pdf)) unlink(output_pdf)
 
   # 1. Primeiro gera o DOCX preenchido
   tmp_docx <- tempfile(fileext = ".docx")
@@ -190,7 +217,7 @@ generate_pdf_report <- function(report_data, output_pdf, template_path = "templa
 
   pdf_created <- FALSE
 
-  # 2. Tentativa 1 (Windows com Word / docx2pdf via Python Launcher ou COM)
+  # 2. Tentativa 1 (Windows com docx2pdf se instalado)
   if (docx_ok && .Platform$OS.type == "windows") {
     tryCatch({
       py_bins <- c(
@@ -202,7 +229,7 @@ generate_pdf_report <- function(report_data, output_pdf, template_path = "templa
       py_bins <- unique(Filter(function(b) nzchar(b) && file.exists(b), py_bins))
       for (py in py_bins) {
         cmd_args <- c("-c", sprintf("from docx2pdf import convert; convert(r'%s', r'%s')", tmp_docx, output_pdf))
-        res <- system2(py, args = cmd_args, stdout = TRUE, stderr = TRUE)
+        res <- suppressWarnings(system2(py, args = cmd_args, stdout = TRUE, stderr = TRUE))
         if (file.exists(output_pdf) && file.size(output_pdf) > 1000) {
           message("[PDF] PDF gerado via docx2pdf com sucesso.")
           pdf_created <- TRUE
@@ -222,7 +249,7 @@ generate_pdf_report <- function(report_data, output_pdf, template_path = "templa
           out_dir <- dirname(output_pdf)
           system2(lb, args = c("--headless", "--convert-to", "pdf", "--outdir", out_dir, tmp_docx), stdout = TRUE, stderr = TRUE)
         }, error = function(e) NULL)
-        
+
         gen_pdf <- file.path(dirname(output_pdf), sub("\\.docx$", ".pdf", basename(tmp_docx)))
         if (file.exists(gen_pdf)) {
           file.rename(gen_pdf, output_pdf)
@@ -236,164 +263,323 @@ generate_pdf_report <- function(report_data, output_pdf, template_path = "templa
     }
   }
 
-  # 4. Tentativa 3: Se não há Word nem LibreOffice (ambiente Posit Connect padrão),
-  # renderiza um PDF oficial formatado institucionalmente em R para evitar erro 404
+  # 4. Tentativa 3: Renderiza o PDF institucional oficial Radar da Inovação (NEI - SENAI CIMATEC)
+  # diretamente em R nativo com anotações de link clicáveis (/Subtype /Link /URI)
   if (!pdf_created) {
-    message("[PDF] Motores externos (Word/LibreOffice) indisponíveis. Gerando PDF oficial via R nativo...")
+    message("[PDF] Gerando PDF institucional Radar da Inovação (NEI - SENAI CIMATEC) via R nativo...")
     tryCatch({
-      generate_fallback_institutional_pdf(report_data, output_pdf)
+      generate_fallback_institutional_pdf(report_data, output_pdf, template_path = template_path)
       if (file.exists(output_pdf) && file.size(output_pdf) > 500) {
         pdf_created <- TRUE
       }
     }, error = function(e) {
-      warning("[PDF] Falha na geração do PDF fallback via R: ", e$message)
+      warning("[PDF] Falha na geração do PDF institucional via R: ", e$message)
     })
   }
 
   return(pdf_created)
 }
 
-#' Gera PDF institucional oficial utilizando o dispositivo gráfico nativo do R
-#' Garante documento legível, formatado com as cores SENAI CIMATEC e 100% infalível em qualquer servidor
-generate_fallback_institutional_pdf <- function(report_data, output_pdf, template_path = "templates/modelo_editais.docx") {
-  items <- utils::head(report_data$items %||% list(), 3L)
+#' Desenha um campo no formato "Chave: Valor" onde a chave fica em negrito (font = 2)
+#' e o valor fica sem negrito (font = 1), com quebra automática de linhas.
+draw_pdf_labeled_field <- function(x_pos, y_curr, label_txt, value_txt,
+                                   max_w = 150, cex_val = 0.78, line_h = 4.5,
+                                   max_lines = 5, val_col = "#000000",
+                                   underline_val = FALSE) {
+  # 1. Desenha o rótulo em negrito (font = 2)
+  graphics::text(x_pos, y_curr, label_txt, col = "#000000", font = 2, cex = cex_val, adj = 0)
+  label_w <- graphics::strwidth(label_txt, font = 2, cex = cex_val)
 
-  # Resolve a imagem de fundo original extraída do modelo oficial
-  bg_path <- file.path("templates", "modelo_editais_bg.png")
-  if (!file.exists(bg_path)) {
-    tmpl <- resolve_report_template(template_path)
-    if (!is.null(tmpl)) {
-      try(zip::unzip(tmpl, files = "word/media/image1.png", exdir = tempdir()), silent = TRUE)
-      bg_path <- file.path(tempdir(), "word", "media", "image1.png")
+  value_txt <- trimws(as.character(value_txt %||% ""))
+  if (!nzchar(value_txt)) {
+    return(list(y_next = y_curr - line_h, rect_pt = NULL))
+  }
+
+  words <- strsplit(value_txt, "\\s+")[[1]]
+  lines_out <- character(0)
+  curr_line <- ""
+  avail_w <- max(20, max_w - label_w)
+
+  for (w in words) {
+    cand <- if (nzchar(curr_line)) paste(curr_line, w) else w
+    w_cand <- graphics::strwidth(cand, font = 1, cex = cex_val)
+    if (w_cand <= avail_w || !nzchar(curr_line)) {
+      curr_line <- cand
+    } else {
+      lines_out <- c(lines_out, curr_line)
+      curr_line <- w
+      avail_w <- max_w
+    }
+  }
+  if (nzchar(curr_line)) {
+    lines_out <- c(lines_out, curr_line)
+  }
+
+  if (length(lines_out) > max_lines) {
+    lines_out <- lines_out[seq_len(max_lines)]
+    lines_out[max_lines] <- paste0(substr(lines_out[max_lines], 1, max(10, nchar(lines_out[max_lines]) - 3)), "...")
+  }
+
+  # 2. Desenha a 1ª linha do valor logo após o rótulo, SEM negrito (font = 1)
+  x_val1 <- x_pos + label_w
+  val1_w <- graphics::strwidth(lines_out[1], font = 1, cex = cex_val)
+  graphics::text(x_val1, y_curr, lines_out[1], col = val_col, font = 1, cex = cex_val, adj = 0)
+
+  if (isTRUE(underline_val) && val1_w > 0) {
+    graphics::lines(c(x_val1, x_val1 + val1_w), c(y_curr - 0.85, y_curr - 0.85), col = val_col, lwd = 0.75)
+  }
+
+  # Calcula retângulo em pontos PDF (595 x 841) para anotação de link clicável
+  x1_pt <- graphics::grconvertX(x_val1, from = "user", to = "ndc") * 595
+  x2_pt <- graphics::grconvertX(x_val1 + val1_w, from = "user", to = "ndc") * 595
+  y1_pt <- graphics::grconvertY(y_curr - 1.2, from = "user", to = "ndc") * 841
+  y2_pt <- graphics::grconvertY(y_curr + 3.2, from = "user", to = "ndc") * 841
+  rect_pt <- c(round(x1_pt, 2), round(y1_pt, 2), round(x2_pt, 2), round(y2_pt, 2))
+
+  y_curr <- y_curr - line_h
+
+  # 3. Desenha as linhas subsequentes do valor alinhadas em x_pos, SEM negrito (font = 1)
+  if (length(lines_out) >= 2) {
+    for (idx in 2:length(lines_out)) {
+      graphics::text(x_pos, y_curr, lines_out[idx], col = val_col, font = 1, cex = cex_val, adj = 0)
+      y_curr <- y_curr - line_h
     }
   }
 
+  list(y_next = y_curr, rect_pt = rect_pt)
+}
+
+#' Injeta anotações de hiperlink clicáveis (/Subtype /Link /A << /S /URI ... >>)
+#' nas páginas do PDF gerado pelo grDevices::pdf() operando diretamente sobre bytes brutos.
+inject_pdf_uri_links <- function(pdf_path, page_links) {
+  if (!file.exists(pdf_path) || length(page_links) == 0L) return(invisible(FALSE))
+
+  raw_bytes <- readBin(pdf_path, what = "raw", n = file.info(pdf_path)$size)
+  to_search_str <- function(rb) {
+    sb <- rb
+    sb[sb == as.raw(0L)] <- as.raw(1L)
+    s <- rawToChar(sb)
+    Encoding(s) <- "latin1"
+    s
+  }
+
+  search_str <- to_search_str(raw_bytes)
+
+  # Localiza os objetos /Type /Page em ordem de página (1-to-1 com índices de raw_bytes)
+  page_matches <- gregexpr(
+    "[0-9]+ 0 obj\\r?\\n<< /Type /Page /Parent [0-9]+ 0 R /Contents [0-9]+ 0 R /Resources [0-9]+ 0 R >>\\r?\\nendobj",
+    search_str, perl = TRUE, useBytes = TRUE
+  )[[1]]
+  if (length(page_matches) == 0L || page_matches[1] == -1L) return(invisible(FALSE))
+
+  # Substitui de trás para frente diretamente em raw_bytes preservando os streams FlateDecode
+  for (p_idx in rev(seq_along(page_matches))) {
+    if (p_idx <= length(page_links) && !is.null(page_links[[p_idx]])) {
+      lnk <- page_links[[p_idx]]
+      url_clean <- gsub("([()\\\\])", "\\\\\\1", lnk$url, perl = TRUE)
+      r <- lnk$rect
+      annot_str <- sprintf(
+        "/Annots [ << /Type /Annot /Subtype /Link /Rect [%.2f %.2f %.2f %.2f] /Border [0 0 0] /A << /Type /Action /S /URI /URI (%s) >> >> ] >>",
+        r[1], r[2], r[3], r[4], url_clean
+      )
+      m_start <- page_matches[p_idx]
+      m_len <- attr(page_matches, "match.length")[p_idx]
+      orig_obj <- rawToChar(raw_bytes[m_start:(m_start + m_len - 1L)])
+      new_obj <- sub(">>(\\r?\\nendobj)$", paste0(annot_str, "\\1"), orig_obj, perl = TRUE)
+      new_obj_raw <- charToRaw(new_obj)
+
+      prefix_raw <- if (m_start > 1L) raw_bytes[1L:(m_start - 1L)] else raw(0)
+      suffix_start <- m_start + m_len
+      suffix_raw <- if (suffix_start <= length(raw_bytes)) raw_bytes[suffix_start:length(raw_bytes)] else raw(0)
+      raw_bytes <- c(prefix_raw, new_obj_raw, suffix_raw)
+    }
+  }
+
+  # Reconstrói a tabela xref com os byte offsets exatos de cada "N 0 obj"
+  search_str <- to_search_str(raw_bytes)
+  xref_pos <- regexpr("xref\\r?\\n", search_str, perl = TRUE, useBytes = TRUE)[1]
+  if (xref_pos > 1L) {
+    body_raw <- raw_bytes[1L:(xref_pos - 1L)]
+    body_search <- substr(search_str, 1L, xref_pos - 1L)
+
+    obj_matches <- gregexpr("([0-9]+) 0 obj", body_search, perl = TRUE, useBytes = TRUE)[[1]]
+    obj_strs <- regmatches(body_search, list(obj_matches))[[1]]
+    obj_ids <- as.integer(sub(" 0 obj$", "", obj_strs))
+    max_id <- max(obj_ids)
+
+    xref_lines <- character(max_id + 1L)
+    xref_lines[1] <- "0000000000 65535 f "
+    for (k in seq_along(obj_ids)) {
+      id <- obj_ids[k]
+      offset <- obj_matches[k] - 1L # 0-indexed byte offset
+      xref_lines[id + 1L] <- sprintf("%010d 00000 n ", offset)
+    }
+
+    trailer_pos <- regexpr("trailer\\r?\\n<<[\\s\\S]*?>>", search_str, perl = TRUE, useBytes = TRUE)
+    trailer_block <- if (trailer_pos[1] > 0L) {
+      t_start <- trailer_pos[1]
+      t_len <- attr(trailer_pos, "match.length")
+      rawToChar(raw_bytes[t_start:(t_start + t_len - 1L)])
+    } else {
+      sprintf("trailer\n<< /Size %d /Root 1 0 R /Info 2 0 R >>", max_id + 1L)
+    }
+
+    new_xref_offset <- length(body_raw)
+    new_tail <- paste0(
+      "xref\n",
+      sprintf("0 %d\n", max_id + 1L),
+      paste(xref_lines, collapse = "\n"), "\n",
+      trailer_block, "\n",
+      "startxref\n",
+      sprintf("%d\n", new_xref_offset),
+      "%%EOF\n"
+    )
+    raw_bytes <- c(body_raw, charToRaw(new_tail))
+  }
+
+  writeBin(raw_bytes, pdf_path)
+  invisible(TRUE)
+}
+
+#' Gera PDF institucional oficial utilizando o dispositivo gráfico nativo do R
+#' Segue fielmente o modelo Radar da Inovação (NEI - SENAI CIMATEC), com rótulos
+#' em negrito, valores sem negrito e hiperlinks clicáveis.
+generate_fallback_institutional_pdf <- function(report_data, output_pdf, template_path = "templates/modelo_editais.docx") {
+  items <- utils::head(report_data$items %||% list(), 3L)
+
+  # Resolve a imagem de fundo do modelo Radar da Inovação (SENAI CIMATEC)
+  bg_path <- file.path("templates", "modelo_editais_bg.png")
   has_bg <- file.exists(bg_path) && requireNamespace("png", quietly = TRUE)
   bg_img <- if (has_bg) tryCatch(png::readPNG(bg_path), error = function(e) NULL) else NULL
 
   mes_ano <- format(Sys.time(), "%m/%Y")
+  page_links <- vector("list", 3L)
 
-  grDevices::pdf(
-    file = output_pdf,
-    width = 8.27, # A4
-    height = 11.69,
-    paper = "a4",
-    family = "Helvetica"
-  )
-  on.exit(grDevices::dev.off(), add = TRUE)
-
-  for (page_num in 1:3) {
-    it <- if (page_num <= length(items)) items[[page_num]] else NULL
-
-    graphics::par(mar = c(0, 0, 0, 0), oma = c(0, 0, 0, 0))
-    graphics::plot.new()
-    graphics::plot.window(xlim = c(0, 210), ylim = c(0, 297))
-
-    # 1. Fundo Oficial com cabeçalho curvo, logos oficiais (QuIIN, SENAI CIMATEC, EMBRAPII, MCTI) e marca d'água vetorial
-    if (!is.null(bg_img)) {
-      graphics::rasterImage(bg_img, 0, 0, 210, 297)
-    } else {
-      graphics::rect(0, 260, 210, 297, col = "#003366", border = NA)
-      graphics::rect(0, 220, 210, 260, col = "#001A4D", border = NA)
-    }
-
-    # 2. Textos do Cabeçalho Oficial (exatamente como no modelo Word)
-    graphics::text(20, 268, "BOLETIM", col = "#38BDF8", font = 2, cex = 1.35, adj = 0)
-    graphics::text(20, 261, "QuIIN QFunding Intelligence Hub", col = "#38BDF8", font = 2, cex = 1.25, adj = 0)
-    graphics::text(192, 268, sprintf("Edição %s", mes_ano), col = "#FFFFFF", font = 1, cex = 0.95, adj = 1)
-
-    sub_lines <- c(
-      "Publicação seriada que divulga oportunidade de",
-      "financiamento à pesquisa, desenvolvimento e inovação com",
-      "cobertura global relacionadas à Tecnologia Quântica."
+  local({
+    grDevices::pdf(
+      file = output_pdf,
+      width = 8.27, # A4
+      height = 11.69,
+      paper = "a4",
+      family = "Helvetica"
     )
-    y_sub <- 254
-    for (sl in sub_lines) {
-      graphics::text(20, y_sub, sl, col = "#FFFFFF", font = 2, cex = 0.85, adj = 0)
-      y_sub <- y_sub - 4.5
-    }
+    on.exit(grDevices::dev.off(), add = TRUE)
 
-    graphics::text(20, 222, "Autores: Mabel Diz Marques Mota, Italo Ferreira, David Regalado e João Carlos Passos,", col = "#38BDF8", font = 1, cex = 0.78, adj = 0)
-    graphics::text(20, 217, "Pesquisadores QuIIN Associação Tecnológica.", col = "#FFFFFF", font = 1, cex = 0.78, adj = 0)
-    graphics::text(20, 212, "Responsável Técnico: Mabel Diz Marques Mota.", col = "#38BDF8", font = 1, cex = 0.78, adj = 0)
+    for (page_num in 1:3) {
+      it <- if (page_num <= length(items)) items[[page_num]] else NULL
 
-    # 3. Conteúdo do Edital na página correspondente (1 edital por página, idêntico ao Word)
-    y_curr <- 192
-    x_pos <- 30
+      graphics::par(mar = c(0, 0, 0, 0), oma = c(0, 0, 0, 0), xaxs = "i", yaxs = "i")
+      graphics::plot.new()
+      graphics::plot.window(xlim = c(0, 210), ylim = c(0, 297))
 
-    if (!is.null(it)) {
-      # Edital
-      edital_txt <- it$edital %||% "Edital sem título"
-      e_lines <- strwrap(sprintf("Edital: %s", edital_txt), width = 72)
-      for (el in e_lines) {
-        graphics::text(x_pos, y_curr, el, col = "#000000", font = 2, cex = 0.82, adj = 0)
-        y_curr <- y_curr - 4.6
+      # 1. Fundo Oficial Radar da Inovação (cabeçalho azul curvo + logo SENAI CIMATEC)
+      if (!is.null(bg_img)) {
+        graphics::rasterImage(bg_img, 0, 0, 210, 297)
+      } else {
+        graphics::rect(0, 240, 210, 297, col = "#0B0B45", border = NA)
+        graphics::rect(10, 226, 200, 255, col = "#000080", border = NA)
       }
 
-      # Tipo de oportunidade
-      graphics::text(x_pos, y_curr, sprintf("Tipo de oportunidade: %s", it$tipo %||% "N/A"), col = "#000000", font = 1, cex = 0.82, adj = 0)
-      y_curr <- y_curr - 4.6
+      # 2. Textos do Cabeçalho Oficial (idênticos ao modelo Word Radar da Inovação)
+      graphics::text(21, 266.5, "BOLETIM", col = "#00FFFF", font = 1, cex = 1.55, adj = 0)
+      graphics::text(21, 258.5, "Radar da Inovação", col = "#00FFFF", font = 1, cex = 1.40, adj = 0)
+      graphics::text(192, 267.5, sprintf("Edição %s", mes_ano), col = "#FFFFFF", font = 1, cex = 0.90, adj = 1)
 
-      # País de origem
-      graphics::text(x_pos, y_curr, sprintf("País de origem: %s", it$pais %||% "N/A"), col = "#000000", font = 1, cex = 0.82, adj = 0)
-      y_curr <- y_curr - 4.6
-
-      # Prazo limite de submissão
-      graphics::text(x_pos, y_curr, sprintf("Prazo limite de submissão: %s", it$prazo %||% "N/A"), col = "#000000", font = 1, cex = 0.82, adj = 0)
-      y_curr <- y_curr - 4.6
-
-      # Área temática
-      graphics::text(x_pos, y_curr, sprintf("Área temática: %s", it$area %||% "N/A"), col = "#000000", font = 1, cex = 0.82, adj = 0)
-      y_curr <- y_curr - 4.6
-
-      # Resumo
-      resumo_txt <- it$resumo %||% "Sem resumo cadastrado."
-      r_lines <- strwrap(sprintf("Resumo: %s", resumo_txt), width = 76)
-      if (length(r_lines) > 5) {
-        r_lines <- c(r_lines[1:4], paste0(substr(r_lines[5], 1, 70), "..."))
-      }
-      for (rl in r_lines) {
-        graphics::text(x_pos, y_curr, rl, col = "#000000", font = 1, cex = 0.80, adj = 0)
-        y_curr <- y_curr - 4.4
-      }
-
-      # Orçamento estimado
-      graphics::text(x_pos, y_curr, sprintf("Orçamento estimado: %s", it$orcamento %||% "N/A"), col = "#000000", font = 1, cex = 0.82, adj = 0)
-      y_curr <- y_curr - 4.6
-
-      # Link de acesso (com cor azul de link institucional)
-      link_lbl <- it$link_label %||% "Acessar Portal Oficial"
-      graphics::text(x_pos, y_curr, sprintf("Link de acesso: %s", link_lbl), col = "#0563C1", font = 2, cex = 0.82, adj = 0)
-      y_curr <- y_curr - 6.0
-    }
-
-    # Linha divisória horizontal do modelo Word
-    graphics::lines(c(30, 98), c(y_curr, y_curr), col = "#000000", lwd = 1.2)
-    y_curr <- y_curr - 6.0
-
-    # 4. Na Página 3: Ficha Técnica e Direitos Autorais (exatamente como no Word)
-    if (page_num == 3) {
-      ficha_lines <- c(
-        "MOTA, Mabel Diz Marques Mota; FERREIRA, Italo; REGALADO, David; PASSOS, João Carlos. Boletim: QuIIN",
-        "QFunding Intelligence Hub. Organização: MABEL DIZ MARQUES MOTA. Salvador: QUIIN, 2026. Boletim Técnico.",
-        "©QuIIN - 2026",
-        "Boletim Técnico QuIIN / QuIIN. Salvador: SENAI CIMATEC, 2025.",
-        "1. Tecnologia quântica. 2. Pós processamento. 3. QuIIN. 4. PDI. 5. Associação tecnológica. CDD",
-        "As opiniões emitidas nesta publicação são de exclusiva e inteira responsabilidade dos autores, não exprimindo,",
-        "necessariamente, o ponto de vista do QuIIN ou do SENAI CIMATEC.",
-        "É permitida a reprodução deste texto e dos dados nele contidos, desde que citada a fonte.",
-        "Reproduções para fins comerciais são proibidas."
+      graphics::text(
+        105, 246.5,
+        "Publicação seriada que divulga oportunidade de financiamento à pesquisa,",
+        col = "#FFFFFF", font = 2, cex = 0.92, adj = 0.5
       )
-      y_ficha <- y_curr - 2
-      for (fl in ficha_lines) {
-        graphics::text(30, y_ficha, fl, col = "#000000", font = 1, cex = 0.64, adj = 0)
-        y_ficha <- y_ficha - 3.4
-      }
-    }
+      graphics::text(
+        105, 241.5,
+        "desenvolvimento e inovação",
+        col = "#FFFFFF", font = 2, cex = 0.92, adj = 0.5
+      )
 
-    # 5. Número da Página no canto inferior direito
-    graphics::text(178, 22, as.character(page_num), col = "#000000", font = 1, cex = 1.1, adj = 1)
-  }
+      # 3. Conteúdo do Edital na página correspondente (chaves em negrito, valores sem negrito)
+      y_curr <- 195
+      x_pos <- 30
+
+      edital_txt <- if (!is.null(it)) (it$edital %||% "") else ""
+      tipo_txt   <- if (!is.null(it)) (it$tipo %||% "") else ""
+      pais_txt   <- if (!is.null(it)) (it$pais %||% "") else ""
+      prazo_txt  <- if (!is.null(it)) (it$prazo %||% "") else ""
+      area_txt   <- if (!is.null(it)) (it$area %||% "") else ""
+      resumo_txt <- if (!is.null(it)) (it$resumo %||% "") else ""
+      orc_txt    <- if (!is.null(it)) (it$orcamento %||% "") else ""
+
+      link_url <- if (!is.null(it)) trimws(it$link_url %||% "") else ""
+      link_lbl <- if (!is.null(it)) trimws(it$link_label %||% "") else ""
+      if (!is.null(it)) {
+        if (!nzchar(link_lbl) && nzchar(link_url)) link_lbl <- link_url
+        if (!nzchar(link_lbl)) link_lbl <- "Acessar Edital"
+      }
+      is_valid_url <- nzchar(link_url) && !identical(link_url, "#") && grepl("^https?://", link_url)
+
+      y_curr <- draw_pdf_labeled_field(x_pos, y_curr, "Edital: ", edital_txt, max_lines = 3)$y_next
+      y_curr <- draw_pdf_labeled_field(x_pos, y_curr, "Tipo de oportunidade: ", tipo_txt, max_lines = 2)$y_next
+      y_curr <- draw_pdf_labeled_field(x_pos, y_curr, "País de origem: ", pais_txt, max_lines = 1)$y_next
+      y_curr <- draw_pdf_labeled_field(x_pos, y_curr, "Prazo limite de submissão: ", prazo_txt, max_lines = 1)$y_next
+      y_curr <- draw_pdf_labeled_field(x_pos, y_curr, "Área temática: ", area_txt, max_lines = 2)$y_next
+
+      y_curr <- y_curr - 3.5
+      y_curr <- draw_pdf_labeled_field(x_pos, y_curr, "Resumo: ", resumo_txt, max_lines = 6)$y_next
+
+      y_curr <- y_curr - 3.5
+      y_curr <- draw_pdf_labeled_field(x_pos, y_curr, "Orçamento estimado: ", orc_txt, max_lines = 2)$y_next
+
+      y_curr <- y_curr - 3.5
+      link_res <- draw_pdf_labeled_field(
+        x_pos, y_curr,
+        "Link de acesso: ", link_lbl,
+        max_lines = 1,
+        val_col = if (is_valid_url) "#0563C1" else "#000000",
+        underline_val = is_valid_url
+      )
+      y_curr <- link_res$y_next
+
+      if (is_valid_url && !is.null(link_res$rect_pt)) {
+        page_links[[page_num]] <<- list(url = link_url, rect = link_res$rect_pt)
+      }
+
+      # Linha divisória horizontal (presente nas páginas 1 e 3 do modelo Word)
+      if (page_num %in% c(1, 3)) {
+        y_line <- if (page_num == 3) min(y_curr - 4.0, 145) else (y_curr - 12.0)
+        graphics::lines(c(30, 98), c(y_line, y_line), col = "#000000", lwd = 0.8)
+        y_curr <- y_line - 6.0
+      }
+
+      # 4. Na Página 3: Ficha Técnica Oficial do NEI / SENAI CIMATEC
+      if (page_num == 3) {
+        y_ficha <- y_curr - 1.0
+        graphics::text(30, y_ficha, "MOTA, Mabel Diz Marques Mota; SILVA, Raphael Oliveira; DANTAS, Yuri; FIGUEIROA, Felipe.", col = "#000000", font = 1, cex = 0.68, adj = 0)
+        y_ficha <- y_ficha - 3.6
+        graphics::text(30, y_ficha, "Boletim: Radar da Inovação. Organização: MABEL DIZ MARQUES MOTA. Salvador: NEI, 2026.", col = "#000000", font = 3, cex = 0.68, adj = 0)
+        y_ficha <- y_ficha - 3.6
+        graphics::text(30, y_ficha, "Boletim Técnico.", col = "#000000", font = 3, cex = 0.68, adj = 0)
+        y_ficha <- y_ficha - 7.2
+        graphics::text(30, y_ficha, "@NÚCLEO DE ECONOMIA INDUSTRIAL – 2026", col = "#000000", font = 1, cex = 0.68, adj = 0)
+        y_ficha <- y_ficha - 3.6
+        graphics::text(30, y_ficha, "Boletim Técnico NEI. Salvador: SENAI CIMATEC, 2026.", col = "#000000", font = 1, cex = 0.68, adj = 0)
+        y_ficha <- y_ficha - 3.6
+        graphics::text(30, y_ficha, "1. Financiamento. 2. Fomento à pesquisa. 3. Bolsas. 4. Projetos de Pesquisa Desenvolvimento e", col = "#000000", font = 1, cex = 0.68, adj = 0)
+        y_ficha <- y_ficha - 3.6
+        graphics::text(30, y_ficha, "Inovação. 5. Núcleo de Economia Industrial.", col = "#000000", font = 1, cex = 0.68, adj = 0)
+        y_ficha <- y_ficha - 3.6
+        graphics::text(30, y_ficha, "Publicação Interna do SENAI CIMATEC. É permitida a reprodução deste texto e dos dados nele", col = "#000000", font = 1, cex = 0.68, adj = 0)
+        y_ficha <- y_ficha - 3.6
+        graphics::text(30, y_ficha, "contidos, desde que citada a fonte. Reproduções para fins comerciais são proibidas.", col = "#000000", font = 1, cex = 0.68, adj = 0)
+      }
+
+      # 5. Número da Página no canto inferior direito
+      graphics::text(180, 22, as.character(page_num), col = "#000000", font = 1, cex = 0.95, adj = 1)
+    }
+  })
+
+  # 6. Injeta os links clicáveis (/Subtype /Link /URI) diretamente nos objetos de página do PDF
+  tryCatch(inject_pdf_uri_links(output_pdf, page_links), error = function(e) {
+    warning("[PDF] Aviso ao injetar links clicáveis no PDF: ", e$message)
+  })
 
   return(TRUE)
 }

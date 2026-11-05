@@ -234,13 +234,6 @@ build_sidebar <- function() {
       options = list(placeholder = "Todos os financiadores")
     ),
     selectizeInput(
-      "filter_area", 
-      label = tags$span(tags$i(class = "fa fa-laptop-code"), " Área Temática"),
-      choices = NULL, 
-      multiple = TRUE, 
-      options = list(placeholder = "Todas as áreas")
-    ),
-    selectizeInput(
       "filter_status", 
       label = tags$span(tags$i(class = "fa fa-info-circle"), " Status do Edital"),
       choices = c(
@@ -258,13 +251,6 @@ build_sidebar <- function() {
       choices = NULL, 
       multiple = TRUE, 
       options = list(placeholder = "Todos os tipos")
-    ),
-    selectizeInput(
-      "filter_language", 
-      label = tags$span(tags$i(class = "fa fa-language"), " Idioma"),
-      choices = NULL, 
-      multiple = TRUE, 
-      options = list(placeholder = "Todos os idiomas")
     ),
     tags$hr(style = "margin: 1rem 0; border-color: #cbd5e1;"),
     actionButton(
@@ -289,7 +275,7 @@ ui <- bslib::page_sidebar(
       tags$div(
         class = "app-title-main",
         h2("Radar da Inovação"),
-        p("Plataforma de inteligência de fomento à P&D+I para os Campi Sertão, Aeroespacial, Mar, Digital, Park e Startups")
+        p("Plataforma de inteligência de fomento à P&D+I")
       )
     ),
     uiOutput("header_status")
@@ -377,7 +363,7 @@ ui <- bslib::page_sidebar(
           style = "display: flex; justify-content: space-between; align-items: center;",
           tags$div(
             h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "⚓ Cimatec Mar"),
-            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e geração automática de propostas para os 7 Eixos Estratégicos Marítimos.")
+            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado de oportunidades de fomento para os 7 Eixos Estratégicos Marítimos.")
           ),
           tags$div(
             style = "text-align: right;",
@@ -395,7 +381,7 @@ ui <- bslib::page_sidebar(
                     selected = "Todos os Níveis")
       ),
       bslib::card(
-        tags$h5(style = "color: #004691; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Setor Marítimo & Ideias de Projetos Recomendadas"),
+        tags$h5(style = "color: #004691; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Setor Marítimo"),
         shinycssloaders::withSpinner(DTOutput("naval_results_table"), type = 6, color = "#004691")
       )
     ),
@@ -408,7 +394,7 @@ ui <- bslib::page_sidebar(
           style = "display: flex; justify-content: space-between; align-items: center;",
           tags$div(
             h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "🌾 Cimatec Sertão"),
-            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e propostas para Agro, Recursos Hídricos, Convivência com o Semiárido e Energias Renováveis.")
+            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado de oportunidades de fomento para Agro, Recursos Hídricos, Convivência com o Semiárido e Energias Renováveis.")
           ),
           tags$div(
             style = "text-align: right;",
@@ -426,7 +412,7 @@ ui <- bslib::page_sidebar(
                     selected = "Todos os Níveis")
       ),
       bslib::card(
-        tags$h5(style = "color: #15803d; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Núcleo Sertão & Agro & Ideias de Projetos Recomendadas"),
+        tags$h5(style = "color: #15803d; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Núcleo Sertão & Agro"),
         shinycssloaders::withSpinner(DTOutput("sertao_results_table"), type = 6, color = "#15803d")
       )
     ),
@@ -439,7 +425,7 @@ ui <- bslib::page_sidebar(
           style = "display: flex; justify-content: space-between; align-items: center;",
           tags$div(
             h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "🚀 Cimatec Aeroespacial"),
-            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e propostas para VANTs/Drones, Tecnologias Espaciais, Satélites e Defesa Nacional.")
+            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado de oportunidades de fomento para VANTs/Drones, Tecnologias Espaciais, Satélites e Defesa Nacional.")
           ),
           tags$div(
             style = "text-align: right;",
@@ -457,7 +443,7 @@ ui <- bslib::page_sidebar(
                     selected = "Todos os Níveis")
       ),
       bslib::card(
-        tags$h5(style = "color: #0284c7; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Núcleo Aeroespacial & Defesa & Ideias de Projetos Recomendadas"),
+        tags$h5(style = "color: #0284c7; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Núcleo Aeroespacial & Defesa"),
         shinycssloaders::withSpinner(DTOutput("aero_results_table"), type = 6, color = "#0284c7")
       )
     ),
@@ -470,7 +456,7 @@ ui <- bslib::page_sidebar(
           style = "display: flex; justify-content: space-between; align-items: center;",
           tags$div(
             h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "💻 Cimatec Digital"),
-            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e propostas para Inteligência Artificial, Cibersegurança, HPC, Quântica e Tecnologias Digitais.")
+            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado de oportunidades de fomento para Inteligência Artificial, Cibersegurança, HPC, Quântica e Tecnologias Digitais.")
           ),
           tags$div(
             style = "text-align: right;",
@@ -488,7 +474,7 @@ ui <- bslib::page_sidebar(
                     selected = "Todos os Níveis")
       ),
       bslib::card(
-        tags$h5(style = "color: #4f46e5; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Núcleo Digital & IA & Ideias de Projetos Recomendadas"),
+        tags$h5(style = "color: #4f46e5; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Núcleo Digital & IA"),
         shinycssloaders::withSpinner(DTOutput("digital_results_table"), type = 6, color = "#4f46e5")
       )
     ),
@@ -501,7 +487,7 @@ ui <- bslib::page_sidebar(
           style = "display: flex; justify-content: space-between; align-items: center;",
           tags$div(
             h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "🏭 Cimatec Park"),
-            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e propostas para Manufatura Avançada, Materiais, Eletromobilidade, Química e Indústria 4.0.")
+            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado de oportunidades de fomento para Manufatura Avançada, Materiais, Eletromobilidade, Química e Indústria 4.0.")
           ),
           tags$div(
             style = "text-align: right;",
@@ -519,7 +505,7 @@ ui <- bslib::page_sidebar(
                     selected = "Todos os Níveis")
       ),
       bslib::card(
-        tags$h5(style = "color: #d97706; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Núcleo Park & Manufatura & Ideias de Projetos Recomendadas"),
+        tags$h5(style = "color: #d97706; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Núcleo Park & Manufatura"),
         shinycssloaders::withSpinner(DTOutput("park_results_table"), type = 6, color = "#d97706")
       )
     ),
@@ -532,7 +518,7 @@ ui <- bslib::page_sidebar(
           style = "display: flex; justify-content: space-between; align-items: center;",
           tags$div(
             h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "💡 Cimatec Startups"),
-            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e propostas para Startups, Deep Techs, MPEs, Inovação Aberta e Venture Capital.")
+            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado de oportunidades de fomento para Startups, Deep Techs, MPEs, Inovação Aberta e Venture Capital.")
           ),
           tags$div(
             style = "text-align: right;",
@@ -550,7 +536,7 @@ ui <- bslib::page_sidebar(
                     selected = "Todos os Níveis")
       ),
       bslib::card(
-        tags$h5(style = "color: #7c3aed; font-weight: 700; margin-bottom: 15px;", "Oportunidades para Startups & Ideias de Projetos Recomendadas"),
+        tags$h5(style = "color: #7c3aed; font-weight: 700; margin-bottom: 15px;", "Oportunidades para Startups"),
         shinycssloaders::withSpinner(DTOutput("startups_results_table"), type = 6, color = "#7c3aed")
       )
     ),
@@ -727,7 +713,7 @@ ui <- bslib::page_sidebar(
     tags$div(
       class = "footer-bottom-centered",
       tags$p(
-        tags$i(class = "fa-solid fa-building", style = "color: #004691;"), " Superintendência de planejamento e novos negócios"
+        tags$i(class = "fa-solid fa-building", style = "color: #004691;"), " Superintendência de Planejamento e Novos Negócios"
       ),
       tags$p(
         tags$i(class = "fa-solid fa-magnifying-glass-chart", style = "color: #004691;"), " NEI - Núcleo de Economia Industrial"
@@ -736,7 +722,7 @@ ui <- bslib::page_sidebar(
         "Responsável técnico: Mabel Diz Marques Mota"
       ),
       tags$p(
-        "Curador: Felipe Dourado Figueiroa, Mabel Diz Marques Mota, Raphael de Oliveira Silva e Yuri Conrado Dantas"
+        "Curador: Mabel Diz Marques Mota, Raphael de Oliveira Silva, Yuri Conrado Dantas, Felipe Dourado Figueiroa"
       ),
       tags$p(
         sprintf("© %s Núcleo de Economia Industrial – SENAI CIMATEC. Transformando conhecimento econômico em vantagem competitiva.", format(Sys.Date(), "%Y"))
@@ -855,6 +841,8 @@ server <- function(input, output, session) {
         }
       }, character(1))
     }
+    # Tipologia padronizada (Bolsas, Fomento à pesquisa, Fomento a eventos, ...)
+    opps_df <- tryCatch(normalize_tipo_oportunidade_df(opps_df), error = function(e) opps_df)
     rv$opportunities <- opps_df
     rv$sources <- tibble::as_tibble(data$sources)
     rv$saved_searches <- tibble::as_tibble(data$saved_searches)
@@ -1574,7 +1562,7 @@ server <- function(input, output, session) {
   # Export handlers for modal after collection
   output$btn_modal_export_xlsx <- downloadHandler(
     filename = function() {
-      generate_export_filename("quiiin_coleta", "xlsx")
+      generate_export_filename("relatorio_nei", "xlsx")
     },
     content = function(file) {
       data <- filtered_results()
@@ -1585,7 +1573,7 @@ server <- function(input, output, session) {
 
   output$btn_modal_export_csv <- downloadHandler(
     filename = function() {
-      generate_export_filename("quiiin_coleta", "csv")
+      generate_export_filename("relatorio_nei", "csv")
     },
     content = function(file) {
       data <- filtered_results()
@@ -1715,10 +1703,8 @@ server <- function(input, output, session) {
         textInput("adv_optional_terms", "Termos opcionais", value = rv$advanced_filters$optional_terms %||% ""),
         textInput("adv_exclude_terms", "Termos a excluir", value = rv$advanced_filters$exclude_terms %||% ""),
         textInput("adv_exact_phrase", "Frase exata", value = rv$advanced_filters$exact_phrase %||% ""),
-        selectInput("adv_idioma", "Idioma", choices = c("Todos", sort(unique(opps$idioma))), selected = rv$advanced_filters$idioma %||% "Todos"),
         selectizeInput("adv_country", "País/região", choices = sort(unique(opps$pais_origem)), multiple = TRUE, selected = rv$advanced_filters$pais %||% character(0)),
-        selectizeInput("adv_type", "Tipo de oportunidade", choices = sort(unique(opps$tipo_oportunidade)), multiple = TRUE, selected = rv$advanced_filters$tipo %||% character(0)),
-        selectizeInput("adv_area", "Área temática", choices = sort(unique(opps$area_tematica)), multiple = TRUE, selected = rv$advanced_filters$area_tematica %||% character(0)),
+        selectizeInput("adv_type", "Tipo de oportunidade", choices = intersect(TIPOS_OPORTUNIDADE, unique(opps$tipo_oportunidade)), multiple = TRUE, selected = rv$advanced_filters$tipo %||% character(0)),
         selectizeInput("adv_funder", "Financiador", choices = sort(unique(opps$entidade)), multiple = TRUE, selected = rv$advanced_filters$financiador %||% character(0)),
         textInput("adv_eligibility", "Elegibilidade institucional", value = rv$advanced_filters$elegibilidade %||% ""),
         textInput("adv_maturity", "Nível de maturidade da pesquisa", value = rv$advanced_filters$maturidade %||% ""),
@@ -1741,10 +1727,8 @@ server <- function(input, output, session) {
       optional_terms = input$adv_optional_terms,
       exclude_terms = input$adv_exclude_terms,
       exact_phrase = input$adv_exact_phrase,
-      idioma = input$adv_idioma,
       pais = input$adv_country,
       tipo = input$adv_type,
-      area_tematica = input$adv_area,
       financiador = input$adv_funder,
       elegibilidade = input$adv_eligibility,
       maturidade = input$adv_maturity,
@@ -1988,10 +1972,24 @@ server <- function(input, output, session) {
     compute_adherence_score(df, conn, query, signature = interest_sig())
   })
 
+  # Resultados com TODOS os filtros do sidebar, exceto o filtro de Campi.
+  # Usado pelas abas temáticas (Mar, Sertão, Aeroespacial, Digital, Park, Startups)
+  # para que "Status do Edital", "Financiador", "Tipo" e "Região" também valham nelas.
+  sidebar_filtered_results <- reactive({
+    if (is.null(rv$user)) return(tibble::tibble())
+    df <- base_results()
+    if (nrow(df) == 0) return(df)
+    apply_sidebar_filters(df, include_campus = FALSE)
+  })
+
   filtered_results <- reactive({
     if (is.null(rv$user)) return(tibble::tibble())
     df <- base_results()
     if (nrow(df) == 0) return(df)
+    apply_sidebar_filters(df, include_campus = TRUE)
+  })
+
+  apply_sidebar_filters <- function(df, include_campus = TRUE) {
     
     # Status derivado em renderização (BUG-01): nunca ler status_oportunidade congelado
     df$derived_status <- derive_status_df(df)
@@ -2010,25 +2008,19 @@ server <- function(input, output, session) {
     }
 
     # Filtros Rápidos do Sidebar
-    if (length(input$filter_campus) > 0 && !"Todos" %in% input$filter_campus) {
+    if (isTRUE(include_campus) && length(input$filter_campus) > 0 && !"Todos" %in% input$filter_campus) {
       sel_campi <- input$filter_campus
-      df <- df |> dplyr::filter(vapply(seq_len(dplyr::n()), function(i) {
-        rec_c <- df$campus[[i]] %||% ""
-        ttl_i <- df$titulo[[i]] %||% ""
-        desc_i <- df$descricao_resumida[[i]] %||% ""
-        area_i <- df$area_tematica[[i]] %||% ""
-        kw_i <- df$palavras_chave[[i]] %||% ""
-        comb_text <- paste(rec_c, ttl_i, desc_i, area_i, kw_i)
-        any(vapply(sel_campi, function(sc) {
-          grepl(sc, comb_text, ignore.case = TRUE)
-        }, logical(1)))
-      }, logical(1)))
+      mask <- campus_match_mask(df, sel_campi)
+      # Campi sem lista oficial de palavras-chave (Sede e Park, Startups): mantém a busca textual pelo nome
+      sem_query <- setdiff(sel_campi, names(CAMPUS_SEARCH_QUERIES))
+      if (length(sem_query)) {
+        comb_text <- paste(df$campus %||% "", df$titulo %||% "", df$descricao_resumida %||% "", df$area_tematica %||% "", df$palavras_chave %||% "")
+        for (sc in sem_query) mask <- mask | grepl(sc, comb_text, ignore.case = TRUE)
+      }
+      df <- df[mask, , drop = FALSE]
     }
     if (length(input$filter_funder) > 0) {
       df <- df |> dplyr::filter(entidade %in% input$filter_funder)
-    }
-    if (length(input$filter_area) > 0) {
-      df <- df |> dplyr::filter(area_tematica %in% input$filter_area)
     }
     if (length(input$filter_status) > 0) {
       sel_status <- tolower(gsub(" ", "_", input$filter_status))
@@ -2043,12 +2035,9 @@ server <- function(input, output, session) {
     if (length(input$filter_type) > 0) {
       df <- df |> dplyr::filter(tipo_oportunidade %in% input$filter_type)
     }
-    if (length(input$filter_language) > 0) {
-      df <- df |> dplyr::filter(idioma %in% input$filter_language)
-    }
-    
+
     dplyr::arrange(df, dplyr::desc(score_aderencia), parse_date_safe(data_limite))
-  })
+  }
 
   # Atualizador dinâmico de escolhas dos filtros no sidebar (blindado contra loops de reatividade)
   observeEvent(rv$opportunities, {
@@ -2070,10 +2059,6 @@ server <- function(input, output, session) {
     funder_choices <- sort(unique(opps$entidade))
     updateSelectizeInput(session, "filter_funder", choices = funder_choices, selected = isolate(input$filter_funder))
     
-    # Área Temática
-    area_choices <- sort(unique(opps$area_tematica[!is.na(opps$area_tematica) & opps$area_tematica != ""]))
-    updateSelectizeInput(session, "filter_area", choices = area_choices, selected = isolate(input$filter_area))
-    
     # Status do Edital: Abertos, Desconhecidos, Encerrados, Em breve
     status_display <- c(
       "Abertos" = "aberto",
@@ -2084,13 +2069,9 @@ server <- function(input, output, session) {
     updateSelectizeInput(session, "filter_status", choices = status_display, selected = isolate(input$filter_status))
     
     # Tipo de Oportunidade
-    type_choices <- sort(unique(opps$tipo_oportunidade[!is.na(opps$tipo_oportunidade) & opps$tipo_oportunidade != ""]))
+    present_types <- unique(opps$tipo_oportunidade[!is.na(opps$tipo_oportunidade) & opps$tipo_oportunidade != ""])
+    type_choices <- c(intersect(TIPOS_OPORTUNIDADE, present_types), sort(setdiff(present_types, TIPOS_OPORTUNIDADE)))
     updateSelectizeInput(session, "filter_type", choices = type_choices, selected = isolate(input$filter_type))
-    
-    # Idioma
-    lang_choices <- sort(unique(opps$idioma[!is.na(opps$idioma) & opps$idioma != ""]))
-    lang_display <- setNames(lang_choices, toupper(lang_choices))
-    updateSelectizeInput(session, "filter_language", choices = lang_display, selected = isolate(input$filter_language))
   }, ignoreNULL = TRUE)
 
   # Evento para limpar todos os filtros rápidos do sidebar
@@ -2098,9 +2079,7 @@ server <- function(input, output, session) {
     updateSelectizeInput(session, "filter_campus", selected = character(0))
     updateSelectizeInput(session, "filter_status", selected = character(0))
     updateSelectizeInput(session, "filter_funder", selected = character(0))
-    updateSelectizeInput(session, "filter_area", selected = character(0))
     updateSelectizeInput(session, "filter_type", selected = character(0))
-    updateSelectizeInput(session, "filter_language", selected = character(0))
   })
 
   # ==============================================================================
@@ -2172,8 +2151,20 @@ server <- function(input, output, session) {
   }, ignoreInit = TRUE)
 
   observeEvent(input$btn_do_generate_report, {
-    opps <- rv$opportunities
-    req(nrow(opps) > 0)
+    # Usa base_results() (ou recalcula com a conexão real conn) para que o score_aderencia
+    # seja exatamente o mesmo exibido na tabela principal "Resultados & Editais"
+    opps <- tryCatch(base_results(), error = function(e) NULL)
+    if (is.null(opps) || nrow(opps) == 0L) {
+      opps <- rv$opportunities
+      req(nrow(opps) > 0)
+      opps <- tryCatch(
+        compute_adherence_score(opps, conn, rv$current_query %||% "", signature = interest_sig()),
+        error = function(e) {
+          if (!"score_aderencia" %in% names(opps)) opps$score_aderencia <- 0
+          opps
+        }
+      )
+    }
 
     sel_campus <- trimws(input$report_campus_select %||% "")
 
@@ -2187,37 +2178,19 @@ server <- function(input, output, session) {
       return()
     }
 
-    # 1. Filtra oportunidades que contenham menção ao campus no texto ou metadados
-    matches_campus <- vapply(seq_len(nrow(opps)), function(i) {
-      rec_c <- opps$campus[[i]] %||% ""
-      ttl_i <- opps$titulo[[i]] %||% ""
-      desc_i <- opps$descricao_resumida[[i]] %||% ""
-      area_i <- opps$area_tematica[[i]] %||% ""
-      comb_text <- paste(rec_c, ttl_i, desc_i, area_i)
-      grepl(sel_campus, comb_text, ignore.case = TRUE)
-    }, logical(1))
+    # 1. Filtra oportunidades do campus selecionado com a mesma regra da tabela principal
+    matches_campus <- campus_match_mask(opps, sel_campus)
+    if (!sel_campus %in% names(CAMPUS_SEARCH_QUERIES)) {
+      comb_text <- paste(opps$campus %||% "", opps$titulo %||% "", opps$descricao_resumida %||% "", opps$area_tematica %||% "", opps$palavras_chave %||% "")
+      matches_campus <- matches_campus | grepl(sel_campus, comb_text, ignore.case = TRUE)
+    }
 
     df_filtered <- opps[matches_campus, , drop = FALSE]
     if (nrow(df_filtered) == 0L) {
       df_filtered <- opps
     }
 
-    # 2. Recalcula aderência para o campus escolhido
-    conn <- isolate(rv$conn)
-    df_filtered <- tryCatch({
-      compute_adherence_score(df_filtered, conn, sel_campus, signature = interest_sig())
-    }, error = function(e) {
-      if (!"score_aderencia" %in% names(df_filtered)) df_filtered$score_aderencia <- 0
-      df_filtered
-    })
-
-    # Adiciona bonificação se o registro tiver menção direta ao campus
-    if ("campus" %in% names(df_filtered)) {
-      direct_hit <- grepl(sel_campus, df_filtered$campus, ignore.case = TRUE)
-      df_filtered$score_aderencia <- df_filtered$score_aderencia + ifelse(direct_hit, 30, 0)
-    }
-
-    # 3. Gera o relatório com até 4 oportunidades abertas de maior aderência
+    # 2. Gera o relatório com até 3 oportunidades abertas de maior aderência real
     rep_result <- generate_adherence_report(df_filtered, max_items = 3L)
     rep_result$campus_name <- sel_campus
     rv$report_generated_data <- rep_result
@@ -2284,13 +2257,13 @@ server <- function(input, output, session) {
                 tags$span(class = "badge bg-primary", sprintf("Aderência: %d%%", it$score))
               )
             },
-            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Edital: "), tags$span(style = "font-weight: 600; color: #1e293b;", it$edital)),
-            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Tipo de oportunidade: "), it$tipo),
-            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("País de origem: "), it$pais),
-            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Prazo limite de submissão: "), tags$span(style = "color: #047857; font-weight: 600;", it$prazo)),
-            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Área temática: "), it$area),
-            tags$p(style = "margin-bottom: 0.5rem; text-align: justify; line-height: 1.5;", tags$strong("Resumo: "), it$resumo),
-            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Orçamento estimado: "), tags$span(style = "color: #b45309; font-weight: 600;", it$orcamento)),
+            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Edital: "), tags$span(style = "font-weight: 400; color: #1e293b;", it$edital)),
+            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Tipo de oportunidade: "), tags$span(style = "font-weight: 400;", it$tipo)),
+            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("País de origem: "), tags$span(style = "font-weight: 400;", it$pais)),
+            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Prazo limite de submissão: "), tags$span(style = "color: #047857; font-weight: 400;", it$prazo)),
+            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Área temática: "), tags$span(style = "font-weight: 400;", it$area)),
+            tags$p(style = "margin-bottom: 0.5rem; text-align: justify; line-height: 1.5;", tags$strong("Resumo: "), tags$span(style = "font-weight: 400;", it$resumo)),
+            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Orçamento estimado: "), tags$span(style = "color: #b45309; font-weight: 400;", it$orcamento)),
             tags$p(style = "margin-bottom: 0;", tags$strong("Link de acesso: "), link_target)
           )
         })
@@ -2325,7 +2298,13 @@ server <- function(input, output, session) {
     },
     content = function(file) {
       req(rv$report_generated_data)
-      generate_pdf_report(rv$report_generated_data, file)
+      ok <- tryCatch(generate_pdf_report(rv$report_generated_data, file), error = function(e) {
+        message("[RELATORIO] Falha PDF: ", conditionMessage(e)); FALSE
+      })
+      if (!isTRUE(ok) || !file.exists(file)) {
+        showNotification("Não foi possível gerar o arquivo PDF. Tente o formato TXT/MD ou contate o suporte.", type = "error", duration = 8)
+        stop("Falha ao gerar relatório PDF")
+      }
     },
     contentType = "application/pdf"
   )
@@ -2337,7 +2316,13 @@ server <- function(input, output, session) {
     },
     content = function(file) {
       req(rv$report_generated_data)
-      generate_docx_report(rv$report_generated_data, file)
+      ok <- tryCatch(generate_docx_report(rv$report_generated_data, file), error = function(e) {
+        message("[RELATORIO] Falha DOCX: ", conditionMessage(e)); FALSE
+      })
+      if (!isTRUE(ok) || !file.exists(file)) {
+        showNotification("Não foi possível gerar o arquivo DOCX. Tente o formato TXT/MD ou contate o suporte.", type = "error", duration = 8)
+        stop("Falha ao gerar relatório DOCX")
+      }
     }
   )
 
@@ -2449,7 +2434,6 @@ server <- function(input, output, session) {
       shown <- tibble::tibble(
         ID = character(),
         Título = character(),
-        Campus = character(),
         Financiador = factor(),
         `Aderência <i class='fa fa-info-circle text-info' title='Afinidade semântica calculada dinamicamente com base nos termos de busca.'></i>` = character(),
         Prazo = character(),
@@ -2458,12 +2442,8 @@ server <- function(input, output, session) {
         Ações = character()
       )
     } else {
-      # Defensivo: bancos antigos podem não ter a coluna campus (migração ausente);
-      # campus_badge_html trata NA/vazio com o badge padrão "Sede e Park".
-      campus_vec <- if ("campus" %in% names(df)) df$campus else rep(NA_character_, nrow(df))
       shown <- df |>
         dplyr::mutate(
-          Campus = vapply(campus_vec, campus_badge_html, character(1)),
           Aderência = vapply(score_aderencia, score_bar_html, character(1)),
           Prazo = format_date_br(data_limite),
           `Qualidade <i class='fa fa-shield-halved text-info' title='Score de qualidade dos metadados extraídos.'></i>` = vapply(seq_len(nrow(df)), function(i) {
@@ -2482,7 +2462,6 @@ server <- function(input, output, session) {
         dplyr::transmute(
           ID = id_registro,
           Título,
-          Campus,
           Financiador,
           `Aderência <i class='fa fa-info-circle text-info' title='Afinidade semântica calculada dinamicamente com base nos termos de busca.'></i>` = Aderência,
           Prazo,
@@ -2504,7 +2483,7 @@ server <- function(input, output, session) {
         columnDefs = list(
           list(targets = 0, visible = FALSE),
           list(
-            targets = 6,
+            targets = 5,
             render = DT::JS("
               function(data, type, row, meta) {
                 if (type === 'display') {
@@ -2520,7 +2499,7 @@ server <- function(input, output, session) {
               }
             ")
           ),
-          list(targets = c(0, 8), searchable = FALSE, orderable = FALSE)
+          list(targets = c(0, 7), searchable = FALSE, orderable = FALSE)
         )
       )
     )
@@ -2529,7 +2508,7 @@ server <- function(input, output, session) {
   # Export handlers for results table
   output$btn_export_xlsx <- downloadHandler(
     filename = function() {
-      generate_export_filename("quiiin_export", "xlsx")
+      generate_export_filename("relatorio_nei", "xlsx")
     },
     content = function(file) {
       req(rv$user)
@@ -2542,7 +2521,7 @@ server <- function(input, output, session) {
 
   output$btn_export_csv <- downloadHandler(
     filename = function() {
-      generate_export_filename("quiiin_export", "csv")
+      generate_export_filename("relatorio_nei", "csv")
     },
     content = function(file) {
       req(rv$user)
@@ -2609,7 +2588,8 @@ server <- function(input, output, session) {
       aderencia_naval_justificativa = tryCatch(opp$aderencia_naval_justificativa[[1]] %||% NA_character_, error = function(e) NA_character_),
       ideia_projeto_consorcio = tryCatch(opp$ideia_projeto_consorcio[[1]] %||% NA_character_, error = function(e) NA_character_)
     )
-    if (is.na(naval_eval$aderencia_naval_nivel) || !nzchar(naval_eval$aderencia_naval_nivel %||% "")) {
+    if (is.na(naval_eval$aderencia_naval_nivel) || !nzchar(naval_eval$aderencia_naval_nivel %||% "") ||
+        grepl(ADHERENCE_HEURISTIC_PATTERN, naval_eval$aderencia_naval_justificativa %||% "")) {
       naval_eval <- evaluate_naval_offshore_adherence(
         titulo = opp$titulo[[1]], descricao = opp$descricao_resumida[[1]],
         texto_bruto = opp$texto_bruto[[1]], entidade = opp$entidade[[1]], use_ai = FALSE
@@ -2621,7 +2601,8 @@ server <- function(input, output, session) {
       aderencia_startups_justificativa = tryCatch(opp$aderencia_startups_justificativa[[1]] %||% NA_character_, error = function(e) NA_character_),
       ideia_projeto_startups = tryCatch(opp$ideia_projeto_startups[[1]] %||% NA_character_, error = function(e) NA_character_)
     )
-    if (is.na(startups_eval$aderencia_startups_nivel) || !nzchar(startups_eval$aderencia_startups_nivel %||% "")) {
+    if (is.na(startups_eval$aderencia_startups_nivel) || !nzchar(startups_eval$aderencia_startups_nivel %||% "") ||
+        grepl(ADHERENCE_HEURISTIC_PATTERN, startups_eval$aderencia_startups_justificativa %||% "")) {
       startups_eval <- evaluate_startups_adherence(
         titulo = opp$titulo[[1]], descricao = opp$descricao_resumida[[1]],
         texto_bruto = opp$texto_bruto[[1]], entidade = opp$entidade[[1]], use_ai = FALSE
@@ -2633,7 +2614,8 @@ server <- function(input, output, session) {
       aderencia_sertao_justificativa = tryCatch(opp$aderencia_sertao_justificativa[[1]] %||% NA_character_, error = function(e) NA_character_),
       ideia_projeto_sertao = tryCatch(opp$ideia_projeto_sertao[[1]] %||% NA_character_, error = function(e) NA_character_)
     )
-    if (is.na(sertao_eval$aderencia_sertao_nivel) || !nzchar(sertao_eval$aderencia_sertao_nivel %||% "")) {
+    if (is.na(sertao_eval$aderencia_sertao_nivel) || !nzchar(sertao_eval$aderencia_sertao_nivel %||% "") ||
+        grepl(ADHERENCE_HEURISTIC_PATTERN, sertao_eval$aderencia_sertao_justificativa %||% "")) {
       sertao_eval <- evaluate_sertao_adherence(
         titulo = opp$titulo[[1]], descricao = opp$descricao_resumida[[1]],
         texto_bruto = opp$texto_bruto[[1]], entidade = opp$entidade[[1]], use_ai = FALSE
@@ -2645,7 +2627,8 @@ server <- function(input, output, session) {
       aderencia_aero_justificativa = tryCatch(opp$aderencia_aero_justificativa[[1]] %||% NA_character_, error = function(e) NA_character_),
       ideia_projeto_aero = tryCatch(opp$ideia_projeto_aero[[1]] %||% NA_character_, error = function(e) NA_character_)
     )
-    if (is.na(aero_eval$aderencia_aero_nivel) || !nzchar(aero_eval$aderencia_aero_nivel %||% "")) {
+    if (is.na(aero_eval$aderencia_aero_nivel) || !nzchar(aero_eval$aderencia_aero_nivel %||% "") ||
+        grepl(ADHERENCE_HEURISTIC_PATTERN, aero_eval$aderencia_aero_justificativa %||% "")) {
       aero_eval <- evaluate_aero_adherence(
         titulo = opp$titulo[[1]], descricao = opp$descricao_resumida[[1]],
         texto_bruto = opp$texto_bruto[[1]], entidade = opp$entidade[[1]], use_ai = FALSE
@@ -2657,7 +2640,8 @@ server <- function(input, output, session) {
       aderencia_digital_justificativa = tryCatch(opp$aderencia_digital_justificativa[[1]] %||% NA_character_, error = function(e) NA_character_),
       ideia_projeto_digital = tryCatch(opp$ideia_projeto_digital[[1]] %||% NA_character_, error = function(e) NA_character_)
     )
-    if (is.na(digital_eval$aderencia_digital_nivel) || !nzchar(digital_eval$aderencia_digital_nivel %||% "")) {
+    if (is.na(digital_eval$aderencia_digital_nivel) || !nzchar(digital_eval$aderencia_digital_nivel %||% "") ||
+        grepl(ADHERENCE_HEURISTIC_PATTERN, digital_eval$aderencia_digital_justificativa %||% "")) {
       digital_eval <- evaluate_digital_adherence(
         titulo = opp$titulo[[1]], descricao = opp$descricao_resumida[[1]],
         texto_bruto = opp$texto_bruto[[1]], entidade = opp$entidade[[1]], use_ai = FALSE
@@ -2669,7 +2653,8 @@ server <- function(input, output, session) {
       aderencia_park_justificativa = tryCatch(opp$aderencia_park_justificativa[[1]] %||% NA_character_, error = function(e) NA_character_),
       ideia_projeto_park = tryCatch(opp$ideia_projeto_park[[1]] %||% NA_character_, error = function(e) NA_character_)
     )
-    if (is.na(park_eval$aderencia_park_nivel) || !nzchar(park_eval$aderencia_park_nivel %||% "")) {
+    if (is.na(park_eval$aderencia_park_nivel) || !nzchar(park_eval$aderencia_park_nivel %||% "") ||
+        grepl(ADHERENCE_HEURISTIC_PATTERN, park_eval$aderencia_park_justificativa %||% "")) {
       park_eval <- evaluate_park_adherence(
         titulo = opp$titulo[[1]], descricao = opp$descricao_resumida[[1]],
         texto_bruto = opp$texto_bruto[[1]], entidade = opp$entidade[[1]], use_ai = FALSE
@@ -3015,7 +3000,7 @@ server <- function(input, output, session) {
   # ─── SERVIDOR: Aba Núcleo Naval & Offshore ──────────────────────────────
   naval_filtered_results <- reactive({
     req(rv$user)
-    df <- base_results()
+    df <- sidebar_filtered_results()
     if (nrow(df) == 0) return(df)
     
     # Garantir avaliação naval em todos os registros
@@ -3024,7 +3009,8 @@ server <- function(input, output, session) {
     if (!"ideia_projeto_consorcio" %in% names(df)) df$ideia_projeto_consorcio <- NA_character_
 
     for (i in seq_len(nrow(df))) {
-      if (is.na(df$aderencia_naval_nivel[[i]]) || !nzchar(df$aderencia_naval_nivel[[i]] %||% "")) {
+      if (is.na(df$aderencia_naval_nivel[[i]]) || !nzchar(df$aderencia_naval_nivel[[i]] %||% "") ||
+          grepl(ADHERENCE_HEURISTIC_PATTERN, df$aderencia_naval_justificativa[[i]] %||% "")) {
         eval_res <- evaluate_naval_offshore_adherence(
           titulo = df$titulo[[i]],
           descricao = df$descricao_resumida[[i]],
@@ -3075,8 +3061,7 @@ server <- function(input, output, session) {
         Financiador = as.factor(entidade),
         Título = stringr::str_trunc(titulo, 70),
         Aderência = aderencia_naval_nivel,
-        `Análise & Justificativa` = stringr::str_trunc(aderencia_naval_justificativa %||% "Sem análise", 90),
-        `💡 Ideia de Projeto / Consórcio` = ifelse(!is.na(ideia_projeto_consorcio) & nzchar(ideia_projeto_consorcio %||% ""), stringr::str_trunc(ideia_projeto_consorcio, 90), "Ver edital"),
+        `Objeto de Financiamento` = objeto_financiamento_curto(descricao_resumida),
         Ações = vapply(id_registro, make_actions_html, character(1))
       ) |>
       dplyr::transmute(
@@ -3084,8 +3069,7 @@ server <- function(input, output, session) {
         Título,
         Financiador,
         Aderência,
-        `Análise & Justificativa`,
-        `💡 Ideia de Projeto / Consórcio`,
+        `Objeto de Financiamento`,
         Prazo,
         Ações
       )
@@ -3124,7 +3108,7 @@ server <- function(input, output, session) {
   # --- TAB CIMATEC SERTÃO ---
   sertao_filtered_results <- reactive({
     req(rv$user)
-    df <- base_results()
+    df <- sidebar_filtered_results()
     if (nrow(df) == 0) return(df)
     
     if (!"aderencia_sertao_nivel" %in% names(df)) df$aderencia_sertao_nivel <- NA_character_
@@ -3132,7 +3116,8 @@ server <- function(input, output, session) {
     if (!"ideia_projeto_sertao" %in% names(df)) df$ideia_projeto_sertao <- NA_character_
 
     for (i in seq_len(nrow(df))) {
-      if (is.na(df$aderencia_sertao_nivel[[i]]) || !nzchar(df$aderencia_sertao_nivel[[i]] %||% "")) {
+      if (is.na(df$aderencia_sertao_nivel[[i]]) || !nzchar(df$aderencia_sertao_nivel[[i]] %||% "") ||
+          grepl(ADHERENCE_HEURISTIC_PATTERN, df$aderencia_sertao_justificativa[[i]] %||% "")) {
         eval_res <- evaluate_sertao_adherence(
           titulo = df$titulo[[i]],
           descricao = df$descricao_resumida[[i]],
@@ -3181,8 +3166,7 @@ server <- function(input, output, session) {
         Financiador = as.factor(entidade),
         Título = stringr::str_trunc(titulo, 70),
         Aderência = aderencia_sertao_nivel,
-        `Análise & Justificativa` = stringr::str_trunc(aderencia_sertao_justificativa %||% "Sem análise", 90),
-        `💡 Ideia de Projeto / Consórcio` = ifelse(!is.na(ideia_projeto_sertao) & nzchar(ideia_projeto_sertao %||% ""), stringr::str_trunc(ideia_projeto_sertao, 90), "Ver edital"),
+        `Objeto de Financiamento` = objeto_financiamento_curto(descricao_resumida),
         Ações = vapply(id_registro, make_actions_html, character(1))
       ) |>
       dplyr::transmute(
@@ -3190,8 +3174,7 @@ server <- function(input, output, session) {
         Título,
         Financiador,
         Aderência,
-        `Análise & Justificativa`,
-        `💡 Ideia de Projeto / Consórcio`,
+        `Objeto de Financiamento`,
         Prazo,
         Ações
       )
@@ -3230,7 +3213,7 @@ server <- function(input, output, session) {
   # --- TAB CIMATEC AEROESPACIAL ---
   aero_filtered_results <- reactive({
     req(rv$user)
-    df <- base_results()
+    df <- sidebar_filtered_results()
     if (nrow(df) == 0) return(df)
     
     if (!"aderencia_aero_nivel" %in% names(df)) df$aderencia_aero_nivel <- NA_character_
@@ -3238,7 +3221,8 @@ server <- function(input, output, session) {
     if (!"ideia_projeto_aero" %in% names(df)) df$ideia_projeto_aero <- NA_character_
 
     for (i in seq_len(nrow(df))) {
-      if (is.na(df$aderencia_aero_nivel[[i]]) || !nzchar(df$aderencia_aero_nivel[[i]] %||% "")) {
+      if (is.na(df$aderencia_aero_nivel[[i]]) || !nzchar(df$aderencia_aero_nivel[[i]] %||% "") ||
+          grepl(ADHERENCE_HEURISTIC_PATTERN, df$aderencia_aero_justificativa[[i]] %||% "")) {
         eval_res <- evaluate_aero_adherence(
           titulo = df$titulo[[i]],
           descricao = df$descricao_resumida[[i]],
@@ -3287,8 +3271,7 @@ server <- function(input, output, session) {
         Financiador = as.factor(entidade),
         Título = stringr::str_trunc(titulo, 70),
         Aderência = aderencia_aero_nivel,
-        `Análise & Justificativa` = stringr::str_trunc(aderencia_aero_justificativa %||% "Sem análise", 90),
-        `💡 Ideia de Projeto / Consórcio` = ifelse(!is.na(ideia_projeto_aero) & nzchar(ideia_projeto_aero %||% ""), stringr::str_trunc(ideia_projeto_aero, 90), "Ver edital"),
+        `Objeto de Financiamento` = objeto_financiamento_curto(descricao_resumida),
         Ações = vapply(id_registro, make_actions_html, character(1))
       ) |>
       dplyr::transmute(
@@ -3296,8 +3279,7 @@ server <- function(input, output, session) {
         Título,
         Financiador,
         Aderência,
-        `Análise & Justificativa`,
-        `💡 Ideia de Projeto / Consórcio`,
+        `Objeto de Financiamento`,
         Prazo,
         Ações
       )
@@ -3336,7 +3318,7 @@ server <- function(input, output, session) {
   # --- TAB CIMATEC DIGITAL ---
   digital_filtered_results <- reactive({
     req(rv$user)
-    df <- base_results()
+    df <- sidebar_filtered_results()
     if (nrow(df) == 0) return(df)
     
     if (!"aderencia_digital_nivel" %in% names(df)) df$aderencia_digital_nivel <- NA_character_
@@ -3344,7 +3326,8 @@ server <- function(input, output, session) {
     if (!"ideia_projeto_digital" %in% names(df)) df$ideia_projeto_digital <- NA_character_
 
     for (i in seq_len(nrow(df))) {
-      if (is.na(df$aderencia_digital_nivel[[i]]) || !nzchar(df$aderencia_digital_nivel[[i]] %||% "")) {
+      if (is.na(df$aderencia_digital_nivel[[i]]) || !nzchar(df$aderencia_digital_nivel[[i]] %||% "") ||
+          grepl(ADHERENCE_HEURISTIC_PATTERN, df$aderencia_digital_justificativa[[i]] %||% "")) {
         eval_res <- evaluate_digital_adherence(
           titulo = df$titulo[[i]],
           descricao = df$descricao_resumida[[i]],
@@ -3393,8 +3376,7 @@ server <- function(input, output, session) {
         Financiador = as.factor(entidade),
         Título = stringr::str_trunc(titulo, 70),
         Aderência = aderencia_digital_nivel,
-        `Análise & Justificativa` = stringr::str_trunc(aderencia_digital_justificativa %||% "Sem análise", 90),
-        `💡 Ideia de Projeto / Consórcio` = ifelse(!is.na(ideia_projeto_digital) & nzchar(ideia_projeto_digital %||% ""), stringr::str_trunc(ideia_projeto_digital, 90), "Ver edital"),
+        `Objeto de Financiamento` = objeto_financiamento_curto(descricao_resumida),
         Ações = vapply(id_registro, make_actions_html, character(1))
       ) |>
       dplyr::transmute(
@@ -3402,8 +3384,7 @@ server <- function(input, output, session) {
         Título,
         Financiador,
         Aderência,
-        `Análise & Justificativa`,
-        `💡 Ideia de Projeto / Consórcio`,
+        `Objeto de Financiamento`,
         Prazo,
         Ações
       )
@@ -3442,7 +3423,7 @@ server <- function(input, output, session) {
   # --- TAB CIMATEC PARK & SEDE ---
   park_filtered_results <- reactive({
     req(rv$user)
-    df <- base_results()
+    df <- sidebar_filtered_results()
     if (nrow(df) == 0) return(df)
     
     if (!"aderencia_park_nivel" %in% names(df)) df$aderencia_park_nivel <- NA_character_
@@ -3450,7 +3431,8 @@ server <- function(input, output, session) {
     if (!"ideia_projeto_park" %in% names(df)) df$ideia_projeto_park <- NA_character_
 
     for (i in seq_len(nrow(df))) {
-      if (is.na(df$aderencia_park_nivel[[i]]) || !nzchar(df$aderencia_park_nivel[[i]] %||% "")) {
+      if (is.na(df$aderencia_park_nivel[[i]]) || !nzchar(df$aderencia_park_nivel[[i]] %||% "") ||
+          grepl(ADHERENCE_HEURISTIC_PATTERN, df$aderencia_park_justificativa[[i]] %||% "")) {
         eval_res <- evaluate_park_adherence(
           titulo = df$titulo[[i]],
           descricao = df$descricao_resumida[[i]],
@@ -3499,8 +3481,7 @@ server <- function(input, output, session) {
         Financiador = as.factor(entidade),
         Título = stringr::str_trunc(titulo, 70),
         Aderência = aderencia_park_nivel,
-        `Análise & Justificativa` = stringr::str_trunc(aderencia_park_justificativa %||% "Sem análise", 90),
-        `💡 Ideia de Projeto / Consórcio` = ifelse(!is.na(ideia_projeto_park) & nzchar(ideia_projeto_park %||% ""), stringr::str_trunc(ideia_projeto_park, 90), "Ver edital"),
+        `Objeto de Financiamento` = objeto_financiamento_curto(descricao_resumida),
         Ações = vapply(id_registro, make_actions_html, character(1))
       ) |>
       dplyr::transmute(
@@ -3508,8 +3489,7 @@ server <- function(input, output, session) {
         Título,
         Financiador,
         Aderência,
-        `Análise & Justificativa`,
-        `💡 Ideia de Projeto / Consórcio`,
+        `Objeto de Financiamento`,
         Prazo,
         Ações
       )
@@ -3548,7 +3528,7 @@ server <- function(input, output, session) {
   # --- TAB CIMATEC STARTUPS & INOVAÇÃO ABERTA ---
   startups_filtered_results <- reactive({
     req(rv$user)
-    df <- base_results()
+    df <- sidebar_filtered_results()
     if (nrow(df) == 0) return(df)
     
     if (!"aderencia_startups_nivel" %in% names(df)) df$aderencia_startups_nivel <- NA_character_
@@ -3556,7 +3536,8 @@ server <- function(input, output, session) {
     if (!"ideia_projeto_startups" %in% names(df)) df$ideia_projeto_startups <- NA_character_
 
     for (i in seq_len(nrow(df))) {
-      if (is.na(df$aderencia_startups_nivel[[i]]) || !nzchar(df$aderencia_startups_nivel[[i]] %||% "")) {
+      if (is.na(df$aderencia_startups_nivel[[i]]) || !nzchar(df$aderencia_startups_nivel[[i]] %||% "") ||
+          grepl(ADHERENCE_HEURISTIC_PATTERN, df$aderencia_startups_justificativa[[i]] %||% "")) {
         eval_res <- evaluate_startups_adherence(
           titulo = df$titulo[[i]],
           descricao = df$descricao_resumida[[i]],
@@ -3605,8 +3586,7 @@ server <- function(input, output, session) {
         Financiador = as.factor(entidade),
         Título = stringr::str_trunc(titulo, 70),
         Aderência = aderencia_startups_nivel,
-        `Análise & Justificativa` = stringr::str_trunc(aderencia_startups_justificativa %||% "Sem análise", 90),
-        `💡 Ideia de Projeto / Consórcio` = ifelse(!is.na(ideia_projeto_startups) & nzchar(ideia_projeto_startups %||% ""), stringr::str_trunc(ideia_projeto_startups, 90), "Ver edital"),
+        `Objeto de Financiamento` = objeto_financiamento_curto(descricao_resumida),
         Ações = vapply(id_registro, make_actions_html, character(1))
       ) |>
       dplyr::transmute(
@@ -3614,8 +3594,7 @@ server <- function(input, output, session) {
         Título,
         Financiador,
         Aderência,
-        `Análise & Justificativa`,
-        `💡 Ideia de Projeto / Consórcio`,
+        `Objeto de Financiamento`,
         Prazo,
         Ações
       )

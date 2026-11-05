@@ -16,7 +16,7 @@ body:not(.authenticated) .navset-card-tab,
 body:not(.authenticated) .tab-content,
 body:not(.authenticated) .app-footer-centered,
 body:not(.authenticated) .bslib-value-box,
-body:not(.authenticated) .bslib-sidebar-layout > aside,
+body:not(.authenticated) .bslib-sidebar-layout>aside,
 body:not(.authenticated) .card:not(.auth-card) {
   display: none !important;
   visibility: hidden !important;
@@ -52,13 +52,20 @@ body.authenticated #auth_overlay_root {
   pointer-events: none !important;
 }
 
-body.authenticated > * {
+body.authenticated>* {
   animation: radarFadeIn 0.35s ease-out;
 }
 
 @keyframes radarFadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 body {
@@ -70,7 +77,13 @@ body {
 }
 
 /* Estrutura do Cabeçalho */
-.navbar, .navbar-expand-lg, .navbar-expand-md, .bg-light, .bg-primary, .app-header, .bslib-page-sidebar > .navbar {
+.navbar,
+.navbar-expand-lg,
+.navbar-expand-md,
+.bg-light,
+.bg-primary,
+.app-header,
+.bslib-page-sidebar>.navbar {
   background-color: #ffffff !important;
   background: #ffffff !important;
   box-shadow: none !important;
@@ -101,7 +114,7 @@ body {
   font-size: 0.825rem !important;
   font-weight: 700 !important;
   color: #1e293b !important;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
@@ -113,9 +126,17 @@ body {
 }
 
 @keyframes pulse-sync {
-  0% { opacity: 0.7; }
-  50% { opacity: 1; }
-  100% { opacity: 0.7; }
+  0% {
+    opacity: 0.7;
+  }
+
+  50% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0.7;
+  }
 }
 
 .status-syncing {
@@ -178,7 +199,8 @@ body {
 }
 
 /* Cartões (Cards) */
-.card, .search-card {
+.card,
+.search-card {
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
@@ -403,7 +425,7 @@ table.dataTable thead .sorting_desc:after {
   color: #ffffff !important;
 }
 
-.dataTables_wrapper .dataTables_paginate .paginate_button.current, 
+.dataTables_wrapper .dataTables_paginate .paginate_button.current,
 .dataTables_wrapper .dataTables_paginate .paginate_button.current:hover {
   background: #004691 !important;
   color: white !important;
@@ -425,15 +447,15 @@ table.dataTable tbody td a:hover {
 }
 
 /* Remocao de scrollbars internas e ajuste de altura nos cards e containers */
-.card, 
-.card-body, 
-.bslib-card, 
-.bslib-grid, 
-.bslib-grid-layout, 
-.bslib-layout-columns, 
+.card,
+.card-body,
+.bslib-card,
+.bslib-grid,
+.bslib-grid-layout,
+.bslib-layout-columns,
 .bslib-column-wrap,
-.mini-kpi, 
-.tab-content, 
+.mini-kpi,
+.tab-content,
 .tab-pane,
 .navset-card-tab,
 .bslib-navset-card-tab,
@@ -513,7 +535,8 @@ main {
   text-align: center;
   border-top: 4px solid #004691;
   border-radius: 12px 12px 0 0;
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05); /* Premium shadow */
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05);
+  /* Premium shadow */
 }
 
 .footer-top-centered p {
@@ -566,8 +589,8 @@ main {
 /* Oculta os elementos do dashboard enquanto não autenticado para garantia estrita de confidencialidade */
 body:not(.authenticated) .navbar,
 body:not(.authenticated) .sidebar,
-body:not(.authenticated) .bslib-sidebar-layout > .sidebar,
-body:not(.authenticated) .bslib-page-main > *:not(#auth_overlay_root),
+body:not(.authenticated) .bslib-sidebar-layout>.sidebar,
+body:not(.authenticated) .bslib-page-main>*:not(#auth_overlay_root),
 body:not(.authenticated) .app-footer-centered,
 body:not(.authenticated) #header_status {
   display: none !important;
@@ -617,6 +640,7 @@ body.authenticated .auth-overlay-backdrop {
     opacity: 0;
     transform: translateY(16px) scale(0.98);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -625,9 +649,21 @@ body.authenticated .auth-overlay-backdrop {
 
 /* Shake suave para alertar que a redefinição de senha está pendente e não fecha clicando fora */
 @keyframes modalShake {
-  0%, 100% { transform: translateX(0); }
-  20%, 60% { transform: translateX(-6px); }
-  40%, 80% { transform: translateX(6px); }
+
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  20%,
+  60% {
+    transform: translateX(-6px);
+  }
+
+  40%,
+  80% {
+    transform: translateX(6px);
+  }
 }
 
 .auth-card.shake {
@@ -763,8 +799,13 @@ body.authenticated .auth-overlay-backdrop {
 }
 
 @keyframes authSpin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 .auth-alert {
@@ -1025,6 +1066,18 @@ body.authenticated .auth-overlay-backdrop {
 .auth-overlay-backdrop {
   background: #020e30 url("login_bg.jpg") center center / cover no-repeat !important;
   padding: 5.5rem 1.5rem 7rem 1.5rem !important;
+  overflow: hidden !important;
+}
+
+.auth-bg-video {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  object-fit: cover;
+  z-index: 0;
+  pointer-events: none;
 }
 
 .auth-corner-text {
@@ -1062,7 +1115,6 @@ body.authenticated .auth-overlay-backdrop {
   max-width: 300px;
   margin: 0 auto;
   border-radius: 10px;
-  mix-blend-mode: multiply;
 }
 
 .auth-overlay-backdrop .auth-input {
@@ -1096,6 +1148,7 @@ body.authenticated .auth-overlay-backdrop {
 }
 
 @media (max-width: 640px) {
+
   #auth_overlay_root,
   .auth-overlay-backdrop {
     flex-direction: column !important;
@@ -1103,17 +1156,20 @@ body.authenticated .auth-overlay-backdrop {
     justify-content: flex-start !important;
     padding: 1rem 1rem 0 1rem !important;
   }
+
   .auth-corner-text {
     position: static;
     order: 1;
     font-size: 0.75rem;
     margin-bottom: 1rem;
   }
+
   .auth-overlay-backdrop .auth-card {
     order: 2;
     margin: 0 auto;
     flex-shrink: 0;
   }
+
   .auth-footer-logos {
     position: static;
     order: 3;
@@ -1122,6 +1178,7 @@ body.authenticated .auth-overlay-backdrop {
     height: 60px;
     gap: 1.25rem;
   }
+
   .auth-footer-logos img {
     height: 32px;
   }

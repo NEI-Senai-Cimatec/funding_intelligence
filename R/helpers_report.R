@@ -273,6 +273,11 @@ generate_adherence_report <- function(opportunities_df, max_items = 3L) {
     open_df$score_aderencia[is.na(open_df$score_aderencia)] <- 0
   }
 
+  # Prioriza editais com aderência positiva (> 0), descartando os de aderência 0 quando houver candidatos aderentes
+  if (any(open_df$score_aderencia > 0, na.rm = TRUE)) {
+    open_df <- open_df |> dplyr::filter(score_aderencia > 0)
+  }
+
   # Ordena pelos editais com maiores aderências (score desc) e prazo de encerramento mais próximo
   if ("data_limite" %in% names(open_df) && exists("parse_date_safe", mode = "function")) {
     parsed_dl <- parse_date_safe(open_df$data_limite)

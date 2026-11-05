@@ -722,7 +722,7 @@ ui <- bslib::page_sidebar(
         "Responsável técnico: Mabel Diz Marques Mota"
       ),
       tags$p(
-        "Curador: Felipe Dourado Figueiroa, Mabel Diz Marques Mota, Raphael de Oliveira Silva e Yuri Conrado Dantas"
+        "Curador: Mabel Diz Marques Mota, Raphael de Oliveira Silva, Yuri Conrado Dantas, Felipe Dourado Figueiroa"
       ),
       tags$p(
         sprintf("© %s Núcleo de Economia Industrial – SENAI CIMATEC. Transformando conhecimento econômico em vantagem competitiva.", format(Sys.Date(), "%Y"))
@@ -1562,7 +1562,7 @@ server <- function(input, output, session) {
   # Export handlers for modal after collection
   output$btn_modal_export_xlsx <- downloadHandler(
     filename = function() {
-      generate_export_filename("quiiin_coleta", "xlsx")
+      generate_export_filename("relatorio_nei", "xlsx")
     },
     content = function(file) {
       data <- filtered_results()
@@ -1573,7 +1573,7 @@ server <- function(input, output, session) {
 
   output$btn_modal_export_csv <- downloadHandler(
     filename = function() {
-      generate_export_filename("quiiin_coleta", "csv")
+      generate_export_filename("relatorio_nei", "csv")
     },
     content = function(file) {
       data <- filtered_results()
@@ -2151,8 +2151,20 @@ server <- function(input, output, session) {
   }, ignoreInit = TRUE)
 
   observeEvent(input$btn_do_generate_report, {
-    opps <- rv$opportunities
-    req(nrow(opps) > 0)
+    # Usa base_results() (ou recalcula com a conexão real conn) para que o score_aderencia
+    # seja exatamente o mesmo exibido na tabela principal "Resultados & Editais"
+    opps <- tryCatch(base_results(), error = function(e) NULL)
+    if (is.null(opps) || nrow(opps) == 0L) {
+      opps <- rv$opportunities
+      req(nrow(opps) > 0)
+      opps <- tryCatch(
+        compute_adherence_score(opps, conn, rv$current_query %||% "", signature = interest_sig()),
+        error = function(e) {
+          if (!"score_aderencia" %in% names(opps)) opps$score_aderencia <- 0
+          opps
+        }
+      )
+    }
 
     sel_campus <- trimws(input$report_campus_select %||% "")
 
@@ -2166,10 +2178,10 @@ server <- function(input, output, session) {
       return()
     }
 
-    # 1. Filtra oportunidades que contenham menção ao campus no texto ou metadados
+    # 1. Filtra oportunidades do campus selecionado com a mesma regra da tabela principal
     matches_campus <- campus_match_mask(opps, sel_campus)
     if (!sel_campus %in% names(CAMPUS_SEARCH_QUERIES)) {
-      comb_text <- paste(opps$campus %||% "", opps$titulo %||% "", opps$descricao_resumida %||% "", opps$area_tematica %||% "")
+      comb_text <- paste(opps$campus %||% "", opps$titulo %||% "", opps$descricao_resumida %||% "", opps$area_tematica %||% "", opps$palavras_chave %||% "")
       matches_campus <- matches_campus | grepl(sel_campus, comb_text, ignore.case = TRUE)
     }
 
@@ -2178,22 +2190,7 @@ server <- function(input, output, session) {
       df_filtered <- opps
     }
 
-    # 2. Recalcula aderência para o campus escolhido
-    conn <- isolate(rv$conn)
-    df_filtered <- tryCatch({
-      compute_adherence_score(df_filtered, conn, sel_campus, signature = interest_sig())
-    }, error = function(e) {
-      if (!"score_aderencia" %in% names(df_filtered)) df_filtered$score_aderencia <- 0
-      df_filtered
-    })
-
-    # Adiciona bonificação se o registro tiver menção direta ao campus
-    if ("campus" %in% names(df_filtered)) {
-      direct_hit <- grepl(sel_campus, df_filtered$campus, ignore.case = TRUE)
-      df_filtered$score_aderencia <- df_filtered$score_aderencia + ifelse(direct_hit, 30, 0)
-    }
-
-    # 3. Gera o relatório com até 4 oportunidades abertas de maior aderência
+    # 2. Gera o relatório com até 3 oportunidades abertas de maior aderência real
     rep_result <- generate_adherence_report(df_filtered, max_items = 3L)
     rep_result$campus_name <- sel_campus
     rv$report_generated_data <- rep_result
@@ -2260,13 +2257,13 @@ server <- function(input, output, session) {
                 tags$span(class = "badge bg-primary", sprintf("Aderência: %d%%", it$score))
               )
             },
-            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Edital: "), tags$span(style = "font-weight: 600; color: #1e293b;", it$edital)),
-            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Tipo de oportunidade: "), it$tipo),
-            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("País de origem: "), it$pais),
-            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Prazo limite de submissão: "), tags$span(style = "color: #047857; font-weight: 600;", it$prazo)),
-            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Área temática: "), it$area),
-            tags$p(style = "margin-bottom: 0.5rem; text-align: justify; line-height: 1.5;", tags$strong("Resumo: "), it$resumo),
-            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Orçamento estimado: "), tags$span(style = "color: #b45309; font-weight: 600;", it$orcamento)),
+            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Edital: "), tags$span(style = "font-weight: 400; color: #1e293b;", it$edital)),
+            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Tipo de oportunidade: "), tags$span(style = "font-weight: 400;", it$tipo)),
+            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("País de origem: "), tags$span(style = "font-weight: 400;", it$pais)),
+            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Prazo limite de submissão: "), tags$span(style = "color: #047857; font-weight: 400;", it$prazo)),
+            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Área temática: "), tags$span(style = "font-weight: 400;", it$area)),
+            tags$p(style = "margin-bottom: 0.5rem; text-align: justify; line-height: 1.5;", tags$strong("Resumo: "), tags$span(style = "font-weight: 400;", it$resumo)),
+            tags$p(style = "margin-bottom: 0.5rem;", tags$strong("Orçamento estimado: "), tags$span(style = "color: #b45309; font-weight: 400;", it$orcamento)),
             tags$p(style = "margin-bottom: 0;", tags$strong("Link de acesso: "), link_target)
           )
         })
@@ -2517,7 +2514,7 @@ server <- function(input, output, session) {
   # Export handlers for results table
   output$btn_export_xlsx <- downloadHandler(
     filename = function() {
-      generate_export_filename("quiiin_export", "xlsx")
+      generate_export_filename("relatorio_nei", "xlsx")
     },
     content = function(file) {
       req(rv$user)
@@ -2530,7 +2527,7 @@ server <- function(input, output, session) {
 
   output$btn_export_csv <- downloadHandler(
     filename = function() {
-      generate_export_filename("quiiin_export", "csv")
+      generate_export_filename("relatorio_nei", "csv")
     },
     content = function(file) {
       req(rv$user)

@@ -67,6 +67,9 @@ create_tables <- function(conn) {
       descricao_resumida TEXT,
       descricao_completa TEXT,
       tipo_oportunidade TEXT,
+      tipo_oportunidade_original TEXT,
+      tipo_oportunidade_categoria TEXT,
+      tipo_oportunidade_categoria_origem TEXT,
       modalidade TEXT,
       area_tematica TEXT,
       palavras_chave TEXT,
@@ -343,7 +346,8 @@ seed_demo_opportunities <- function(conn) {
       campos_inferidos_ia = ""
     ) |>
     dplyr::select(id_registro, dplyr::everything())
-  DBI::dbWriteTable(conn, "oportunidades", demo, append = TRUE)
+  upsert_opportunities(conn, demo)
+  invisible(TRUE)
 }
 
 # ─── Migrações idempotentes (BUG-02/12) ───────────────────────────────────────
@@ -423,6 +427,186 @@ migrate_dedup_hashes <- function(conn) {
     set_migration_marker(conn, "dedup_hash_v2")
   }
   invisible(TRUE)
+}
+
+# Migração idempotente do tipo de oportunidade para a taxonomia canônica.
+# Preserva o valor bruto em tipo_oportunidade_original e preenche
+# tipo_oportunidade_categoria + tipo_oportunidade_categoria_origem.
+migrate_tipo_oportunidade <- function(conn, force = FALSE) {
+  marker <- "tipo_oportunidade_v1"
+
+  if (!"oportunidades" %in% DBI::dbListTables(conn)) {
+    stop("Tabela 'oportunidades' não encontrada para a migração de tipo_oportunidade.", call. = FALSE)
+  }
+  if (!"migration_flags" %in% DBI::dbListTables(conn)) {
+    DBI::dbExecute(conn, "
+      CREATE TABLE IF NOT EXISTS migration_flags (
+        flag TEXT PRIMARY KEY,
+        applied_at TEXT
+      )")
+  }
+
+  counts_vazio <- data.frame(
+    categoria = names(categorias_tipo_oportunidade()),
+    n = 0L,
+    stringsAsFactors = FALSE
+  )
+  origens_vazio <- data.frame(origem = character(), n = integer(), stringsAsFactors = FALSE)
+  unknown_vazio <- data.frame(valor = character(), n = integer(), exemplo_titulo = character(), stringsAsFactors = FALSE)
+
+  if (!isTRUE(force) && isTRUE(migration_marker(conn, marker))) {
+    return(list(
+      applied = FALSE,
+      total = NA_integer_,
+      counts = counts_vazio,
+      origens = origens_vazio,
+      unknown = unknown_vazio,
+      log_path = NA_character_
+    ))
+  }
+
+  cols <- DBI::dbListFields(conn, "oportunidades")
+  novas_colunas <- c(
+    tipo_oportunidade_original = "TEXT",
+    tipo_oportunidade_categoria = "TEXT",
+    tipo_oportunidade_categoria_origem = "TEXT"
+  )
+  for (nm in names(novas_colunas)) {
+    if (!nm %in% cols) {
+      DBI::dbExecute(conn, sprintf("ALTER TABLE oportunidades ADD COLUMN %s %s", nm, novas_colunas[[nm]]))
+      message(sprintf("[Migration] Coluna '%s' adicionada a oportunidades.", nm))
+    }
+  }
+
+  rows <- DBI::dbGetQuery(
+    conn,
+    "SELECT id_registro, tipo_oportunidade, tipo_oportunidade_original, titulo, fonte_oficial
+       FROM oportunidades"
+  )
+
+  if (nrow(rows) == 0L) {
+    set_migration_marker(conn, marker)
+    return(list(
+      applied = TRUE,
+      total = 0L,
+      counts = counts_vazio,
+      origens = origens_vazio,
+      unknown = unknown_vazio,
+      log_path = NA_character_
+    ))
+  }
+
+  detalhes <- lapply(seq_len(nrow(rows)), function(i) {
+    original <- rows$tipo_oportunidade_original[[i]]
+    if (is.na(original) || !nzchar(original)) {
+      original <- rows$tipo_oportunidade[[i]]
+    }
+    categorizar_tipo_oportunidade_detalhado(
+      tipo = original,
+      titulo = rows$titulo[[i]],
+      fonte = rows$fonte_oficial[[i]]
+    )
+  })
+
+  categorias <- vapply(detalhes, `[[`, character(1), "categoria")
+  origens <- vapply(detalhes, `[[`, character(1), "origem")
+  originais <- vapply(seq_len(nrow(rows)), function(i) {
+    original <- rows$tipo_oportunidade_original[[i]]
+    if (is.na(original) || !nzchar(original)) {
+      rows$tipo_oportunidade[[i]]
+    } else {
+      original
+    }
+  }, character(1))
+
+  in_tx <- FALSE
+  DBI::dbBegin(conn)
+  in_tx <- TRUE
+  on.exit(
+    if (in_tx) try(DBI::dbRollback(conn), silent = TRUE),
+    add = TRUE
+  )
+
+  for (i in seq_len(nrow(rows))) {
+    DBI::dbExecute(
+      conn,
+      "UPDATE oportunidades
+          SET tipo_oportunidade_original = ?,
+              tipo_oportunidade_categoria = ?,
+              tipo_oportunidade_categoria_origem = ?
+        WHERE id_registro = ?",
+      params = list(originais[[i]], categorias[[i]], origens[[i]], rows$id_registro[[i]])
+    )
+  }
+
+  DBI::dbCommit(conn)
+  in_tx <- FALSE
+  set_migration_marker(conn, marker)
+
+  count_tab <- table(factor(categorias, levels = names(categorias_tipo_oportunidade())))
+  counts <- data.frame(
+    categoria = names(count_tab),
+    n = as.integer(count_tab),
+    stringsAsFactors = FALSE
+  )
+  origem_tab <- table(factor(origens, levels = c("bruto", "override", "titulo", "fonte", "outros")))
+  origens_df <- data.frame(
+    origem = names(origem_tab),
+    n = as.integer(origem_tab),
+    stringsAsFactors = FALSE
+  )
+
+  outros_idx <- which(categorias == "outros")
+  if (length(outros_idx) == 0L) {
+    unknown <- unknown_vazio
+  } else {
+    valores <- originais[outros_idx]
+    valores[is.na(valores) | !nzchar(valores)] <- "(sem tipo)"
+    tab <- sort(table(valores), decreasing = TRUE)
+    unknown <- data.frame(
+      valor = names(tab),
+      n = as.integer(tab),
+      exemplo_titulo = vapply(names(tab), function(v) {
+        idx <- outros_idx[valores == v][1]
+        rows$titulo[[idx]] %||% ""
+      }, character(1)),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  log_path <- file.path(
+    getwd(), "logs",
+    sprintf("tipo_oportunidade_migracao_%s.log", format(Sys.time(), "%Y%m%d_%H%M%S"))
+  )
+  ensure_dir(dirname(log_path))
+  linhas <- c(
+    sprintf("Migração %s", marker),
+    sprintf("Data: %s", Sys.time()),
+    sprintf("Total de registros: %d", nrow(rows)),
+    "",
+    "Categorias:",
+    sprintf("  %s: %d", counts$categoria, counts$n),
+    "",
+    "Origens:",
+    sprintf("  %s: %d", origens_df$origem, origens_df$n),
+    "",
+    "Valores em Outros:",
+    if (nrow(unknown) == 0L) {
+      "  (nenhum)"
+    } else {
+      sprintf("  %s: %d | exemplo: %s", unknown$valor, unknown$n, unknown$exemplo_titulo)
+    }
+  )
+  writeLines(enc2utf8(linhas), log_path, useBytes = TRUE)
+
+  list(
+    applied = TRUE,
+    total = nrow(rows),
+    counts = counts,
+    origens = origens_df,
+    unknown = unknown,
+    log_path = log_path
+  )
 }
 
 migrate_existing_keywords <- function(conn) {
@@ -577,6 +761,7 @@ init_database <- function(db_path) {
   conn <- get_db_connection(db_path)
   on.exit(DBI::dbDisconnect(conn), add = TRUE)
   create_tables(conn)
+  try(migrate_tipo_oportunidade(conn), silent = TRUE)
   seed_sources(conn)
   try(DBI::dbExecute(conn, "DELETE FROM fontes_financiamento WHERE id_fonte NOT IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", params = list("cnpq", "capes", "finep", "fapesb", "horizon_europe", "erc", "sigitec", "undp", "embrapii", "daad", "quantum", "humboldt", "grants_gov", "doe_ascr", "nsf_international", "nsf_qise", "nsf_cise", "doe_quantum_genesis", "doe_genesis", "nsf_nqni", "darpa_quantum_benchmarking")), silent = TRUE)
   try(DBI::dbExecute(conn, "UPDATE oportunidades SET pais_origem = 'União Europeia' WHERE pais_origem = 'Uniao Europeia'"), silent = TRUE)
@@ -597,16 +782,29 @@ init_database <- function(db_path) {
 read_table <- function(conn, table_name) DBI::dbReadTable(conn, table_name)
 
 read_app_data <- function(conn) {
-  list(
-    opportunities = tibble::as_tibble(read_table(conn, "oportunidades")) |>
-      dplyr::mutate(
-        data_publicacao = parse_date_safe(data_publicacao),
-        data_abertura = parse_date_safe(data_abertura),
-        data_limite = parse_date_safe(data_limite),
-        data_encerramento = parse_date_safe(data_encerramento),
-        data_hora_coleta = parse_datetime_safe(data_hora_coleta),
-        valor_financiado = suppressWarnings(as.numeric(valor_financiado))
+  opps <- tibble::as_tibble(read_table(conn, "oportunidades"))
+  if (!"tipo_oportunidade" %in% names(opps)) opps$tipo_oportunidade <- NA_character_
+  if (!"tipo_oportunidade_original" %in% names(opps)) opps$tipo_oportunidade_original <- opps$tipo_oportunidade
+  if (!"tipo_oportunidade_categoria" %in% names(opps)) opps$tipo_oportunidade_categoria <- NA_character_
+  if (!"tipo_oportunidade_categoria_origem" %in% names(opps)) opps$tipo_oportunidade_categoria_origem <- NA_character_
+
+  opps <- opps |>
+    dplyr::mutate(
+      tipo_oportunidade_original = dplyr::coalesce(tipo_oportunidade_original, tipo_oportunidade),
+      tipo_oportunidade_categoria = dplyr::coalesce(
+        tipo_oportunidade_categoria,
+        categorizar_tipo_oportunidade_vec(tipo_oportunidade_original, titulo, fonte_oficial)
       ),
+      data_publicacao = parse_date_safe(data_publicacao),
+      data_abertura = parse_date_safe(data_abertura),
+      data_limite = parse_date_safe(data_limite),
+      data_encerramento = parse_date_safe(data_encerramento),
+      data_hora_coleta = parse_datetime_safe(data_hora_coleta),
+      valor_financiado = suppressWarnings(as.numeric(valor_financiado))
+    )
+
+  list(
+    opportunities = opps,
     sources = tibble::as_tibble(read_table(conn, "fontes_financiamento")),
     saved_searches = tibble::as_tibble(read_table(conn, "buscas_salvas")),
     tracked = tibble::as_tibble(read_table(conn, "editais_rastreados")),
@@ -637,6 +835,37 @@ upsert_opportunities <- function(conn, opportunities_df) {
 
   cols <- DBI::dbListFields(conn, "oportunidades")
   df <- tibble::as_tibble(opportunities_df)
+
+  tipo_cols <- c(
+    "tipo_oportunidade_original",
+    "tipo_oportunidade_categoria",
+    "tipo_oportunidade_categoria_origem"
+  )
+  if (all(tipo_cols %in% cols)) {
+    if (!"tipo_oportunidade" %in% names(df)) df$tipo_oportunidade <- NA_character_
+    if (!"tipo_oportunidade_original" %in% names(df)) df$tipo_oportunidade_original <- df$tipo_oportunidade
+    df$tipo_oportunidade_original <- dplyr::coalesce(df$tipo_oportunidade_original, df$tipo_oportunidade)
+    if (!"tipo_oportunidade_categoria" %in% names(df)) df$tipo_oportunidade_categoria <- NA_character_
+    if (!"tipo_oportunidade_categoria_origem" %in% names(df)) df$tipo_oportunidade_categoria_origem <- NA_character_
+
+    faltantes <- is.na(df$tipo_oportunidade_categoria) | !nzchar(df$tipo_oportunidade_categoria)
+    if (any(faltantes)) {
+      titulos <- if ("titulo" %in% names(df)) df$titulo else rep(NA_character_, nrow(df))
+      fontes <- if ("fonte_oficial" %in% names(df)) df$fonte_oficial else rep(NA_character_, nrow(df))
+      detalhes <- lapply(which(faltantes), function(i) {
+        categorizar_tipo_oportunidade_detalhado(
+          tipo = df$tipo_oportunidade_original[[i]],
+          titulo = titulos[[i]],
+          fonte = fontes[[i]]
+        )
+      })
+      df$tipo_oportunidade_categoria[faltantes] <- vapply(detalhes, `[[`, character(1), "categoria")
+      df$tipo_oportunidade_categoria_origem[faltantes] <- vapply(detalhes, `[[`, character(1), "origem")
+    }
+    origem_vazia <- is.na(df$tipo_oportunidade_categoria_origem) | !nzchar(df$tipo_oportunidade_categoria_origem)
+    df$tipo_oportunidade_categoria_origem[origem_vazia] <- "bruto"
+  }
+
   missing_cols <- setdiff(cols, names(df))
   if (length(missing_cols) > 0) {
     for (nm in missing_cols) df[[nm]] <- NA

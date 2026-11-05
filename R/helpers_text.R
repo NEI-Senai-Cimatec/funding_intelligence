@@ -256,7 +256,12 @@ apply_structured_filters <- function(df, filters = list()) {
     out <- dplyr::filter(out, pais_origem %in% filters$pais)
   }
   if (!is.null(filters$tipo) && length(filters$tipo) > 0L) {
-    out <- dplyr::filter(out, tipo_oportunidade %in% filters$tipo)
+    tipos <- mapear_tipos_para_categorias(filters$tipo)
+    if ("tipo_oportunidade_categoria" %in% names(out)) {
+      out <- dplyr::filter(out, tipo_oportunidade_categoria %in% tipos)
+    } else {
+      out <- dplyr::filter(out, tipo_oportunidade %in% filters$tipo)
+    }
   }
   if (!is.null(filters$area_tematica) && length(filters$area_tematica) > 0L) {
     out <- dplyr::filter(out, area_tematica %in% filters$area_tematica)

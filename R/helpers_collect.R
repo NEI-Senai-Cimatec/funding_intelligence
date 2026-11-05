@@ -1498,7 +1498,9 @@ infer_area_from_text_one <- function(text) {
 ensure_record_schema <- function(df) {
   schema_cols <- c(
     "id_registro", "entidade", "pais_origem", "titulo", "subtitulo", "descricao_resumida",
-    "descricao_completa", "tipo_oportunidade", "modalidade", "area_tematica", "palavras_chave",
+    "descricao_completa", "tipo_oportunidade", "tipo_oportunidade_original",
+    "tipo_oportunidade_categoria", "tipo_oportunidade_categoria_origem",
+    "modalidade", "area_tematica", "palavras_chave",
     "elegibilidade", "publico_alvo", "nivel_academico", "instituicao_financiadora",
     "valor_financiado", "moeda", "data_publicacao", "data_abertura", "data_limite",
     "data_encerramento", "status_oportunidade", "link_origem", "link_detalhe",
@@ -1525,6 +1527,19 @@ finalize_records <- function(df, fonte_oficial = NULL, log_path = NULL) {
     return(ensure_record_schema(tibble::tibble()))
   }
   df <- ensure_record_schema(df)
+
+  # Preserva o valor bruto e deriva a categoria canônica usada pelo filtro/UI.
+  df$tipo_oportunidade_original <- dplyr::coalesce(df$tipo_oportunidade_original, df$tipo_oportunidade)
+  fonte_padrao <- fonte_oficial %||% NA_character_
+  detalhes_tipo <- lapply(seq_len(nrow(df)), function(i) {
+    categorizar_tipo_oportunidade_detalhado(
+      tipo = df$tipo_oportunidade_original[[i]],
+      titulo = df$titulo[[i]],
+      fonte = dplyr::coalesce(df$fonte_oficial[[i]], fonte_padrao)
+    )
+  })
+  df$tipo_oportunidade_categoria <- vapply(detalhes_tipo, `[[`, character(1), "categoria")
+  df$tipo_oportunidade_categoria_origem <- vapply(detalhes_tipo, `[[`, character(1), "origem")
 
   # Verificar se e fonte internacional (HEU/ERC/DAAD)
   is_eu <- !is.null(fonte_oficial) && (fonte_oficial %in% c("horizon_europe", "erc", "daad"))

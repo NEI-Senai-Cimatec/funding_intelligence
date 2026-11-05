@@ -5,6 +5,26 @@ Todas as alterações relevantes da plataforma QuIIN - Funding Intelligence Hub.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/);
 versionamento [SemVer](https://semver.org/lang/pt-BR/).
 
+## [Unreleased]
+
+### Added
+- Taxonomia canônica de `tipo_oportunidade` em 5 categorias
+  (`edital_chamada`, `bolsa_fellowship`, `premio`, `licitacao_contratacao`,
+  `outros`), com preservação do valor bruto em `tipo_oportunidade_original`.
+- Migração idempotente `migrate_tipo_oportunidade()` (marker
+  `tipo_oportunidade_v1`) e script operacional
+  `migrations/2026-11-05_tipo_oportunidade.R`, com backup e relatório.
+
+### Changed
+- Filtro rápido, busca avançada, cards, tabela de financiadores e recomendações
+  passaram a exibir/filtrar pela categoria canônica; valores antigos de buscas
+  salvas continuam funcionando.
+
+### Fixed
+- Variações de escrita do tipo (`Edital`/`edital`, `chamada pública`/
+  `chamada_publica`, `bolsa`/`fellowship`, `premio`/`award`) não aparecem mais
+  como opções duplicadas no filtro.
+
 ## [2.0.0] - 2026-09-02
 
 Change OpenSpec: `funding-hub-v2-hardening` (14 bugs + 5 melhorias).

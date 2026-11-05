@@ -110,6 +110,7 @@ safe_source <- function(path) {
 # (ex.: status_today de helpers_status.R), mascarado como "Resultado vazio".
 COLLECTOR_HELPER_FILES <- c(
   "R/helpers_utils.R",
+  "R/helpers_taxonomy.R",
   "R/helpers_db.R",
   "R/helpers_status.R",
   "R/helpers_text.R",
@@ -118,6 +119,7 @@ COLLECTOR_HELPER_FILES <- c(
 )
 
 safe_source("R/helpers_utils.R")
+safe_source("R/helpers_taxonomy.R")
 safe_source("R/helpers_db.R")
 safe_source("R/helpers_text.R")
 safe_source("R/helpers_status.R")
@@ -817,7 +819,7 @@ server <- function(input, output, session) {
         textInput("adv_exact_phrase", "Frase exata", value = rv$advanced_filters$exact_phrase %||% ""),
         selectInput("adv_idioma", "Idioma", choices = c("Todos", sort(unique(opps$idioma))), selected = rv$advanced_filters$idioma %||% "Todos"),
         selectizeInput("adv_country", "País/região", choices = sort(unique(opps$pais_origem)), multiple = TRUE, selected = rv$advanced_filters$pais %||% character(0)),
-        selectizeInput("adv_type", "Tipo de oportunidade", choices = sort(unique(opps$tipo_oportunidade)), multiple = TRUE, selected = rv$advanced_filters$tipo %||% character(0)),
+        selectizeInput("adv_type", "Tipo de oportunidade", choices = categorias_tipo_oportunidade_choices(), multiple = TRUE, selected = mapear_tipos_para_categorias(rv$advanced_filters$tipo %||% character(0))),
         selectizeInput("adv_area", "Área temática", choices = sort(unique(opps$area_tematica)), multiple = TRUE, selected = rv$advanced_filters$area_tematica %||% character(0)),
         selectizeInput("adv_funder", "Financiador", choices = sort(unique(opps$entidade)), multiple = TRUE, selected = rv$advanced_filters$financiador %||% character(0)),
         textInput("adv_eligibility", "Elegibilidade institucional", value = rv$advanced_filters$elegibilidade %||% ""),
@@ -1087,7 +1089,7 @@ server <- function(input, output, session) {
       df <- df |> dplyr::filter(derived_status %in% tolower(gsub(" ", "_", input$filter_status)))
     }
     if (length(input$filter_type) > 0) {
-      df <- df |> dplyr::filter(tipo_oportunidade %in% input$filter_type)
+      df <- df |> dplyr::filter(tipo_oportunidade_categoria %in% input$filter_type)
     }
     if (length(input$filter_language) > 0) {
       df <- df |> dplyr::filter(idioma %in% input$filter_language)
@@ -1115,9 +1117,14 @@ server <- function(input, output, session) {
     status_display <- setNames(status_choices, status_display_label(status_choices))
     updateSelectizeInput(session, "filter_status", choices = status_display, selected = input$filter_status)
     
-    # Tipo de Oportunidade
-    type_choices <- sort(unique(opps$tipo_oportunidade[!is.na(opps$tipo_oportunidade) & opps$tipo_oportunidade != ""]))
-    updateSelectizeInput(session, "filter_type", choices = type_choices, selected = input$filter_type)
+    # Tipo de Oportunidade (categorias canônicas; valores antigos são convertidos)
+    type_choices <- categorias_tipo_oportunidade_choices()
+    updateSelectizeInput(
+      session,
+      "filter_type",
+      choices = type_choices,
+      selected = intersect(mapear_tipos_para_categorias(input$filter_type), unname(type_choices))
+    )
     
     # Idioma
     lang_choices <- sort(unique(opps$idioma[!is.na(opps$idioma) & opps$idioma != ""]))
@@ -1538,7 +1545,11 @@ server <- function(input, output, session) {
                 ),
                 tags$div(
                   tags$div(style = "font-size: 0.8rem; color: #64748b; font-weight: 600; text-transform: uppercase;", "Tipo de Oportunidade"),
-                  tags$div(style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;", opp$tipo_oportunidade[[1]] %||% "-")
+                  tags$div(
+                    title = opp$tipo_oportunidade_original[[1]] %||% opp$tipo_oportunidade[[1]] %||% "",
+                    style = "font-size: 0.95rem; font-weight: 700; color: #0f172a;",
+                    rotulo_categoria_tipo(opp$tipo_oportunidade_categoria[[1]] %||% opp$tipo_oportunidade[[1]] %||% "Outros")
+                  )
                 ),
                 if (!is.na(opp$modalidade[[1]]) && nzchar(opp$modalidade[[1]])) {
                   tags$div(
@@ -1671,6 +1682,11 @@ server <- function(input, output, session) {
 
   output$funders_table <- renderDT({
     df <- filtered_results() |>
+      dplyr::mutate(
+        tipo_oportunidade = rotulo_categoria_tipo_vec(
+          dplyr::coalesce(tipo_oportunidade_categoria, tipo_oportunidade)
+        )
+      ) |>
       dplyr::count(entidade, pais_origem, tipo_oportunidade, sort = TRUE, name = "n_editais")
     DT::datatable(df, options = list(pageLength = 10, scrollX = TRUE, language = list(emptyTable = "Nenhum dado disponível.")))
   }, server = FALSE)
@@ -1877,7 +1893,7 @@ server <- function(input, output, session) {
           Link = vapply(dplyr::coalesce(link_detalhe, link_origem), link_html, character(1), label = "Abrir"),
           Visualizar = vapply(id_registro, make_view_button, character(1)),
           Financiador = as.factor(entidade),
-          Tipo = as.factor(tools::toTitleCase(tolower(dplyr::coalesce(tipo_oportunidade, "não especificado"))))
+          Tipo = as.factor(rotulo_categoria_tipo_vec(dplyr::coalesce(tipo_oportunidade_categoria, tipo_oportunidade, "não especificado")))
         ) |>
         dplyr::transmute(Título = titulo, Financiador, Score = score_aderencia, Prazo = format_date_br(data_limite), Tipo, Link, Visualizar)
     }

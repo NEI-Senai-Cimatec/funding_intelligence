@@ -1354,6 +1354,32 @@ translate_to_pt_br <- function(records, log_path = NULL) {
   records
 }
 
+# ─── Utilitários da heurística de aderência por campus ──────────────────────
+adherence_heuristic_text <- function(titulo, descricao) {
+  clean <- function(x) {
+    x <- as.character(x %||% "")
+    x[is.na(x) | x %in% c("NA", "NULL")] <- ""
+    paste(x, collapse = " ")
+  }
+  tolower(normalize_text(paste(clean(titulo), clean(descricao))))
+}
+
+# Casa palavra-chave respeitando início de palavra (radicais como "oceanograf"
+# continuam funcionando) e palavra inteira para siglas curtas ("rov", "gas", "ti"),
+# evitando falsos positivos como "rov" em "improve" ou "gas" em "gastos".
+adherence_kw_hits <- function(kws, norm_text) {
+  if (!length(kws) || !nzchar(norm_text)) return(FALSE)
+  kws <- tolower(normalize_text(kws))
+  esc <- gsub("([.^$|()\\[\\]{}*+?\\\\])", "\\\\\\1", kws, perl = TRUE)
+  pats <- ifelse(nchar(kws) <= 4L,
+                 paste0("(?<![a-z0-9])", esc, "(?![a-z0-9])"),
+                 paste0("(?<![a-z0-9])", esc))
+  any(vapply(pats, function(p) grepl(p, norm_text, perl = TRUE), logical(1)))
+}
+
+# Justificativas geradas pela heurística antiga (salvas no banco) — devem ser recalculadas
+ADHERENCE_HEURISTIC_PATTERN <- "^(Oportunidade com forte aderência direta|Oportunidade relevante|Oportunidade tangencial|Oportunidade sem conexão|Forte aderência direta|Oportunidade com aderência|Oportunidade com potencial)"
+
 # ─── Avaliador de Aderência Científico-Tecnológica: Núcleo Naval & Offshore de PD&I ───────
 
 PROMPT_NAVAL_OFFSHORE <- "
@@ -1379,7 +1405,8 @@ Retorne EXCLUSIVAMENTE um objeto JSON válido no seguinte formato:
 
 evaluate_naval_offshore_adherence <- function(titulo, descricao, texto_bruto = "", entidade = "", use_ai = TRUE, log_path = NULL, conn = NULL) {
   full_text <- paste(titulo %||% "", descricao %||% "", texto_bruto %||% "", entidade %||% "")
-  norm_text <- tolower(normalize_text(full_text))
+  # Heurística: SOMENTE título + resumo (o texto bruto traz menus/rodapés que geram falsos positivos)
+  norm_text <- adherence_heuristic_text(titulo, descricao)
   
   # 1. Avaliação via IA se disponível
   if (use_ai && ai_available()) {
@@ -1406,7 +1433,7 @@ evaluate_naval_offshore_adherence <- function(titulo, descricao, texto_bruto = "
   kw_defesa <- c("marinha", "amazonia azul", "defesa maritima", "sisgaaz", "prosub", "vigilancia maritim", "dupla finalidade", "dual-use")
   kw_ensaio <- c("tanque de provas", "bacia de ondas", "tunel de cavitacao", "ensaio", "laboratorio de qualificacao", "bancada de testes")
   
-  check_hits <- function(kws) any(vapply(kws, function(k) grepl(k, norm_text, fixed = TRUE), logical(1)))
+  check_hits <- function(kws) adherence_kw_hits(kws, norm_text)
   
   hits_rov <- check_hits(kw_rov)
   hits_naval <- check_hits(kw_naval)
@@ -1477,7 +1504,8 @@ Retorne EXCLUSIVAMENTE um objeto JSON válido no seguinte formato:
 
 evaluate_sertao_adherence <- function(titulo, descricao, texto_bruto = "", entidade = "", use_ai = TRUE, log_path = NULL, conn = NULL) {
   full_text <- paste(titulo %||% "", descricao %||% "", texto_bruto %||% "", entidade %||% "")
-  norm_text <- tolower(normalize_text(full_text))
+  # Heurística: SOMENTE título + resumo (o texto bruto traz menus/rodapés que geram falsos positivos)
+  norm_text <- adherence_heuristic_text(titulo, descricao)
   
   if (use_ai && ai_available()) {
     prompt <- paste0(PROMPT_SERTAO, trim_for_ai(full_text, max_chars = 6000))
@@ -1501,7 +1529,7 @@ evaluate_sertao_adherence <- function(titulo, descricao, texto_bruto = "", entid
   kw_pecuaria <- c("pecuaria", "caprino", "ovino", "gado", "rebanho", "sanidade animal", "pastagem", "zootecnia", "leite")
   kw_agroind <- c("agroindustria", "processamento de alimentos", "cadeia produtiva", "beneficiamento de frutas", "cooperativa agricola", "agrifood")
   
-  check_hits <- function(kws) any(vapply(kws, function(k) grepl(k, norm_text, fixed = TRUE), logical(1)))
+  check_hits <- function(kws) adherence_kw_hits(kws, norm_text)
   
   hits_agro <- check_hits(kw_agro)
   hits_hidro <- check_hits(kw_hidro)
@@ -1570,7 +1598,8 @@ Retorne EXCLUSIVAMENTE um objeto JSON válido no seguinte formato:
 
 evaluate_aero_adherence <- function(titulo, descricao, texto_bruto = "", entidade = "", use_ai = TRUE, log_path = NULL, conn = NULL) {
   full_text <- paste(titulo %||% "", descricao %||% "", texto_bruto %||% "", entidade %||% "")
-  norm_text <- tolower(normalize_text(full_text))
+  # Heurística: SOMENTE título + resumo (o texto bruto traz menus/rodapés que geram falsos positivos)
+  norm_text <- adherence_heuristic_text(titulo, descricao)
   
   if (use_ai && ai_available()) {
     prompt <- paste0(PROMPT_AEROESPACIAL, trim_for_ai(full_text, max_chars = 6000))
@@ -1595,7 +1624,7 @@ evaluate_aero_adherence <- function(titulo, descricao, texto_bruto = "", entidad
   kw_materiais <- c("compostos aeronauticos", "fibra de carbono", "aeroestrutura", "aerodinamica", "fuselagem", "ensaio em voo")
   kw_defesa <- c("defesa", "forca aerea", "fab", "dcta", "militar", "forcas armadas", "soberania aeroespacial", "dual-use")
   
-  check_hits <- function(kws) any(vapply(kws, function(k) grepl(k, norm_text, fixed = TRUE), logical(1)))
+  check_hits <- function(kws) adherence_kw_hits(kws, norm_text)
   
   hits_vant <- check_hits(kw_vant)
   hits_espaco <- check_hits(kw_espaco)
@@ -1666,7 +1695,8 @@ Retorne EXCLUSIVAMENTE um objeto JSON válido no seguinte formato:
 
 evaluate_digital_adherence <- function(titulo, descricao, texto_bruto = "", entidade = "", use_ai = TRUE, log_path = NULL, conn = NULL) {
   full_text <- paste(titulo %||% "", descricao %||% "", texto_bruto %||% "", entidade %||% "")
-  norm_text <- tolower(normalize_text(full_text))
+  # Heurística: SOMENTE título + resumo (o texto bruto traz menus/rodapés que geram falsos positivos)
+  norm_text <- adherence_heuristic_text(titulo, descricao)
   
   if (use_ai && ai_available()) {
     prompt <- paste0(PROMPT_DIGITAL, trim_for_ai(full_text, max_chars = 6000))
@@ -1690,7 +1720,7 @@ evaluate_digital_adherence <- function(titulo, descricao, texto_bruto = "", enti
   kw_iot <- c("iot", "internet das coisas", "sensores inteligentes", "5g", "6g", "conectividade avancada", "telemetria digital")
   kw_software <- c("software", "banco de dados", "big data", "analytics", "gemeo digital", "digital twin", "plataforma digital", "transformacao digital", "ti", "tic")
   
-  check_hits <- function(kws) any(vapply(kws, function(k) grepl(k, norm_text, fixed = TRUE), logical(1)))
+  check_hits <- function(kws) adherence_kw_hits(kws, norm_text)
   
   hits_ia <- check_hits(kw_ia)
   hits_cyber <- check_hits(kw_cyber)
@@ -1759,7 +1789,8 @@ Retorne EXCLUSIVAMENTE um objeto JSON válido no seguinte formato:
 
 evaluate_park_adherence <- function(titulo, descricao, texto_bruto = "", entidade = "", use_ai = TRUE, log_path = NULL, conn = NULL) {
   full_text <- paste(titulo %||% "", descricao %||% "", texto_bruto %||% "", entidade %||% "")
-  norm_text <- tolower(normalize_text(full_text))
+  # Heurística: SOMENTE título + resumo (o texto bruto traz menus/rodapés que geram falsos positivos)
+  norm_text <- adherence_heuristic_text(titulo, descricao)
   
   if (use_ai && ai_available()) {
     prompt <- paste0(PROMPT_PARK, trim_for_ai(full_text, max_chars = 6000))
@@ -1784,7 +1815,7 @@ evaluate_park_adherence <- function(titulo, descricao, texto_bruto = "", entidad
   kw_mineracao <- c("mineracao", "rejeitos", "siderurgia", "metalurgic", "aco verde", "beneficiamento mineral")
   kw_energia_ind <- c("descarbonizacao industrial", "eficiencia energetica", "transicao industrial", "captura de carbono", "ccus", "calor residual")
   
-  check_hits <- function(kws) any(vapply(kws, function(k) grepl(k, norm_text, fixed = TRUE), logical(1)))
+  check_hits <- function(kws) adherence_kw_hits(kws, norm_text)
   
   hits_manuf <- check_hits(kw_manuf)
   hits_materiais <- check_hits(kw_materiais)
@@ -1855,7 +1886,8 @@ Retorne EXCLUSIVAMENTE um objeto JSON válido no seguinte formato:
 
 evaluate_startups_adherence <- function(titulo, descricao, texto_bruto = "", entidade = "", use_ai = TRUE, log_path = NULL, conn = NULL) {
   full_text <- paste(titulo %||% "", descricao %||% "", texto_bruto %||% "", entidade %||% "")
-  norm_text <- tolower(normalize_text(full_text))
+  # Heurística: SOMENTE título + resumo (o texto bruto traz menus/rodapés que geram falsos positivos)
+  norm_text <- adherence_heuristic_text(titulo, descricao)
   
   if (use_ai && ai_available()) {
     prompt <- paste0(PROMPT_STARTUPS, trim_for_ai(full_text, max_chars = 6000))
@@ -1880,7 +1912,7 @@ evaluate_startups_adherence <- function(titulo, descricao, texto_bruto = "", ent
   kw_mvp_labs <- c("mvp", "prototipagem", "living lab", "sandbox", "poc", "prova de conceito", "validacao de mercado", "ambiente de teste")
   kw_internacional <- c("internacionalizacao", "soft landing", "missao internacional", "expansao global", "mercado global")
   
-  check_hits <- function(kws) any(vapply(kws, function(k) grepl(k, norm_text, fixed = TRUE), logical(1)))
+  check_hits <- function(kws) adherence_kw_hits(kws, norm_text)
   
   hits_deeptech <- check_hits(kw_deeptech)
   hits_aceleracao <- check_hits(kw_aceleracao)

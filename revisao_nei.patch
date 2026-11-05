@@ -1,0 +1,1319 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index cdf19cc..f0de9c2 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -5,6 +5,34 @@ Todas as alterações relevantes da plataforma QuIIN - Funding Intelligence Hub.
+ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/);
+ versionamento [SemVer](https://semver.org/lang/pt-BR/).
+ 
++## [2.1.0] - 2026-11-05
++
++Revisão "Radar da Inovação e SITE do NEI" (itens 1 a 11 do documento de revisão).
++
++### Changed
++- Login com layout no estilo SIG QuIIN: fundo tecnológico, cartão translúcido com a marca
++  Radar da Inovação, identificação institucional no topo e faixa de logos (NEI, SENAI CIMATEC, FIEB).
++- Subtítulo do cabeçalho: "Plataforma de inteligência de fomento à P&D+I".
++- Rodapé: "Superintendência de Planejamento e Novos Negócios".
++- Filtros "Área Temática" e "Idioma" removidos do sidebar e da busca avançada.
++- `tipo_oportunidade` padronizado na leitura da base (`classify_tipo_oportunidade`):
++  Bolsas, Fomento à pesquisa, Fomento a eventos, Financiamento, Subvenção econômica, Prêmio,
++  Licitação, Incentivos fiscais à PD&I, Capital de risco, Outros. Valor bruto preservado em
++  `tipo_oportunidade_fonte`.
++- Abas temáticas: colunas "Análise & Justificativa" e "Ideia de Projeto / Consórcio" substituídas
++  por "Objeto de Financiamento".
++- Heurística de aderência por campus usa só título + resumo e casa palavra inteira (antes lia o
++  texto bruto da página e casava substrings, ex.: "rov" em "improve"); justificativas antigas
++  geradas pela heurística são recalculadas na exibição.
++- Palavras-chave oficiais por campus (`CAMPUS_SEARCH_QUERIES`: Sertão, Aeroespacial, Mar, Digital,
++  SENAI CIMATEC amplo) usadas no filtro de Campi e no relatório, e cadastradas como Buscas Salvas.
++
++### Fixed
++- Abas temáticas ignoravam os filtros do sidebar (ex.: "Status = Abertos" mostrava editais encerrados).
++- Relatório DOCX: marcadores `{{campo_n}}` quebrados pelo Word em vários runs não eram substituídos;
++  downloads DOCX/PDF agora avisam o usuário em caso de falha.
++- `status_display_label` podia retornar lista (R < 4.4) e quebrar a tabela de resultados.
++
+ ## [2.0.0] - 2026-09-02
+ 
+ Change OpenSpec: `funding-hub-v2-hardening` (14 bugs + 5 melhorias).
+diff --git a/R/helpers_ai.R b/R/helpers_ai.R
+index f04aa7a..fd84f5d 100644
+--- a/R/helpers_ai.R
++++ b/R/helpers_ai.R
+@@ -1354,6 +1354,32 @@ translate_to_pt_br <- function(records, log_path = NULL) {
+   records
+ }
+ 
++# ─── Utilitários da heurística de aderência por campus ──────────────────────
++adherence_heuristic_text <- function(titulo, descricao) {
++  clean <- function(x) {
++    x <- as.character(x %||% "")
++    x[is.na(x) | x %in% c("NA", "NULL")] <- ""
++    paste(x, collapse = " ")
++  }
++  tolower(normalize_text(paste(clean(titulo), clean(descricao))))
++}
++
++# Casa palavra-chave respeitando início de palavra (radicais como "oceanograf"
++# continuam funcionando) e palavra inteira para siglas curtas ("rov", "gas", "ti"),
++# evitando falsos positivos como "rov" em "improve" ou "gas" em "gastos".
++adherence_kw_hits <- function(kws, norm_text) {
++  if (!length(kws) || !nzchar(norm_text)) return(FALSE)
++  kws <- tolower(normalize_text(kws))
++  esc <- gsub("([.^$|()\\[\\]{}*+?\\\\])", "\\\\\\1", kws, perl = TRUE)
++  pats <- ifelse(nchar(kws) <= 4L,
++                 paste0("(?<![a-z0-9])", esc, "(?![a-z0-9])"),
++                 paste0("(?<![a-z0-9])", esc))
++  any(vapply(pats, function(p) grepl(p, norm_text, perl = TRUE), logical(1)))
++}
++
++# Justificativas geradas pela heurística antiga (salvas no banco) — devem ser recalculadas
++ADHERENCE_HEURISTIC_PATTERN <- "^(Oportunidade com forte aderência direta|Oportunidade relevante|Oportunidade tangencial|Oportunidade sem conexão|Forte aderência direta|Oportunidade com aderência|Oportunidade com potencial)"
++
+ # ─── Avaliador de Aderência Científico-Tecnológica: Núcleo Naval & Offshore de PD&I ───────
+ 
+ PROMPT_NAVAL_OFFSHORE <- "
+@@ -1379,7 +1405,8 @@ Retorne EXCLUSIVAMENTE um objeto JSON válido no seguinte formato:
+ 
+ evaluate_naval_offshore_adherence <- function(titulo, descricao, texto_bruto = "", entidade = "", use_ai = TRUE, log_path = NULL, conn = NULL) {
+   full_text <- paste(titulo %||% "", descricao %||% "", texto_bruto %||% "", entidade %||% "")
+-  norm_text <- tolower(normalize_text(full_text))
++  # Heurística: SOMENTE título + resumo (o texto bruto traz menus/rodapés que geram falsos positivos)
++  norm_text <- adherence_heuristic_text(titulo, descricao)
+   
+   # 1. Avaliação via IA se disponível
+   if (use_ai && ai_available()) {
+@@ -1406,7 +1433,7 @@ evaluate_naval_offshore_adherence <- function(titulo, descricao, texto_bruto = "
+   kw_defesa <- c("marinha", "amazonia azul", "defesa maritima", "sisgaaz", "prosub", "vigilancia maritim", "dupla finalidade", "dual-use")
+   kw_ensaio <- c("tanque de provas", "bacia de ondas", "tunel de cavitacao", "ensaio", "laboratorio de qualificacao", "bancada de testes")
+   
+-  check_hits <- function(kws) any(vapply(kws, function(k) grepl(k, norm_text, fixed = TRUE), logical(1)))
++  check_hits <- function(kws) adherence_kw_hits(kws, norm_text)
+   
+   hits_rov <- check_hits(kw_rov)
+   hits_naval <- check_hits(kw_naval)
+@@ -1477,7 +1504,8 @@ Retorne EXCLUSIVAMENTE um objeto JSON válido no seguinte formato:
+ 
+ evaluate_sertao_adherence <- function(titulo, descricao, texto_bruto = "", entidade = "", use_ai = TRUE, log_path = NULL, conn = NULL) {
+   full_text <- paste(titulo %||% "", descricao %||% "", texto_bruto %||% "", entidade %||% "")
+-  norm_text <- tolower(normalize_text(full_text))
++  # Heurística: SOMENTE título + resumo (o texto bruto traz menus/rodapés que geram falsos positivos)
++  norm_text <- adherence_heuristic_text(titulo, descricao)
+   
+   if (use_ai && ai_available()) {
+     prompt <- paste0(PROMPT_SERTAO, trim_for_ai(full_text, max_chars = 6000))
+@@ -1501,7 +1529,7 @@ evaluate_sertao_adherence <- function(titulo, descricao, texto_bruto = "", entid
+   kw_pecuaria <- c("pecuaria", "caprino", "ovino", "gado", "rebanho", "sanidade animal", "pastagem", "zootecnia", "leite")
+   kw_agroind <- c("agroindustria", "processamento de alimentos", "cadeia produtiva", "beneficiamento de frutas", "cooperativa agricola", "agrifood")
+   
+-  check_hits <- function(kws) any(vapply(kws, function(k) grepl(k, norm_text, fixed = TRUE), logical(1)))
++  check_hits <- function(kws) adherence_kw_hits(kws, norm_text)
+   
+   hits_agro <- check_hits(kw_agro)
+   hits_hidro <- check_hits(kw_hidro)
+@@ -1570,7 +1598,8 @@ Retorne EXCLUSIVAMENTE um objeto JSON válido no seguinte formato:
+ 
+ evaluate_aero_adherence <- function(titulo, descricao, texto_bruto = "", entidade = "", use_ai = TRUE, log_path = NULL, conn = NULL) {
+   full_text <- paste(titulo %||% "", descricao %||% "", texto_bruto %||% "", entidade %||% "")
+-  norm_text <- tolower(normalize_text(full_text))
++  # Heurística: SOMENTE título + resumo (o texto bruto traz menus/rodapés que geram falsos positivos)
++  norm_text <- adherence_heuristic_text(titulo, descricao)
+   
+   if (use_ai && ai_available()) {
+     prompt <- paste0(PROMPT_AEROESPACIAL, trim_for_ai(full_text, max_chars = 6000))
+@@ -1595,7 +1624,7 @@ evaluate_aero_adherence <- function(titulo, descricao, texto_bruto = "", entidad
+   kw_materiais <- c("compostos aeronauticos", "fibra de carbono", "aeroestrutura", "aerodinamica", "fuselagem", "ensaio em voo")
+   kw_defesa <- c("defesa", "forca aerea", "fab", "dcta", "militar", "forcas armadas", "soberania aeroespacial", "dual-use")
+   
+-  check_hits <- function(kws) any(vapply(kws, function(k) grepl(k, norm_text, fixed = TRUE), logical(1)))
++  check_hits <- function(kws) adherence_kw_hits(kws, norm_text)
+   
+   hits_vant <- check_hits(kw_vant)
+   hits_espaco <- check_hits(kw_espaco)
+@@ -1666,7 +1695,8 @@ Retorne EXCLUSIVAMENTE um objeto JSON válido no seguinte formato:
+ 
+ evaluate_digital_adherence <- function(titulo, descricao, texto_bruto = "", entidade = "", use_ai = TRUE, log_path = NULL, conn = NULL) {
+   full_text <- paste(titulo %||% "", descricao %||% "", texto_bruto %||% "", entidade %||% "")
+-  norm_text <- tolower(normalize_text(full_text))
++  # Heurística: SOMENTE título + resumo (o texto bruto traz menus/rodapés que geram falsos positivos)
++  norm_text <- adherence_heuristic_text(titulo, descricao)
+   
+   if (use_ai && ai_available()) {
+     prompt <- paste0(PROMPT_DIGITAL, trim_for_ai(full_text, max_chars = 6000))
+@@ -1690,7 +1720,7 @@ evaluate_digital_adherence <- function(titulo, descricao, texto_bruto = "", enti
+   kw_iot <- c("iot", "internet das coisas", "sensores inteligentes", "5g", "6g", "conectividade avancada", "telemetria digital")
+   kw_software <- c("software", "banco de dados", "big data", "analytics", "gemeo digital", "digital twin", "plataforma digital", "transformacao digital", "ti", "tic")
+   
+-  check_hits <- function(kws) any(vapply(kws, function(k) grepl(k, norm_text, fixed = TRUE), logical(1)))
++  check_hits <- function(kws) adherence_kw_hits(kws, norm_text)
+   
+   hits_ia <- check_hits(kw_ia)
+   hits_cyber <- check_hits(kw_cyber)
+@@ -1759,7 +1789,8 @@ Retorne EXCLUSIVAMENTE um objeto JSON válido no seguinte formato:
+ 
+ evaluate_park_adherence <- function(titulo, descricao, texto_bruto = "", entidade = "", use_ai = TRUE, log_path = NULL, conn = NULL) {
+   full_text <- paste(titulo %||% "", descricao %||% "", texto_bruto %||% "", entidade %||% "")
+-  norm_text <- tolower(normalize_text(full_text))
++  # Heurística: SOMENTE título + resumo (o texto bruto traz menus/rodapés que geram falsos positivos)
++  norm_text <- adherence_heuristic_text(titulo, descricao)
+   
+   if (use_ai && ai_available()) {
+     prompt <- paste0(PROMPT_PARK, trim_for_ai(full_text, max_chars = 6000))
+@@ -1784,7 +1815,7 @@ evaluate_park_adherence <- function(titulo, descricao, texto_bruto = "", entidad
+   kw_mineracao <- c("mineracao", "rejeitos", "siderurgia", "metalurgic", "aco verde", "beneficiamento mineral")
+   kw_energia_ind <- c("descarbonizacao industrial", "eficiencia energetica", "transicao industrial", "captura de carbono", "ccus", "calor residual")
+   
+-  check_hits <- function(kws) any(vapply(kws, function(k) grepl(k, norm_text, fixed = TRUE), logical(1)))
++  check_hits <- function(kws) adherence_kw_hits(kws, norm_text)
+   
+   hits_manuf <- check_hits(kw_manuf)
+   hits_materiais <- check_hits(kw_materiais)
+@@ -1855,7 +1886,8 @@ Retorne EXCLUSIVAMENTE um objeto JSON válido no seguinte formato:
+ 
+ evaluate_startups_adherence <- function(titulo, descricao, texto_bruto = "", entidade = "", use_ai = TRUE, log_path = NULL, conn = NULL) {
+   full_text <- paste(titulo %||% "", descricao %||% "", texto_bruto %||% "", entidade %||% "")
+-  norm_text <- tolower(normalize_text(full_text))
++  # Heurística: SOMENTE título + resumo (o texto bruto traz menus/rodapés que geram falsos positivos)
++  norm_text <- adherence_heuristic_text(titulo, descricao)
+   
+   if (use_ai && ai_available()) {
+     prompt <- paste0(PROMPT_STARTUPS, trim_for_ai(full_text, max_chars = 6000))
+@@ -1880,7 +1912,7 @@ evaluate_startups_adherence <- function(titulo, descricao, texto_bruto = "", ent
+   kw_mvp_labs <- c("mvp", "prototipagem", "living lab", "sandbox", "poc", "prova de conceito", "validacao de mercado", "ambiente de teste")
+   kw_internacional <- c("internacionalizacao", "soft landing", "missao internacional", "expansao global", "mercado global")
+   
+-  check_hits <- function(kws) any(vapply(kws, function(k) grepl(k, norm_text, fixed = TRUE), logical(1)))
++  check_hits <- function(kws) adherence_kw_hits(kws, norm_text)
+   
+   hits_deeptech <- check_hits(kw_deeptech)
+   hits_aceleracao <- check_hits(kw_aceleracao)
+diff --git a/R/helpers_auth.R b/R/helpers_auth.R
+index 20c545d..28fc367 100644
+--- a/R/helpers_auth.R
++++ b/R/helpers_auth.R
+@@ -878,15 +878,27 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
+   htmltools::tags$div(
+     id = "auth_overlay_root",
+     class = "auth-overlay-backdrop",
++    # Layout inspirado no login do SIG QuIIN: fundo tecnológico, identificação
++    # institucional no canto superior e faixa de logos no rodapé.
++    htmltools::tags$div(
++      class = "auth-corner-text",
++      htmltools::tags$div("SENAI CIMATEC – Superintendência de Planejamento e Novos Negócios"),
++      htmltools::tags$div("NEI - Núcleo de Economia Industrial"),
++      htmltools::tags$div("Radar da Inovação")
++    ),
++    htmltools::tags$div(
++      class = "auth-footer-logos",
++      htmltools::tags$img(src = "nei_logo_login.jpg", alt = "NEI - Núcleo de Economia Industrial"),
++      htmltools::tags$img(src = "senai_cimatec.jpg", alt = "SENAI CIMATEC"),
++      htmltools::tags$img(src = "logos/logo fieb.png", alt = "FIEB")
++    ),
+     htmltools::tags$div(
+       class = "auth-card",
+       
+-      # Cabeçalho com logo do SENAI CIMATEC
++      # Cabeçalho com a marca do Radar da Inovação
+       htmltools::tags$div(
+         class = "auth-header",
+-        htmltools::tags$img(src = "senai_cimatec.jpg", class = "auth-logo-img", alt = "SENAI CIMATEC"),
+-        htmltools::tags$h2(class = "auth-title", "Radar da Inovação"),
+-        htmltools::tags$p(class = "auth-subtitle", "Plataforma de Inteligência de Fomento à P&D+I")
++        htmltools::tags$img(src = "radar_inovacao_logo.jpg", class = "auth-logo-img auth-logo-radar", alt = "Radar da Inovação - Plataforma de Inteligência de Fomento à P&D+I")
+       ),
+       
+       # Alerta se o Supabase não estiver configurado no .Renviron
+diff --git a/R/helpers_db.R b/R/helpers_db.R
+index d3a3419..1b93405 100644
+--- a/R/helpers_db.R
++++ b/R/helpers_db.R
+@@ -660,6 +660,20 @@ seed_saved_searches <- function(conn) {
+   DBI::dbWriteTable(conn, "buscas_salvas", searches, append = TRUE)
+ }
+ 
++# Garante as buscas salvas oficiais por campus (idempotente, SQLite e Postgres)
++ensure_campus_saved_searches <- function(conn) {
++  if (!exists("CAMPUS_SEARCH_QUERIES")) return(invisible(FALSE))
++  existentes <- tryCatch(db_qry(conn, "SELECT nome_busca FROM buscas_salvas")$nome_busca, error = function(e) NULL)
++  if (is.null(existentes)) return(invisible(FALSE))
++  for (nm in names(CAMPUS_SEARCH_QUERIES)) {
++    nome <- if (grepl("^SENAI", nm)) nm else paste("Campus", nm)
++    if (!nome %in% existentes) {
++      try(save_named_search(conn, nome, CAMPUS_SEARCH_QUERIES[[nm]], "{}", 1L), silent = TRUE)
++    }
++  }
++  invisible(TRUE)
++}
++
+ seed_search_history <- function(conn) {
+   existing <- DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM historico_buscas")$n[[1]]
+   if (existing > 0) {
+@@ -985,6 +999,7 @@ init_database <- function(db_path) {
+     try(migrate_br_integrity_columns(conn), silent = TRUE)
+     seed_sources(conn)
+     prune_inactive_sources(conn)
++    try(ensure_campus_saved_searches(conn), silent = TRUE)
+     return(invisible(TRUE))
+   }
+ 
+@@ -994,6 +1009,7 @@ init_database <- function(db_path) {
+   try(DBI::dbExecute(conn, "UPDATE oportunidades SET pais_origem = 'União Europeia' WHERE pais_origem = 'Uniao Europeia'"), silent = TRUE)
+   seed_profile(conn)
+   seed_saved_searches(conn)
++  try(ensure_campus_saved_searches(conn), silent = TRUE)
+   seed_search_history(conn)
+   seed_collaborators(conn)
+   seed_demo_opportunities(conn)
+diff --git a/R/helpers_docx.R b/R/helpers_docx.R
+index 2ddabe3..3a526f0 100644
+--- a/R/helpers_docx.R
++++ b/R/helpers_docx.R
+@@ -29,6 +29,31 @@ escape_xml_entities <- function(s) {
+   s
+ }
+ 
++#' Junta os runs do Word que quebram um marcador {{campo_n}} em vários pedaços
++#'
++#' O Word divide o texto em vários <w:r> (revisão ortográfica, rsid, idioma...).
++#' Ex.: <w:t>{</w:t></w:r><w:r><w:t>{edital_1}}</w:t>. Aqui removemos marcas
++#' que não carregam texto e unimos apenas os runs que estão DENTRO de um marcador
++#' aberto, preservando a formatação (negrito dos rótulos etc.) do restante.
++docx_merge_split_placeholders <- function(xml) {
++  xml <- gsub("<w:proofErr\\b[^>]*/>", "", xml, perl = TRUE)
++  xml <- gsub("<w:bookmark(Start|End)\\b[^>]*/>", "", xml, perl = TRUE)
++  xml <- gsub("<w:lastRenderedPageBreak/>", "", xml, fixed = TRUE)
++  xml <- gsub("<w:noProof/>", "", xml, fixed = TRUE)
++  boundary <- "</w:t></w:r><w:r\\b[^>]*>(?:<w:rPr>(?:(?!</w:rPr>).)*</w:rPr>)?<w:t\\b[^>]*>"
++  # "{" seguido de "{" em outro run
++  for (k in 1:5) {
++    xml <- gsub(paste0("\\{", boundary, "\\{"), "{{", xml, perl = TRUE)
++  }
++  # marcador aberto ("{{campo") cujo restante está nos runs seguintes
++  for (k in 1:10) {
++    novo <- gsub(paste0("(\\{\\{[^{}<]{0,40})", boundary), "\\1", xml, perl = TRUE)
++    if (identical(novo, xml)) break
++    xml <- novo
++  }
++  xml
++}
++
+ #' Gera relatório Word (.docx) preenchendo o modelo institucional oficial em R Puro
+ #'
+ #' @param report_data Lista com os dados do relatório (estrutura retornada por generate_adherence_report)
+@@ -79,9 +104,7 @@ generate_docx_report <- function(report_data, output_file, template_path = "temp
+ 
+   # 2. Normaliza os placeholders que o MS Word quebra entre múltiplos tags/runs
+   # Exemplo: <w:t>{</w:t></w:r><w:r ...><w:t>{edital_1}}</w:t> -> {{edital_1}}
+-  for (k in 1:10) {
+-    clean_xml <- gsub("</w:t></w:r><w:r\\b[^>]*>(?:<w:rPr\\b[^>]*>.*?</w:rPr>)?<w:t\\b[^>]*>", "", clean_xml, perl = TRUE)
+-  }
++  clean_xml <- docx_merge_split_placeholders(clean_xml)
+ 
+   extra_rels <- character(0)
+ 
+@@ -142,6 +165,13 @@ generate_docx_report <- function(report_data, output_file, template_path = "temp
+     clean_xml <- gsub("\\{\\{resumo_1\\}\\}", escape_xml_entities(items[[1]]$resumo), clean_xml, perl = TRUE)
+   }
+ 
++  # Nenhum marcador {{...}} pode sobrar no documento final
++  sobras <- regmatches(clean_xml, gregexpr("\\{\\{[^{}<]{1,40}\\}\\}", clean_xml, perl = TRUE))[[1]]
++  if (length(sobras) > 0L) {
++    warning(sprintf("[DOCX] Marcadores não substituídos removidos: %s", paste(unique(sobras), collapse = ", ")))
++    clean_xml <- gsub("\\{\\{[^{}<]{1,40}\\}\\}", "", clean_xml, perl = TRUE)
++  }
++
+   # Injeta os relacionamentos de hyperlink no document.xml.rels
+   if (length(extra_rels) > 0 && nzchar(rels_content)) {
+     rels_content <- sub("</Relationships>", paste0(paste(extra_rels, collapse = "\n"), "\n</Relationships>"), rels_content, fixed = TRUE)
+diff --git a/R/helpers_report.R b/R/helpers_report.R
+index 3dd7891..e3b1533 100644
+--- a/R/helpers_report.R
++++ b/R/helpers_report.R
+@@ -127,19 +127,15 @@ generate_single_report_item <- function(row, idx = 1L) {
+   }
+ 
+   # 2. Tipo de oportunidade
+-  tipo_raw <- tolower(safe_report_val(row, "tipo_oportunidade", "financiamento"))
+-  tipo <- if (grepl("grant|coopera|internacional", tipo_raw)) {
+-    "Financiamento Cooperação Internacional"
+-  } else if (grepl("bolsa|fellowship", tipo_raw)) {
+-    "Bolsa"
+-  } else if (grepl("subvenc", tipo_raw)) {
+-    "Subvenção Econômica"
+-  } else if (grepl("premio|award", tipo_raw)) {
+-    "Prêmio / Reconhecimento"
+-  } else if (grepl("licita", tipo_raw)) {
+-    "Licitação / Encomenda Tecnológica"
++  tipo_raw <- safe_report_val(row, "tipo_oportunidade", "")
++  tipo <- if (exists("TIPOS_OPORTUNIDADE") && tipo_raw %in% TIPOS_OPORTUNIDADE) {
++    tipo_raw
++  } else if (exists("classify_tipo_oportunidade", mode = "function")) {
++    classify_tipo_oportunidade(tipo_raw, paste(tit, safe_report_val(row, "descricao_resumida", "")), titulo = tit, entidade = entidade)
++  } else if (nzchar(tipo_raw)) {
++    tipo_raw
+   } else {
+-    "Financiamento"
++    "Outros"
+   }
+ 
+   # 3. País de origem
+diff --git a/R/helpers_status.R b/R/helpers_status.R
+index 0a02313..ea70bb6 100644
+--- a/R/helpers_status.R
++++ b/R/helpers_status.R
+@@ -193,6 +193,9 @@ status_display_label <- function(status) {
+     "desconhecido" = "A verificar"
+   )
+   out <- unname(labels[status])
+-  out[is.na(out)] <- tools::toTitleCase(as.character(status)[is.na(out)])
++  # Guarda: em algumas versões do R, toTitleCase(character(0)) devolve list(),
++  # o que transformava `out` em lista e quebrava a tabela de resultados.
++  miss <- is.na(out)
++  if (any(miss)) out[miss] <- as.character(tools::toTitleCase(as.character(status)[miss]))
+   out
+ }
+diff --git a/R/helpers_utils.R b/R/helpers_utils.R
+index 21d6ef9..7f557ac 100644
+--- a/R/helpers_utils.R
++++ b/R/helpers_utils.R
+@@ -1085,3 +1085,176 @@ campus_badge_html <- function(campus_str) {
+   }, character(1))
+   paste(badges, collapse = " ")
+ }
++
++
++# ─── Tipologia padronizada de oportunidades (Radar da Inovação / NEI) ─────────
++# As fontes gravam `tipo_oportunidade` em formatos heterogêneos ("grant",
++# "edital", "chamada_publica", "Edital de Fomento", "bolsa_estudo", "award"...).
++# Esta função converte qualquer valor bruto + título/descrição para a lista
++# oficial de categorias definida pelo NEI:
++TIPOS_OPORTUNIDADE <- c(
++  "Bolsas",
++  "Fomento à pesquisa",
++  "Fomento a eventos",
++  "Financiamento",
++  "Subvenção econômica",
++  "Prêmio",
++  "Licitação",
++  "Incentivos fiscais à PD&I",
++  "Capital de risco",
++  "Outros"
++)
++
++.tipo_norm <- function(x) {
++  x <- as.character(x)
++  x[is.na(x)] <- ""
++  x <- stringi::stri_trans_general(x, "Latin-ASCII")
++  x <- tolower(gsub("[_\\s]+", " ", x, perl = TRUE))
++  trimws(x)
++}
++
++# tipo: valor bruto da coluna tipo_oportunidade
++# texto: título (+ descrição) usado para desambiguar tipos genéricos
++classify_tipo_oportunidade <- function(tipo, texto = "", titulo = texto, entidade = "") {
++  n <- max(length(tipo), length(texto), length(titulo), length(entidade))
++  if (n == 0L) return(character())
++  tipo <- rep_len(as.character(tipo), n)
++  texto <- rep_len(as.character(texto), n)
++  t <- .tipo_norm(tipo)
++  x <- .tipo_norm(texto)
++  ttl <- .tipo_norm(rep_len(as.character(titulo), n))
++  ent <- .tipo_norm(rep_len(as.character(entidade), n))
++  both <- paste(t, x)
++
++  out <- rep(NA_character_, n)
++  set <- function(cond, val) {
++    cond <- cond & is.na(out)
++    cond[is.na(cond)] <- FALSE
++    out[cond] <<- val
++  }
++  has <- function(s, pat) grepl(pat, s, perl = TRUE)
++
++  # 0. Já está na tipologia oficial
++  ja_ok <- match(.tipo_norm(tipo), .tipo_norm(TIPOS_OPORTUNIDADE))
++  out[!is.na(ja_ok)] <- TIPOS_OPORTUNIDADE[ja_ok[!is.na(ja_ok)]]
++
++  # 1. Pelo tipo informado pela fonte (sinais inequívocos)
++  set(has(t, "licita|pregao|cpsi|encomenda tecnologica|compra publica|procurement|tender"), "Licitação")
++  set(has(t, "premi|award|prize|recogni"), "Prêmio")
++  set(has(t, "lei do bem|incentivo fiscal|tax"), "Incentivos fiscais à PD&I")
++  set(has(t, "capital de risco|venture|equity|investimento"), "Capital de risco")
++  set(has(t, "^subven|subvencao economica"), "Subvenção econômica")
++  set(has(t, "bolsa|beca|fellowship|scholarship|msca|doctoral|estagio|pos-?doutor"), "Bolsas")
++  set(has(t, "^financiamento|reembolsavel$") & !has(t, "nao reembolsavel"), "Financiamento")
++
++  # 2. Pelo conteúdo (título/descrição), para tipos genéricos (edital, grant, chamada, vazio)
++  set(has(x, "\\b(licitacao|pregao eletronico|pregao|tomada de precos|concorrencia publica|dispensa de licitacao|cpsi|contrato publico para solucao inovadora|encomenda tecnologica)\\b"), "Licitação")
++  set(has(x, "\\b(premio|premiacao|prize)\\b") | has(ttl, "\\baward\\b") & !has(ttl, "manage your award"), "Prêmio")
++  set(has(x, "\\b(lei do bem|incentivos? fisca(l|is)|rota 2030|programa mover|beneficio fiscal|deducao fiscal)\\b"), "Incentivos fiscais à PD&I")
++  set(has(ttl, "^fip\\b|\\bfip ") | has(x, "\\b(capital de risco|venture capital|corporate venture|capital semente|seed capital|fundo de investimento|investimento em startups?|equity)\\b"), "Capital de risco")
++  set(has(ttl, "\\b(apoio|promocao|realizacao|organizacao|participacao)( (a|de|em|para))? (eventos?|congressos?|seminarios?|simposios?|workshops?|conferencias?|feiras?|olimpiadas?|reunioes cientificas)\\b|\\b(paep|arc)\\b|support for (conferences?|workshops?|events?)|conference support|travel grants?"), "Fomento a eventos")
++  set(has(x, "\\b(bolsas?|fellowships?|scholarships?|becas?|pos-?doutorado|postdoc(toral)?|doutorado sanduiche|mestrado|iniciacao cientifica|marie sklodowska|msca|estagio)\\b"), "Bolsas")
++  set(has(x, "\\b(subvencao|subvencao economica|tecnova|centelha|catalisa|mais inovacao|pipe)\\b"), "Subvenção econômica")
++  set(has(x, "\\b(financiamento reembolsavel|linha de credito|credito|emprestimo|reembolsavel|bndes (mais inovacao|fundo clima)|finame|loan)\\b") &
++        !has(x, "nao reembolsavel|non-?reimbursable"), "Financiamento")
++
++  # 3. Tipos genéricos de chamada de P&D => Fomento à pesquisa
++  set(has(t, "^(edital|chamada|chamada publica|grant|grants|apoio institucional|nao reembolsavel|cooperacao|research)") |
++        has(t, "fomento|pesquisa|desenvolvimento|cientific"), "Fomento à pesquisa")
++  set(has(x, "\\b(chamada|edital|grant|funding opportunity|call for proposals|nofo|horizon|pesquisa|research|p&d|pd&i|inovacao)\\b"), "Fomento à pesquisa")
++
++  # 4. Sem tipo informado, mas publicado por agência de fomento à pesquisa
++  set(has(ent, "horizon|european commission|comissao europeia|\\berc\\b|\\beic\\b|cnpq|capes|\\bfap|finep|\\bnsf\\b|\\bdoe\\b|darpa|embrapii|grants\\.gov|daad|humboldt|undp|sigitec"), "Fomento à pesquisa")
++
++  out[is.na(out)] <- "Outros"
++  out
++}
++
++# Aplica a tipologia a um data.frame de oportunidades, preservando o valor bruto
++# em `tipo_oportunidade_fonte` para auditoria.
++normalize_tipo_oportunidade_df <- function(df) {
++  if (is.null(df) || !is.data.frame(df) || nrow(df) == 0L) return(df)
++  if (!"tipo_oportunidade" %in% names(df)) df$tipo_oportunidade <- NA_character_
++  col <- function(nm) if (nm %in% names(df)) as.character(df[[nm]]) else rep("", nrow(df))
++  if (!"tipo_oportunidade_fonte" %in% names(df)) df$tipo_oportunidade_fonte <- df$tipo_oportunidade
++  texto <- paste(col("titulo"), col("descricao_resumida"))
++  df$tipo_oportunidade <- classify_tipo_oportunidade(
++    df$tipo_oportunidade_fonte, texto,
++    titulo = col("titulo"),
++    entidade = paste(col("entidade"), col("fonte_oficial"))
++  )
++  df
++}
++
++# Texto curto para a coluna "Objeto de Financiamento" das abas temáticas:
++# descreve o que o edital financia, a partir do resumo da oportunidade.
++objeto_financiamento_curto <- function(descricao, max_chars = 220L) {
++  x <- as.character(descricao)
++  x[is.na(x)] <- ""
++  x <- gsub("<[^>]+>", " ", x)
++  x <- gsub("\\s+", " ", trimws(x))
++  vazio <- !nzchar(x) | x %in% c("NA", "Resumo não disponível.", "Resumo não disponível")
++  x <- ifelse(nchar(x) > max_chars, paste0(substr(x, 1L, max_chars - 3L), "..."), x)
++  x <- htmltools::htmlEscape(x)
++  x[vazio] <- "Consulte o edital para o objeto de financiamento."
++  x
++}
++
++
++# ─── Palavras-chave de busca por campus (revisão NEI, nov/2026) ──────────────
++# Consultas booleanas oficiais. Usadas (1) no filtro "Campi SENAI CIMATEC" do
++# sidebar e no gerador de relatório e (2) como Buscas Salvas pré-cadastradas.
++CAMPUS_SEARCH_QUERIES <- list(
++  "Sertão" = "(semiárido OR \"semi-arid\" OR semiárido OR sertão OR seca OR drought OR sequía OR estiagem OR dessalinização OR desalination OR desalinización OR \"reúso de água\" OR \"water reuse\" OR \"reutilización de agua\" OR cisternas OR irrigação OR irrigation OR irrigación OR gotejamento OR \"drip irrigation\" OR \"riego por goteo\" OR \"agricultura familiar\" OR \"family farming\" OR \"agricultura familiar\" OR PRONAMP OR agroecologia OR agroecology OR agroecología OR caprino OR ovinocultura OR \"goat farming\" OR \"sheep farming\" OR apicultura OR beekeeping OR apicultura OR mandioca OR cassava OR yuca OR \"palma forrageira\" OR \"prickly pear\" OR \"convivência com o semiárido\" OR \"segurança alimentar\" OR \"food security\" OR \"seguridad alimentaria\" OR \"energia solar\" OR \"solar energy\" OR \"energía solar\" OR fotovoltaica OR photovoltaic OR fotovoltaica OR \"energia eólica\" OR \"wind energy\" OR \"energía eólica\" OR biomassa OR biomass OR biomasa OR biogás OR biogas OR biogás OR \"tecnologia social\" OR \"social technology\" OR \"tecnología social\" OR \"inclusão produtiva\" OR desertificação OR desertification OR desertificación OR caatinga OR fitoterapia OR phytotherapy OR fitoterapia OR \"plantas medicinais\" OR \"medicinal plants\" OR \"plantas medicinales\" OR \"cerâmica vermelha\" OR \"cooperativismo rural\" OR \"economia solidária\" OR \"solidarity economy\" OR \"economía solidaria\" OR \"saneamento rural\" OR \"rural sanitation\" OR \"saneamiento rural\" OR \"adaptação climática\" OR \"climate adaptation\" OR \"adaptación climática\" OR \"resiliência hídrica\" OR \"water resilience\" OR \"resiliencia hídrica\" OR \"barragem subterrânea\" OR \"captação de água de chuva\" OR \"rainwater harvesting\" OR \"cosecha de agua de lluvia\" OR \"poço artesiano\" OR \"pecuária de sequeiro\" OR \"dryland livestock\" OR silagem OR silage OR ensilaje OR fenação OR \"quintais produtivos\" OR umbu OR licuri OR sisal OR \"algodão agroecológico\" OR \"recarga de aquífero\" OR \"aquifer recharge\" OR \"recarga de acuífero\" OR \"São Francisco\" OR \"revitalização do São Francisco\" OR \"mandala produtiva\")",
++  "Aeroespacial" = "(aeroespacial OR aerospace OR aeroespacial OR aviação OR aviation OR aviación OR aeronáutica OR aeronautics OR aeronáutica OR propulsão OR propulsion OR propulsión OR foguete OR rocket OR cohete OR lançador OR launcher OR lanzador OR satélite OR satellite OR satélite OR orbital OR suborbital OR \"compósitos aeroespaciais\" OR \"aerospace composites\" OR \"compuestos aeroespaciales\" OR \"fibra de carbono\" OR \"carbon fiber\" OR \"fibra de carbono\" OR \"manufatura aditiva aeroespacial\" OR \"aerospace additive manufacturing\" OR \"impressão 3D metálica\" OR \"metal 3D printing\" OR aviónica OR avionics OR aviónica OR drone OR drones OR VANT OR UAV OR UAS OR RPAS OR fuselagem OR fuselage OR fuselaje OR aerodinâmica OR aerodynamics OR aerodinámica OR aeroestruturas OR aerostructures OR aeroestructuras OR \"turbina aeronáutica\" OR \"aircraft turbine\" OR \"motor foguete\" OR \"rocket engine\" OR \"motor cohete\" OR \"propelente sólido\" OR \"solid propellant\" OR \"propelente líquido\" OR \"liquid propellant\" OR \"ensaios não destrutivos\" OR \"non-destructive testing\" OR NDT OR \"ensayos no destructivos\" OR \"certificação aeronáutica\" OR \"aeronautical certification\" OR \"certificación aeronáutica\" OR \"navegação inercial\" OR \"inertial navigation\" OR \"navegación inercial\" OR telemetria OR telemetry OR telemetría OR radar OR \"imageamento orbital\" OR \"orbital imaging\" OR \"guerra eletrônica\" OR \"electronic warfare\" OR \"guerra electrónica\" OR \"munição inteligente\" OR \"smart munition\" OR \"blindagem balística\" OR \"ballistic armor\" OR \"blindaje balístico\" OR C4ISR OR MRO OR \"manutenção aeronáutica\" OR \"aircraft maintenance\" OR \"mantenimiento aeronáutico\" OR microgravidade OR microgravity OR microgravedad OR \"observação da Terra\" OR \"Earth observation\" OR \"observación de la Tierra\" OR \"comunicação por satélite\" OR \"satellite communication\" OR \"comunicación por satélite\" OR Alcântara OR AEB OR DCTA OR INPE OR \"órbita LEO\" OR \"órbita GEO\" OR \"constelação de satélites\" OR \"satellite constellation\" OR \"constelación de satélites\" OR \"estação terrena\" OR \"ground station\" OR \"estación terrena\" OR GNSS OR payload OR \"carga útil\" OR \"controle de voo\" OR \"flight control\" OR \"control de vuelo\" OR \"veículo aéreo autônomo\" OR \"autonomous aerial vehicle\" OR \"vehículo aéreo autónomo\" OR \"proteção térmica\" OR \"thermal protection\" OR \"protección térmica\")",
++  "Mar" = "(oceanografia OR oceanography OR oceanografía OR \"economia azul\" OR \"blue economy\" OR \"economía azul\" OR aquicultura OR aquaculture OR acuicultura OR maricultura OR mariculture OR maricultura OR \"biotecnologia marinha\" OR \"marine biotechnology\" OR \"biotecnología marina\" OR \"microalgas marinhas\" OR \"marine microalgae\" OR \"microalgas marinas\" OR manguezal OR mangrove OR manglar OR \"recifes de coral\" OR \"coral reefs\" OR \"arrecifes de coral\" OR \"energia maremotriz\" OR \"tidal energy\" OR \"energía mareomotriz\" OR \"eólica offshore\" OR \"offshore wind\" OR \"eólica offshore\" OR \"engenharia naval\" OR \"naval engineering\" OR \"ingeniería naval\" OR \"construção naval\" OR shipbuilding OR \"construcción naval\" OR \"plataforma offshore\" OR \"offshore platform\" OR \"plataforma offshore\" OR ROV OR AUV OR \"veículo subaquático\" OR \"underwater vehicle\" OR \"vehículo subacuático\" OR \"robótica submarina\" OR \"underwater robotics\" OR \"robótica submarina\" OR \"pré-sal\" OR \"pre-salt\" OR \"presal\" OR subsea OR \"dutos submarinos\" OR \"subsea pipelines\" OR \"ductos submarinos\" OR risers OR \"descomissionamento offshore\" OR \"offshore decommissioning\" OR \"desmantelamiento offshore\" OR \"sísmica marinha\" OR \"marine seismic\" OR \"sísmica marina\" OR hidrografia OR hydrography OR hidrografía OR batimetria OR bathymetry OR batimetría OR \"monitoramento costeiro\" OR \"coastal monitoring\" OR \"monitoreo costero\" OR \"poluição marinha\" OR \"marine pollution\" OR \"contaminación marina\" OR \"derramamento de óleo\" OR \"oil spill\" OR \"derrame de petróleo\" OR \"remediação marinha\" OR \"dessalinização de água do mar\" OR \"seawater desalination\" OR \"desalinización de agua de mar\" OR \"mineração submarina\" OR \"deep sea mining\" OR \"minería submarina\" OR \"erosão costeira\" OR \"coastal erosion\" OR \"erosión costera\" OR \"carbono azul\" OR \"blue carbon\" OR \"carbono azul\" OR sonar OR \"acústica submarina\" OR \"underwater acoustics\" OR \"acústica submarina\" OR \"cabos submarinos\" OR \"submarine cables\" OR \"cables submarinos\" OR carcinicultura OR \"shrimp farming\" OR camaronicultura OR \"piscicultura marinha\" OR \"marine fish farming\" OR \"piscicultura marina\" OR ostreicultura OR \"oyster farming\" OR ostricultura OR aquaponia OR aquaponics OR acuaponía OR \"terminal portuário\" OR \"port terminal\" OR \"terminal portuario\" OR dragagem OR dredging OR dragado OR \"cabotagem\" OR \"cabotage\" OR cabotaje OR FPSO OR FLNG OR \"umbilical submarino\" OR \"subsea umbilical\" OR \"árvore de natal molhada\" OR \"subsea christmas tree\" OR BOP OR \"blowout preventer\" OR \"perfuração offshore\" OR \"offshore drilling\" OR \"perforación offshore\" OR \"completação submarina\" OR \"subsea completion\" OR \"mergulho saturado\" OR \"saturation diving\" OR \"buceo de saturación\" OR \"plataforma continental\" OR \"continental shelf\" OR \"plataforma continental\" OR \"zona econômica exclusiva\" OR ZEE OR EEZ OR \"Amazônia Azul\" OR CIRM OR PROMAR OR \"biodiversidade marinha\" OR \"marine biodiversity\" OR \"biodiversidad marina\")",
++  "Digital" = "(\"transformação digital\" OR \"digital transformation\" OR \"transformación digital\" OR \"indústria 4.0\" OR \"industry 4.0\" OR \"industria 4.0\" OR \"indústria 5.0\" OR \"industry 5.0\" OR \"industria 5.0\" OR \"IoT industrial\" OR \"industrial IoT\" OR IIoT OR \"inteligência artificial\" OR \"artificial intelligence\" OR \"inteligencia artificial\" OR \"machine learning\" OR \"aprendizado de máquina\" OR \"aprendizaje automático\" OR \"deep learning\" OR \"aprendizado profundo\" OR \"aprendizaje profundo\" OR \"redes neurais artificiais\" OR \"artificial neural networks\" OR \"redes neuronales artificiales\" OR \"visão computacional\" OR \"computer vision\" OR \"visión computacional\" OR \"processamento de linguagem natural\" OR \"natural language processing\" OR NLP OR \"ciência de dados\" OR \"data science\" OR \"ciencia de datos\" OR \"big data\" OR analytics OR \"computação em nuvem\" OR \"cloud computing\" OR \"computación en la nube\" OR \"edge computing\" OR \"cibersegurança industrial\" OR \"industrial cybersecurity\" OR \"ciberseguridad industrial\" OR \"segurança da informação\" OR \"information security\" OR \"seguridad de la información\" OR LGPD OR GDPR OR blockchain OR \"automação industrial\" OR \"industrial automation\" OR \"automatización industrial\" OR RPA OR cobot OR \"gêmeo digital\" OR \"digital twin\" OR \"gemelo digital\" OR \"realidade aumentada\" OR \"augmented reality\" OR \"realidad aumentada\" OR \"realidade virtual\" OR \"virtual reality\" OR \"realidad virtual\" OR \"5G industrial\" OR 6G OR \"computação quântica\" OR \"quantum computing\" OR \"computación cuántica\" OR semicondutores OR semiconductors OR semiconductores OR microeletrônica OR microelectronics OR microelectrónica OR FPGA OR \"manufatura inteligente\" OR \"smart manufacturing\" OR \"manufactura inteligente\" OR \"smart factory\" OR \"fábrica inteligente\" OR \"cidade inteligente\" OR \"smart city\" OR \"ciudad inteligente\" OR SCADA OR PLC OR CLP OR \"OPC UA\" OR MQTT OR \"data lake\" OR \"data warehouse\" OR MLOps OR \"IA generativa\" OR \"generative AI\" OR \"IA generativa\" OR LLM OR \"sistemas ciber-físicos\" OR \"cyber-physical systems\" OR \"sistemas ciberfísicos\" OR MES OR \"manutenção preditiva\" OR \"predictive maintenance\" OR \"mantenimiento predictivo\" OR \"manutenção prescritiva\" OR \"prescriptive maintenance\" OR \"machine vision\" OR \"rastreabilidade digital\" OR \"digital traceability\" OR \"trazabilidad digital\" OR \"digital thread\" OR \"fábrica conectada\" OR \"connected factory\" OR \"fábrica conectada\" OR \"integração OT-IT\" OR \"OT-IT integration\" OR \"integración OT-IT\" OR PROFINET OR \"EtherNet/IP\" OR TSN OR \"time sensitive networking\")",
++  "SENAI CIMATEC (amplo)" = "(\"pesquisa aplicada\" OR \"applied research\" OR \"investigación aplicada\" OR \"desenvolvimento tecnológico\" OR \"technological development\" OR \"desarrollo tecnológico\" OR PD&I OR R&D OR I+D OR \"manufatura avançada\" OR \"advanced manufacturing\" OR \"manufactura avanzada\" OR \"metrologia industrial\" OR \"industrial metrology\" OR \"metrología industrial\" OR \"ensaio laboratorial\" OR \"laboratory testing\" OR \"ensayo de laboratorio\" OR calibração OR calibration OR calibración OR \"certificação de produto\" OR \"product certification\" OR \"certificación de producto\" OR prototipagem OR prototyping OR prototipado OR escalonamento OR \"scale-up\" OR escalamiento OR \"planta piloto\" OR \"pilot plant\" OR \"planta piloto\" OR \"transferência de tecnologia\" OR \"technology transfer\" OR \"transferencia de tecnología\" OR \"propriedade intelectual\" OR \"intellectual property\" OR \"propiedad intelectual\" OR patente OR patent OR patente OR \"extensão tecnológica\" OR \"technological extension\" OR \"extensión tecnológica\" OR \"consultoria tecnológica\" OR \"descarbonização industrial\" OR \"industrial decarbonization\" OR \"descarbonización industrial\" OR \"hidrogênio verde\" OR \"green hydrogen\" OR \"hidrógeno verde\" OR \"economia circular\" OR \"circular economy\" OR \"economía circular\" OR bioeconomia OR bioeconomy OR bioeconomía OR \"biotecnologia industrial\" OR \"industrial biotechnology\" OR \"biotecnología industrial\" OR petroquímica OR petrochemicals OR petroquímica OR automotivo OR automotive OR automotriz OR \"dispositivos médicos\" OR \"medical devices\" OR \"dispositivos médicos\" OR fármacos OR pharmaceuticals OR fármacos OR \"formação profissional tecnológica\" OR \"mestrado profissional\" OR \"doutorado industrial\" OR \"industrial doctorate\" OR \"doctorado industrial\" OR EMBRAPII OR FINEP OR CNPq OR FAPESB OR BNDES OR MCTI OR \"subvenção econômica\" OR \"chamada pública\" OR \"public call\" OR \"convocatoria pública\" OR \"edital de inovação\" OR \"innovation call\" OR \"encomenda tecnológica\" OR ETEC OR ICT OR \"Lei do Bem\" OR \"marco legal de CT&I\" OR \"Rota 2030\" OR \"hub de inovação\" OR \"innovation hub\" OR aceleradora OR accelerator OR aceleradora OR incubadora OR incubator OR incubadora OR \"startup industrial\" OR \"spin-off\" OR \"arranjo produtivo local\" OR APL OR \"cooperação universidade-empresa\" OR \"university-industry cooperation\" OR \"cooperación universidad-empresa\" OR \"parceria público-privada\" OR \"public-private partnership\" OR \"asociación público-privada\")"
++)
++
++# Lista de padrões (um por termo) de uma consulta booleana de campus (cacheada).
++.campus_pattern_cache <- new.env(parent = emptyenv())
++campus_query_patterns <- function(query) {
++  key <- digest::digest(query)
++  if (!is.null(.campus_pattern_cache[[key]])) return(.campus_pattern_cache[[key]])
++  # As consultas de campus são listas "termo OR termo OR ...": tokeniza sem montar a AST
++  # (o parser recursivo estoura a pilha com centenas de termos).
++  tokens <- tokenize_boolean_query(query)
++  terms <- tokens[!tokens %in% c("AND", "OR", "NOT", "(", ")")]
++  terms <- unique(normalize_text(gsub('^"|"$', "", terms)))
++  terms <- terms[nzchar(trimws(terms))]
++  # Termo inteiro (ou frase inteira) com limite de palavra nas duas pontas
++  pats <- vapply(terms, function(t) paste0("(?<![a-z0-9])", regex_escape(t), "(?![a-z0-9])"), character(1))
++  names(pats) <- terms
++  .campus_pattern_cache[[key]] <- pats
++  pats
++}
++
++# Quais termos da consulta aparecem em cada texto (vetorizado por termo)
++campus_query_hits <- function(query, search_txt) {
++  pats <- campus_query_patterns(query)
++  hit <- matrix(FALSE, nrow = length(search_txt), ncol = length(pats), dimnames = list(NULL, names(pats)))
++  for (j in seq_along(pats)) hit[, j] <- stringi::stri_detect_regex(search_txt, pats[[j]])
++  hit
++}
++
++# TRUE para os registros que pertencem a algum dos campi selecionados:
++# campus classificado no registro OU palavras-chave oficiais do campus no texto.
++campus_match_mask <- function(df, sel_campi) {
++  n <- nrow(df)
++  if (is.null(n) || n == 0L || !length(sel_campi)) return(rep(TRUE, n %||% 0L))
++  campus_col <- if ("campus" %in% names(df)) as.character(df$campus) else rep("", n)
++  campus_col[is.na(campus_col)] <- ""
++  search_txt <- NULL
++  mask <- rep(FALSE, n)
++  for (sc in sel_campi) {
++    tags_ok <- vapply(strsplit(campus_col, "[;,]"), function(v) sc %in% trimws(v), logical(1))
++    mask <- mask | tags_ok
++    q <- CAMPUS_SEARCH_QUERIES[[sc]]
++    if (!is.null(q)) {
++      if (is.null(search_txt)) search_txt <- build_search_text(df, text_cols = c("titulo", "subtitulo", "descricao_resumida", "palavras_chave", "area_tematica"))
++      mask <- mask | (rowSums(campus_query_hits(q, search_txt)) > 0)
++    }
++  }
++  mask
++}
+diff --git a/app.R b/app.R
+index d7094cd..6453532 100644
+--- a/app.R
++++ b/app.R
+@@ -233,13 +233,6 @@ build_sidebar <- function() {
+       multiple = TRUE, 
+       options = list(placeholder = "Todos os financiadores")
+     ),
+-    selectizeInput(
+-      "filter_area", 
+-      label = tags$span(tags$i(class = "fa fa-laptop-code"), " Área Temática"),
+-      choices = NULL, 
+-      multiple = TRUE, 
+-      options = list(placeholder = "Todas as áreas")
+-    ),
+     selectizeInput(
+       "filter_status", 
+       label = tags$span(tags$i(class = "fa fa-info-circle"), " Status do Edital"),
+@@ -259,13 +252,6 @@ build_sidebar <- function() {
+       multiple = TRUE, 
+       options = list(placeholder = "Todos os tipos")
+     ),
+-    selectizeInput(
+-      "filter_language", 
+-      label = tags$span(tags$i(class = "fa fa-language"), " Idioma"),
+-      choices = NULL, 
+-      multiple = TRUE, 
+-      options = list(placeholder = "Todos os idiomas")
+-    ),
+     tags$hr(style = "margin: 1rem 0; border-color: #cbd5e1;"),
+     actionButton(
+       "btn_clear_filters", 
+@@ -289,7 +275,7 @@ ui <- bslib::page_sidebar(
+       tags$div(
+         class = "app-title-main",
+         h2("Radar da Inovação"),
+-        p("Plataforma de inteligência de fomento à P&D+I para os Campi Sertão, Aeroespacial, Mar, Digital, Park e Startups")
++        p("Plataforma de inteligência de fomento à P&D+I")
+       )
+     ),
+     uiOutput("header_status")
+@@ -377,7 +363,7 @@ ui <- bslib::page_sidebar(
+           style = "display: flex; justify-content: space-between; align-items: center;",
+           tags$div(
+             h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "⚓ Cimatec Mar"),
+-            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e geração automática de propostas para os 7 Eixos Estratégicos Marítimos.")
++            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado de oportunidades de fomento para os 7 Eixos Estratégicos Marítimos.")
+           ),
+           tags$div(
+             style = "text-align: right;",
+@@ -395,7 +381,7 @@ ui <- bslib::page_sidebar(
+                     selected = "Todos os Níveis")
+       ),
+       bslib::card(
+-        tags$h5(style = "color: #004691; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Setor Marítimo & Ideias de Projetos Recomendadas"),
++        tags$h5(style = "color: #004691; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Setor Marítimo"),
+         shinycssloaders::withSpinner(DTOutput("naval_results_table"), type = 6, color = "#004691")
+       )
+     ),
+@@ -408,7 +394,7 @@ ui <- bslib::page_sidebar(
+           style = "display: flex; justify-content: space-between; align-items: center;",
+           tags$div(
+             h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "🌾 Cimatec Sertão"),
+-            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e propostas para Agro, Recursos Hídricos, Convivência com o Semiárido e Energias Renováveis.")
++            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado de oportunidades de fomento para Agro, Recursos Hídricos, Convivência com o Semiárido e Energias Renováveis.")
+           ),
+           tags$div(
+             style = "text-align: right;",
+@@ -426,7 +412,7 @@ ui <- bslib::page_sidebar(
+                     selected = "Todos os Níveis")
+       ),
+       bslib::card(
+-        tags$h5(style = "color: #15803d; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Núcleo Sertão & Agro & Ideias de Projetos Recomendadas"),
++        tags$h5(style = "color: #15803d; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Núcleo Sertão & Agro"),
+         shinycssloaders::withSpinner(DTOutput("sertao_results_table"), type = 6, color = "#15803d")
+       )
+     ),
+@@ -439,7 +425,7 @@ ui <- bslib::page_sidebar(
+           style = "display: flex; justify-content: space-between; align-items: center;",
+           tags$div(
+             h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "🚀 Cimatec Aeroespacial"),
+-            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e propostas para VANTs/Drones, Tecnologias Espaciais, Satélites e Defesa Nacional.")
++            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado de oportunidades de fomento para VANTs/Drones, Tecnologias Espaciais, Satélites e Defesa Nacional.")
+           ),
+           tags$div(
+             style = "text-align: right;",
+@@ -457,7 +443,7 @@ ui <- bslib::page_sidebar(
+                     selected = "Todos os Níveis")
+       ),
+       bslib::card(
+-        tags$h5(style = "color: #0284c7; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Núcleo Aeroespacial & Defesa & Ideias de Projetos Recomendadas"),
++        tags$h5(style = "color: #0284c7; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Núcleo Aeroespacial & Defesa"),
+         shinycssloaders::withSpinner(DTOutput("aero_results_table"), type = 6, color = "#0284c7")
+       )
+     ),
+@@ -470,7 +456,7 @@ ui <- bslib::page_sidebar(
+           style = "display: flex; justify-content: space-between; align-items: center;",
+           tags$div(
+             h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "💻 Cimatec Digital"),
+-            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e propostas para Inteligência Artificial, Cibersegurança, HPC, Quântica e Tecnologias Digitais.")
++            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado de oportunidades de fomento para Inteligência Artificial, Cibersegurança, HPC, Quântica e Tecnologias Digitais.")
+           ),
+           tags$div(
+             style = "text-align: right;",
+@@ -488,7 +474,7 @@ ui <- bslib::page_sidebar(
+                     selected = "Todos os Níveis")
+       ),
+       bslib::card(
+-        tags$h5(style = "color: #4f46e5; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Núcleo Digital & IA & Ideias de Projetos Recomendadas"),
++        tags$h5(style = "color: #4f46e5; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Núcleo Digital & IA"),
+         shinycssloaders::withSpinner(DTOutput("digital_results_table"), type = 6, color = "#4f46e5")
+       )
+     ),
+@@ -501,7 +487,7 @@ ui <- bslib::page_sidebar(
+           style = "display: flex; justify-content: space-between; align-items: center;",
+           tags$div(
+             h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "🏭 Cimatec Park"),
+-            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e propostas para Manufatura Avançada, Materiais, Eletromobilidade, Química e Indústria 4.0.")
++            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado de oportunidades de fomento para Manufatura Avançada, Materiais, Eletromobilidade, Química e Indústria 4.0.")
+           ),
+           tags$div(
+             style = "text-align: right;",
+@@ -519,7 +505,7 @@ ui <- bslib::page_sidebar(
+                     selected = "Todos os Níveis")
+       ),
+       bslib::card(
+-        tags$h5(style = "color: #d97706; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Núcleo Park & Manufatura & Ideias de Projetos Recomendadas"),
++        tags$h5(style = "color: #d97706; font-weight: 700; margin-bottom: 15px;", "Oportunidades do Núcleo Park & Manufatura"),
+         shinycssloaders::withSpinner(DTOutput("park_results_table"), type = 6, color = "#d97706")
+       )
+     ),
+@@ -532,7 +518,7 @@ ui <- bslib::page_sidebar(
+           style = "display: flex; justify-content: space-between; align-items: center;",
+           tags$div(
+             h3(style = "margin: 0; font-weight: 700; color: #ffffff;", "💡 Cimatec Startups"),
+-            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado e propostas para Startups, Deep Techs, MPEs, Inovação Aberta e Venture Capital.")
++            p(style = "margin: 5px 0 0 0; opacity: 0.9; font-size: 0.95rem;", "Monitoramento especializado de oportunidades de fomento para Startups, Deep Techs, MPEs, Inovação Aberta e Venture Capital.")
+           ),
+           tags$div(
+             style = "text-align: right;",
+@@ -550,7 +536,7 @@ ui <- bslib::page_sidebar(
+                     selected = "Todos os Níveis")
+       ),
+       bslib::card(
+-        tags$h5(style = "color: #7c3aed; font-weight: 700; margin-bottom: 15px;", "Oportunidades para Startups & Ideias de Projetos Recomendadas"),
++        tags$h5(style = "color: #7c3aed; font-weight: 700; margin-bottom: 15px;", "Oportunidades para Startups"),
+         shinycssloaders::withSpinner(DTOutput("startups_results_table"), type = 6, color = "#7c3aed")
+       )
+     ),
+@@ -727,7 +713,7 @@ ui <- bslib::page_sidebar(
+     tags$div(
+       class = "footer-bottom-centered",
+       tags$p(
+-        tags$i(class = "fa-solid fa-building", style = "color: #004691;"), " Superintendência de planejamento e novos negócios"
++        tags$i(class = "fa-solid fa-building", style = "color: #004691;"), " Superintendência de Planejamento e Novos Negócios"
+       ),
+       tags$p(
+         tags$i(class = "fa-solid fa-magnifying-glass-chart", style = "color: #004691;"), " NEI - Núcleo de Economia Industrial"
+@@ -855,6 +841,8 @@ server <- function(input, output, session) {
+         }
+       }, character(1))
+     }
++    # Tipologia padronizada (Bolsas, Fomento à pesquisa, Fomento a eventos, ...)
++    opps_df <- tryCatch(normalize_tipo_oportunidade_df(opps_df), error = function(e) opps_df)
+     rv$opportunities <- opps_df
+     rv$sources <- tibble::as_tibble(data$sources)
+     rv$saved_searches <- tibble::as_tibble(data$saved_searches)
+@@ -1715,10 +1703,8 @@ server <- function(input, output, session) {
+         textInput("adv_optional_terms", "Termos opcionais", value = rv$advanced_filters$optional_terms %||% ""),
+         textInput("adv_exclude_terms", "Termos a excluir", value = rv$advanced_filters$exclude_terms %||% ""),
+         textInput("adv_exact_phrase", "Frase exata", value = rv$advanced_filters$exact_phrase %||% ""),
+-        selectInput("adv_idioma", "Idioma", choices = c("Todos", sort(unique(opps$idioma))), selected = rv$advanced_filters$idioma %||% "Todos"),
+         selectizeInput("adv_country", "País/região", choices = sort(unique(opps$pais_origem)), multiple = TRUE, selected = rv$advanced_filters$pais %||% character(0)),
+-        selectizeInput("adv_type", "Tipo de oportunidade", choices = sort(unique(opps$tipo_oportunidade)), multiple = TRUE, selected = rv$advanced_filters$tipo %||% character(0)),
+-        selectizeInput("adv_area", "Área temática", choices = sort(unique(opps$area_tematica)), multiple = TRUE, selected = rv$advanced_filters$area_tematica %||% character(0)),
++        selectizeInput("adv_type", "Tipo de oportunidade", choices = intersect(TIPOS_OPORTUNIDADE, unique(opps$tipo_oportunidade)), multiple = TRUE, selected = rv$advanced_filters$tipo %||% character(0)),
+         selectizeInput("adv_funder", "Financiador", choices = sort(unique(opps$entidade)), multiple = TRUE, selected = rv$advanced_filters$financiador %||% character(0)),
+         textInput("adv_eligibility", "Elegibilidade institucional", value = rv$advanced_filters$elegibilidade %||% ""),
+         textInput("adv_maturity", "Nível de maturidade da pesquisa", value = rv$advanced_filters$maturidade %||% ""),
+@@ -1741,10 +1727,8 @@ server <- function(input, output, session) {
+       optional_terms = input$adv_optional_terms,
+       exclude_terms = input$adv_exclude_terms,
+       exact_phrase = input$adv_exact_phrase,
+-      idioma = input$adv_idioma,
+       pais = input$adv_country,
+       tipo = input$adv_type,
+-      area_tematica = input$adv_area,
+       financiador = input$adv_funder,
+       elegibilidade = input$adv_eligibility,
+       maturidade = input$adv_maturity,
+@@ -1988,10 +1972,24 @@ server <- function(input, output, session) {
+     compute_adherence_score(df, conn, query, signature = interest_sig())
+   })
+ 
++  # Resultados com TODOS os filtros do sidebar, exceto o filtro de Campi.
++  # Usado pelas abas temáticas (Mar, Sertão, Aeroespacial, Digital, Park, Startups)
++  # para que "Status do Edital", "Financiador", "Tipo" e "Região" também valham nelas.
++  sidebar_filtered_results <- reactive({
++    if (is.null(rv$user)) return(tibble::tibble())
++    df <- base_results()
++    if (nrow(df) == 0) return(df)
++    apply_sidebar_filters(df, include_campus = FALSE)
++  })
++
+   filtered_results <- reactive({
+     if (is.null(rv$user)) return(tibble::tibble())
+     df <- base_results()
+     if (nrow(df) == 0) return(df)
++    apply_sidebar_filters(df, include_campus = TRUE)
++  })
++
++  apply_sidebar_filters <- function(df, include_campus = TRUE) {
+     
+     # Status derivado em renderização (BUG-01): nunca ler status_oportunidade congelado
+     df$derived_status <- derive_status_df(df)
+@@ -2010,26 +2008,20 @@ server <- function(input, output, session) {
+     }
+ 
+     # Filtros Rápidos do Sidebar
+-    if (length(input$filter_campus) > 0 && !"Todos" %in% input$filter_campus) {
++    if (isTRUE(include_campus) && length(input$filter_campus) > 0 && !"Todos" %in% input$filter_campus) {
+       sel_campi <- input$filter_campus
+-      df <- df |> dplyr::filter(vapply(seq_len(dplyr::n()), function(i) {
+-        rec_c <- df$campus[[i]] %||% ""
+-        ttl_i <- df$titulo[[i]] %||% ""
+-        desc_i <- df$descricao_resumida[[i]] %||% ""
+-        area_i <- df$area_tematica[[i]] %||% ""
+-        kw_i <- df$palavras_chave[[i]] %||% ""
+-        comb_text <- paste(rec_c, ttl_i, desc_i, area_i, kw_i)
+-        any(vapply(sel_campi, function(sc) {
+-          grepl(sc, comb_text, ignore.case = TRUE)
+-        }, logical(1)))
+-      }, logical(1)))
++      mask <- campus_match_mask(df, sel_campi)
++      # Campi sem lista oficial de palavras-chave (Sede e Park, Startups): mantém a busca textual pelo nome
++      sem_query <- setdiff(sel_campi, names(CAMPUS_SEARCH_QUERIES))
++      if (length(sem_query)) {
++        comb_text <- paste(df$campus %||% "", df$titulo %||% "", df$descricao_resumida %||% "", df$area_tematica %||% "", df$palavras_chave %||% "")
++        for (sc in sem_query) mask <- mask | grepl(sc, comb_text, ignore.case = TRUE)
++      }
++      df <- df[mask, , drop = FALSE]
+     }
+     if (length(input$filter_funder) > 0) {
+       df <- df |> dplyr::filter(entidade %in% input$filter_funder)
+     }
+-    if (length(input$filter_area) > 0) {
+-      df <- df |> dplyr::filter(area_tematica %in% input$filter_area)
+-    }
+     if (length(input$filter_status) > 0) {
+       sel_status <- tolower(gsub(" ", "_", input$filter_status))
+       target_statuses <- character()
+@@ -2043,12 +2035,9 @@ server <- function(input, output, session) {
+     if (length(input$filter_type) > 0) {
+       df <- df |> dplyr::filter(tipo_oportunidade %in% input$filter_type)
+     }
+-    if (length(input$filter_language) > 0) {
+-      df <- df |> dplyr::filter(idioma %in% input$filter_language)
+-    }
+-    
++
+     dplyr::arrange(df, dplyr::desc(score_aderencia), parse_date_safe(data_limite))
+-  })
++  }
+ 
+   # Atualizador dinâmico de escolhas dos filtros no sidebar (blindado contra loops de reatividade)
+   observeEvent(rv$opportunities, {
+@@ -2070,10 +2059,6 @@ server <- function(input, output, session) {
+     funder_choices <- sort(unique(opps$entidade))
+     updateSelectizeInput(session, "filter_funder", choices = funder_choices, selected = isolate(input$filter_funder))
+     
+-    # Área Temática
+-    area_choices <- sort(unique(opps$area_tematica[!is.na(opps$area_tematica) & opps$area_tematica != ""]))
+-    updateSelectizeInput(session, "filter_area", choices = area_choices, selected = isolate(input$filter_area))
+-    
+     # Status do Edital: Abertos, Desconhecidos, Encerrados, Em breve
+     status_display <- c(
+       "Abertos" = "aberto",
+@@ -2084,13 +2069,9 @@ server <- function(input, output, session) {
+     updateSelectizeInput(session, "filter_status", choices = status_display, selected = isolate(input$filter_status))
+     
+     # Tipo de Oportunidade
+-    type_choices <- sort(unique(opps$tipo_oportunidade[!is.na(opps$tipo_oportunidade) & opps$tipo_oportunidade != ""]))
++    present_types <- unique(opps$tipo_oportunidade[!is.na(opps$tipo_oportunidade) & opps$tipo_oportunidade != ""])
++    type_choices <- c(intersect(TIPOS_OPORTUNIDADE, present_types), sort(setdiff(present_types, TIPOS_OPORTUNIDADE)))
+     updateSelectizeInput(session, "filter_type", choices = type_choices, selected = isolate(input$filter_type))
+-    
+-    # Idioma
+-    lang_choices <- sort(unique(opps$idioma[!is.na(opps$idioma) & opps$idioma != ""]))
+-    lang_display <- setNames(lang_choices, toupper(lang_choices))
+-    updateSelectizeInput(session, "filter_language", choices = lang_display, selected = isolate(input$filter_language))
+   }, ignoreNULL = TRUE)
+ 
+   # Evento para limpar todos os filtros rápidos do sidebar
+@@ -2098,9 +2079,7 @@ server <- function(input, output, session) {
+     updateSelectizeInput(session, "filter_campus", selected = character(0))
+     updateSelectizeInput(session, "filter_status", selected = character(0))
+     updateSelectizeInput(session, "filter_funder", selected = character(0))
+-    updateSelectizeInput(session, "filter_area", selected = character(0))
+     updateSelectizeInput(session, "filter_type", selected = character(0))
+-    updateSelectizeInput(session, "filter_language", selected = character(0))
+   })
+ 
+   # ==============================================================================
+@@ -2188,14 +2167,11 @@ server <- function(input, output, session) {
+     }
+ 
+     # 1. Filtra oportunidades que contenham menção ao campus no texto ou metadados
+-    matches_campus <- vapply(seq_len(nrow(opps)), function(i) {
+-      rec_c <- opps$campus[[i]] %||% ""
+-      ttl_i <- opps$titulo[[i]] %||% ""
+-      desc_i <- opps$descricao_resumida[[i]] %||% ""
+-      area_i <- opps$area_tematica[[i]] %||% ""
+-      comb_text <- paste(rec_c, ttl_i, desc_i, area_i)
+-      grepl(sel_campus, comb_text, ignore.case = TRUE)
+-    }, logical(1))
++    matches_campus <- campus_match_mask(opps, sel_campus)
++    if (!sel_campus %in% names(CAMPUS_SEARCH_QUERIES)) {
++      comb_text <- paste(opps$campus %||% "", opps$titulo %||% "", opps$descricao_resumida %||% "", opps$area_tematica %||% "")
++      matches_campus <- matches_campus | grepl(sel_campus, comb_text, ignore.case = TRUE)
++    }
+ 
+     df_filtered <- opps[matches_campus, , drop = FALSE]
+     if (nrow(df_filtered) == 0L) {
+@@ -2325,7 +2301,13 @@ server <- function(input, output, session) {
+     },
+     content = function(file) {
+       req(rv$report_generated_data)
+-      generate_pdf_report(rv$report_generated_data, file)
++      ok <- tryCatch(generate_pdf_report(rv$report_generated_data, file), error = function(e) {
++        message("[RELATORIO] Falha PDF: ", conditionMessage(e)); FALSE
++      })
++      if (!isTRUE(ok) || !file.exists(file)) {
++        showNotification("Não foi possível gerar o arquivo PDF. Tente o formato TXT/MD ou contate o suporte.", type = "error", duration = 8)
++        stop("Falha ao gerar relatório PDF")
++      }
+     },
+     contentType = "application/pdf"
+   )
+@@ -2337,7 +2319,13 @@ server <- function(input, output, session) {
+     },
+     content = function(file) {
+       req(rv$report_generated_data)
+-      generate_docx_report(rv$report_generated_data, file)
++      ok <- tryCatch(generate_docx_report(rv$report_generated_data, file), error = function(e) {
++        message("[RELATORIO] Falha DOCX: ", conditionMessage(e)); FALSE
++      })
++      if (!isTRUE(ok) || !file.exists(file)) {
++        showNotification("Não foi possível gerar o arquivo DOCX. Tente o formato TXT/MD ou contate o suporte.", type = "error", duration = 8)
++        stop("Falha ao gerar relatório DOCX")
++      }
+     }
+   )
+ 
+@@ -2609,7 +2597,8 @@ server <- function(input, output, session) {
+       aderencia_naval_justificativa = tryCatch(opp$aderencia_naval_justificativa[[1]] %||% NA_character_, error = function(e) NA_character_),
+       ideia_projeto_consorcio = tryCatch(opp$ideia_projeto_consorcio[[1]] %||% NA_character_, error = function(e) NA_character_)
+     )
+-    if (is.na(naval_eval$aderencia_naval_nivel) || !nzchar(naval_eval$aderencia_naval_nivel %||% "")) {
++    if (is.na(naval_eval$aderencia_naval_nivel) || !nzchar(naval_eval$aderencia_naval_nivel %||% "") ||
++        grepl(ADHERENCE_HEURISTIC_PATTERN, naval_eval$aderencia_naval_justificativa %||% "")) {
+       naval_eval <- evaluate_naval_offshore_adherence(
+         titulo = opp$titulo[[1]], descricao = opp$descricao_resumida[[1]],
+         texto_bruto = opp$texto_bruto[[1]], entidade = opp$entidade[[1]], use_ai = FALSE
+@@ -2621,7 +2610,8 @@ server <- function(input, output, session) {
+       aderencia_startups_justificativa = tryCatch(opp$aderencia_startups_justificativa[[1]] %||% NA_character_, error = function(e) NA_character_),
+       ideia_projeto_startups = tryCatch(opp$ideia_projeto_startups[[1]] %||% NA_character_, error = function(e) NA_character_)
+     )
+-    if (is.na(startups_eval$aderencia_startups_nivel) || !nzchar(startups_eval$aderencia_startups_nivel %||% "")) {
++    if (is.na(startups_eval$aderencia_startups_nivel) || !nzchar(startups_eval$aderencia_startups_nivel %||% "") ||
++        grepl(ADHERENCE_HEURISTIC_PATTERN, startups_eval$aderencia_startups_justificativa %||% "")) {
+       startups_eval <- evaluate_startups_adherence(
+         titulo = opp$titulo[[1]], descricao = opp$descricao_resumida[[1]],
+         texto_bruto = opp$texto_bruto[[1]], entidade = opp$entidade[[1]], use_ai = FALSE
+@@ -2633,7 +2623,8 @@ server <- function(input, output, session) {
+       aderencia_sertao_justificativa = tryCatch(opp$aderencia_sertao_justificativa[[1]] %||% NA_character_, error = function(e) NA_character_),
+       ideia_projeto_sertao = tryCatch(opp$ideia_projeto_sertao[[1]] %||% NA_character_, error = function(e) NA_character_)
+     )
+-    if (is.na(sertao_eval$aderencia_sertao_nivel) || !nzchar(sertao_eval$aderencia_sertao_nivel %||% "")) {
++    if (is.na(sertao_eval$aderencia_sertao_nivel) || !nzchar(sertao_eval$aderencia_sertao_nivel %||% "") ||
++        grepl(ADHERENCE_HEURISTIC_PATTERN, sertao_eval$aderencia_sertao_justificativa %||% "")) {
+       sertao_eval <- evaluate_sertao_adherence(
+         titulo = opp$titulo[[1]], descricao = opp$descricao_resumida[[1]],
+         texto_bruto = opp$texto_bruto[[1]], entidade = opp$entidade[[1]], use_ai = FALSE
+@@ -2645,7 +2636,8 @@ server <- function(input, output, session) {
+       aderencia_aero_justificativa = tryCatch(opp$aderencia_aero_justificativa[[1]] %||% NA_character_, error = function(e) NA_character_),
+       ideia_projeto_aero = tryCatch(opp$ideia_projeto_aero[[1]] %||% NA_character_, error = function(e) NA_character_)
+     )
+-    if (is.na(aero_eval$aderencia_aero_nivel) || !nzchar(aero_eval$aderencia_aero_nivel %||% "")) {
++    if (is.na(aero_eval$aderencia_aero_nivel) || !nzchar(aero_eval$aderencia_aero_nivel %||% "") ||
++        grepl(ADHERENCE_HEURISTIC_PATTERN, aero_eval$aderencia_aero_justificativa %||% "")) {
+       aero_eval <- evaluate_aero_adherence(
+         titulo = opp$titulo[[1]], descricao = opp$descricao_resumida[[1]],
+         texto_bruto = opp$texto_bruto[[1]], entidade = opp$entidade[[1]], use_ai = FALSE
+@@ -2657,7 +2649,8 @@ server <- function(input, output, session) {
+       aderencia_digital_justificativa = tryCatch(opp$aderencia_digital_justificativa[[1]] %||% NA_character_, error = function(e) NA_character_),
+       ideia_projeto_digital = tryCatch(opp$ideia_projeto_digital[[1]] %||% NA_character_, error = function(e) NA_character_)
+     )
+-    if (is.na(digital_eval$aderencia_digital_nivel) || !nzchar(digital_eval$aderencia_digital_nivel %||% "")) {
++    if (is.na(digital_eval$aderencia_digital_nivel) || !nzchar(digital_eval$aderencia_digital_nivel %||% "") ||
++        grepl(ADHERENCE_HEURISTIC_PATTERN, digital_eval$aderencia_digital_justificativa %||% "")) {
+       digital_eval <- evaluate_digital_adherence(
+         titulo = opp$titulo[[1]], descricao = opp$descricao_resumida[[1]],
+         texto_bruto = opp$texto_bruto[[1]], entidade = opp$entidade[[1]], use_ai = FALSE
+@@ -2669,7 +2662,8 @@ server <- function(input, output, session) {
+       aderencia_park_justificativa = tryCatch(opp$aderencia_park_justificativa[[1]] %||% NA_character_, error = function(e) NA_character_),
+       ideia_projeto_park = tryCatch(opp$ideia_projeto_park[[1]] %||% NA_character_, error = function(e) NA_character_)
+     )
+-    if (is.na(park_eval$aderencia_park_nivel) || !nzchar(park_eval$aderencia_park_nivel %||% "")) {
++    if (is.na(park_eval$aderencia_park_nivel) || !nzchar(park_eval$aderencia_park_nivel %||% "") ||
++        grepl(ADHERENCE_HEURISTIC_PATTERN, park_eval$aderencia_park_justificativa %||% "")) {
+       park_eval <- evaluate_park_adherence(
+         titulo = opp$titulo[[1]], descricao = opp$descricao_resumida[[1]],
+         texto_bruto = opp$texto_bruto[[1]], entidade = opp$entidade[[1]], use_ai = FALSE
+@@ -3015,7 +3009,7 @@ server <- function(input, output, session) {
+   # ─── SERVIDOR: Aba Núcleo Naval & Offshore ──────────────────────────────
+   naval_filtered_results <- reactive({
+     req(rv$user)
+-    df <- base_results()
++    df <- sidebar_filtered_results()
+     if (nrow(df) == 0) return(df)
+     
+     # Garantir avaliação naval em todos os registros
+@@ -3024,7 +3018,8 @@ server <- function(input, output, session) {
+     if (!"ideia_projeto_consorcio" %in% names(df)) df$ideia_projeto_consorcio <- NA_character_
+ 
+     for (i in seq_len(nrow(df))) {
+-      if (is.na(df$aderencia_naval_nivel[[i]]) || !nzchar(df$aderencia_naval_nivel[[i]] %||% "")) {
++      if (is.na(df$aderencia_naval_nivel[[i]]) || !nzchar(df$aderencia_naval_nivel[[i]] %||% "") ||
++          grepl(ADHERENCE_HEURISTIC_PATTERN, df$aderencia_naval_justificativa[[i]] %||% "")) {
+         eval_res <- evaluate_naval_offshore_adherence(
+           titulo = df$titulo[[i]],
+           descricao = df$descricao_resumida[[i]],
+@@ -3075,8 +3070,7 @@ server <- function(input, output, session) {
+         Financiador = as.factor(entidade),
+         Título = stringr::str_trunc(titulo, 70),
+         Aderência = aderencia_naval_nivel,
+-        `Análise & Justificativa` = stringr::str_trunc(aderencia_naval_justificativa %||% "Sem análise", 90),
+-        `💡 Ideia de Projeto / Consórcio` = ifelse(!is.na(ideia_projeto_consorcio) & nzchar(ideia_projeto_consorcio %||% ""), stringr::str_trunc(ideia_projeto_consorcio, 90), "Ver edital"),
++        `Objeto de Financiamento` = objeto_financiamento_curto(descricao_resumida),
+         Ações = vapply(id_registro, make_actions_html, character(1))
+       ) |>
+       dplyr::transmute(
+@@ -3084,8 +3078,7 @@ server <- function(input, output, session) {
+         Título,
+         Financiador,
+         Aderência,
+-        `Análise & Justificativa`,
+-        `💡 Ideia de Projeto / Consórcio`,
++        `Objeto de Financiamento`,
+         Prazo,
+         Ações
+       )
+@@ -3124,7 +3117,7 @@ server <- function(input, output, session) {
+   # --- TAB CIMATEC SERTÃO ---
+   sertao_filtered_results <- reactive({
+     req(rv$user)
+-    df <- base_results()
++    df <- sidebar_filtered_results()
+     if (nrow(df) == 0) return(df)
+     
+     if (!"aderencia_sertao_nivel" %in% names(df)) df$aderencia_sertao_nivel <- NA_character_
+@@ -3132,7 +3125,8 @@ server <- function(input, output, session) {
+     if (!"ideia_projeto_sertao" %in% names(df)) df$ideia_projeto_sertao <- NA_character_
+ 
+     for (i in seq_len(nrow(df))) {
+-      if (is.na(df$aderencia_sertao_nivel[[i]]) || !nzchar(df$aderencia_sertao_nivel[[i]] %||% "")) {
++      if (is.na(df$aderencia_sertao_nivel[[i]]) || !nzchar(df$aderencia_sertao_nivel[[i]] %||% "") ||
++          grepl(ADHERENCE_HEURISTIC_PATTERN, df$aderencia_sertao_justificativa[[i]] %||% "")) {
+         eval_res <- evaluate_sertao_adherence(
+           titulo = df$titulo[[i]],
+           descricao = df$descricao_resumida[[i]],
+@@ -3181,8 +3175,7 @@ server <- function(input, output, session) {
+         Financiador = as.factor(entidade),
+         Título = stringr::str_trunc(titulo, 70),
+         Aderência = aderencia_sertao_nivel,
+-        `Análise & Justificativa` = stringr::str_trunc(aderencia_sertao_justificativa %||% "Sem análise", 90),
+-        `💡 Ideia de Projeto / Consórcio` = ifelse(!is.na(ideia_projeto_sertao) & nzchar(ideia_projeto_sertao %||% ""), stringr::str_trunc(ideia_projeto_sertao, 90), "Ver edital"),
++        `Objeto de Financiamento` = objeto_financiamento_curto(descricao_resumida),
+         Ações = vapply(id_registro, make_actions_html, character(1))
+       ) |>
+       dplyr::transmute(
+@@ -3190,8 +3183,7 @@ server <- function(input, output, session) {
+         Título,
+         Financiador,
+         Aderência,
+-        `Análise & Justificativa`,
+-        `💡 Ideia de Projeto / Consórcio`,
++        `Objeto de Financiamento`,
+         Prazo,
+         Ações
+       )
+@@ -3230,7 +3222,7 @@ server <- function(input, output, session) {
+   # --- TAB CIMATEC AEROESPACIAL ---
+   aero_filtered_results <- reactive({
+     req(rv$user)
+-    df <- base_results()
++    df <- sidebar_filtered_results()
+     if (nrow(df) == 0) return(df)
+     
+     if (!"aderencia_aero_nivel" %in% names(df)) df$aderencia_aero_nivel <- NA_character_
+@@ -3238,7 +3230,8 @@ server <- function(input, output, session) {
+     if (!"ideia_projeto_aero" %in% names(df)) df$ideia_projeto_aero <- NA_character_
+ 
+     for (i in seq_len(nrow(df))) {
+-      if (is.na(df$aderencia_aero_nivel[[i]]) || !nzchar(df$aderencia_aero_nivel[[i]] %||% "")) {
++      if (is.na(df$aderencia_aero_nivel[[i]]) || !nzchar(df$aderencia_aero_nivel[[i]] %||% "") ||
++          grepl(ADHERENCE_HEURISTIC_PATTERN, df$aderencia_aero_justificativa[[i]] %||% "")) {
+         eval_res <- evaluate_aero_adherence(
+           titulo = df$titulo[[i]],
+           descricao = df$descricao_resumida[[i]],
+@@ -3287,8 +3280,7 @@ server <- function(input, output, session) {
+         Financiador = as.factor(entidade),
+         Título = stringr::str_trunc(titulo, 70),
+         Aderência = aderencia_aero_nivel,
+-        `Análise & Justificativa` = stringr::str_trunc(aderencia_aero_justificativa %||% "Sem análise", 90),
+-        `💡 Ideia de Projeto / Consórcio` = ifelse(!is.na(ideia_projeto_aero) & nzchar(ideia_projeto_aero %||% ""), stringr::str_trunc(ideia_projeto_aero, 90), "Ver edital"),
++        `Objeto de Financiamento` = objeto_financiamento_curto(descricao_resumida),
+         Ações = vapply(id_registro, make_actions_html, character(1))
+       ) |>
+       dplyr::transmute(
+@@ -3296,8 +3288,7 @@ server <- function(input, output, session) {
+         Título,
+         Financiador,
+         Aderência,
+-        `Análise & Justificativa`,
+-        `💡 Ideia de Projeto / Consórcio`,
++        `Objeto de Financiamento`,
+         Prazo,
+         Ações
+       )
+@@ -3336,7 +3327,7 @@ server <- function(input, output, session) {
+   # --- TAB CIMATEC DIGITAL ---
+   digital_filtered_results <- reactive({
+     req(rv$user)
+-    df <- base_results()
++    df <- sidebar_filtered_results()
+     if (nrow(df) == 0) return(df)
+     
+     if (!"aderencia_digital_nivel" %in% names(df)) df$aderencia_digital_nivel <- NA_character_
+@@ -3344,7 +3335,8 @@ server <- function(input, output, session) {
+     if (!"ideia_projeto_digital" %in% names(df)) df$ideia_projeto_digital <- NA_character_
+ 
+     for (i in seq_len(nrow(df))) {
+-      if (is.na(df$aderencia_digital_nivel[[i]]) || !nzchar(df$aderencia_digital_nivel[[i]] %||% "")) {
++      if (is.na(df$aderencia_digital_nivel[[i]]) || !nzchar(df$aderencia_digital_nivel[[i]] %||% "") ||
++          grepl(ADHERENCE_HEURISTIC_PATTERN, df$aderencia_digital_justificativa[[i]] %||% "")) {
+         eval_res <- evaluate_digital_adherence(
+           titulo = df$titulo[[i]],
+           descricao = df$descricao_resumida[[i]],
+@@ -3393,8 +3385,7 @@ server <- function(input, output, session) {
+         Financiador = as.factor(entidade),
+         Título = stringr::str_trunc(titulo, 70),
+         Aderência = aderencia_digital_nivel,
+-        `Análise & Justificativa` = stringr::str_trunc(aderencia_digital_justificativa %||% "Sem análise", 90),
+-        `💡 Ideia de Projeto / Consórcio` = ifelse(!is.na(ideia_projeto_digital) & nzchar(ideia_projeto_digital %||% ""), stringr::str_trunc(ideia_projeto_digital, 90), "Ver edital"),
++        `Objeto de Financiamento` = objeto_financiamento_curto(descricao_resumida),
+         Ações = vapply(id_registro, make_actions_html, character(1))
+       ) |>
+       dplyr::transmute(
+@@ -3402,8 +3393,7 @@ server <- function(input, output, session) {
+         Título,
+         Financiador,
+         Aderência,
+-        `Análise & Justificativa`,
+-        `💡 Ideia de Projeto / Consórcio`,
++        `Objeto de Financiamento`,
+         Prazo,
+         Ações
+       )
+@@ -3442,7 +3432,7 @@ server <- function(input, output, session) {
+   # --- TAB CIMATEC PARK & SEDE ---
+   park_filtered_results <- reactive({
+     req(rv$user)
+-    df <- base_results()
++    df <- sidebar_filtered_results()
+     if (nrow(df) == 0) return(df)
+     
+     if (!"aderencia_park_nivel" %in% names(df)) df$aderencia_park_nivel <- NA_character_
+@@ -3450,7 +3440,8 @@ server <- function(input, output, session) {
+     if (!"ideia_projeto_park" %in% names(df)) df$ideia_projeto_park <- NA_character_
+ 
+     for (i in seq_len(nrow(df))) {
+-      if (is.na(df$aderencia_park_nivel[[i]]) || !nzchar(df$aderencia_park_nivel[[i]] %||% "")) {
++      if (is.na(df$aderencia_park_nivel[[i]]) || !nzchar(df$aderencia_park_nivel[[i]] %||% "") ||
++          grepl(ADHERENCE_HEURISTIC_PATTERN, df$aderencia_park_justificativa[[i]] %||% "")) {
+         eval_res <- evaluate_park_adherence(
+           titulo = df$titulo[[i]],
+           descricao = df$descricao_resumida[[i]],
+@@ -3499,8 +3490,7 @@ server <- function(input, output, session) {
+         Financiador = as.factor(entidade),
+         Título = stringr::str_trunc(titulo, 70),
+         Aderência = aderencia_park_nivel,
+-        `Análise & Justificativa` = stringr::str_trunc(aderencia_park_justificativa %||% "Sem análise", 90),
+-        `💡 Ideia de Projeto / Consórcio` = ifelse(!is.na(ideia_projeto_park) & nzchar(ideia_projeto_park %||% ""), stringr::str_trunc(ideia_projeto_park, 90), "Ver edital"),
++        `Objeto de Financiamento` = objeto_financiamento_curto(descricao_resumida),
+         Ações = vapply(id_registro, make_actions_html, character(1))
+       ) |>
+       dplyr::transmute(
+@@ -3508,8 +3498,7 @@ server <- function(input, output, session) {
+         Título,
+         Financiador,
+         Aderência,
+-        `Análise & Justificativa`,
+-        `💡 Ideia de Projeto / Consórcio`,
++        `Objeto de Financiamento`,
+         Prazo,
+         Ações
+       )
+@@ -3548,7 +3537,7 @@ server <- function(input, output, session) {
+   # --- TAB CIMATEC STARTUPS & INOVAÇÃO ABERTA ---
+   startups_filtered_results <- reactive({
+     req(rv$user)
+-    df <- base_results()
++    df <- sidebar_filtered_results()
+     if (nrow(df) == 0) return(df)
+     
+     if (!"aderencia_startups_nivel" %in% names(df)) df$aderencia_startups_nivel <- NA_character_
+@@ -3556,7 +3545,8 @@ server <- function(input, output, session) {
+     if (!"ideia_projeto_startups" %in% names(df)) df$ideia_projeto_startups <- NA_character_
+ 
+     for (i in seq_len(nrow(df))) {
+-      if (is.na(df$aderencia_startups_nivel[[i]]) || !nzchar(df$aderencia_startups_nivel[[i]] %||% "")) {
++      if (is.na(df$aderencia_startups_nivel[[i]]) || !nzchar(df$aderencia_startups_nivel[[i]] %||% "") ||
++          grepl(ADHERENCE_HEURISTIC_PATTERN, df$aderencia_startups_justificativa[[i]] %||% "")) {
+         eval_res <- evaluate_startups_adherence(
+           titulo = df$titulo[[i]],
+           descricao = df$descricao_resumida[[i]],
+@@ -3605,8 +3595,7 @@ server <- function(input, output, session) {
+         Financiador = as.factor(entidade),
+         Título = stringr::str_trunc(titulo, 70),
+         Aderência = aderencia_startups_nivel,
+-        `Análise & Justificativa` = stringr::str_trunc(aderencia_startups_justificativa %||% "Sem análise", 90),
+-        `💡 Ideia de Projeto / Consórcio` = ifelse(!is.na(ideia_projeto_startups) & nzchar(ideia_projeto_startups %||% ""), stringr::str_trunc(ideia_projeto_startups, 90), "Ver edital"),
++        `Objeto de Financiamento` = objeto_financiamento_curto(descricao_resumida),
+         Ações = vapply(id_registro, make_actions_html, character(1))
+       ) |>
+       dplyr::transmute(
+@@ -3614,8 +3603,7 @@ server <- function(input, output, session) {
+         Título,
+         Financiador,
+         Aderência,
+-        `Análise & Justificativa`,
+-        `💡 Ideia de Projeto / Consórcio`,
++        `Objeto de Financiamento`,
+         Prazo,
+         Ações
+       )
+diff --git a/www/styles.css b/www/styles.css
+index 6dc7a32..ee78481 100644
+--- a/www/styles.css
++++ b/www/styles.css
+@@ -1018,3 +1018,111 @@ body.authenticated .auth-overlay-backdrop {
+ .tab-pane[data-value="boletins_relatorios"] {
+   display: none !important;
+ }
++
++
++/* ─── Login no estilo SIG QuIIN (revisão NEI, nov/2026) ───────────────────── */
++#auth_overlay_root,
++.auth-overlay-backdrop {
++  background: #020e30 url("login_bg.jpg") center center / cover no-repeat !important;
++  padding: 5.5rem 1.5rem 7rem 1.5rem !important;
++}
++
++.auth-corner-text {
++  position: fixed;
++  top: 2.2rem;
++  left: 2.5rem;
++  color: #ffffff;
++  font-size: 0.9rem;
++  font-weight: 500;
++  line-height: 1.45;
++  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
++  z-index: 2;
++}
++
++.auth-overlay-backdrop .auth-card {
++  max-width: 420px;
++  background: rgba(255, 255, 255, 0.78);
++  -webkit-backdrop-filter: blur(10px);
++  backdrop-filter: blur(10px);
++  border: 1px solid rgba(255, 255, 255, 0.55);
++  border-radius: 24px;
++  box-shadow: 0 18px 45px rgba(0, 10, 40, 0.45);
++  position: relative;
++  z-index: 3;
++  margin: auto;
++}
++
++.auth-overlay-backdrop .auth-header {
++  margin-bottom: 1.25rem;
++}
++
++.auth-overlay-backdrop .auth-logo-radar {
++  max-height: none;
++  width: 100%;
++  max-width: 300px;
++  margin: 0 auto;
++  border-radius: 10px;
++  mix-blend-mode: multiply;
++}
++
++.auth-overlay-backdrop .auth-input {
++  background-color: #eef2fb;
++  border-color: transparent;
++}
++
++.auth-overlay-backdrop .auth-tabs-nav {
++  background: rgba(241, 245, 249, 0.7);
++}
++
++.auth-footer-logos {
++  position: fixed;
++  left: 0;
++  right: 0;
++  bottom: 0;
++  height: 76px;
++  background: #f8fafc;
++  border-top: 3px solid #1e40af;
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  gap: 2.5rem;
++  z-index: 2;
++}
++
++.auth-footer-logos img {
++  height: 44px;
++  width: auto;
++  object-fit: contain;
++}
++
++@media (max-width: 640px) {
++  #auth_overlay_root,
++  .auth-overlay-backdrop {
++    flex-direction: column !important;
++    align-items: stretch !important;
++    justify-content: flex-start !important;
++    padding: 1rem 1rem 0 1rem !important;
++  }
++  .auth-corner-text {
++    position: static;
++    order: 1;
++    font-size: 0.75rem;
++    margin-bottom: 1rem;
++  }
++  .auth-overlay-backdrop .auth-card {
++    order: 2;
++    margin: 0 auto;
++    flex-shrink: 0;
++  }
++  .auth-footer-logos {
++    position: static;
++    order: 3;
++    flex-shrink: 0;
++    margin: 1.5rem -1rem 0 -1rem;
++    height: 60px;
++    gap: 1.25rem;
++  }
++  .auth-footer-logos img {
++    height: 32px;
++  }
++}

@@ -660,6 +660,20 @@ seed_saved_searches <- function(conn) {
   DBI::dbWriteTable(conn, "buscas_salvas", searches, append = TRUE)
 }
 
+# Garante as buscas salvas oficiais por campus (idempotente, SQLite e Postgres)
+ensure_campus_saved_searches <- function(conn) {
+  if (!exists("CAMPUS_SEARCH_QUERIES")) return(invisible(FALSE))
+  existentes <- tryCatch(db_qry(conn, "SELECT nome_busca FROM buscas_salvas")$nome_busca, error = function(e) NULL)
+  if (is.null(existentes)) return(invisible(FALSE))
+  for (nm in names(CAMPUS_SEARCH_QUERIES)) {
+    nome <- if (grepl("^SENAI", nm)) nm else paste("Campus", nm)
+    if (!nome %in% existentes) {
+      try(save_named_search(conn, nome, CAMPUS_SEARCH_QUERIES[[nm]], "{}", 1L), silent = TRUE)
+    }
+  }
+  invisible(TRUE)
+}
+
 seed_search_history <- function(conn) {
   existing <- DBI::dbGetQuery(conn, "SELECT COUNT(*) AS n FROM historico_buscas")$n[[1]]
   if (existing > 0) {
@@ -985,6 +999,7 @@ init_database <- function(db_path) {
     try(migrate_br_integrity_columns(conn), silent = TRUE)
     seed_sources(conn)
     prune_inactive_sources(conn)
+    try(ensure_campus_saved_searches(conn), silent = TRUE)
     return(invisible(TRUE))
   }
 
@@ -994,6 +1009,7 @@ init_database <- function(db_path) {
   try(DBI::dbExecute(conn, "UPDATE oportunidades SET pais_origem = 'União Europeia' WHERE pais_origem = 'Uniao Europeia'"), silent = TRUE)
   seed_profile(conn)
   seed_saved_searches(conn)
+  try(ensure_campus_saved_searches(conn), silent = TRUE)
   seed_search_history(conn)
   seed_collaborators(conn)
   seed_demo_opportunities(conn)

@@ -193,6 +193,9 @@ status_display_label <- function(status) {
     "desconhecido" = "A verificar"
   )
   out <- unname(labels[status])
-  out[is.na(out)] <- tools::toTitleCase(as.character(status)[is.na(out)])
+  # Guarda: em algumas versões do R, toTitleCase(character(0)) devolve list(),
+  # o que transformava `out` em lista e quebrava a tabela de resultados.
+  miss <- is.na(out)
+  if (any(miss)) out[miss] <- as.character(tools::toTitleCase(as.character(status)[miss]))
   out
 }

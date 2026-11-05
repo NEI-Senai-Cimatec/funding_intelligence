@@ -29,6 +29,31 @@ escape_xml_entities <- function(s) {
   s
 }
 
+#' Junta os runs do Word que quebram um marcador {{campo_n}} em vários pedaços
+#'
+#' O Word divide o texto em vários <w:r> (revisão ortográfica, rsid, idioma...).
+#' Ex.: <w:t>{</w:t></w:r><w:r><w:t>{edital_1}}</w:t>. Aqui removemos marcas
+#' que não carregam texto e unimos apenas os runs que estão DENTRO de um marcador
+#' aberto, preservando a formatação (negrito dos rótulos etc.) do restante.
+docx_merge_split_placeholders <- function(xml) {
+  xml <- gsub("<w:proofErr\\b[^>]*/>", "", xml, perl = TRUE)
+  xml <- gsub("<w:bookmark(Start|End)\\b[^>]*/>", "", xml, perl = TRUE)
+  xml <- gsub("<w:lastRenderedPageBreak/>", "", xml, fixed = TRUE)
+  xml <- gsub("<w:noProof/>", "", xml, fixed = TRUE)
+  boundary <- "</w:t></w:r><w:r\\b[^>]*>(?:<w:rPr>(?:(?!</w:rPr>).)*</w:rPr>)?<w:t\\b[^>]*>"
+  # "{" seguido de "{" em outro run
+  for (k in 1:5) {
+    xml <- gsub(paste0("\\{", boundary, "\\{"), "{{", xml, perl = TRUE)
+  }
+  # marcador aberto ("{{campo") cujo restante está nos runs seguintes
+  for (k in 1:10) {
+    novo <- gsub(paste0("(\\{\\{[^{}<]{0,40})", boundary), "\\1", xml, perl = TRUE)
+    if (identical(novo, xml)) break
+    xml <- novo
+  }
+  xml
+}
+
 #' Gera relatório Word (.docx) preenchendo o modelo institucional oficial em R Puro
 #'
 #' @param report_data Lista com os dados do relatório (estrutura retornada por generate_adherence_report)
@@ -79,9 +104,7 @@ generate_docx_report <- function(report_data, output_file, template_path = "temp
 
   # 2. Normaliza os placeholders que o MS Word quebra entre múltiplos tags/runs
   # Exemplo: <w:t>{</w:t></w:r><w:r ...><w:t>{edital_1}}</w:t> -> {{edital_1}}
-  for (k in 1:10) {
-    clean_xml <- gsub("</w:t></w:r><w:r\\b[^>]*>(?:<w:rPr\\b[^>]*>.*?</w:rPr>)?<w:t\\b[^>]*>", "", clean_xml, perl = TRUE)
-  }
+  clean_xml <- docx_merge_split_placeholders(clean_xml)
 
   extra_rels <- character(0)
 
@@ -140,6 +163,13 @@ generate_docx_report <- function(report_data, output_file, template_path = "temp
 
   if (n_items >= 1) {
     clean_xml <- gsub("\\{\\{resumo_1\\}\\}", escape_xml_entities(items[[1]]$resumo), clean_xml, perl = TRUE)
+  }
+
+  # Nenhum marcador {{...}} pode sobrar no documento final
+  sobras <- regmatches(clean_xml, gregexpr("\\{\\{[^{}<]{1,40}\\}\\}", clean_xml, perl = TRUE))[[1]]
+  if (length(sobras) > 0L) {
+    warning(sprintf("[DOCX] Marcadores não substituídos removidos: %s", paste(unique(sobras), collapse = ", ")))
+    clean_xml <- gsub("\\{\\{[^{}<]{1,40}\\}\\}", "", clean_xml, perl = TRUE)
   }
 
   # Injeta os relacionamentos de hyperlink no document.xml.rels

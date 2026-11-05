@@ -5,6 +5,34 @@ Todas as alterações relevantes da plataforma QuIIN - Funding Intelligence Hub.
 O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/);
 versionamento [SemVer](https://semver.org/lang/pt-BR/).
 
+## [2.1.0] - 2026-11-05
+
+Revisão "Radar da Inovação e SITE do NEI" (itens 1 a 11 do documento de revisão).
+
+### Changed
+- Login com layout no estilo SIG QuIIN: fundo tecnológico, cartão translúcido com a marca
+  Radar da Inovação, identificação institucional no topo e faixa de logos (NEI, SENAI CIMATEC, FIEB).
+- Subtítulo do cabeçalho: "Plataforma de inteligência de fomento à P&D+I".
+- Rodapé: "Superintendência de Planejamento e Novos Negócios".
+- Filtros "Área Temática" e "Idioma" removidos do sidebar e da busca avançada.
+- `tipo_oportunidade` padronizado na leitura da base (`classify_tipo_oportunidade`):
+  Bolsas, Fomento à pesquisa, Fomento a eventos, Financiamento, Subvenção econômica, Prêmio,
+  Licitação, Incentivos fiscais à PD&I, Capital de risco, Outros. Valor bruto preservado em
+  `tipo_oportunidade_fonte`.
+- Abas temáticas: colunas "Análise & Justificativa" e "Ideia de Projeto / Consórcio" substituídas
+  por "Objeto de Financiamento".
+- Heurística de aderência por campus usa só título + resumo e casa palavra inteira (antes lia o
+  texto bruto da página e casava substrings, ex.: "rov" em "improve"); justificativas antigas
+  geradas pela heurística são recalculadas na exibição.
+- Palavras-chave oficiais por campus (`CAMPUS_SEARCH_QUERIES`: Sertão, Aeroespacial, Mar, Digital,
+  SENAI CIMATEC amplo) usadas no filtro de Campi e no relatório, e cadastradas como Buscas Salvas.
+
+### Fixed
+- Abas temáticas ignoravam os filtros do sidebar (ex.: "Status = Abertos" mostrava editais encerrados).
+- Relatório DOCX: marcadores `{{campo_n}}` quebrados pelo Word em vários runs não eram substituídos;
+  downloads DOCX/PDF agora avisam o usuário em caso de falha.
+- `status_display_label` podia retornar lista (R < 4.4) e quebrar a tabela de resultados.
+
 ## [2.0.0] - 2026-09-02
 
 Change OpenSpec: `funding-hub-v2-hardening` (14 bugs + 5 melhorias).

@@ -127,19 +127,15 @@ generate_single_report_item <- function(row, idx = 1L) {
   }
 
   # 2. Tipo de oportunidade
-  tipo_raw <- tolower(safe_report_val(row, "tipo_oportunidade", "financiamento"))
-  tipo <- if (grepl("grant|coopera|internacional", tipo_raw)) {
-    "Financiamento Cooperação Internacional"
-  } else if (grepl("bolsa|fellowship", tipo_raw)) {
-    "Bolsa"
-  } else if (grepl("subvenc", tipo_raw)) {
-    "Subvenção Econômica"
-  } else if (grepl("premio|award", tipo_raw)) {
-    "Prêmio / Reconhecimento"
-  } else if (grepl("licita", tipo_raw)) {
-    "Licitação / Encomenda Tecnológica"
+  tipo_raw <- safe_report_val(row, "tipo_oportunidade", "")
+  tipo <- if (exists("TIPOS_OPORTUNIDADE") && tipo_raw %in% TIPOS_OPORTUNIDADE) {
+    tipo_raw
+  } else if (exists("classify_tipo_oportunidade", mode = "function")) {
+    classify_tipo_oportunidade(tipo_raw, paste(tit, safe_report_val(row, "descricao_resumida", "")), titulo = tit, entidade = entidade)
+  } else if (nzchar(tipo_raw)) {
+    tipo_raw
   } else {
-    "Financiamento"
+    "Outros"
   }
 
   # 3. País de origem

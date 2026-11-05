@@ -878,15 +878,27 @@ render_login_overlay <- function(error_msg = NULL, success_msg = NULL, initial_m
   htmltools::tags$div(
     id = "auth_overlay_root",
     class = "auth-overlay-backdrop",
+    # Layout inspirado no login do SIG QuIIN: fundo tecnológico, identificação
+    # institucional no canto superior e faixa de logos no rodapé.
+    htmltools::tags$div(
+      class = "auth-corner-text",
+      htmltools::tags$div("SENAI CIMATEC – Superintendência de Planejamento e Novos Negócios"),
+      htmltools::tags$div("NEI - Núcleo de Economia Industrial"),
+      htmltools::tags$div("Radar da Inovação")
+    ),
+    htmltools::tags$div(
+      class = "auth-footer-logos",
+      htmltools::tags$img(src = "nei_logo_login.jpg", alt = "NEI - Núcleo de Economia Industrial"),
+      htmltools::tags$img(src = "senai_cimatec.jpg", alt = "SENAI CIMATEC"),
+      htmltools::tags$img(src = "logos/logo fieb.png", alt = "FIEB")
+    ),
     htmltools::tags$div(
       class = "auth-card",
       
-      # Cabeçalho com logo do SENAI CIMATEC
+      # Cabeçalho com a marca do Radar da Inovação
       htmltools::tags$div(
         class = "auth-header",
-        htmltools::tags$img(src = "senai_cimatec.jpg", class = "auth-logo-img", alt = "SENAI CIMATEC"),
-        htmltools::tags$h2(class = "auth-title", "Radar da Inovação"),
-        htmltools::tags$p(class = "auth-subtitle", "Plataforma de Inteligência de Fomento à P&D+I")
+        htmltools::tags$img(src = "radar_inovacao_logo.jpg", class = "auth-logo-img auth-logo-radar", alt = "Radar da Inovação - Plataforma de Inteligência de Fomento à P&D+I")
       ),
       
       # Alerta se o Supabase não estiver configurado no .Renviron

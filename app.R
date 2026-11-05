@@ -8,7 +8,7 @@ required_packages <- c(
   "ggplot2", "plotly", "DBI", "RSQLite", "jsonlite", "digest", "htmltools",
   "rvest", "xml2", "httr", "httr2", "tibble", "tools", "readr", "writexl", "janitor",
   "glue", "progress", "pdftools", "polite", "callr", "shinycssloaders", "googledrive",
-  "readxl", "base64enc", "RPostgres"
+  "base64enc", "RPostgres"
 )
 
 install_missing_packages <- function(pkgs) {
@@ -155,6 +155,15 @@ conn <- tryCatch(
     NULL
   }
 )
+if (using_postgres() && is.null(conn)) {
+  stop(
+    paste0(
+      "Falha ao conectar ao banco remoto configurado em DATA_BASE_URL. ",
+      "Verifique a connection string, o SSL e a saída de rede do ambiente."
+    ),
+    call. = FALSE
+  )
+}
 onStop(function() {
   if (!is.null(conn) && DBI::dbIsValid(conn)) DBI::dbDisconnect(conn)
   # Sincroniza a base local com o Google Drive ao fechar a aplicação

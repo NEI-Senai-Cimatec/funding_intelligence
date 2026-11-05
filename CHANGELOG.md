@@ -31,6 +31,8 @@ versionamento [SemVer](https://semver.org/lang/pt-BR/).
 - Variações de escrita do tipo (`Edital`/`edital`, `chamada pública`/
   `chamada_publica`, `bolsa`/`fellowship`, `premio`/`award`) não aparecem mais
   como opções duplicadas no filtro.
+- Removido `readxl` de `required_packages`: não era usado pelo código e não
+  era fornecido pelo Connect Cloud, derrubando o startup no deploy.
 
 ## [2.0.0] - 2026-09-02
 

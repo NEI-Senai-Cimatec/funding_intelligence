@@ -1276,25 +1276,216 @@ fix_polyglotr_encoding <- function(s) {
   }, character(1), USE.NAMES = FALSE)
 }
 
-translate_to_pt_br <- function(records, log_path = NULL) {
-  # Traduz titulos e descricoes de fontes EU para pt-br usando polyglotr (Google Translate)
-  # Args:
-  #   records: tibble com colunas titulo, descricao_resumida, idioma
-  #   log_path: caminho para log opcional
-  # Returns:
-  #   tibble com titulos e descricoes traduzidos
+google_translate_text_pt <- function(text, source_lang = "en") {
+  text <- as.character(text %||% "")
+  if (!nzchar(trimws(text))) return(NA_character_)
 
+  # 1) Endpoint HTTP direto do Google Translate (nao exige pacote polyglotr)
+  res_http <- tryCatch({
+    req <- httr2::request("https://translate.googleapis.com/translate_a/single") |>
+      httr2::req_url_query(
+        client = "gtx",
+        sl = source_lang,
+        tl = "pt",
+        dt = "t",
+        q = text
+      ) |>
+      httr2::req_timeout(8)
+    resp <- httr2::req_perform(req)
+    body <- httr2::resp_body_string(resp, encoding = "UTF-8")
+    parsed <- jsonlite::fromJSON(body, simplifyVector = FALSE)
+    if (is.list(parsed) && length(parsed) >= 1 && is.list(parsed[[1]])) {
+      parts <- vapply(parsed[[1]], function(seg) {
+        if (is.list(seg) && length(seg) >= 1 && !is.null(seg[[1]])) as.character(seg[[1]]) else ""
+      }, character(1))
+      out <- paste0(parts, collapse = "")
+      if (nzchar(trimws(out))) return(fix_polyglotr_encoding(out))
+    }
+    NA_character_
+  }, error = function(e) NA_character_)
+
+  if (!is.na(res_http) && nzchar(res_http)) {
+    return(res_http)
+  }
+
+  # 2) Fallback via polyglotr se estiver instalado
+  if (requireNamespace("polyglotr", quietly = TRUE)) {
+    res_poly <- tryCatch(
+      polyglotr::google_translate(text, target_language = "pt", source_language = source_lang),
+      error = function(e) NA_character_
+    )
+    if (is.character(res_poly) && length(res_poly) == 1 && !is.na(res_poly) && nzchar(res_poly)) {
+      return(fix_polyglotr_encoding(res_poly))
+    }
+  }
+
+  NA_character_
+}
+
+clean_humboldt_summary_text <- function(desc_resumida, desc_completa = "") {
+  raw <- if (nzchar(trimws(as.character(desc_completa %||% "")))) {
+    as.character(desc_completa)
+  } else {
+    as.character(desc_resumida %||% "")
+  }
+  if (!nzchar(trimws(raw))) return("")
+  # Remove blocos duplicados de "Hint ... Maximum number of applications received..." no topo
+  cleaned <- gsub("(?s)^\\s*Hint\\s+.*?(?=\\n\\n[A-Z][a-zA-Z0-9 ()-]+\\n)", "", raw, perl = TRUE)
+  cleaned <- gsub("\\bHint\\s+", "", cleaned, perl = TRUE)
+  cleaned <- stringr::str_squish(cleaned)
+  if (!nzchar(cleaned)) cleaned <- stringr::str_squish(as.character(desc_resumida %||% ""))
+  substr(cleaned, 1, 900)
+}
+
+.humboldt_pt_catalog <- list(
+  "humboldt research fellowship" = list(
+    descricao_resumida = "Bolsa de pesquisa na Alemanha (Humboldt Research Fellowship) destinada a pesquisadores de pós-doutorado e pesquisadores experientes de todas as nacionalidades e áreas do conhecimento. O programa integra a iniciativa Global Minds Initiative Germany do Ministério Federal de Pesquisa, Tecnologia e Espaço da Alemanha (BMFTR), oferecendo suporte individualizado e financiamento para estadias de pesquisa de longa duração em cooperação com instituições anfitriãs alemãs. Nota: o limite máximo de candidaturas da rodada atual foi atingido; a próxima chamada abrirá em 15 de novembro de 2026.",
+    elegibilidade = "Pesquisadores de pós-doutorado (até 4 anos após o doutorado) e pesquisadores experientes (até 12 anos após o doutorado) de todas as áreas.",
+    publico_alvo = "Pesquisadores de pós-doutorado e pesquisadores experientes"
+  ),
+  "international climate protection fellowship" = list(
+    descricao_resumida = "Bolsa Internacional de Proteção Climática da Fundação Alexander von Humboldt para futuros líderes e pesquisadores de pós-doutorado oriundos de países em desenvolvimento e emergentes não europeus (incluindo o Brasil). Apoia projetos de pesquisa aplicada ou acadêmica na Alemanha (12 a 24 meses) voltados ao combate às mudanças climáticas, estratégias de adaptação, preservação de ecossistemas e biodiversidade, uso sustentável dos oceanos e eficiência de recursos naturais. Concede até 15 bolsas anuais para líderes práticos e até 5 para pós-doutorandos.",
+    elegibilidade = "Futuros líderes e pesquisadores de pós-doutorado de países em desenvolvimento ou emergentes com atuação em proteção climática e sustentabilidade.",
+    publico_alvo = "Pesquisadores de pós-doutorado e especialistas/líderes em clima e sustentabilidade"
+  ),
+  "henriette herz scouting programme" = list(
+    descricao_resumida = "Programa Henriette Herz Scouting da Fundação Alexander von Humboldt para recrutamento ativo de talentos científicos internacionais. Permite que professores e líderes de grupos de pesquisa na Alemanha atuem como 'scouts' para indicar diretamente até três jovens pesquisadores internacionais de excelência (sendo a primeira indicação destinada a pesquisadoras mulheres) para bolsas Humboldt Research Fellowship, ampliando a diversidade e a rede internacional de cooperação científica.",
+    elegibilidade = "Professores (juniores ou titulares) e líderes de grupos de pesquisa com rede internacional consolidada atuando em instituições alemãs.",
+    publico_alvo = "Professores, líderes de grupos de pesquisa e jovens pesquisadores internacionais"
+  ),
+  "japan society for the promotion of science (jsps) research fellowship" = list(
+    descricao_resumida = "Bolsa de pesquisa JSPS (Sociedade Japonesa para a Promoção da Ciência) em parceria com a Fundação Alexander von Humboldt, voltada a pesquisadores de pós-doutorado altamente qualificados da Alemanha para realização de estadias de pesquisa em universidades e institutos japoneses em qualquer área do conhecimento. Conta com duas modalidades: curta duração (1 a 12 meses) e padrão (12 a 24 meses), incluindo bolsa mensal de 362.000 ienes, auxílio-instalação e passagens.",
+    elegibilidade = "Pesquisadores de pós-doutorado vinculados a instituições de pesquisa da Alemanha em cooperação com anfitrião acadêmico no Japão.",
+    publico_alvo = "Pesquisadores de pós-doutorado"
+  ),
+  "georg forster research fellowship" = list(
+    descricao_resumida = "Bolsa de Pesquisa Georg Forster para o Desenvolvimento Sustentável, concedida pela Fundação Alexander von Humboldt a pesquisadores de pós-doutorado e pesquisadores experientes de países em desenvolvimento e emergentes (incluindo o Brasil) com qualificações acima da média. Apoia projetos em todas as disciplinas que contribuam para o alcance dos 17 Objetivos de Desenvolvimento Sustentável (ODS) da ONU em parceria com instituições na Alemanha. Nota: o programa passa por reformulação orçamentária para novas candidaturas, mantendo-se ativo o suporte aos bolsistas vigentes.",
+    elegibilidade = "Pesquisadores de pós-doutorado e pesquisadores experientes de países em desenvolvimento e emergentes com foco nos ODS/desenvolvimento sustentável.",
+    publico_alvo = "Pesquisadores de pós-doutorado e pesquisadores experientes"
+  ),
+  "alexander von humboldt professorship" = list(
+    descricao_resumida = "Cátedra Alexander von Humboldt (Alexander von Humboldt Professorship), o mais valioso prêmio de pesquisa da Alemanha. Com financiamento da Global Minds Initiative Germany do Ministério Federal de Pesquisa, Tecnologia e Espaço (BMFTR), concede até 10 milhões de euros por até sete anos (incluindo 20% para custos administrativos) para que universidades alemãs recrutem pesquisadores líderes mundiais residentes no exterior para estabelecer grupos de pesquisa de fronteira na Alemanha.",
+    elegibilidade = "Pesquisadores líderes internacionais de excelência indicados por universidades e instituições de pesquisa alemãs.",
+    publico_alvo = "Pesquisadores seniores de liderança internacional e universidades"
+  ),
+  "capes-humboldt research fellowship" = list(
+    descricao_resumida = "Programa de Bolsas de Pesquisa CAPES-Humboldt, parceria entre a CAPES e a Fundação Alexander von Humboldt voltada exclusivamente a pesquisadores do Brasil (pós-doutorandos e pesquisadores experientes) de todas as áreas do conhecimento para realização de estadias de pesquisa na Alemanha. Oferece suporte individualizado, financiamento integral de estadia e inserção na rede internacional de cooperação científica Humboldt.",
+    elegibilidade = "Pesquisadores brasileiros ou residentes no Brasil em nível de pós-doutorado ou pesquisador experiente.",
+    publico_alvo = "Pesquisadores de pós-doutorado e pesquisadores experientes do Brasil"
+  ),
+  "feodor lynen research fellowship" = list(
+    descricao_resumida = "Bolsa de Pesquisa Feodor Lynen da Fundação Alexander von Humboldt para pesquisadores de pós-doutorado (6 a 24 meses) e pesquisadores experientes (6 a 18 meses, divisíveis em até 3 estadias) da Alemanha realizarem projetos de pesquisa no exterior junto a anfitriões membros da Rede Humboldt em todo o mundo (inclusive em ICTs e universidades brasileiras).",
+    elegibilidade = "Pesquisadores de pós-doutorado e pesquisadores experientes da Alemanha em colaboração com anfitriões internacionais da Rede Humboldt.",
+    publico_alvo = "Pesquisadores de pós-doutorado e pesquisadores experientes"
+  ),
+  "georg forster research award" = list(
+    descricao_resumida = "Prêmio de Pesquisa Georg Forster concedido anualmente pela Fundação Alexander von Humboldt, com financiamento do Ministério Federal de Cooperação Econômica e Desenvolvimento da Alemanha (BMZ), a pesquisadores de renome internacional de países em desenvolvimento e emergentes em reconhecimento à relevância de sua trajetória acadêmica e impacto para o desenvolvimento sustentável.",
+    elegibilidade = "Pesquisadores de renome internacional oriundos de países em desenvolvimento e emergentes indicados por acadêmicos na Alemanha.",
+    publico_alvo = "Pesquisadores seniores internacionalmente reconhecidos"
+  ),
+  "humboldt research professorship" = list(
+    descricao_resumida = "Programa Humboldt Research Professorship da Fundação Alexander von Humboldt (Global Minds Initiative Germany / BMFTR). Permite que pesquisadores internacionais de ponta conduzam pesquisas inovadoras e liderem grupos internacionais de trabalho em universidades e institutos alemães em formatos flexíveis (como cátedras compartilhadas ou cooperação laboratório a laboratório), sem necessidade de abandonar seu vínculo institucional no país de origem.",
+    elegibilidade = "Pesquisadores internacionais de alto nível indicados por universidades ou instituições de pesquisa da Alemanha.",
+    publico_alvo = "Pesquisadores líderes internacionais e instituições de pesquisa"
+  ),
+  "nstc (taiwan) research fellowships for researchers from germany" = list(
+    descricao_resumida = "Bolsa de pesquisa do Conselho Nacional de Ciência e Tecnologia de Taiwan (NSTC) em cooperação com a Fundação Alexander von Humboldt, destinada a pós-doutorandos e pesquisadores experientes da Alemanha para estadias de pesquisa de 3 a 12 meses em Taiwan em qualquer área do conhecimento, com bolsa mensal de 85.000 NTD e suporte de reintegração.",
+    elegibilidade = "Pesquisadores de pós-doutorado e pesquisadores experientes vinculados a instituições alemãs.",
+    publico_alvo = "Pesquisadores de pós-doutorado e pesquisadores experientes"
+  ),
+  "hezekiah wardwell fellowship" = list(
+    descricao_resumida = "Bolsa Hezekiah Wardwell da Fundação Alexander von Humboldt destinada a jovens músicos e musicólogos talentosos da Espanha para realização de estudos avançados ou aperfeiçoamento por um a dois semestres em academias de música ou conservatórios na Alemanha (bolsa mensal de 900 euros mais auxílio-viagem).",
+    elegibilidade = "Jovens músicos e musicólogos qualificados da Espanha.",
+    publico_alvo = "Músicos e musicólogos"
+  ),
+  "philipp schwartz initiative" = list(
+    descricao_resumida = "Iniciativa Philipp Schwartz da Fundação Alexander von Humboldt e do Ministério das Relações Exteriores da Alemanha. Concede bolsas e financiamento para que universidades e instituições de pesquisa alemãs acolham pesquisadores estrangeiros submetidos a ameaças graves e contínuas em seus países de origem, permitindo a continuidade de suas atividades científicas em segurança (previsão de até 35 bolsas com início em janeiro de 2027).",
+    elegibilidade = "Pesquisadores em situação de risco em seus países de origem indicados por universidades e instituições anfitriãs na Alemanha.",
+    publico_alvo = "Pesquisadores em situação de risco e instituições acadêmicas anfitriãs"
+  ),
+  "carl-zeiss-humboldt research award" = list(
+    descricao_resumida = "Prêmio de Pesquisa Carl-Zeiss-Humboldt, concedido anualmente pela Fundação Alexander von Humboldt com financiamento da Fundação Carl Zeiss. Destina-se a pesquisadores de destaque internacional nas áreas de Ciência, Tecnologia, Engenharia e Matemática (STEM) que desejem colaborar com instituições nos estados alemães de Baden-Württemberg, Renânia-Palatinado e Turíngia. O prêmio é de 100.000 euros, com até 50.000 euros adicionais para custos da cooperação científica.",
+    elegibilidade = "Pesquisadores internacionalmente reconhecidos nas áreas de STEM (Ciência, Tecnologia, Engenharia e Matemática).",
+    publico_alvo = "Pesquisadores seniores das áreas de STEM"
+  ),
+  "fraunhofer-bessel research award" = list(
+    descricao_resumida = "Prêmio de Pesquisa Fraunhofer-Bessel, concedido conjuntamente pela Fundação Alexander von Humboldt e pela Sociedade Fraunhofer (até três prêmios anuais de 45.000 euros). Reconhece cientistas de destaque internacional que atuam em pesquisa aplicada no exterior e viabiliza estadias de pesquisa de 6 a 12 meses em institutos Fraunhofer na Alemanha para projetos conjuntos de inovação e pesquisa aplicada.",
+    elegibilidade = "Pesquisadores reconhecidos internacionalmente com atuação destacada em pesquisa aplicada fora da Alemanha.",
+    publico_alvo = "Pesquisadores de pesquisa aplicada e desenvolvimento tecnológico"
+  ),
+  "philipp franz von siebold award" = list(
+    descricao_resumida = "Prêmio Philipp Franz von Siebold da Fundação Alexander von Humboldt, patrocinado pela Presidência da República Federal da Alemanha (valor de 80.000 euros). Reconhece pesquisadores japoneses de renome em todas as áreas do conhecimento e financia estadias de pesquisa colaborativa de 6 a 12 meses em instituições alemãs.",
+    elegibilidade = "Pesquisadores japoneses de alto reconhecimento científico e acadêmico.",
+    publico_alvo = "Pesquisadores seniores do Japão"
+  ),
+  "friedrich wilhelm bessel research award" = list(
+    descricao_resumida = "Prêmio de Pesquisa Friedrich Wilhelm Bessel da Fundação Alexander von Humboldt (cerca de 20 prêmios anuais financiados pelo Ministério Federal de Educação e Pesquisa da Alemanha). Reconhece cientistas internacionalmente renomados residentes fora da Alemanha por suas realizações científicas excepcionais e os convida a conduzir projetos de pesquisa colaborativa de longo prazo com especialistas em instituições alemãs.",
+    elegibilidade = "Pesquisadores internacionalmente reconhecidos residentes fora da Alemanha.",
+    publico_alvo = "Pesquisadores reconhecidos internacionalmente"
+  ),
+  "humboldt research award" = list(
+    descricao_resumida = "Prêmio de Pesquisa Humboldt (Humboldt Research Award), concedido anualmente pela Fundação Alexander von Humboldt (até 100 prêmios por ano) a pesquisadores líderes internacionais de todas as áreas do conhecimento residentes no exterior, em reconhecimento ao conjunto de sua obra acadêmica e científica, incluindo convite para conduzir projetos de pesquisa em cooperação com especialistas na Alemanha.",
+    elegibilidade = "Pesquisadores líderes internacionais de todas as áreas do conhecimento residentes fora da Alemanha.",
+    publico_alvo = "Pesquisadores líderes reconhecidos internacionalmente"
+  )
+)
+
+normalize_humboldt_records_pt <- function(df) {
+  if (is.null(df) || !is.data.frame(df) || nrow(df) == 0L) return(df)
+  if (!all(c("entidade", "titulo", "descricao_resumida") %in% names(df))) return(df)
+
+  is_humboldt <- grepl("humboldt", as.character(df$entidade %||% ""), ignore.case = TRUE) |
+    grepl("^humboldt_", as.character(df$id_registro %||% ""), ignore.case = TRUE)
+  if (!any(is_humboldt)) return(df)
+
+  idxs <- which(is_humboldt)
+  for (i in idxs) {
+    t_key <- tolower(stringr::str_squish(as.character(df$titulo[[i]] %||% "")))
+    entry <- .humboldt_pt_catalog[[t_key]]
+    if (!is.null(entry)) {
+      df$descricao_resumida[[i]] <- entry$descricao_resumida
+      if ("descricao_completa" %in% names(df)) {
+        df$descricao_completa[[i]] <- entry$descricao_resumida
+      }
+      if ("elegibilidade" %in% names(df)) {
+        df$elegibilidade[[i]] <- entry$elegibilidade
+      }
+      if ("publico_alvo" %in% names(df)) {
+        df$publico_alvo[[i]] <- entry$publico_alvo
+      }
+      if ("idioma" %in% names(df)) {
+        df$idioma[[i]] <- "pt"
+      }
+    } else {
+      # Caso surja algum novo edital da Humboldt que não esteja no catálogo e ainda esteja em inglês
+      desc_cur <- as.character(df$descricao_resumida[[i]] %||% "")
+      looks_en <- grepl("\\b(the|and|with|for|research|fellowship|award|applications?)\\b", desc_cur, ignore.case = TRUE)
+      if (looks_en) {
+        cleaned <- clean_humboldt_summary_text(
+          desc_cur,
+          if ("descricao_completa" %in% names(df)) df$descricao_completa[[i]] else ""
+        )
+        tr <- google_translate_text_pt(cleaned, source_lang = "en")
+        if (!is.na(tr) && nzchar(tr)) {
+          df$descricao_resumida[[i]] <- tr
+          if ("idioma" %in% names(df)) df$idioma[[i]] <- "pt"
+        }
+      }
+    }
+  }
+  df
+}
+
+translate_to_pt_br <- function(records, log_path = NULL) {
+  # Traduz titulos e descricoes de fontes internacionais para pt-br via Google Translate HTTP / polyglotr
   if (is.null(records) || nrow(records) == 0) {
     return(records)
   }
 
-  # Verificar se polyglotr esta disponivel
-  if (!requireNamespace("polyglotr", quietly = TRUE)) {
-    if (!is.null(log_path)) log_write(log_path, "WARN", "Pacote polyglotr nao instalado. Traducao ignorada. Instale com: install.packages('polyglotr')")
-    return(records)
-  }
+  # Primeiro aplica normalizacao curada para registros da Alexander von Humboldt Foundation
+  records <- tryCatch(normalize_humboldt_records_pt(records), error = function(e) records)
 
-  # Identificar registros que precisam de traducao (nao sao pt)
+  # Identificar registros que ainda precisam de traducao (nao sao pt)
   needs_translation <- which(records$idioma != "pt" | is.na(records$idioma))
 
   if (length(needs_translation) == 0) {
@@ -1309,44 +1500,52 @@ translate_to_pt_br <- function(records, log_path = NULL) {
 
   for (i in needs_translation) {
     titulo <- records$titulo[[i]]
+    descricao <- records$descricao_resumida[[i]]
 
-    # Pular se titulo ja esta vazio ou e NA
-    if (is.null(titulo) || !nzchar(titulo) || is.na(titulo)) next
+    if ((is.null(titulo) || !nzchar(titulo) || is.na(titulo)) &&
+        (is.null(descricao) || !nzchar(descricao) || is.na(descricao))) {
+      next
+    }
 
-    # Detectar idioma de origem: polaco se tem caracteres especiais, senao ingles
-    source_lang <- if (grepl("[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]", titulo)) "pl" else "en"
+    source_lang <- if (grepl("[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]", paste(titulo, descricao))) "pl" else "en"
+    any_ok <- FALSE
 
-    # Traduzir titulo com polyglotr (Google Translate, sem API key)
-    translated <- tryCatch(
-      polyglotr::google_translate(titulo, target_language = "pt", source_language = source_lang),
-      error = function(e) {
-        if (!is.null(log_path)) log_write(log_path, "WARN", sprintf("Falha ao traduzir titulo: %s", e$message))
-        NA_character_
+    if (!is.null(titulo) && !is.na(titulo) && nzchar(titulo)) {
+      translated <- google_translate_text_pt(titulo, source_lang = source_lang)
+      if (!is.na(translated) && nzchar(translated)) {
+        records$titulo[[i]] <- translated
+        any_ok <- TRUE
       }
-    )
+    }
 
-    if (is.character(translated) && length(translated) == 1 && !is.na(translated) && nzchar(translated)) {
-      records$titulo[[i]] <- fix_polyglotr_encoding(translated)
+    if (!is.null(descricao) && !is.na(descricao) && nzchar(descricao) && nchar(descricao) > 20) {
+      desc_clean <- clean_humboldt_summary_text(
+        descricao,
+        if ("descricao_completa" %in% names(records)) records$descricao_completa[[i]] else ""
+      )
+      desc_translated <- google_translate_text_pt(substr(desc_clean, 1, 1200), source_lang = source_lang)
+      if (!is.na(desc_translated) && nzchar(desc_translated)) {
+        records$descricao_resumida[[i]] <- desc_translated
+        any_ok <- TRUE
+      }
+    }
+
+    if ("elegibilidade" %in% names(records)) {
+      eleg <- records$elegibilidade[[i]]
+      if (!is.null(eleg) && !is.na(eleg) && nzchar(eleg)) {
+        eleg_tr <- google_translate_text_pt(substr(eleg, 1, 500), source_lang = source_lang)
+        if (!is.na(eleg_tr) && nzchar(eleg_tr)) records$elegibilidade[[i]] <- eleg_tr
+      }
+    }
+
+    if (any_ok) {
       records$idioma[[i]] <- "pt"
       translated_count <- translated_count + 1L
-
-      # Traduzir descricao se existir e for substancial
-      descricao <- records$descricao_resumida[[i]]
-      if (!is.null(descricao) && !is.na(descricao) && nzchar(descricao) && nchar(descricao) > 50) {
-        desc_translated <- tryCatch(
-          polyglotr::google_translate(substr(descricao, 1, 500), target_language = "pt", source_language = source_lang),
-          error = function(e) NA_character_
-        )
-        if (is.character(desc_translated) && length(desc_translated) == 1 && !is.na(desc_translated) && nzchar(desc_translated)) {
-          records$descricao_resumida[[i]] <- fix_polyglotr_encoding(desc_translated)
-        }
-      }
     } else {
       failed_count <- failed_count + 1L
     }
 
-    # Rate limiting: pausa entre chamadas para nao sobrecarregar a API
-    Sys.sleep(0.3)
+    Sys.sleep(0.25)
   }
 
   if (!is.null(log_path)) log_write(log_path, "INFO", sprintf("Traducao concluida. %d/%d registros traduzidos com sucesso (%d falhas).", translated_count, length(needs_translation), failed_count))

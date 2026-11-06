@@ -238,12 +238,12 @@ build_sidebar <- function() {
       label = tags$span(tags$i(class = "fa fa-info-circle"), " Status do Edital"),
       choices = c(
         "Abertos" = "aberto",
+        "Em breve" = "em_breve",
         "Desconhecidos" = "desconhecido",
-        "Encerrados" = "encerrado",
-        "Em breve" = "em_breve"
+        "Encerrados" = "encerrado"
       ), 
       multiple = TRUE, 
-      options = list(placeholder = "Todos os status (Abertos, Desconhecidos, Encerrados)")
+      options = list(placeholder = "Todos os status (Aberto, Em breve, Desconhecido, Encerrado)")
     ),
     selectizeInput(
       "filter_type", 
@@ -843,6 +843,11 @@ server <- function(input, output, session) {
     }
     # Tipologia padronizada (Bolsas, Fomento à pesquisa, Fomento a eventos, ...)
     opps_df <- tryCatch(normalize_tipo_oportunidade_df(opps_df), error = function(e) opps_df)
+    # Garantir que os resumos da Alexander von Humboldt Foundation estejam traduzidos em pt-BR
+    opps_df <- tryCatch(normalize_humboldt_records_pt(opps_df), error = function(e) opps_df)
+    if (nrow(opps_df) > 0L) {
+      opps_df$search_text <- build_search_text(opps_df)
+    }
     rv$opportunities <- opps_df
     rv$sources <- tibble::as_tibble(data$sources)
     rv$saved_searches <- tibble::as_tibble(data$saved_searches)
@@ -2036,7 +2041,12 @@ server <- function(input, output, session) {
       df <- df |> dplyr::filter(tipo_oportunidade %in% input$filter_type)
     }
 
-    dplyr::arrange(df, dplyr::desc(score_aderencia), parse_date_safe(data_limite))
+    has_query <- nzchar(trimws(rv$current_query %||% ""))
+    if (has_query) {
+      dplyr::arrange(df, status_sort_rank(derived_status), dplyr::desc(score_aderencia), date_sort_key_ymd(data_limite))
+    } else {
+      dplyr::arrange(df, status_sort_rank(derived_status), date_sort_key_ymd(data_limite), dplyr::desc(score_aderencia))
+    }
   }
 
   # Atualizador dinâmico de escolhas dos filtros no sidebar (blindado contra loops de reatividade)
@@ -2059,12 +2069,12 @@ server <- function(input, output, session) {
     funder_choices <- sort(unique(opps$entidade))
     updateSelectizeInput(session, "filter_funder", choices = funder_choices, selected = isolate(input$filter_funder))
     
-    # Status do Edital: Abertos, Desconhecidos, Encerrados, Em breve
+    # Status do Edital: Abertos, Em breve, Desconhecidos, Encerrados
     status_display <- c(
       "Abertos" = "aberto",
+      "Em breve" = "em_breve",
       "Desconhecidos" = "desconhecido",
-      "Encerrados" = "encerrado",
-      "Em breve" = "em_breve"
+      "Encerrados" = "encerrado"
     )
     updateSelectizeInput(session, "filter_status", choices = status_display, selected = isolate(input$filter_status))
     
@@ -2429,6 +2439,7 @@ server <- function(input, output, session) {
 
   output$results_table <- renderDT({
     req(rv$user)
+    can_track_flag <- isTRUE(rv$is_dev_diretoria)
     df <- filtered_results()
     if (nrow(df) == 0) {
       shown <- tibble::tibble(
@@ -2438,7 +2449,6 @@ server <- function(input, output, session) {
         `Aderência <i class='fa fa-info-circle text-info' title='Afinidade semântica calculada dinamicamente com base nos termos de busca.'></i>` = character(),
         Prazo = character(),
         Status = factor(),
-        `Qualidade <i class='fa fa-shield-halved text-info' title='Score de qualidade dos metadados extraídos.'></i>` = character(),
         Ações = character()
       )
     } else {
@@ -2446,18 +2456,13 @@ server <- function(input, output, session) {
         dplyr::mutate(
           Aderência = vapply(score_aderencia, score_bar_html, character(1)),
           Prazo = format_date_br(data_limite),
-          `Qualidade <i class='fa fa-shield-halved text-info' title='Score de qualidade dos metadados extraídos.'></i>` = vapply(seq_len(nrow(df)), function(i) {
-            q <- compute_data_quality_score(list(
-              data_limite = if (length(df$data_limite) >= i) df$data_limite[[i]] else NA,
-              data_publicacao = if (length(df$data_publicacao) >= i) df$data_publicacao[[i]] else NA,
-              titulo = if (length(df$titulo) >= i) df$titulo[[i]] else NA
-            ))
-            quality_badge_html(q)
-          }, character(1)),
-          Status = as.factor(status_display_label(derived_status)),
+          Status = factor(
+            status_display_label(derived_status),
+            levels = c("Aberto", "Encerrando", "Em breve", "Desconhecido", "Encerrado", "Em julgamento", "Suspenso", "Cancelado")
+          ),
           Financiador = as.factor(entidade),
           Título = stringr::str_trunc(titulo, 90),
-          Ações = vapply(id_registro, make_actions_html, character(1))
+          Ações = vapply(id_registro, make_actions_html, character(1), can_track = can_track_flag)
         ) |>
         dplyr::transmute(
           ID = id_registro,
@@ -2466,7 +2471,6 @@ server <- function(input, output, session) {
           `Aderência <i class='fa fa-info-circle text-info' title='Afinidade semântica calculada dinamicamente com base nos termos de busca.'></i>` = Aderência,
           Prazo,
           Status,
-          `Qualidade <i class='fa fa-shield-halved text-info' title='Score de qualidade dos metadados extraídos.'></i>`,
           Ações
         )
     }
@@ -2482,24 +2486,9 @@ server <- function(input, output, session) {
         language = list(emptyTable = "Nenhum resultado encontrado."),
         columnDefs = list(
           list(targets = 0, visible = FALSE),
-          list(
-            targets = 5,
-            render = DT::JS("
-              function(data, type, row, meta) {
-                if (type === 'display') {
-                  var status = (data || 'Desconhecido').toLowerCase();
-                  var cls = 'badge-soft-neutral';
-                  if (status === 'aberto') cls = 'badge-soft-open';
-                  else if (status === 'encerrando') cls = 'badge-soft-warning';
-                  else if (status === 'em breve') cls = 'badge-soft-info';
-                  else if (status === 'encerrado') cls = 'badge-soft-closed';
-                  return \"<span class='status-badge \" + cls + \"'>\" + data + \"</span>\";
-                }
-                return data;
-              }
-            ")
-          ),
-          list(targets = c(0, 7), searchable = FALSE, orderable = FALSE)
+          dt_prazo_column_def(4),
+          dt_status_column_def(5),
+          list(targets = c(0, 6), searchable = FALSE, orderable = FALSE)
         )
       )
     )
@@ -2533,6 +2522,7 @@ server <- function(input, output, session) {
   )
 
   observeEvent(input$row_action, {
+    req(isTRUE(rv$is_dev_diretoria))
     rv$selected_tracked_id <- input$row_action$id
     if (!is.null(conn)) track_opportunity(conn, input$row_action$id, status_usuario = "avaliar", observacoes = "")
     refresh_data()
@@ -3045,7 +3035,7 @@ server <- function(input, output, session) {
         aderencia_naval_nivel == "Média" ~ 3,
         TRUE ~ 4
       )
-    ) |> dplyr::arrange(naval_rank, parse_date_safe(data_limite))
+    ) |> dplyr::arrange(naval_rank, status_sort_rank(derived_status), date_sort_key_ymd(data_limite))
   })
 
   output$naval_results_table <- renderDT({
@@ -3062,7 +3052,7 @@ server <- function(input, output, session) {
         Título = stringr::str_trunc(titulo, 70),
         Aderência = aderencia_naval_nivel,
         `Objeto de Financiamento` = objeto_financiamento_curto(descricao_resumida),
-        Ações = vapply(id_registro, make_actions_html, character(1))
+        Ações = vapply(id_registro, make_actions_html, character(1), can_track = isTRUE(rv$is_dev_diretoria))
       ) |>
       dplyr::transmute(
         ID = id_registro,
@@ -3088,8 +3078,14 @@ server <- function(input, output, session) {
             targets = 3,
             render = DT::JS("
               function(data, type, row, meta) {
+                var level = (data || 'Baixa').toLowerCase();
+                if (type === 'sort' || type === 'type') {
+                  if (level === 'muito alta') return '1_muito_alta';
+                  if (level === 'alta') return '2_alta';
+                  if (level === 'média' || level === 'media') return '3_media';
+                  return '4_baixa';
+                }
                 if (type === 'display') {
-                  var level = (data || 'Baixa').toLowerCase();
                   var cls = 'badge-soft-neutral';
                   if (level === 'muito alta') cls = 'badge-soft-open';
                   else if (level === 'alta') cls = 'badge-soft-info';
@@ -3099,7 +3095,9 @@ server <- function(input, output, session) {
                 return data;
               }
             ")
-          )
+          ),
+          dt_prazo_column_def(5),
+          list(targets = c(0, 6), searchable = FALSE, orderable = FALSE)
         )
       )
     )
@@ -3150,7 +3148,7 @@ server <- function(input, output, session) {
         aderencia_sertao_nivel == "Média" ~ 3,
         TRUE ~ 4
       )
-    ) |> dplyr::arrange(sertao_rank, parse_date_safe(data_limite))
+    ) |> dplyr::arrange(sertao_rank, status_sort_rank(derived_status), date_sort_key_ymd(data_limite))
   })
 
   output$sertao_results_table <- renderDT({
@@ -3167,7 +3165,7 @@ server <- function(input, output, session) {
         Título = stringr::str_trunc(titulo, 70),
         Aderência = aderencia_sertao_nivel,
         `Objeto de Financiamento` = objeto_financiamento_curto(descricao_resumida),
-        Ações = vapply(id_registro, make_actions_html, character(1))
+        Ações = vapply(id_registro, make_actions_html, character(1), can_track = isTRUE(rv$is_dev_diretoria))
       ) |>
       dplyr::transmute(
         ID = id_registro,
@@ -3193,8 +3191,14 @@ server <- function(input, output, session) {
             targets = 3,
             render = DT::JS("
               function(data, type, row, meta) {
+                var level = (data || 'Baixa').toLowerCase();
+                if (type === 'sort' || type === 'type') {
+                  if (level === 'muito alta') return '1_muito_alta';
+                  if (level === 'alta') return '2_alta';
+                  if (level === 'média' || level === 'media') return '3_media';
+                  return '4_baixa';
+                }
                 if (type === 'display') {
-                  var level = (data || 'Baixa').toLowerCase();
                   var cls = 'badge-soft-neutral';
                   if (level === 'muito alta') cls = 'badge-soft-open';
                   else if (level === 'alta') cls = 'badge-soft-info';
@@ -3204,7 +3208,9 @@ server <- function(input, output, session) {
                 return data;
               }
             ")
-          )
+          ),
+          dt_prazo_column_def(5),
+          list(targets = c(0, 6), searchable = FALSE, orderable = FALSE)
         )
       )
     )
@@ -3255,7 +3261,7 @@ server <- function(input, output, session) {
         aderencia_aero_nivel == "Média" ~ 3,
         TRUE ~ 4
       )
-    ) |> dplyr::arrange(aero_rank, parse_date_safe(data_limite))
+    ) |> dplyr::arrange(aero_rank, status_sort_rank(derived_status), date_sort_key_ymd(data_limite))
   })
 
   output$aero_results_table <- renderDT({
@@ -3272,7 +3278,7 @@ server <- function(input, output, session) {
         Título = stringr::str_trunc(titulo, 70),
         Aderência = aderencia_aero_nivel,
         `Objeto de Financiamento` = objeto_financiamento_curto(descricao_resumida),
-        Ações = vapply(id_registro, make_actions_html, character(1))
+        Ações = vapply(id_registro, make_actions_html, character(1), can_track = isTRUE(rv$is_dev_diretoria))
       ) |>
       dplyr::transmute(
         ID = id_registro,
@@ -3298,8 +3304,14 @@ server <- function(input, output, session) {
             targets = 3,
             render = DT::JS("
               function(data, type, row, meta) {
+                var level = (data || 'Baixa').toLowerCase();
+                if (type === 'sort' || type === 'type') {
+                  if (level === 'muito alta') return '1_muito_alta';
+                  if (level === 'alta') return '2_alta';
+                  if (level === 'média' || level === 'media') return '3_media';
+                  return '4_baixa';
+                }
                 if (type === 'display') {
-                  var level = (data || 'Baixa').toLowerCase();
                   var cls = 'badge-soft-neutral';
                   if (level === 'muito alta') cls = 'badge-soft-open';
                   else if (level === 'alta') cls = 'badge-soft-info';
@@ -3309,7 +3321,9 @@ server <- function(input, output, session) {
                 return data;
               }
             ")
-          )
+          ),
+          dt_prazo_column_def(5),
+          list(targets = c(0, 6), searchable = FALSE, orderable = FALSE)
         )
       )
     )
@@ -3360,7 +3374,7 @@ server <- function(input, output, session) {
         aderencia_digital_nivel == "Média" ~ 3,
         TRUE ~ 4
       )
-    ) |> dplyr::arrange(digital_rank, parse_date_safe(data_limite))
+    ) |> dplyr::arrange(digital_rank, status_sort_rank(derived_status), date_sort_key_ymd(data_limite))
   })
 
   output$digital_results_table <- renderDT({
@@ -3377,7 +3391,7 @@ server <- function(input, output, session) {
         Título = stringr::str_trunc(titulo, 70),
         Aderência = aderencia_digital_nivel,
         `Objeto de Financiamento` = objeto_financiamento_curto(descricao_resumida),
-        Ações = vapply(id_registro, make_actions_html, character(1))
+        Ações = vapply(id_registro, make_actions_html, character(1), can_track = isTRUE(rv$is_dev_diretoria))
       ) |>
       dplyr::transmute(
         ID = id_registro,
@@ -3403,8 +3417,14 @@ server <- function(input, output, session) {
             targets = 3,
             render = DT::JS("
               function(data, type, row, meta) {
+                var level = (data || 'Baixa').toLowerCase();
+                if (type === 'sort' || type === 'type') {
+                  if (level === 'muito alta') return '1_muito_alta';
+                  if (level === 'alta') return '2_alta';
+                  if (level === 'média' || level === 'media') return '3_media';
+                  return '4_baixa';
+                }
                 if (type === 'display') {
-                  var level = (data || 'Baixa').toLowerCase();
                   var cls = 'badge-soft-neutral';
                   if (level === 'muito alta') cls = 'badge-soft-open';
                   else if (level === 'alta') cls = 'badge-soft-info';
@@ -3414,7 +3434,9 @@ server <- function(input, output, session) {
                 return data;
               }
             ")
-          )
+          ),
+          dt_prazo_column_def(5),
+          list(targets = c(0, 6), searchable = FALSE, orderable = FALSE)
         )
       )
     )
@@ -3465,7 +3487,7 @@ server <- function(input, output, session) {
         aderencia_park_nivel == "Média" ~ 3,
         TRUE ~ 4
       )
-    ) |> dplyr::arrange(park_rank, parse_date_safe(data_limite))
+    ) |> dplyr::arrange(park_rank, status_sort_rank(derived_status), date_sort_key_ymd(data_limite))
   })
 
   output$park_results_table <- renderDT({
@@ -3482,7 +3504,7 @@ server <- function(input, output, session) {
         Título = stringr::str_trunc(titulo, 70),
         Aderência = aderencia_park_nivel,
         `Objeto de Financiamento` = objeto_financiamento_curto(descricao_resumida),
-        Ações = vapply(id_registro, make_actions_html, character(1))
+        Ações = vapply(id_registro, make_actions_html, character(1), can_track = isTRUE(rv$is_dev_diretoria))
       ) |>
       dplyr::transmute(
         ID = id_registro,
@@ -3508,8 +3530,14 @@ server <- function(input, output, session) {
             targets = 3,
             render = DT::JS("
               function(data, type, row, meta) {
+                var level = (data || 'Baixa').toLowerCase();
+                if (type === 'sort' || type === 'type') {
+                  if (level === 'muito alta') return '1_muito_alta';
+                  if (level === 'alta') return '2_alta';
+                  if (level === 'média' || level === 'media') return '3_media';
+                  return '4_baixa';
+                }
                 if (type === 'display') {
-                  var level = (data || 'Baixa').toLowerCase();
                   var cls = 'badge-soft-neutral';
                   if (level === 'muito alta') cls = 'badge-soft-open';
                   else if (level === 'alta') cls = 'badge-soft-info';
@@ -3519,7 +3547,9 @@ server <- function(input, output, session) {
                 return data;
               }
             ")
-          )
+          ),
+          dt_prazo_column_def(5),
+          list(targets = c(0, 6), searchable = FALSE, orderable = FALSE)
         )
       )
     )
@@ -3570,7 +3600,7 @@ server <- function(input, output, session) {
         aderencia_startups_nivel == "Média" ~ 3,
         TRUE ~ 4
       )
-    ) |> dplyr::arrange(startups_rank, parse_date_safe(data_limite))
+    ) |> dplyr::arrange(startups_rank, status_sort_rank(derived_status), date_sort_key_ymd(data_limite))
   })
 
   output$startups_results_table <- renderDT({
@@ -3587,7 +3617,7 @@ server <- function(input, output, session) {
         Título = stringr::str_trunc(titulo, 70),
         Aderência = aderencia_startups_nivel,
         `Objeto de Financiamento` = objeto_financiamento_curto(descricao_resumida),
-        Ações = vapply(id_registro, make_actions_html, character(1))
+        Ações = vapply(id_registro, make_actions_html, character(1), can_track = isTRUE(rv$is_dev_diretoria))
       ) |>
       dplyr::transmute(
         ID = id_registro,
@@ -3613,8 +3643,14 @@ server <- function(input, output, session) {
             targets = 3,
             render = DT::JS("
               function(data, type, row, meta) {
+                var level = (data || 'Baixa').toLowerCase();
+                if (type === 'sort' || type === 'type') {
+                  if (level === 'muito alta') return '1_muito_alta';
+                  if (level === 'alta') return '2_alta';
+                  if (level === 'média' || level === 'media') return '3_media';
+                  return '4_baixa';
+                }
                 if (type === 'display') {
-                  var level = (data || 'Baixa').toLowerCase();
                   var cls = 'badge-soft-neutral';
                   if (level === 'muito alta') cls = 'badge-soft-open';
                   else if (level === 'alta') cls = 'badge-soft-info';
@@ -3624,7 +3660,9 @@ server <- function(input, output, session) {
                 return data;
               }
             ")
-          )
+          ),
+          dt_prazo_column_def(5),
+          list(targets = c(0, 6), searchable = FALSE, orderable = FALSE)
         )
       )
     )
@@ -3897,8 +3935,9 @@ server <- function(input, output, session) {
         scrollX = TRUE,
         language = list(emptyTable = "Nenhum edital rastreado."),
         columnDefs = list(
+          dt_prazo_column_def(4),
           list(
-            targets = 4,
+            targets = 5,
             render = DT::JS("
               function(data, type, row, meta) {
                 if (type === 'display') {
@@ -4026,6 +4065,7 @@ server <- function(input, output, session) {
         scrollX = TRUE, 
         language = list(emptyTable = "Nenhuma recomendação disponível."),
         columnDefs = list(
+          dt_prazo_column_def(3),
           list(targets = c(0, 2, 3, 5, 6), searchable = FALSE)
         )
       )

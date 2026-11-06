@@ -27,7 +27,7 @@ BR_CANONICAL_URLS <- list(
   bndes = "https://www.bndes.gov.br/wps/portal/site/home/transparencia/licitacoes-contratos/licitacoes/",
   fab_dcta = "https://ieav.dcta.mil.br/index.php/editais",
   embrapa = "https://www.embrapa.br/acessoainformacao/editais",
-  funcap = "https://www.funcap.ce.gov.br/editais/",
+  funcap = "https://montenegro.funcap.ce.gov.br/sugba/editais/index_montenegro.php",
   funcap_montenegro = "https://montenegro.funcap.ce.gov.br/sugba/editais/index_montenegro.php",
   bnb_hubine = "https://www.bnb.gov.br/hub-de-inovacao"
 )
@@ -615,7 +615,10 @@ register_collector("aeb", collect_aeb, "AEB: processos seletivos/editais (secoes
 
 # ─── FUNCAP (BR07) ────────────────────────────────────────────────────────────
 
-funcap_is_official_host <- function(url) grepl("(^|\\.)funcap\\.ce\\.gov\\.br($|/)", sub("^https?://", "", tolower(as.character(url %||% ""))))
+funcap_is_official_host <- function(url) {
+  u <- sub("^https?://", "", tolower(as.character(url %||% "")))
+  grepl("(^|\\.)funcap\\.ce\\.gov\\.br($|/)|(^|\\.)ce\\.gov\\.br/funcap($|/)", u)
+}
 
 # Plataforma Montenegro: seções "Editais Abertos" (tabela) e "Editais Encerrados" (blocos por ano).
 # O DOM é usado (comentários HTML NÃO são conteúdo). Itens sob "Encerrados" => estado oficial encerrado.

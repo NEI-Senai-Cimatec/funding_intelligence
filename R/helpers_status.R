@@ -118,18 +118,19 @@ resolve_submission_status <- function(data_limite = NA, data_abertura = NA, stat
   }
   if (!is.na(dl)) {
     if (dl < nw) {
-      if (!is.na(off) && off == "aberto") {
-        return(list(status = "desconhecido", conflito = TRUE, motivo = "oficial_aberto_com_prazo_vencido"))
-      }
-      return(mk("encerrado", "prazo_vencido"))
+      # Prazo já expirado: o edital está encerrado para submissões.
+      conf <- !is.na(off) && off == "aberto"
+      return(mk("encerrado", if (conf) "prazo_vencido_prevalece_sobre_oficial" else "prazo_vencido", conf))
     }
     dias <- as.numeric(difftime(as.POSIXct(format(dl, "%Y-%m-%d"), tz = STATUS_TZ),
                                 as.POSIXct(format(nw, "%Y-%m-%d"), tz = STATUS_TZ), units = "days"))
     if (!is.na(dias) && dias <= STATUS_URGENT_DAYS) return(mk("encerrando", "janela_de_encerramento"))
     return(mk("aberto", "prazo_futuro"))
   }
-  if (!is.na(off) && off == "aberto") return(mk("aberto", "oficial"))
-  if (isTRUE(fluxo_continuo)) return(mk("aberto", "fluxo_continuo_declarado"))
+  if (isTRUE(fluxo_continuo)) return(mk("aberto", "fluxo_continuo"))
+  if (!is.na(off) && off %in% c("aberto", "encerrando")) return(mk("aberto", "oficial"))
+  if (!is.na(off) && off == "em_breve") return(mk("em_breve", "oficial"))
+  if (!is.na(off) && off == "encerrado") return(mk("encerrado", "oficial"))
   mk("desconhecido", "sem_evidencia")
 }
 
@@ -169,8 +170,43 @@ derive_status_vec <- function(data_limite = NA, data_abertura = NA, texto_bruto 
 derive_status_df <- function(df, today = NULL, now = NULL) {
   if (is.null(df) || nrow(df) == 0L) return(character())
   col <- function(nm) if (nm %in% names(df)) df[[nm]] else rep(NA, nrow(df))
-  derive_status(col("data_limite"), col("data_abertura"), today = today,
-                status_oficial = col("status_oficial"), fluxo_continuo = col("fluxo_continuo"), now = now)
+  
+  # Coalesce status_oficial com status_oportunidade para garantir que o status
+  # levantado pelos coletores seja considerado mesmo se status_oficial for NA
+  so_raw <- if ("status_oficial" %in% names(df) && "status_oportunidade" %in% names(df)) {
+    dplyr::coalesce(as.character(col("status_oficial")), as.character(col("status_oportunidade")))
+  } else if ("status_oficial" %in% names(df)) {
+    as.character(col("status_oficial"))
+  } else if ("status_oportunidade" %in% names(df)) {
+    as.character(col("status_oportunidade"))
+  } else rep(NA_character_, nrow(df))
+  
+  # Auto-detecção de fluxo contínuo
+  fc <- col("fluxo_continuo")
+  comb <- paste(col("titulo") %||% "", col("descricao_resumida") %||% "",
+                col("observacoes") %||% "", col("texto_bruto") %||% "")
+  is_fc_txt <- grepl("\\b(fluxo cont[ií]nuo|submiss[aã]o cont[ií]nua|inscri[cç][oõ]es cont[ií]nuas|continuous submission|open continuously|accepted at any time|submit(ted)? at any time|rolling basis|sem prazo limite|permanente|ao longo do ano)\\b", comb, ignore.case = TRUE)
+  fc <- dplyr::coalesce(as.logical(fc), is_fc_txt)
+  
+  # Tentativa de extração contextual de prazo para registros sem data_limite
+  dl_col <- as.character(col("data_limite"))
+  missing_dl <- which(is.na(dl_col) | !nzchar(trimws(dl_col)))
+  if (length(missing_dl) > 0) {
+    for (idx in missing_dl) {
+      if (!isTRUE(fc[[idx]])) {
+        txt_i <- comb[[idx]]
+        if (nzchar(trimws(txt_i))) {
+          extracted_d <- tryCatch(extract_submission_deadline_strict(txt_i), error = function(e) as.Date(NA))
+          if (!is.na(extracted_d)) {
+            dl_col[[idx]] <- as.character(extracted_d)
+          }
+        }
+      }
+    }
+  }
+
+  derive_status(dl_col, col("data_abertura"), today = today,
+                status_oficial = so_raw, fluxo_continuo = fc, now = now)
 }
 
 # Contagem de urgentes (14 dias) para KPI — deriva, nunca lê coluna congelada.
@@ -190,12 +226,42 @@ status_display_label <- function(status) {
     "em_julgamento" = "Em julgamento",
     "suspenso" = "Suspenso",
     "cancelado" = "Cancelado",
-    "desconhecido" = "A verificar"
+    "desconhecido" = "Desconhecido"
   )
   out <- unname(labels[status])
   # Guarda: em algumas versões do R, toTitleCase(character(0)) devolve list(),
   # o que transformava `out` em lista e quebrava a tabela de resultados.
   miss <- is.na(out)
   if (any(miss)) out[miss] <- as.character(tools::toTitleCase(as.character(status)[miss]))
+  out
+}
+
+# Chave numérica de ordenação para Status:
+# 1. Aberto / Encerrando -> 2. Em breve -> 3. Desconhecido / A verificar -> 4. Encerrado
+status_sort_rank <- function(status) {
+  if (length(status) == 0) return(integer(0))
+  s <- tolower(trimws(as.character(status)))
+  s[is.na(s) | !nzchar(s)] <- "desconhecido"
+  dplyr::case_when(
+    s == "aberto" ~ 10L,
+    s == "encerrando" ~ 11L,
+    s %in% c("em_breve", "em breve") ~ 20L,
+    s %in% c("desconhecido", "a verificar", "a_verificar") ~ 30L,
+    s == "encerrado" ~ 40L,
+    TRUE ~ 50L
+  )
+}
+
+# Chave numérica de ordenação para Data (Ano -> Mês -> Dia como inteiro YYYYMMDD).
+# Datas ausentes recebem 99999999L para ficarem sempre ao final.
+date_sort_key_ymd <- function(x) {
+  if (length(x) == 0) return(integer(0))
+  d <- parse_date_safe(x)
+  out <- rep(99999999L, length(d))
+  ok <- !is.na(d)
+  if (any(ok)) {
+    out[ok] <- suppressWarnings(as.integer(format(d[ok], "%Y%m%d")))
+    out[is.na(out)] <- 99999999L
+  }
   out
 }

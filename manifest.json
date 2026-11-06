@@ -4,9 +4,9 @@
   "platform": "4.6.0",
   "metadata": {
     "appmode": "shiny",
-    "primary_rmd": null,
-    "primary_html": null,
-    "content_category": null,
+    "primary_rmd": {},
+    "primary_html": {},
+    "content_category": {},
     "has_parameters": false
   },
   "packages": {
@@ -2528,7 +2528,7 @@
     },
     "polite": {
       "Source": "CRAN",
-      "Repository": null,
+      "Repository": {},
       "description": {
         "Package": "polite",
         "Version": "0.1.4",
@@ -4319,40 +4319,40 @@
       "checksum": "5f2ae8b55d3f7fb9ae15db7fc7b05cd0"
     },
     "CHANGELOG.md": {
-      "checksum": "f758c1d0170f04aa097f0ed64c87ad82"
+      "checksum": "413c6b400dd07da6656209c91cf0b8c5"
     },
     "Dockerfile": {
       "checksum": "524f03d72b77c39dbeb299e38970fe7f"
     },
     "R/helpers_ai.R": {
-      "checksum": "2070695e87476240863b5a2109f86a79"
+      "checksum": "ff277d69664be148c61d64e63eae0bce"
     },
     "R/helpers_auth.R": {
-      "checksum": "4f313fc2b928025644f8579b75aadea3"
+      "checksum": "acb8cc91e994d05de0a53fc2c43460d1"
     },
     "R/helpers_auto_scheduler.R": {
       "checksum": "fc733ee3324745da701100ca10a95165"
     },
     "R/helpers_collect.R": {
-      "checksum": "4e0563130a6aa4c16819846fd69715ea"
+      "checksum": "8dd019a8e5c7eb31866db53748cfbaaf"
     },
     "R/helpers_db.R": {
       "checksum": "82e22e6c5165a7a90ade1beeb00515cb"
     },
     "R/helpers_docx.R": {
-      "checksum": "c355590b478a46b3e5f6ed876672fac2"
+      "checksum": "cb76948c186176896500456a9b2af5dc"
     },
     "R/helpers_enrichment.R": {
       "checksum": "59852cc16b86199a9f9a9741700383dc"
     },
     "R/helpers_export.R": {
-      "checksum": "06e9d3311f60c3965f1406ad65941abd"
+      "checksum": "7740e2f476fc3f4c9544b206b9f52134"
     },
     "R/helpers_recommend.R": {
       "checksum": "5e64f74455b5b6e3119208008f15facc"
     },
     "R/helpers_report.R": {
-      "checksum": "0b335e48de17305104ab4d4d9aedc38b"
+      "checksum": "0ef196b2ec3f48cee5e1e238d716cca6"
     },
     "R/helpers_reports.R": {
       "checksum": "0b3781b128f72d3ff3c3aaecf40daa16"
@@ -4361,22 +4361,22 @@
       "checksum": "a39501190faf1933e3e5b8400910472c"
     },
     "R/helpers_schedule.R": {
-      "checksum": "a269e57d81894394eab3d15600df80c5"
+      "checksum": "ba65c4c7510cf5750f3f9c040aaf7f35"
     },
     "R/helpers_sources_br.R": {
-      "checksum": "b9e432ea529d8754c7f928be6c953c90"
+      "checksum": "4127eaafb7edf2be2b133e7579e7481c"
     },
     "R/helpers_sources_br_federal.R": {
       "checksum": "da0ed9088354f018261f25a2d93c1e31"
     },
     "R/helpers_status.R": {
-      "checksum": "a9310850949dc79e69371a9f6f077aea"
+      "checksum": "829c997ac886e624f8fff02526a59ab6"
     },
     "R/helpers_text.R": {
       "checksum": "4729106e072c38619573dd987536aeb7"
     },
     "R/helpers_utils.R": {
-      "checksum": "d194f9395acca6bc8517a96f156b7a2d"
+      "checksum": "5c6f697c0cb054353a4db352427f5158"
     },
     "R/helpers_validation.R": {
       "checksum": "9a6d9c4f2d458381f0b253e5641d944f"
@@ -4385,7 +4385,7 @@
       "checksum": "1dc5ae447e4ce23820d9abca4c38ede6"
     },
     "app.R": {
-      "checksum": "ede351ee1717afccb0c8c687b3cfb834"
+      "checksum": "0c7f2b62247996d4eed385fc0a3f2b12"
     },
     "docker-compose.yml": {
       "checksum": "2fe19b0063a2bea345fb34b3f2f57cb1"
@@ -4403,7 +4403,7 @@
       "checksum": "dd43aae35d14417322fdd24fde680eaa"
     },
     "manifest.json": {
-      "checksum": "fafa81162405f64bdce0e86e4eef5323"
+      "checksum": "27ee17f104d3e570f9a2166e41014197"
     },
     "migrate_to_neon.R": {
       "checksum": "0cbbb47b30827eac910f5983fde9c70d"
@@ -4775,10 +4775,10 @@
       "checksum": "6fbffa68fa200a4d6953b159d92fb1ac"
     },
     "templates/modelo_editais.docx": {
-      "checksum": "84ab51b01934bd6322be61b38c2575f2"
+      "checksum": "9fe1895341f2f61bdd9bf0ce70981734"
     },
     "templates/modelo_editais_bg.png": {
-      "checksum": "bea88267a4f435d1fece29fd28778817"
+      "checksum": "740d552ea81b498c49f89cd4c5c90ff3"
     },
     "tests/helper-sources.R": {
       "checksum": "5e0d400943c1cac2bb6e402f43c1f34b"
@@ -4802,7 +4802,7 @@
       "checksum": "a242b21cb2dcc402e7f20c89e9a95f93"
     },
     "tools/auto_collect.R": {
-      "checksum": "ff502d61ab6e170414e8a59a26fcef24"
+      "checksum": "73a92dd70d2a15c9ca5815611ff49cb6"
     },
     "tools/capture_fixture.py": {
       "checksum": "06a1e4eed1832a0e2dfeb4511cb47235"
@@ -4829,7 +4829,7 @@
       "checksum": "9a1553ea9fcfe5163922f2f80087d4b4"
     },
     "www/auth.js": {
-      "checksum": "452f51ccc26dfbf18d234a01451f4e74"
+      "checksum": "5d5b4adf93d2916c6cfcd3dcc8ab1423"
     },
     "www/logotipo-SENAI-CIMATEC-Vjul2025 1.png": {
       "checksum": "270b2a2cc909d974cd7e9c8a3fb39fd7"
@@ -4838,17 +4838,20 @@
       "checksum": "5134d2e95151c3e1ca2d55024154fe5f"
     },
     "www/styles.css": {
-      "checksum": "a4e9f375746aeaa774fc89db66edec82"
+      "checksum": "058163262236d4dc5ebf7e5adda1265a"
     },
     "www/login_bg.jpg": {
-      "checksum": "c1dddf1de766a2502a9e2f2aec534e95"
+      "checksum": "56975b28f6ae7f1bd221fac6a21c0b06"
     },
     "www/nei_logo_login.jpg": {
-      "checksum": "8bb644b63456d3735e205dc76aa7f9a3"
+      "checksum": "c3d0f3ec838d12fa9d6bc15ce0782981"
     },
     "www/radar_inovacao_logo.jpg": {
-      "checksum": "6ad7cee125c703c471014df71b516bdd"
+      "checksum": "cc3640ebfd086a74e94320f79a4b9ef1"
+    },
+    "funding_intelligence.sqlite": {
+      "checksum": "b4aad5eafb8e4b09c368d60a767e418f"
     }
   },
-  "users": null
+  "users": {}
 }

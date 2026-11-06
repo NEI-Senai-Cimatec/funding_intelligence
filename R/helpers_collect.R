@@ -959,7 +959,9 @@ is_funding_opportunity_heuristics <- function(title, description = "", url = "",
     "prestacao de contas", "editais de licitacao", "licitacoes e contratos",
     "areas prioritarias", "explore tambem", "relacao de consultores",
     "oportunidade - fapema", "oportunidade - fapesc",
-    "nasa awards enable", "stmd solicitations", "learn more about funding"
+    "nasa awards enable", "stmd solicitations", "learn more about funding",
+    "javascript is disabled", "getting started", "information for international travelers",
+    "about oise", "office of international science and engineering"
   )
 
   for (pat in invalid_title_patterns) {
@@ -1883,6 +1885,8 @@ finalize_records <- function(df, fonte_oficial = NULL, log_path = NULL) {
       titulo = dplyr::coalesce(titulo, subtitulo, descricao_resumida, paste("Oportunidade", entidade)),
       idioma = dplyr::coalesce(idioma, lang_guess),
       status_oportunidade = dplyr::coalesce(status_oportunidade, status_guess),
+      status_oficial = dplyr::coalesce(status_oficial, status_oportunidade, status_guess),
+      validacao_status = dplyr::coalesce(validacao_status, "validado"),
       area_tematica = dplyr::coalesce(area_tematica, area_guess),
       campus = dplyr::coalesce(campus, campus_guess),
       valor_financiado = suppressWarnings(as.numeric(valor_financiado)),
@@ -2785,24 +2789,32 @@ collect_horizon_europe <- function(source_row, max_pages, max_records, use_ai, l
         }
 
         data_limite <- safe_extract(md$deadlineDate)
+        if (is.na(data_limite) || !nzchar(data_limite)) {
+          for (alt_dl in c("deadlineDates", "submissionDeadlineDate", "plannedDeadlineDate", "callDeadline", "closingDate", "endDate")) {
+            val_dl <- safe_extract(md[[alt_dl]])
+            if (!is.na(val_dl) && nzchar(val_dl)) {
+              data_limite <- val_dl
+              break
+            }
+          }
+        }
         if (!is.na(data_limite)) {
           data_limite <- as.character(as.Date(sub("T.*", "", data_limite)))
         }
 
         # Status
         status_code <- safe_extract(md$status)
-        status <- if (!is.na(status_code)) {
-          if (grepl("31094501", status_code)) {
-            "aberto"
-          } else if (grepl("31094502", status_code)) {
-            "aberto"
-          } else if (grepl("31094503", status_code)) {
-            "encerrado"
-          } else {
-            "desconhecido"
-          }
+        raw_status <- tolower(paste(c(as.character(status_code), unlist(md$status)), collapse = " "))
+        status <- if (grepl("31094501|\\bopen\\b|\\baberto\\b", raw_status)) {
+          "aberto"
+        } else if (grepl("31094502|\\bforthcoming\\b|\\bupcoming\\b|em_breve|breve", raw_status)) {
+          "em_breve"
+        } else if (grepl("31094503|\\bclosed\\b|\\bencerrad", raw_status)) {
+          "encerrado"
+        } else if (!is.na(data_abertura) && parse_date_safe(data_abertura) > status_today()) {
+          "em_breve"
         } else {
-          "desconhecido"
+          "aberto"
         }
 
         # Programa
@@ -2868,6 +2880,7 @@ collect_horizon_europe <- function(source_row, max_pages, max_records, use_ai, l
           data_limite = data_limite,
           data_encerramento = NA_character_,
           status_oportunidade = status,
+          status_oficial = status,
           link_origem = "https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
           link_detalhe = link_detalhe,
           link_documento_pdf = NA_character_,
@@ -3069,7 +3082,7 @@ collect_erc <- function(source_row, max_pages, max_records, use_ai, log_path) {
 
   if (length(all_items) == 0) {
     .log("WARN", "Nenhum item ERC encontrado")
-    return(list(records = tibble::tibble(), pages_visited = 0L, last_url = api_url))
+    return(list(records = tibble::tibble(), pages_visited = as.integer(length(search_terms)), last_url = api_url))
   }
 
   records <- purrr::map_dfr(all_items, function(item) {
@@ -3190,6 +3203,8 @@ collect_erc <- function(source_row, max_pages, max_records, use_ai, log_path) {
       data_limite = data_limite,
       data_encerramento = NA_character_,
       status_oportunidade = status,
+      status_oficial = status,
+      fluxo_continuo = (status == "aberto"),
       link_origem = "https://erc.europa.eu/",
       link_detalhe = link_detalhe,
       link_documento_pdf = NA_character_,
@@ -3959,9 +3974,9 @@ collect_all_sources <- function(conn, source_ids = NULL, max_pages = 5, max_reco
     }
     if (is.null(recs)) recs <- ensure_record_schema(tibble::tibble())
 
-    # Traduzir registros EU para pt-br (habilitado por padrao, desabilitar com AI_TRANSLATE_EU=false)
+    # Traduzir registros internacionais para pt-br (habilitado por padrao, desabilitar com AI_TRANSLATE_EU=false)
     translate_eu <- identical(tolower(Sys.getenv("AI_TRANSLATE_EU", "true")), "true")
-    is_eu_source <- sid %in% c("horizon_europe", "erc")
+    is_eu_source <- sid %in% c("horizon_europe", "erc", "humboldt", "daad", "quantum_flagship", "nsf_international", "doe_science", "undp_notices")
     if (translate_eu && is_eu_source && nrow(recs) > 0) {
       recs <- tryCatch(translate_to_pt_br(recs, log_path = log_path), error = function(e) {
         log_write(log_path, "WARN", sprintf("Falha na traducao para fonte %s: %s", sid, e$message))
@@ -5631,14 +5646,30 @@ collect_quantum <- function(source_row, max_pages, max_records, use_ai, log_path
       if (!is.na(data_abertura)) data_abertura <- as.character(as.Date(sub("T.*", "", data_abertura)))
 
       data_limite <- safe_extract(md$deadlineDate)
+      if (is.na(data_limite) || !nzchar(data_limite)) {
+        for (alt_dl in c("deadlineDates", "submissionDeadlineDate", "plannedDeadlineDate", "callDeadline", "closingDate", "endDate")) {
+          val_dl <- safe_extract(md[[alt_dl]])
+          if (!is.na(val_dl) && nzchar(val_dl)) {
+            data_limite <- val_dl
+            break
+          }
+        }
+      }
       if (!is.na(data_limite)) data_limite <- as.character(as.Date(sub("T.*", "", data_limite)))
 
       status_code <- safe_extract(md$status)
-      status <- if (!is.na(status_code)) {
-        if (grepl("31094501|31094502", status_code)) "aberto"
-        else if (grepl("31094503", status_code)) "encerrado"
-        else "desconhecido"
-      } else { "desconhecido" }
+      raw_status <- tolower(paste(c(as.character(status_code), unlist(md$status)), collapse = " "))
+      status <- if (grepl("31094501|\\bopen\\b|\\baberto\\b", raw_status)) {
+        "aberto"
+      } else if (grepl("31094502|\\bforthcoming\\b|\\bupcoming\\b|em_breve|breve", raw_status)) {
+        "em_breve"
+      } else if (grepl("31094503|\\bclosed\\b|\\bencerrad", raw_status)) {
+        "encerrado"
+      } else if (!is.na(data_abertura) && parse_date_safe(data_abertura) > status_today()) {
+        "em_breve"
+      } else {
+        "aberto"
+      }
 
       programa <- safe_extract(md$esST_programAbbreviation)
       tipo_acao <- safe_extract(md$typesOfAction)
@@ -5694,6 +5725,7 @@ collect_quantum <- function(source_row, max_pages, max_records, use_ai, log_path
         data_limite = data_limite,
         data_encerramento = NA_character_,
         status_oportunidade = status,
+        status_oficial = status,
         link_origem = "https://ec.europa.eu/info/funding-tenders/opportunities/portal/",
         link_detalhe = link_detalhe,
         link_documento_pdf = NA_character_,
@@ -5971,6 +6003,8 @@ collect_humboldt <- function(source_row, max_pages, max_records, use_ai, log_pat
       data_limite = NA_character_,
       data_encerramento = NA_character_,
       status_oportunidade = status,
+      status_oficial = status,
+      fluxo_continuo = (status == "aberto"),
       link_origem = paste0(base_url, listing_base),
       link_detalhe = as.character(detail_url),
       link_documento_pdf = NA_character_,

@@ -13,6 +13,16 @@ SCHEDULE_STAGES <- c("submissao_inicio", "submissao_fim", "avaliacao", "resultad
 .MONTHS_PT <- c(janeiro = 1, fevereiro = 2, marco = 3, abril = 4, maio = 5, junho = 6, julho = 7,
                 agosto = 8, setembro = 9, outubro = 10, novembro = 11, dezembro = 12)
 
+.MONTHS_ALL <- c(
+  janeiro = 1, fevereiro = 2, marco = 3, abril = 4, maio = 5, junho = 6,
+  julho = 7, agosto = 8, setembro = 9, outubro = 10, novembro = 11, dezembro = 12,
+  jan = 1, fev = 2, mar = 3, abr = 4, mai = 5, jun = 6,
+  jul = 7, ago = 8, set = 9, out = 10, nov = 11, dez = 12,
+  january = 1, february = 2, march = 3, april = 4, may = 5, june = 6,
+  july = 7, august = 8, september = 9, october = 10, november = 11, december = 12,
+  feb = 2, apr = 4, aug = 8, sep = 9, oct = 10, nov = 11, dec = 12
+)
+
 .mk_date <- function(d, m, y) {
   d <- suppressWarnings(as.integer(d)); m <- suppressWarnings(as.integer(m)); y <- suppressWarnings(as.integer(y))
   if (is.na(d) || is.na(m) || is.na(y)) return(as.Date(NA))
@@ -22,7 +32,7 @@ SCHEDULE_STAGES <- c("submissao_inicio", "submissao_fim", "avaliacao", "resultad
   out
 }
 
-# Converte um token isolado em Date (DMY). Vetorizado.
+# Converte um token isolado em Date (DMY ou ISO). Vetorizado.
 parse_br_date_token <- function(x) {
   x <- normalize_text(as.character(x %||% NA_character_))
   vapply(seq_along(x), function(i) {
@@ -33,25 +43,26 @@ parse_br_date_token <- function(x) {
     m <- regmatches(xi, regexec("^(\\d{4})-(\\d{2})-(\\d{2})$", xi))[[1]]
     if (length(m) == 4L) return(as.numeric(.mk_date(m[[4]], m[[3]], m[[2]])))
     m <- regmatches(xi, regexec("^(\\d{1,2})(?:o|\\.)?\\s+de\\s+([a-z]+)\\s+de\\s+(\\d{4})$", xi, perl = TRUE))[[1]]
-    if (length(m) == 4L && m[[3]] %in% names(.MONTHS_PT)) {
-      return(as.numeric(.mk_date(m[[2]], .MONTHS_PT[[m[[3]]]], m[[4]])))
+    if (length(m) == 4L && m[[3]] %in% names(.MONTHS_ALL)) {
+      return(as.numeric(.mk_date(m[[2]], .MONTHS_ALL[[m[[3]]]], m[[4]])))
     }
     NA_real_
   }, numeric(1)) |> as.Date(origin = "1970-01-01")
 }
 
 # Etapa a partir do rótulo (normalizado). Ordem importa: resultado/recurso antes de "término".
+# Suporta termos em português e inglês.
 classify_stage_label <- function(label) {
   l <- normalize_text(label %||% "")
   if (!nzchar(l)) return("outro")
-  if (grepl("resultado final|resultado definitivo|divulgacao do resultado final|homologacao", l)) return("resultado_final")
-  if (grepl("resultado (inicial|preliminar|parcial|provisorio)|classificatorio", l)) return("resultado_preliminar")
-  if (grepl("recurso|recursal|interposicao", l)) return("recurso")
-  if (grepl("implementacao|assinatura|outorga|vigencia|inicio das atividades|inicio do projeto", l)) return("implementacao")
-  if (grepl("avaliacao|julgamento|analise|selecao dos", l)) return("avaliacao")
-  if (grepl("(inicio|abertura|a partir de).*(recebimento|inscri|proposta|submissao|envio)|(recebimento|inscri\\w*|submissao|envio).*(inicio|abertura)", l) &&
-      !grepl("termino|encerramento|fim |prazo final|limite", l)) return("submissao_inicio")
-  if (grepl("(termino|encerramento|fim |fim$|prazo final|ultimo dia|data limite|limite|prazo para|ate).*(recebimento|inscri|proposta|submissao|envio|candidatura)|(recebimento|inscri\\w*|submissao|envio de propostas)", l)) return("submissao_fim")
+  if (grepl("resultado final|resultado definitivo|divulgacao do resultado final|homologacao|final result", l)) return("resultado_final")
+  if (grepl("resultado (inicial|preliminar|parcial|provisorio)|classificatorio|preliminary result", l)) return("resultado_preliminar")
+  if (grepl("recurso|recursal|interposicao|appeal", l)) return("recurso")
+  if (grepl("implementacao|assinatura|outorga|vigencia|inicio das atividades|inicio do projeto|grant agreement", l)) return("implementacao")
+  if (grepl("avaliacao|julgamento|analise|selecao dos|evaluation|review", l)) return("avaliacao")
+  if (grepl("(inicio|abertura|a partir de|opening date|opens|application opens|call opens|released).*(recebimento|inscri|proposta|submissao|envio|candidatura|proposal|application)|(recebimento|inscri\\w*|submissao|envio|proposal|application).*(inicio|abertura|open|start)", l) &&
+      !grepl("termino|encerramento|fim |prazo final|limite|deadline|due|clos", l)) return("submissao_inicio")
+  if (grepl("(termino|encerramento|fim |fim$|prazo final|ultimo dia|data limite|limite|prazo para|ate|deadline|due date|closing date|proposals due|application deadline|submission deadline|apply by|cutoff date|closing|submission close).*(recebimento|inscri|proposta|submissao|envio|candidatura|proposal|application)?|(recebimento|inscri\\w*|submissao|envio de propostas|proposals?|applications?).*(ate|deadline|due|closing|cutoff)|\\b(deadline|due date|closing date|proposals due|apply by|due)\\b", l)) return("submissao_fim")
   "outro"
 }
 
@@ -65,7 +76,8 @@ classify_stage_label <- function(label) {
   NA_character_
 }
 
-# Extrai eventos rotulados (etapa, data, hora, trecho). Aceita intervalos "18 à 25/11/24".
+# Extrai eventos rotulados (etapa, data, hora, trecho).
+# Suporta formatos: DD/MM/AAAA, DD.MM.AAAA, ISO (AAAA-MM-DD), datas textuais em PT e EN.
 extract_labeled_events <- function(text) {
   txt <- as.character(text %||% "")
   if (length(txt) != 1L || is.na(txt) || !nzchar(txt)) {
@@ -75,34 +87,122 @@ extract_labeled_events <- function(text) {
   txt <- gsub("\u00a0", " ", txt, fixed = TRUE)
   flat <- gsub("[ \t]*\r?\n[ \t]*", " ", txt)
   flat <- gsub(" {2,}", "  ", flat)
-  re <- "(?:(\\d{1,2})\\s*(?:\u00e0|a|ate|at\u00e9|-)\\s*)?(\\d{1,2})/(\\d{1,2})/(\\d{4}|\\d{2})(?!\\d)"
-  locs <- gregexpr(re, flat, perl = TRUE)[[1]]
-  if (length(locs) == 0L || locs[[1]] == -1L) {
-    return(data.frame(etapa = character(), data = as.Date(character()), hora = character(), trecho = character(),
-                      stringsAsFactors = FALSE))
-  }
-  lens <- attr(locs, "match.length")
+  
   rows <- list()
-  prev_end <- 0L
-  for (k in seq_along(locs)) {
-    st <- locs[[k]]; en <- st + lens[[k]] - 1L
-    tok <- substr(flat, st, en)
-    # janela do rótulo: no máximo 200 caracteres antes da data (evita herdar o documento inteiro)
-    label <- trimws(substr(flat, max(prev_end + 1L, st - 200L), st - 1L))
-    mm <- regmatches(tok, regexec(re, tok, perl = TRUE))[[1]]
-    d_end <- .mk_date(mm[[3]], mm[[4]], mm[[5]])
-    d_start <- if (nzchar(mm[[2]])) .mk_date(mm[[2]], mm[[4]], mm[[5]]) else as.Date(NA)
-    prev_end <- en
-    if (is.na(d_end)) next
-    etapa <- classify_stage_label(label)
-    hora <- .extract_time_after(flat, en)
-    if (!is.na(d_start)) {
-      rows[[length(rows) + 1L]] <- data.frame(etapa = etapa, data = d_start, hora = NA_character_,
+  
+  # 1. Regex para datas com separador (/ ou .)
+  re_dmy <- "(?:(\\d{1,2})\\s*(?:\u00e0|a|ate|at\u00e9|-)\\s*)?(\\d{1,2})[/.](\\d{1,2})[/.](\\d{4}|\\d{2})(?!\\d)"
+  locs <- gregexpr(re_dmy, flat, perl = TRUE)[[1]]
+  if (length(locs) > 0L && locs[[1]] != -1L) {
+    lens <- attr(locs, "match.length")
+    prev_end <- 0L
+    for (k in seq_along(locs)) {
+      st <- locs[[k]]; en <- st + lens[[k]] - 1L
+      tok <- substr(flat, st, en)
+      label <- trimws(substr(flat, max(prev_end + 1L, st - 200L), st - 1L))
+      mm <- regmatches(tok, regexec(re_dmy, tok, perl = TRUE))[[1]]
+      d_end <- .mk_date(mm[[3]], mm[[4]], mm[[5]])
+      d_start <- if (nzchar(mm[[2]])) .mk_date(mm[[2]], mm[[4]], mm[[5]]) else as.Date(NA)
+      prev_end <- en
+      if (is.na(d_end)) next
+      etapa <- classify_stage_label(label)
+      hora <- .extract_time_after(flat, en)
+      if (!is.na(d_start)) {
+        rows[[length(rows) + 1L]] <- data.frame(etapa = etapa, data = d_start, hora = NA_character_,
+                                                trecho = substr(paste(label, tok), 1L, 240L), stringsAsFactors = FALSE)
+      }
+      rows[[length(rows) + 1L]] <- data.frame(etapa = etapa, data = d_end, hora = hora,
                                               trecho = substr(paste(label, tok), 1L, 240L), stringsAsFactors = FALSE)
     }
-    rows[[length(rows) + 1L]] <- data.frame(etapa = etapa, data = d_end, hora = hora,
-                                            trecho = substr(paste(label, tok), 1L, 240L), stringsAsFactors = FALSE)
   }
+
+  # 2. Regex para formato ISO (AAAA-MM-DD)
+  re_iso <- "(?<!\\d)(\\d{4})-(\\d{2})-(\\d{2})(?!\\d)"
+  locs_iso <- gregexpr(re_iso, flat, perl = TRUE)[[1]]
+  if (length(locs_iso) > 0L && locs_iso[[1]] != -1L) {
+    lens <- attr(locs_iso, "match.length")
+    for (k in seq_along(locs_iso)) {
+      st <- locs_iso[[k]]; en <- st + lens[[k]] - 1L
+      tok <- substr(flat, st, en)
+      label <- trimws(substr(flat, max(1L, st - 200L), st - 1L))
+      mm <- regmatches(tok, regexec(re_iso, tok, perl = TRUE))[[1]]
+      d <- .mk_date(mm[[4]], mm[[3]], mm[[2]])
+      if (is.na(d)) next
+      etapa <- classify_stage_label(label)
+      hora <- .extract_time_after(flat, en)
+      rows[[length(rows) + 1L]] <- data.frame(etapa = etapa, data = d, hora = hora,
+                                              trecho = substr(paste(label, tok), 1L, 240L), stringsAsFactors = FALSE)
+    }
+  }
+
+  # 3. Regex para datas textuais em PT (Ex: 15 de novembro de 2026)
+  re_txt_pt <- "(?<!\\d)(\\d{1,2})(?:o|\\.)?\\s+de\\s+([a-zç]+)\\s+de\\s+(\\d{4})(?!\\d)"
+  locs_pt <- gregexpr(re_txt_pt, flat, perl = TRUE, ignore.case = TRUE)[[1]]
+  if (length(locs_pt) > 0L && locs_pt[[1]] != -1L) {
+    lens <- attr(locs_pt, "match.length")
+    for (k in seq_along(locs_pt)) {
+      st <- locs_pt[[k]]; en <- st + lens[[k]] - 1L
+      tok <- substr(flat, st, en)
+      label <- trimws(substr(flat, max(1L, st - 200L), st - 1L))
+      mm <- regmatches(tok, regexec(re_txt_pt, tok, perl = TRUE, ignore.case = TRUE))[[1]]
+      m_name <- tolower(mm[[3]])
+      if (m_name %in% names(.MONTHS_ALL)) {
+        d <- .mk_date(mm[[2]], .MONTHS_ALL[[m_name]], mm[[4]])
+        if (!is.na(d)) {
+          etapa <- classify_stage_label(label)
+          hora <- .extract_time_after(flat, en)
+          rows[[length(rows) + 1L]] <- data.frame(etapa = etapa, data = d, hora = hora,
+                                                  trecho = substr(paste(label, tok), 1L, 240L), stringsAsFactors = FALSE)
+        }
+      }
+    }
+  }
+
+  # 4. Regex para datas textuais em EN (Ex: November 15, 2026 e 15 November 2026)
+  re_txt_en_mdy <- "\\b([a-z]+)\\s+(\\d{1,2})(?:st|nd|rd|th)?,?\\s+(\\d{4})(?!\\d)"
+  locs_en1 <- gregexpr(re_txt_en_mdy, flat, perl = TRUE, ignore.case = TRUE)[[1]]
+  if (length(locs_en1) > 0L && locs_en1[[1]] != -1L) {
+    lens <- attr(locs_en1, "match.length")
+    for (k in seq_along(locs_en1)) {
+      st <- locs_en1[[k]]; en <- st + lens[[k]] - 1L
+      tok <- substr(flat, st, en)
+      label <- trimws(substr(flat, max(1L, st - 200L), st - 1L))
+      mm <- regmatches(tok, regexec(re_txt_en_mdy, tok, perl = TRUE, ignore.case = TRUE))[[1]]
+      m_name <- tolower(mm[[2]])
+      if (m_name %in% names(.MONTHS_ALL)) {
+        d <- .mk_date(mm[[3]], .MONTHS_ALL[[m_name]], mm[[4]])
+        if (!is.na(d)) {
+          etapa <- classify_stage_label(label)
+          hora <- .extract_time_after(flat, en)
+          rows[[length(rows) + 1L]] <- data.frame(etapa = etapa, data = d, hora = hora,
+                                                  trecho = substr(paste(label, tok), 1L, 240L), stringsAsFactors = FALSE)
+        }
+      }
+    }
+  }
+
+  re_txt_en_dmy <- "\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+([a-z]+),?\\s+(\\d{4})(?!\\d)"
+  locs_en2 <- gregexpr(re_txt_en_dmy, flat, perl = TRUE, ignore.case = TRUE)[[1]]
+  if (length(locs_en2) > 0L && locs_en2[[1]] != -1L) {
+    lens <- attr(locs_en2, "match.length")
+    for (k in seq_along(locs_en2)) {
+      st <- locs_en2[[k]]; en <- st + lens[[k]] - 1L
+      tok <- substr(flat, st, en)
+      label <- trimws(substr(flat, max(1L, st - 200L), st - 1L))
+      mm <- regmatches(tok, regexec(re_txt_en_dmy, tok, perl = TRUE, ignore.case = TRUE))[[1]]
+      m_name <- tolower(mm[[3]])
+      if (m_name %in% names(.MONTHS_ALL)) {
+        d <- .mk_date(mm[[2]], .MONTHS_ALL[[m_name]], mm[[4]])
+        if (!is.na(d)) {
+          etapa <- classify_stage_label(label)
+          hora <- .extract_time_after(flat, en)
+          rows[[length(rows) + 1L]] <- data.frame(etapa = etapa, data = d, hora = hora,
+                                                  trecho = substr(paste(label, tok), 1L, 240L), stringsAsFactors = FALSE)
+        }
+      }
+    }
+  }
+
   if (length(rows) == 0L) {
     return(data.frame(etapa = character(), data = as.Date(character()), hora = character(), trecho = character(),
                       stringsAsFactors = FALSE))

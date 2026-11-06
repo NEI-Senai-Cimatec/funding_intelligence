@@ -7012,3 +7012,60 @@
 [2026-11-05 12:27:44] [WARN] Erro de execucao Playwright: too few arguments
 [2026-11-05 12:27:50] [WARN] Erro de execucao Playwright: too few arguments
 [2026-11-05 12:28:02] [WARN] Erro de execucao Playwright: too few arguments
+[2026-11-06 10:30:16] [INFO] Início da coleta oficial.
+[2026-11-06 10:30:19] [INFO] Coletando FAPESB via categoria (ano=2026, status=Abertos)...
+[2026-11-06 10:30:27] [INFO] FAPESB: 5 editais abertos em 2026
+[2026-11-06 10:30:27] [INFO] [1/5] DIRETRIZES ESPECÍFICAS DA FAPESB – CHAMADA BIODIVERSA + “BIODIVFUTURE 
+[2026-11-06 10:30:33] [WARN] Ambiguidade de data: '06/09/2026'
+[2026-11-06 10:30:38] [WARN] Ambiguidade de data: '06/09/2026'
+[2026-11-06 10:30:38] [INFO] FAPESB prazo extraido via PDF: 2028-04-01 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/DIRETRIZES___COOPINTER___BIODIVERSA_V1.pdf)
+[2026-11-06 10:30:39] [INFO] [2/5] DIRETRIZES ESPECÍFICAS DA FAPESB – CHAMADA TRANSNACIONAL CONJUNTA WATE
+[2026-11-06 10:30:48] [INFO] FAPESB prazo extraido via PDF: 2027-04-06 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/DIRETRIZES___COOPINTER___WATER4ALL_VF__1_-1-1.pdf)
+[2026-11-06 10:30:48] [INFO] [3/5] DIRETRIZES ESPECÍFICAS DA FAPESB – 1ª CHAMADA DA PARCERIA DE MATÉRIAS-
+[2026-11-06 10:30:59] [INFO] FAPESB prazo extraido via PDF: 2027-05-15 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/DIRETRIZES_COOPINTER_RAMP_2026.pdf)
+[2026-11-06 10:30:59] [INFO] [4/5] CHAMADA CDTI ESPANHA (2026-2027) – DIRETRIZES ESPECÍFICAS DA FAPESB -
+[2026-11-06 10:31:05] [WARN] Ambiguidade de data: '08/10/2026'
+[2026-11-06 10:31:09] [WARN] Ambiguidade de data: '08/10/2026'
+[2026-11-06 10:31:09] [INFO] FAPESB prazo extraido via PDF: 2026-10-08 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/MINUTA_DIRETRIZES___COOPINTER___BR_ESPANHA___CDTI__6__-correto.pdf)
+[2026-11-06 10:31:09] [INFO] [5/5] CHAMADA GCUB – MOB Nº 2026/2027 – PROGRAMA DE MOBILIDADE INTERNACIONAL
+[2026-11-06 10:31:17] [INFO] FAPESB prazo extraido via PDF: 2026-07-13 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/MINUTA_DIRETRIZES___GCUB_2026.2027.pdf)
+[2026-11-06 10:31:17] [INFO] FAPESB: 5 registros finais coletados
+[2026-11-06 10:31:17] [INFO] Fonte em processamento: fapesb | https://www.fapesb.ba.gov.br/category/edital/aberto/
+[2026-11-06 10:31:17] [WARN] data_inconsistente: titulo 'DIRETRIZES ESPECÍFICAS DA FAPESB – CHAMADA BIODIVERSA + “BIODIVFUTURE 2026 – 202' | data_limite 2028-04-01 | fonte fapesb
+[2026-11-06 10:31:18] [INFO] [fapesb] sucesso: 5 registro(s) processado(s)
+[2026-11-06 10:31:19] [WARN] Exportação XLSX gerada com truncamento de textos acima de 32.000 caracteres.
+[2026-11-06 10:31:19] [INFO] Fim da coleta oficial. 1 fontes processadas. 5 registros adicionados nesta rodada. 398 registros na base.
+[2026-11-06 11:10:11] [WARN] Ambiguidade de data: '02/03/2027'
+[2026-11-06 14:43:16] [INFO] Início da coleta oficial.
+[2026-11-06 14:43:18] [INFO] Coletando FAPESB via categoria (ano=2026, status=Abertos)...
+[2026-11-06 14:43:18] [INFO] Iniciando coleta Alexander von Humboldt Foundation.
+[2026-11-06 14:43:18] [INFO] Buscando fellowships...
+[2026-11-06 14:43:20] [INFO] Filter 'schollarships': 10 programas encontrados.
+[2026-11-06 14:43:22] [INFO] Filter 'award': 9 programas encontrados.
+[2026-11-06 14:43:23] [INFO] Total de 18 programas únicos após dedup.
+[2026-11-06 14:43:27] [INFO] FAPESB: 5 editais abertos em 2026
+[2026-11-06 14:43:27] [INFO] [1/5] DIRETRIZES ESPECÍFICAS DA FAPESB – CHAMADA BIODIVERSA + “BIODIVFUTURE 
+[2026-11-06 14:43:30] [INFO] Progresso: 5/5 detalhes coletados.
+[2026-11-06 14:43:30] [INFO] HUMBOLDT: 5 registros finais coletados.
+[2026-11-06 14:43:33] [WARN] Ambiguidade de data: '06/09/2026'
+[2026-11-06 14:43:36] [WARN] Ambiguidade de data: '06/09/2026'
+[2026-11-06 14:43:36] [INFO] FAPESB prazo extraido via PDF: 2028-04-01 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/DIRETRIZES___COOPINTER___BIODIVERSA_V1.pdf)
+[2026-11-06 14:43:37] [INFO] [2/5] DIRETRIZES ESPECÍFICAS DA FAPESB – CHAMADA TRANSNACIONAL CONJUNTA WATE
+[2026-11-06 14:43:44] [INFO] FAPESB prazo extraido via PDF: 2027-04-06 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/DIRETRIZES___COOPINTER___WATER4ALL_VF__1_-1-1.pdf)
+[2026-11-06 14:43:45] [INFO] [3/5] DIRETRIZES ESPECÍFICAS DA FAPESB – 1ª CHAMADA DA PARCERIA DE MATÉRIAS-
+[2026-11-06 14:43:54] [INFO] FAPESB prazo extraido via PDF: 2027-05-15 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/DIRETRIZES_COOPINTER_RAMP_2026.pdf)
+[2026-11-06 14:43:55] [INFO] [4/5] CHAMADA CDTI ESPANHA (2026-2027) – DIRETRIZES ESPECÍFICAS DA FAPESB -
+[2026-11-06 14:44:00] [WARN] Ambiguidade de data: '08/10/2026'
+[2026-11-06 14:44:01] [WARN] Ambiguidade de data: '08/10/2026'
+[2026-11-06 14:44:01] [INFO] FAPESB prazo extraido via PDF: 2026-10-08 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/MINUTA_DIRETRIZES___COOPINTER___BR_ESPANHA___CDTI__6__-correto.pdf)
+[2026-11-06 14:44:02] [INFO] [5/5] CHAMADA GCUB – MOB Nº 2026/2027 – PROGRAMA DE MOBILIDADE INTERNACIONAL
+[2026-11-06 14:44:09] [INFO] FAPESB prazo extraido via PDF: 2026-07-13 (https://www.fapesb.ba.gov.br/wp-content/uploads/2019/08/MINUTA_DIRETRIZES___GCUB_2026.2027.pdf)
+[2026-11-06 14:44:09] [INFO] FAPESB: 5 registros finais coletados
+[2026-11-06 14:44:10] [INFO] Fonte em processamento: fapesb | https://www.fapesb.ba.gov.br/category/edital/aberto/
+[2026-11-06 14:44:10] [WARN] data_inconsistente: titulo 'DIRETRIZES ESPECÍFICAS DA FAPESB – CHAMADA BIODIVERSA + “BIODIVFUTURE 2026 – 202' | data_limite 2028-04-01 | fonte fapesb
+[2026-11-06 14:44:10] [INFO] [fapesb] sucesso: 5 registro(s) processado(s)
+[2026-11-06 14:44:11] [INFO] Fonte em processamento: humboldt | https://www.humboldt-foundation.de/en/apply/sponsorship-programmes/programmes-a-to-z
+[2026-11-06 14:44:12] [INFO] Todos os registros ja estao em pt-br. Traducao ignorada.
+[2026-11-06 14:44:12] [INFO] [humboldt] sucesso: 4 registro(s) processado(s)
+[2026-11-06 14:44:13] [WARN] Exportação XLSX gerada com truncamento de textos acima de 32.000 caracteres.
+[2026-11-06 14:44:13] [INFO] Fim da coleta oficial. 2 fontes processadas. 9 registros adicionados nesta rodada. 377 registros na base.

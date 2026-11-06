@@ -192,12 +192,26 @@ days_to_deadline <- function(x) {
 classify_status <- function(deadline = NA, start = NA, end = NA, text = NULL, today = NULL,
                             status_oficial = NA) {
   # Regra temporal única (R04): delega SEMPRE ao resolvedor de helpers_status.R.
-  # `text` é aceito por compatibilidade, mas texto livre não é evidência de estado.
   dl <- as.character(parse_date_safe(deadline))
   en <- as.character(parse_date_safe(end))
   ref <- ifelse(is.na(dl), en, dl)
+  # Se prazo não foi fornecido mas text existe, tentar extrair prazo estrito
+  if (any(is.na(ref)) && !is.null(text)) {
+    txt_all <- as.character(text)
+    for (ti in seq_along(ref)) {
+      if (is.na(ref[ti]) && length(txt_all) >= ti && nzchar(trimws(txt_all[ti]))) {
+        ext_d <- tryCatch(extract_submission_deadline_strict(txt_all[ti]), error = function(e) as.Date(NA))
+        if (!is.na(ext_d)) ref[ti] <- as.character(ext_d)
+      }
+    }
+  }
+  is_fc <- if (!is.null(text)) {
+    grepl("\\b(fluxo cont[ií]nuo|submiss[aã]o cont[ií]nua|inscri[cç][oõ]es cont[ií]nuas|continuous submission|open continuously|accepted at any time|submit(ted)? at any time|rolling basis|sem prazo limite|permanente|ao longo do ano)\\b", as.character(text), ignore.case = TRUE)
+  } else {
+    FALSE
+  }
   derive_status(data_limite = ref, data_abertura = as.character(parse_date_safe(start)),
-                today = today, status_oficial = status_oficial)
+                today = today, status_oficial = status_oficial, fluxo_continuo = is_fc)
 }
 
 normalize_country <- function(x) {
@@ -519,10 +533,109 @@ badge_status_html <- function(status) {
   label <- switch(status,
     "em_breve" = "Em breve",
     "em_julgamento" = "Em julgamento",
-    "desconhecido" = "A verificar",
+    "desconhecido" = "Desconhecido",
     tools::toTitleCase(status)
   )
   sprintf("<span class='status-badge %s'>%s</span>", class_name, label)
+}
+
+dt_prazo_column_def <- function(targets) {
+  list(
+    targets = targets,
+    type = "prazo-ymd",
+    render = DT::JS("
+      function(data, type, row, meta) {
+        if (window.jQuery && jQuery.fn && jQuery.fn.dataTable && jQuery.fn.dataTable.ext && jQuery.fn.dataTable.ext.type && !jQuery.fn.dataTable.ext.type.order['prazo-ymd-asc']) {
+          var parseYmd = function(val) {
+            if (typeof val === 'number' && !isNaN(val)) return val;
+            var s = String(val || '').replace(/<[^>]*>/g, '').trim();
+            if (!s || s === '-') return 99999999;
+            var mBr = s.match(/^(\\d{2})\\/(\\d{2})\\/(\\d{4})$/);
+            if (mBr) return parseInt(mBr[3], 10) * 10000 + parseInt(mBr[2], 10) * 100 + parseInt(mBr[1], 10);
+            var mIso = s.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);
+            if (mIso) return parseInt(mIso[1], 10) * 10000 + parseInt(mIso[2], 10) * 100 + parseInt(mIso[3], 10);
+            var n = parseInt(s, 10);
+            return isNaN(n) ? 99999999 : n;
+          };
+          jQuery.fn.dataTable.ext.type.order['prazo-ymd-asc'] = function(a, b) {
+            var va = parseYmd(a);
+            var vb = parseYmd(b);
+            return va < vb ? -1 : (va > vb ? 1 : 0);
+          };
+          jQuery.fn.dataTable.ext.type.order['prazo-ymd-desc'] = function(a, b) {
+            var va = parseYmd(a);
+            var vb = parseYmd(b);
+            if (va === 99999999 && vb === 99999999) return 0;
+            if (va === 99999999) return 1;
+            if (vb === 99999999) return -1;
+            return vb < va ? -1 : (vb > va ? 1 : 0);
+          };
+        }
+        if (type === 'sort' || type === 'type') {
+          var s = String(data || '').replace(/<[^>]*>/g, '').trim();
+          if (!s || s === '-') return 99999999;
+          var mBr = s.match(/(\\d{2})\\/(\\d{2})\\/(\\d{4})/);
+          if (mBr) return parseInt(mBr[3], 10) * 10000 + parseInt(mBr[2], 10) * 100 + parseInt(mBr[1], 10);
+          var mIso = s.match(/(\\d{4})-(\\d{2})-(\\d{2})/);
+          if (mIso) return parseInt(mIso[1], 10) * 10000 + parseInt(mIso[2], 10) * 100 + parseInt(mIso[3], 10);
+          return 99999999;
+        }
+        return data;
+      }
+    ")
+  )
+}
+
+dt_status_column_def <- function(targets) {
+  list(
+    targets = targets,
+    type = "status-edital",
+    render = DT::JS("
+      function(data, type, row, meta) {
+        var rankStatus = function(val) {
+          if (typeof val === 'number' && !isNaN(val)) return val;
+          var s = String(val || '').replace(/<[^>]*>/g, '').trim().toLowerCase();
+          if (s === 'aberto' || s === '10') return 10;
+          if (s === 'encerrando' || s === '11') return 11;
+          if (s === 'em breve' || s === 'em_breve' || s === '20') return 20;
+          if (s === 'desconhecido' || s === 'a verificar' || s === 'a_verificar' || s === '30') return 30;
+          if (s === 'encerrado' || s === '40') return 40;
+          var n = parseInt(s, 10);
+          return isNaN(n) ? 50 : n;
+        };
+        if (window.jQuery && jQuery.fn && jQuery.fn.dataTable && jQuery.fn.dataTable.ext && jQuery.fn.dataTable.ext.type && !jQuery.fn.dataTable.ext.type.order['status-edital-asc']) {
+          jQuery.fn.dataTable.ext.type.order['status-edital-asc'] = function(a, b) {
+            var va = rankStatus(a);
+            var vb = rankStatus(b);
+            return va < vb ? -1 : (va > vb ? 1 : 0);
+          };
+          jQuery.fn.dataTable.ext.type.order['status-edital-desc'] = function(a, b) {
+            var va = rankStatus(a);
+            var vb = rankStatus(b);
+            return vb < va ? -1 : (vb > va ? 1 : 0);
+          };
+        }
+        var raw = String(data || 'Desconhecido').replace(/<[^>]*>/g, '').trim();
+        var status = raw.toLowerCase();
+        if (status === 'a verificar' || status === 'a_verificar' || status === 'desconhecido') {
+          raw = 'Desconhecido';
+          status = 'desconhecido';
+        }
+        if (type === 'sort' || type === 'type') {
+          return rankStatus(status);
+        }
+        if (type === 'display') {
+          var cls = 'badge-soft-neutral';
+          if (status === 'aberto') cls = 'badge-soft-open';
+          else if (status === 'encerrando') cls = 'badge-soft-warning';
+          else if (status === 'em breve' || status === 'em_breve') cls = 'badge-soft-info';
+          else if (status === 'encerrado') cls = 'badge-soft-closed';
+          return \"<span class='status-badge \" + cls + \"'>\" + raw + \"</span>\";
+        }
+        return raw;
+      }
+    ")
+  )
 }
 
 score_bar_html <- function(score) {
@@ -544,11 +657,14 @@ make_view_button <- function(id_value, label = "🔍", class = "btn btn-sm btn-o
   )
 }
 
-make_actions_html <- function(id_value) {
+make_actions_html <- function(id_value, can_track = FALSE) {
   btn_view <- sprintf(
     "<button class='btn btn-sm btn-outline-primary action-view-btn' style='padding: 2px 8px; font-size: 0.75rem;' onclick=\"Shiny.setInputValue('row_view', {id: '%s', nonce: Math.random()}, {priority: 'event'})\"><i class='fa fa-eye'></i> Visualizar</button>",
     id_value
   )
+  if (!isTRUE(can_track)) {
+    return(sprintf("<div style='display: flex; gap: 4px; white-space: nowrap;'>%s</div>", btn_view))
+  }
   btn_track <- sprintf(
     "<button class='btn btn-sm btn-success action-link-btn' style='padding: 2px 8px; font-size: 0.75rem;' onclick=\"Shiny.setInputValue('row_action', {id: '%s', nonce: Math.random()}, {priority: 'event'})\"><i class='fa fa-map-marker-alt'></i> Rastrear</button>",
     id_value

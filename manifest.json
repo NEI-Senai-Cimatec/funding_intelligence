@@ -4,9 +4,9 @@
   "platform": "4.6.0",
   "metadata": {
     "appmode": "shiny",
-    "primary_rmd": {},
-    "primary_html": {},
-    "content_category": {},
+    "primary_rmd": null,
+    "primary_html": null,
+    "content_category": null,
     "has_parameters": false
   },
   "packages": {
@@ -2528,7 +2528,7 @@
     },
     "polite": {
       "Source": "CRAN",
-      "Repository": {},
+      "Repository": null,
       "description": {
         "Package": "polite",
         "Version": "0.1.4",
@@ -4853,5 +4853,5 @@
       "checksum": "b4aad5eafb8e4b09c368d60a767e418f"
     }
   },
-  "users": {}
+  "users": null
 }

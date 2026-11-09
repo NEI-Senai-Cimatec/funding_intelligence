@@ -1560,24 +1560,94 @@ adherence_heuristic_text <- function(titulo, descricao) {
     x[is.na(x) | x %in% c("NA", "NULL")] <- ""
     paste(x, collapse = " ")
   }
-  tolower(normalize_text(paste(clean(titulo), clean(descricao))))
+  adherence_norm_cached(paste(clean(titulo), clean(descricao)))
+}
+
+# Texto normalizado em cache (os 6 núcleos avaliam o mesmo edital)
+.adh_text_cache <- new.env(parent = emptyenv())
+adherence_norm_cached <- function(x) {
+  x <- paste(as.character(x %||% ""), collapse = " ")
+  if (nchar(x) > 20000L) return(tolower(normalize_text(x)))
+  key <- digest::digest(x, algo = "xxhash64")
+  hit <- .adh_text_cache[[key]]
+  if (!is.null(hit)) return(hit)
+  if (length(ls(.adh_text_cache)) > 20000L) rm(list = ls(.adh_text_cache), envir = .adh_text_cache)
+  out <- tolower(normalize_text(x))
+  .adh_text_cache[[key]] <- out
+  out
 }
 
 # Casa palavra-chave respeitando início de palavra (radicais como "oceanograf"
 # continuam funcionando) e palavra inteira para siglas curtas ("rov", "gas", "ti"),
 # evitando falsos positivos como "rov" em "improve" ou "gas" em "gastos".
-adherence_kw_hits <- function(kws, norm_text) {
-  if (!length(kws) || !nzchar(norm_text)) return(FALSE)
-  kws <- tolower(normalize_text(kws))
-  esc <- gsub("([.^$|()\\[\\]{}*+?\\\\])", "\\\\\\1", kws, perl = TRUE)
-  pats <- ifelse(nchar(kws) <= 4L,
+# Padrões das listas de palavras-chave são normalizados uma única vez (cache):
+# antes eram renormalizados a cada edital x núcleo, o que deixava a carga lenta.
+.adh_pattern_cache <- new.env(parent = emptyenv())
+adherence_kw_patterns <- function(kws) {
+  key <- paste(kws, collapse = "\r")
+  hit <- .adh_pattern_cache[[key]]
+  if (!is.null(hit)) return(hit)
+  kws_n <- unique(tolower(normalize_text(kws)))
+  kws_n <- kws_n[nzchar(kws_n)]
+  esc <- gsub("([.^$|()\\[\\]{}*+?\\\\])", "\\\\\\1", kws_n, perl = TRUE)
+  pats <- ifelse(nchar(kws_n) <= 4L,
                  paste0("(?<![a-z0-9])", esc, "(?![a-z0-9])"),
                  paste0("(?<![a-z0-9])", esc))
-  any(vapply(pats, function(p) grepl(p, norm_text, perl = TRUE), logical(1)))
+  out <- list(kws = kws_n, pats = pats)
+  .adh_pattern_cache[[key]] <- out
+  out
+}
+
+adherence_kw_hits <- function(kws, norm_text) {
+  if (!length(kws) || !nzchar(norm_text)) return(FALSE)
+  length(adherence_kw_matches(kws, norm_text)) > 0L
+}
+
+# ─── Pontuação única de aderência por núcleo (0–100) ──────────────────────────
+# Regra explicável, a MESMA para os 6 núcleos (as listas de palavras-chave não mudam):
+#   +15 por termo distinto encontrado (até 4 termos = 60)
+#   +15 por área temática adicional do núcleo (até 2 extras = 30)
+#   +20 se algum termo aparece no TÍTULO (evidência forte)
+#   +10 se a combinação estratégica do núcleo estiver presente
+# Faixas: Baixa < 30 ≤ Média < 55 ≤ Alta < 75 ≤ Muito alta.
+# Uma única palavra solta no resumo (ex.: "descarbonização") vale 15 = Baixa.
+ADHERENCE_LEVEL_CUTS <- c(media = 30, alta = 55, muito_alta = 75)
+
+adherence_kw_matches <- function(kws, norm_text) {
+  if (!length(kws) || !nzchar(norm_text %||% "")) return(character())
+  kp <- adherence_kw_patterns(kws)
+  if (!length(kp$kws)) return(character())
+  kp$kws[stringi::stri_detect_regex(norm_text, kp$pats)]
+}
+
+adherence_level_from_score <- function(score) {
+  if (is.na(score)) return("Baixa")
+  if (score >= ADHERENCE_LEVEL_CUTS[["muito_alta"]]) "Muito alta"
+  else if (score >= ADHERENCE_LEVEL_CUTS[["alta"]]) "Alta"
+  else if (score >= ADHERENCE_LEVEL_CUTS[["media"]]) "Média"
+  else "Baixa"
+}
+
+adherence_score_from_kws <- function(groups, norm_text, titulo = "", combo = FALSE) {
+  matched <- lapply(groups, adherence_kw_matches, norm_text = norm_text)
+  terms <- unique(unlist(matched, use.names = FALSE))
+  # "startup" e "startups" contam como um termo só
+  if (length(terms) > 1L) {
+    terms <- terms[!vapply(terms, function(t) { o <- setdiff(terms, t); any(nchar(o) < nchar(t) & startsWith(t, o)) }, logical(1))]
+  }
+  n_terms <- length(terms)
+  n_groups <- sum(lengths(matched) > 0L)
+  title_norm <- adherence_norm_cached(titulo)
+  in_title <- n_terms > 0L && length(adherence_kw_matches(unlist(matched, use.names = FALSE), title_norm)) > 0L
+  score <- 15 * min(n_terms, 4L) + 15 * min(max(n_groups - 1L, 0L), 2L) +
+    ifelse(in_title, 20, 0) + ifelse(isTRUE(combo) && n_groups >= 2L, 10, 0)
+  score <- min(100, score)
+  list(score = score, nivel = adherence_level_from_score(score), termos = terms,
+       n_terms = n_terms, n_groups = n_groups, in_title = in_title)
 }
 
 # Justificativas geradas pela heurística antiga (salvas no banco) — devem ser recalculadas
-ADHERENCE_HEURISTIC_PATTERN <- "^(Oportunidade com forte aderência direta|Oportunidade relevante|Oportunidade tangencial|Oportunidade sem conexão|Forte aderência direta|Oportunidade com aderência|Oportunidade com potencial)"
+ADHERENCE_HEURISTIC_PATTERN <- "^(Oportunidade com menção isolada|Oportunidade com forte aderência direta|Oportunidade relevante|Oportunidade tangencial|Oportunidade sem conexão|Forte aderência direta|Oportunidade com aderência|Oportunidade com potencial)"
 
 # ─── Avaliador de Aderência Científico-Tecnológica: Núcleo Naval & Offshore de PD&I ───────
 
@@ -1653,26 +1723,28 @@ evaluate_naval_offshore_adherence <- function(titulo, descricao, texto_bruto = "
   if (hits_defesa) found_areas <- c(found_areas, "Defesa & Marinha do Brasil")
   if (hits_ensaio) found_areas <- c(found_areas, "Infraestrutura de Ensaio")
   
-  if (total_hits >= 3 || (hits_rov && hits_energia)) {
+  adh <- adherence_score_from_kws(list(kw_rov, kw_naval, kw_energia, kw_portos, kw_ia, kw_defesa, kw_ensaio), norm_text, titulo, combo = ((hits_rov && hits_energia)))
+  if (identical(adh$nivel, "Muito alta")) {
     nivel <- "Muito alta"
     justificativa <- sprintf("Oportunidade com forte aderência direta ao Núcleo Naval & Offshore nas áreas: %s.", paste(found_areas, collapse = ", "))
     ideia <- sprintf("Projeto: Desenvolver solução avançada em %s. Consórcio Recomendado: Núcleo Naval CIMATEC + Petrobras/Shell + Unidade EMBRAPII + Marinha do Brasil.", found_areas[[1]])
-  } else if (total_hits >= 2) {
+  } else if (identical(adh$nivel, "Alta")) {
     nivel <- "Alta"
     justificativa <- sprintf("Oportunidade relevante conectando-se a temas estratégicos navais: %s.", paste(found_areas, collapse = ", "))
     ideia <- sprintf("Projeto: Aplicação tecnológica em %s. Consórcio Recomendado: ICT parceira + Empresa do setor Marítimo/Offshore + SENAI CIMATEC.", found_areas[[1]])
-  } else if (total_hits == 1) {
+  } else if (identical(adh$nivel, "Média")) {
     nivel <- "Média"
     justificativa <- sprintf("Oportunidade tangencial com interface potencial na área de %s.", found_areas[[1]])
     ideia <- NULL
   } else {
     nivel <- "Baixa"
-    justificativa <- "Oportunidade sem conexão direta identificada com o ecossistema de PD&I Naval e Offshore."
+    justificativa <- if (length(found_areas)) sprintf("Oportunidade com menção isolada a %s (%s), insuficiente para aderência ao núcleo.", found_areas[[1]], paste(adh$termos, collapse = ", ")) else "Oportunidade sem conexão direta identificada com o ecossistema de PD&I Naval e Offshore."
     ideia <- NULL
   }
   
   list(
     aderencia_naval_nivel = nivel,
+    aderencia_naval_score = adh$score,
     aderencia_naval_justificativa = justificativa,
     ideia_projeto_consorcio = ideia
   )
@@ -1747,26 +1819,28 @@ evaluate_sertao_adherence <- function(titulo, descricao, texto_bruto = "", entid
   if (hits_pecuaria) found_areas <- c(found_areas, "Pecuária Conectada")
   if (hits_agroind) found_areas <- c(found_areas, "Agroindústria & Cadeias Regionais")
   
-  if (total_hits >= 3 || (hits_agro && hits_hidro) || (hits_hidro && hits_energia)) {
+  adh <- adherence_score_from_kws(list(kw_agro, kw_hidro, kw_energia, kw_bio, kw_pecuaria, kw_agroind), norm_text, titulo, combo = ((hits_agro && hits_hidro) || (hits_hidro && hits_energia)))
+  if (identical(adh$nivel, "Muito alta")) {
     nivel <- "Muito alta"
     justificativa <- sprintf("Forte aderência direta às prioridades do CIMATEC Sertão nas áreas: %s.", paste(found_areas, collapse = ", "))
     ideia <- sprintf("Projeto: Solução tecnológica integrada em %s. Consórcio Recomendado: CIMATEC Sertão + EMBRAPA / CODEVASF + Produtores Locais / Empresas do Semiárido + Unidade EMBRAPII.", found_areas[[1]])
-  } else if (total_hits >= 2) {
+  } else if (identical(adh$nivel, "Alta")) {
     nivel <- "Alta"
     justificativa <- sprintf("Oportunidade relevante alinhada aos eixos temáticos do Sertão: %s.", paste(found_areas, collapse = ", "))
     ideia <- sprintf("Projeto: Desenvolvimento aplicado em %s. Consórcio Recomendado: CIMATEC Sertão + Cooperativa Agrícola / Empresa Regional + Agência de Fomento.", found_areas[[1]])
-  } else if (total_hits == 1) {
+  } else if (identical(adh$nivel, "Média")) {
     nivel <- "Média"
     justificativa <- sprintf("Oportunidade com aderência tangencial em %s.", found_areas[[1]])
     ideia <- NA_character_
   } else {
     nivel <- "Baixa"
-    justificativa <- "Oportunidade sem conexão direta identificada com as áreas focais do CIMATEC Sertão."
+    justificativa <- if (length(found_areas)) sprintf("Oportunidade com menção isolada a %s (%s), insuficiente para aderência ao núcleo.", found_areas[[1]], paste(adh$termos, collapse = ", ")) else "Oportunidade sem conexão direta identificada com as áreas focais do CIMATEC Sertão."
     ideia <- NA_character_
   }
   
   list(
     aderencia_sertao_nivel = nivel,
+    aderencia_sertao_score = adh$score,
     aderencia_sertao_justificativa = justificativa,
     ideia_projeto_sertao = ideia
   )
@@ -1844,26 +1918,28 @@ evaluate_aero_adherence <- function(titulo, descricao, texto_bruto = "", entidad
   if (hits_materiais) found_areas <- c(found_areas, "Materiais Aeronáuticos")
   if (hits_defesa) found_areas <- c(found_areas, "Defesa & Forças Armadas")
   
-  if (total_hits >= 3 || (hits_vant && hits_defesa) || (hits_espaco && hits_propulsao)) {
+  adh <- adherence_score_from_kws(list(kw_vant, kw_espaco, kw_propulsao, kw_avionica, kw_evtol, kw_materiais, kw_defesa), norm_text, titulo, combo = ((hits_vant && hits_defesa) || (hits_espaco && hits_propulsao)))
+  if (identical(adh$nivel, "Muito alta")) {
     nivel <- "Muito alta"
     justificativa <- sprintf("Forte aderência direta às competências do CIMATEC Aeroespacial nas áreas: %s.", paste(found_areas, collapse = ", "))
     ideia <- sprintf("Projeto: Solução de ponta em %s. Consórcio Recomendado: CIMATEC Aeroespacial + Indústria Aeroespacial/Defesa + Força Aérea (FAB/DCTA) + Unidade EMBRAPII.", found_areas[[1]])
-  } else if (total_hits >= 2) {
+  } else if (identical(adh$nivel, "Alta")) {
     nivel <- "Alta"
     justificativa <- sprintf("Oportunidade relevante alinhada a temas aeroespaciais: %s.", paste(found_areas, collapse = ", "))
     ideia <- sprintf("Projeto: Desenvolvimento de tecnologia aplicada em %s. Consórcio Recomendado: CIMATEC Aeroespacial + Empresa de Base Tecnológica + Agência Espacial/Setorial.", found_areas[[1]])
-  } else if (total_hits == 1) {
+  } else if (identical(adh$nivel, "Média")) {
     nivel <- "Média"
     justificativa <- sprintf("Oportunidade com potencial aderência em %s.", found_areas[[1]])
     ideia <- NA_character_
   } else {
     nivel <- "Baixa"
-    justificativa <- "Oportunidade sem conexão direta identificada com o setor Aeroespacial e de Defesa."
+    justificativa <- if (length(found_areas)) sprintf("Oportunidade com menção isolada a %s (%s), insuficiente para aderência ao núcleo.", found_areas[[1]], paste(adh$termos, collapse = ", ")) else "Oportunidade sem conexão direta identificada com o setor Aeroespacial e de Defesa."
     ideia <- NA_character_
   }
   
   list(
     aderencia_aero_nivel = nivel,
+    aderencia_aero_score = adh$score,
     aderencia_aero_justificativa = justificativa,
     ideia_projeto_aero = ideia
   )
@@ -1938,26 +2014,28 @@ evaluate_digital_adherence <- function(titulo, descricao, texto_bruto = "", enti
   if (hits_iot) found_areas <- c(found_areas, "IoT & Conectividade 5G/6G")
   if (hits_software) found_areas <- c(found_areas, "Software & Gêmeos Digitais")
   
-  if (total_hits >= 3 || (hits_ia && hits_hpc) || (hits_ia && hits_cyber)) {
+  adh <- adherence_score_from_kws(list(kw_ia, kw_cyber, kw_hpc, kw_quant, kw_iot, kw_software), norm_text, titulo, combo = ((hits_ia && hits_hpc) || (hits_ia && hits_cyber)))
+  if (identical(adh$nivel, "Muito alta")) {
     nivel <- "Muito alta"
     justificativa <- sprintf("Forte aderência direta ao ecossistema do CIMATEC Digital nas áreas: %s.", paste(found_areas, collapse = ", "))
     ideia <- sprintf("Projeto: Plataforma avançada de %s. Consórcio Recomendado: CIMATEC Digital (Supercomputador Ogbon) + Empresa de Tecnologia / Telecom + Unidade EMBRAPII.", found_areas[[1]])
-  } else if (total_hits >= 2) {
+  } else if (identical(adh$nivel, "Alta")) {
     nivel <- "Alta"
     justificativa <- sprintf("Oportunidade relevante alinhada aos eixos de TIC e inovação digital: %s.", paste(found_areas, collapse = ", "))
     ideia <- sprintf("Projeto: Solução tecnológica em %s. Consórcio Recomendado: CIMATEC Digital + Startup / Empresa Usuária + Fomento à Inovação Tecnológica.", found_areas[[1]])
-  } else if (total_hits == 1) {
+  } else if (identical(adh$nivel, "Média")) {
     nivel <- "Média"
     justificativa <- sprintf("Oportunidade com aderência digital pontual em %s.", found_areas[[1]])
     ideia <- NA_character_
   } else {
     nivel <- "Baixa"
-    justificativa <- "Oportunidade sem conexão direta identificada com temas de TIC e tecnologia digital."
+    justificativa <- if (length(found_areas)) sprintf("Oportunidade com menção isolada a %s (%s), insuficiente para aderência ao núcleo.", found_areas[[1]], paste(adh$termos, collapse = ", ")) else "Oportunidade sem conexão direta identificada com temas de TIC e tecnologia digital."
     ideia <- NA_character_
   }
   
   list(
     aderencia_digital_nivel = nivel,
+    aderencia_digital_score = adh$score,
     aderencia_digital_justificativa = justificativa,
     ideia_projeto_digital = ideia
   )
@@ -2035,26 +2113,28 @@ evaluate_park_adherence <- function(titulo, descricao, texto_bruto = "", entidad
   if (hits_mineracao) found_areas <- c(found_areas, "Mineração & Siderurgia Sustentável")
   if (hits_energia_ind) found_areas <- c(found_areas, "Eficiência Energética Industrial")
   
-  if (total_hits >= 3 || (hits_manuf && hits_materiais) || (hits_auto && hits_materiais)) {
+  adh <- adherence_score_from_kws(list(kw_manuf, kw_materiais, kw_auto, kw_quimica, kw_saude, kw_mineracao, kw_energia_ind), norm_text, titulo, combo = ((hits_manuf && hits_materiais) || (hits_auto && hits_materiais)))
+  if (identical(adh$nivel, "Muito alta")) {
     nivel <- "Muito alta"
     justificativa <- sprintf("Forte aderência direta à infraestrutura de ponta do CIMATEC Park & Sede nas áreas: %s.", paste(found_areas, collapse = ", "))
     ideia <- sprintf("Projeto: Planta piloto ou protótipo industrial em %s. Consórcio Recomendado: CIMATEC Park + Indústria Âncora do Polo + EMBRAPII + Finep/BNDES.", found_areas[[1]])
-  } else if (total_hits >= 2) {
+  } else if (identical(adh$nivel, "Alta")) {
     nivel <- "Alta"
     justificativa <- sprintf("Oportunidade relevante alinhada à matriz industrial e laboratórios do Park: %s.", paste(found_areas, collapse = ", "))
     ideia <- sprintf("Projeto: Desenvolvimento de processo/produto em %s. Consórcio Recomendado: CIMATEC Park + Empresa Parceira + Linha de Fomento Industrial.", found_areas[[1]])
-  } else if (total_hits == 1) {
+  } else if (identical(adh$nivel, "Média")) {
     nivel <- "Média"
     justificativa <- sprintf("Oportunidade com potencial sinergia em %s.", found_areas[[1]])
     ideia <- NA_character_
   } else {
     nivel <- "Baixa"
-    justificativa <- "Oportunidade sem conexão direta identificada com as linhas industriais do CIMATEC Park & Sede."
+    justificativa <- if (length(found_areas)) sprintf("Oportunidade com menção isolada a %s (%s), insuficiente para aderência ao núcleo.", found_areas[[1]], paste(adh$termos, collapse = ", ")) else "Oportunidade sem conexão direta identificada com as linhas industriais do CIMATEC Park & Sede."
     ideia <- NA_character_
   }
   
   list(
     aderencia_park_nivel = nivel,
+    aderencia_park_score = adh$score,
     aderencia_park_justificativa = justificativa,
     ideia_projeto_park = ideia
   )
@@ -2132,26 +2212,28 @@ evaluate_startups_adherence <- function(titulo, descricao, texto_bruto = "", ent
   if (hits_mvp) found_areas <- c(found_areas, "Prototipagem Ágil & Validação de Mercado (PoC/MVP)")
   if (hits_internacional) found_areas <- c(found_areas, "Internacionalização de Startups")
   
-  if (total_hits >= 3 || (hits_aceleracao && (hits_mpe || hits_open_innov)) || (hits_deeptech && hits_aceleracao)) {
+  adh <- adherence_score_from_kws(list(kw_deeptech, kw_aceleracao, kw_open_innov, kw_investimento, kw_mpe_programas, kw_mvp_labs, kw_internacional), norm_text, titulo, combo = ((hits_aceleracao && (hits_mpe || hits_open_innov)) || (hits_deeptech && hits_aceleracao)))
+  if (identical(adh$nivel, "Muito alta")) {
     nivel <- "Muito alta"
     justificativa <- sprintf("Forte aderência direta a programas de aceleração, venture e apoio a Startups/MPEs nas áreas: %s.", paste(found_areas, collapse = ", "))
     ideia <- sprintf("Projeto: Programa de aceleração tecnológica ou PoC em %s. Consórcio Recomendado: Startup Inovadora + SENAI CIMATEC + Grande Empresa Parceira + Fomento Sebrae/Finep.", found_areas[[1]])
-  } else if (total_hits >= 2) {
+  } else if (identical(adh$nivel, "Alta")) {
     nivel <- "Alta"
     justificativa <- sprintf("Oportunidade relevante para o ecossistema de Startups e empresas emergentes: %s.", paste(found_areas, collapse = ", "))
     ideia <- sprintf("Projeto: Desenvolvimento de MVP/solução inovadora em %s. Consórcio Recomendado: Startup de Base Tecnológica + SENAI CIMATEC + Linha de Subvenção.", found_areas[[1]])
-  } else if (total_hits == 1) {
+  } else if (identical(adh$nivel, "Média")) {
     nivel <- "Média"
     justificativa <- sprintf("Oportunidade com potencial sinergia para Startups em %s.", found_areas[[1]])
     ideia <- NA_character_
   } else {
     nivel <- "Baixa"
-    justificativa <- "Oportunidade sem conexão direta identificada com fomento a Startups ou inovação aberta."
+    justificativa <- if (length(found_areas)) sprintf("Oportunidade com menção isolada a %s (%s), insuficiente para aderência ao núcleo.", found_areas[[1]], paste(adh$termos, collapse = ", ")) else "Oportunidade sem conexão direta identificada com fomento a Startups ou inovação aberta."
     ideia <- NA_character_
   }
   
   list(
     aderencia_startups_nivel = nivel,
+    aderencia_startups_score = adh$score,
     aderencia_startups_justificativa = justificativa,
     ideia_projeto_startups = ideia
   )
@@ -2159,3 +2241,58 @@ evaluate_startups_adherence <- function(titulo, descricao, texto_bruto = "", ent
 
 
 
+
+# ─── Núcleos e campus: fonte única de verdade ─────────────────────────────────
+# O campus exibido/filtrado passa a ser DERIVADO dos níveis de aderência dos núcleos,
+# com a mesma régua usada nas abas: um edital pertence a um campus quando a aderência
+# ao núcleo correspondente é "Média" ou superior. Assim, a aba, o selo de campus e
+# o nível nunca se contradizem, e registros antigos são recalculados a cada carga.
+NUCLEUS_CAMPUS_MAP <- c(naval = "Mar", sertao = "Sertão", aero = "Aeroespacial",
+                        digital = "Digital", park = "Sede e Park", startups = "Startups")
+CAMPUS_MIN_LEVEL <- c("Média", "Alta", "Muito alta")
+
+.nucleus_evaluators <- function() {
+  list(
+    naval = list(fn = evaluate_naval_offshore_adherence, ideia = "ideia_projeto_consorcio"),
+    sertao = list(fn = evaluate_sertao_adherence, ideia = "ideia_projeto_sertao"),
+    aero = list(fn = evaluate_aero_adherence, ideia = "ideia_projeto_aero"),
+    digital = list(fn = evaluate_digital_adherence, ideia = "ideia_projeto_digital"),
+    park = list(fn = evaluate_park_adherence, ideia = "ideia_projeto_park"),
+    startups = list(fn = evaluate_startups_adherence, ideia = "ideia_projeto_startups")
+  )
+}
+
+ensure_nucleus_levels <- function(df) {
+  if (is.null(df) || nrow(df) == 0L) return(df)
+  col <- function(nm) if (nm %in% names(df)) as.character(df[[nm]]) else rep(NA_character_, nrow(df))
+  evs <- .nucleus_evaluators()
+  for (n in names(evs)) {
+    lv <- paste0("aderencia_", n, "_nivel"); js <- paste0("aderencia_", n, "_justificativa")
+    sc <- paste0("aderencia_", n, "_score"); id <- evs[[n]]$ideia
+    lv_v <- col(lv); js_v <- col(js); id_v <- col(id)
+    sc_v <- if (sc %in% names(df)) suppressWarnings(as.numeric(df[[sc]])) else rep(NA_real_, nrow(df))
+    redo <- is.na(lv_v) | !nzchar(lv_v) | grepl(ADHERENCE_HEURISTIC_PATTERN, js_v %||% "")
+    redo[is.na(redo)] <- TRUE
+    for (i in which(redo)) {
+      r <- evs[[n]]$fn(titulo = df$titulo[[i]], descricao = df$descricao_resumida[[i]] %||% "",
+                       entidade = df$entidade[[i]] %||% "", use_ai = FALSE)
+      lv_v[[i]] <- r[[paste0("aderencia_", n, "_nivel")]] %||% "Baixa"
+      js_v[[i]] <- r[[paste0("aderencia_", n, "_justificativa")]] %||% ""
+      sc_v[[i]] <- r[[paste0("aderencia_", n, "_score")]] %||% NA_real_
+      id_v[[i]] <- r[[id]] %||% NA_character_
+    }
+    df[[lv]] <- lv_v; df[[js]] <- js_v; df[[sc]] <- sc_v; df[[id]] <- id_v
+  }
+  df
+}
+
+derive_campus_from_levels <- function(df) {
+  if (is.null(df) || nrow(df) == 0L) return(character())
+  vapply(seq_len(nrow(df)), function(i) {
+    cps <- NUCLEUS_CAMPUS_MAP[vapply(names(NUCLEUS_CAMPUS_MAP), function(n) {
+      v <- df[[paste0("aderencia_", n, "_nivel")]][[i]]
+      !is.null(v) && !is.na(v) && v %in% CAMPUS_MIN_LEVEL
+    }, logical(1))]
+    if (length(cps)) paste(unname(cps), collapse = "; ") else NA_character_
+  }, character(1))
+}

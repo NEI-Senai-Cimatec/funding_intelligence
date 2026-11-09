@@ -2,8 +2,8 @@ name: 🔄 Busca Automática de Editais
 
 on:
   schedule:
-    # 0 3 * * 1 = Toda segunda-feira às 03:00 UTC (00:00 Horário de Brasília)
-    - cron: '0 3 * * 1'
+    # 13 15 * * * = Todos os dias às 15:13 UTC (12:13 Horário de Brasília)
+    - cron: '13 15 * * *'
   workflow_dispatch: # Permite disparo manual com 1 clique na aba Actions do GitHub
 
 concurrency:
@@ -103,10 +103,6 @@ jobs:
             git commit -m "chore(auto-collect): atualização automática de editais [$(date -u +'%Y-%m-%d %H:%M UTC')]"
             git pull --rebase -X theirs origin "$CURRENT_BRANCH" || true
             git push origin HEAD:"$CURRENT_BRANCH"
-            if [ "$CURRENT_BRANCH" != "main" ]; then
-              git pull --rebase -X theirs origin main || true
-              git push origin HEAD:main || true
-            fi
           fi
 
       - name: 📦 Salvar Banco de Dados e Exportações como Artefato

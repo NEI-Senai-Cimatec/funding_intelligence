@@ -99,21 +99,20 @@ compute_adherence_score <- function(df, conn, current_query = "", signature = NU
 
   n_rows <- nrow(df)
 
-  calc_pattern_score <- function(patterns, index_vec) {
+  # Saturação: antes era a MÉDIA sobre todos os termos do perfil, então quem tinha
+  # muitos interesses salvos via notas sempre baixas (ex.: 3 de 40 termos = 7,5).
+  # Agora, casar `target` termos já vale 100 (keywords: 3; área/elegibilidade: 1).
+  calc_pattern_score <- function(patterns, index_vec, target = 3L) {
     if (n_rows == 0L || length(patterns) == 0L) return(rep(0, n_rows))
     hit_mat <- vapply(patterns, function(pat) grepl(pat, index_vec, ignore.case = TRUE, perl = TRUE), logical(n_rows))
-    if (n_rows == 1L) {
-      100 * mean(hit_mat)
-    } else if (is.matrix(hit_mat)) {
-      100 * rowMeans(hit_mat)
-    } else {
-      100 * as.numeric(hit_mat)
-    }
+    hits <- if (n_rows == 1L) sum(hit_mat) else if (is.matrix(hit_mat)) rowSums(hit_mat) else as.numeric(hit_mat)
+    goal <- max(1L, min(as.integer(target), length(patterns)))
+    100 * pmin(1, hits / goal)
   }
 
   keyword_scores <- calc_pattern_score(kw_patterns, text_index)
-  theme_scores <- calc_pattern_score(area_patterns, theme_index)
-  eligibility_scores <- calc_pattern_score(elig_patterns, elig_index)
+  theme_scores <- calc_pattern_score(area_patterns, theme_index, target = 1L)
+  eligibility_scores <- calc_pattern_score(elig_patterns, elig_index, target = 1L)
 
   funder_scores <- if (length(signature$funders) == 0L) {
     rep(0, n_rows)

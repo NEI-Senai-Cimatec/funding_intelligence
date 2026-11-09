@@ -7012,3 +7012,481 @@
 [2026-11-05 12:27:44] [WARN] Erro de execucao Playwright: too few arguments
 [2026-11-05 12:27:50] [WARN] Erro de execucao Playwright: too few arguments
 [2026-11-05 12:28:02] [WARN] Erro de execucao Playwright: too few arguments
+[2026-11-09 14:18:29] [INFO] Início da coleta oficial.
+[2026-11-09 14:18:30] [INFO] Iniciando coleta DAAD Brasil (híbrido JSON + scraping).
+[2026-11-09 14:18:30] [INFO] Fase 1: Baixando catálogo global DAAD (scholarships.js).
+[2026-11-09 14:18:30] [INFO] Iniciando coleta Grants.gov (CFDA 19.040 - Public Diplomacy).
+[2026-11-09 14:18:30] [INFO] Tentando API Grants.gov: https://simpler.grants.gov/api/opportunities/search
+[2026-11-09 14:18:30] [INFO] Iniciando coleta DOE ASCR (HPC, Quantum, AI for Science).
+[2026-11-09 14:18:30] [INFO] Tentando carregar DOE ASCR via https://science.osti.gov/ascr/Funding-Opportunities...
+[2026-11-09 14:18:30] [INFO] scholarships.js baixado: 679688 caracteres.
+[2026-11-09 14:18:31] [INFO] Tentando API Grants.gov: https://simpler.grants.gov/api/v1/opportunities/search
+[2026-11-09 14:18:31] [INFO] Catálogo global: 81 bolsas Brasil extraídas de 162 totais.
+[2026-11-09 14:18:31] [INFO] Fase 2: Fazendo scraping do listing DAAD Brasil.
+[2026-11-09 14:18:32] [INFO] Sucesso ao carregar DOE ASCR via https://science.osti.gov/ascr/Funding-Opportunities.
+[2026-11-09 14:18:32] [INFO] DOE ASCR: 1 registros finais coletados.
+[2026-11-09 14:18:32] [INFO] Iniciando coleta NSF International Collaboration (OISE).
+[2026-11-09 14:18:32] [INFO] Tentando API Grants.gov: https://simpler.grants.gov/api/search
+[2026-11-09 14:18:33] [INFO] Página 1: 5 itens extraídos (total: 5).
+[2026-11-09 14:18:34] [INFO] Página 2: 5 itens extraídos (total: 10).
+[2026-11-09 14:18:35] [INFO] Tentando API Grants.gov: https://simpler.grants.gov/search/api/search
+[2026-11-09 14:18:35] [INFO] Iniciando coleta EU Quantum Technologies via API REST...
+[2026-11-09 14:18:35] [INFO] Buscando termo: 'HORIZON-JU-EUROHPC-2026'
+[2026-11-09 14:18:36] [INFO] Página 3: 5 itens extraídos (total: 15).
+[2026-11-09 14:18:36] [INFO] Grants.gov API falhou ou vazia. Tentando HTML scraping com Playwright fallback.
+[2026-11-09 14:18:36] [INFO] Grants.gov HTML: buscando https://simpler.grants.gov/search?status=posted&fundingInstrumentType=grant&assistanceListingNumber=19.040&searchText=public%20diplomacy
+[2026-11-09 14:18:37] [WARN] curl SSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:18:37] [INFO] Página 4: 5 itens extraídos (total: 20).
+[2026-11-09 14:18:39] [INFO] Página 5: 5 itens extraídos (total: 25).
+[2026-11-09 14:18:39] [INFO] Listing completo: 25 itens de 5 páginas.
+[2026-11-09 14:18:39] [INFO] Fase 3: Mergeando catálogo JSON com listing Brasil.
+[2026-11-09 14:18:39] [INFO] Fase 3: 62 bolsas descartadas (sem correspondência no listing Brasil).
+[2026-11-09 14:18:39] [INFO] Fase 3: 19 registros mergeados (JSON + listing Brasil).
+[2026-11-09 14:18:39] [INFO] Fase 4: Buscando páginas de detalhe.
+[2026-11-09 14:18:40] [WARN] curl SSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:18:41] [WARN] curl noSSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:18:43] [WARN] curl noSSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:18:46] [INFO] Grants.gov HTML: buscando https://simpler.grants.gov/search?query=public%20diplomacy&cfda=19.040
+[2026-11-09 14:18:47] [INFO] Termo 'HORIZON-JU-EUROHPC-2026': 100 resultados brutos
+[2026-11-09 14:18:47] [INFO] Termo 'HORIZON-JU-EUROHPC-2026': 49 itens HEU quantum acumulados
+[2026-11-09 14:18:47] [INFO] Buscando termo: 'HORIZON-JU-SNS-2022'
+[2026-11-09 14:18:48] [WARN] Aquisicao rejeitada para https://www.nsf.gov/awardsearch/: empty (sem texto visível)
+[2026-11-09 14:18:48] [WARN] curl SSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:18:51] [WARN] curl SSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:18:52] [WARN] curl noSSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:18:54] [WARN] curl noSSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:18:56] [INFO] Termo 'HORIZON-JU-SNS-2022': 100 resultados brutos
+[2026-11-09 14:18:56] [INFO] Termo 'HORIZON-JU-SNS-2022': 65 itens HEU quantum acumulados
+[2026-11-09 14:18:56] [INFO] Buscando termo: 'HORIZON-CL4-2026-HUMAN'
+[2026-11-09 14:18:57] [WARN] curl SSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:18:59] [WARN] curl SSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:18:59] [WARN] curl noSSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:19:01] [WARN] curl noSSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:19:02] [INFO] Termo 'HORIZON-CL4-2026-HUMAN': 100 resultados brutos
+[2026-11-09 14:19:02] [INFO] Termo 'HORIZON-CL4-2026-HUMAN': 144 itens HEU quantum acumulados
+[2026-11-09 14:19:03] [INFO] Buscando termo: 'quantum'
+[2026-11-09 14:19:04] [WARN] curl SSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:19:04] [INFO] Grants.gov HTML: buscando https://simpler.grants.gov/search
+[2026-11-09 14:19:06] [WARN] curl SSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:19:07] [WARN] Falhas no detalhe: 8/19 (usados dados do listing/catálogo).
+[2026-11-09 14:19:07] [INFO] Fase 5: Preparando registros.
+[2026-11-09 14:19:07] [INFO] DAAD Brasil: 19 registros finais coletados.
+[2026-11-09 14:19:07] [INFO] Iniciando coleta NSF QISE International Supplements.
+[2026-11-09 14:19:08] [INFO] NSF QISE: 1 registros finais.
+[2026-11-09 14:19:08] [INFO] Iniciando coleta NSF CISE (Computing, AI, HPC).
+[2026-11-09 14:19:08] [INFO] Tentando NSF API: https://www.nsf.gov/api/v1/funding/search?directorate=CISE&page=1&pageSize=25
+[2026-11-09 14:19:08] [WARN] curl noSSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:19:09] [INFO] Tentando NSF API: https://www.nsf.gov/funding/api/search?directorate=CISE
+[2026-11-09 14:19:10] [WARN] curl noSSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:19:11] [INFO] Tentando NSF API: https://api.nsf.gov/services/v1/awards.json?keyword=CISE&printFields=id,title,fundsObligatedAmt,awardTitle,date&offset=0
+[2026-11-09 14:19:13] [INFO] NSF CISE API falhou. Tentando HTML scraping diretorate CISE.
+[2026-11-09 14:19:13] [INFO] NSF International: 10 registros finais.
+[2026-11-09 14:19:13] [INFO] Iniciando coleta DOE Quantum Genesis Initiative.
+[2026-11-09 14:19:13] [INFO] Termo 'quantum': 100 resultados brutos
+[2026-11-09 14:19:13] [INFO] Termo 'quantum': 148 itens HEU quantum acumulados
+[2026-11-09 14:19:14] [INFO] Buscando termo: 'quantum computing'
+[2026-11-09 14:19:15] [WARN] Aquisicao rejeitada para https://www.nsf.gov/funding/opportunities: empty (sem texto visível)
+[2026-11-09 14:19:16] [WARN] curl SSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:19:18] [INFO] Grants.gov HTML: 14 registros finais coletados.
+[2026-11-09 14:19:18] [INFO] Iniciando coleta DOE Genesis Mission.
+[2026-11-09 14:19:19] [WARN] Aquisicao rejeitada para https://www.nsf.gov/funding/opportunities/bio: empty (sem texto visível)
+[2026-11-09 14:19:20] [WARN] curl SSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:19:22] [WARN] curl noSSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:19:24] [WARN] Falha ao baixar PDF https://www.dol.gov/sites/dolgov/files/ETA/publications/ETAOP2022-40_AAI_Brief-Indirect_Benefits_Final_508_9-2022.pdf
+[2026-11-09 14:19:25] [WARN] curl noSSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:19:27] [WARN] Falha ao baixar PDF https://www.energy.gov/sites/default/files/2023-07/DOE Public Access Plan 2023 - Final.pdf
+[2026-11-09 14:19:27] [WARN] Aquisicao rejeitada para https://www.nsf.gov/funding/opportunities/cise: empty (sem texto visível)
+[2026-11-09 14:19:29] [WARN] Falha ao baixar PDF https://www.dol.gov/sites/dolgov/files/ETA/publications/ETAOP2022-40_AAI_Brief-Indirect_Benefits_Final_508_9-2022.pdf
+[2026-11-09 14:19:32] [INFO] Termo 'quantum computing': 100 resultados brutos
+[2026-11-09 14:19:32] [INFO] Termo 'quantum computing': 148 itens HEU quantum acumulados
+[2026-11-09 14:19:33] [INFO] Buscando termo: 'quantum communication'
+[2026-11-09 14:19:33] [WARN] Falha ao baixar PDF https://www.whitehouse.gov/wp-content/uploads/legacy_drupal_files/omb/assets/OMB/fedreg/reproducible2.pdf
+[2026-11-09 14:19:36] [WARN] curl SSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:19:39] [WARN] Falha ao baixar PDF https://www.energy.gov/sites/default/files/2023-07/DOE Public Access Plan 2023 - Final.pdf
+[2026-11-09 14:19:39] [WARN] curl SSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:19:41] [WARN] Aquisicao rejeitada para https://www.nsf.gov/funding/opportunities/eng: empty (sem texto visível)
+[2026-11-09 14:19:42] [WARN] curl noSSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:19:43] [WARN] Aquisicao rejeitada para https://www.nsf.gov/funding/opportunities/geo: empty (sem texto visível)
+[2026-11-09 14:19:45] [WARN] Aquisicao rejeitada para https://www.nsf.gov/funding/opportunities/oia: empty (sem texto visível)
+[2026-11-09 14:19:45] [WARN] Falha ao baixar PDF https://www.whitehouse.gov/wp-content/uploads/legacy_drupal_files/omb/assets/OMB/fedreg/reproducible2.pdf
+[2026-11-09 14:19:46] [WARN] curl noSSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:19:47] [WARN] Aquisicao rejeitada para https://www.nsf.gov/funding/opportunities/oise: empty (sem texto visível)
+[2026-11-09 14:19:49] [WARN] Aquisicao rejeitada para https://www.nsf.gov/funding/opportunities/mps: empty (sem texto visível)
+[2026-11-09 14:19:49] [INFO] DOE Quantum Genesis: 2 registros finais.
+[2026-11-09 14:19:50] [INFO] Iniciando coleta NSF NQNI (nsf26-505).
+[2026-11-09 14:19:51] [WARN] Aquisicao rejeitada para https://www.nsf.gov/funding/opportunities/sbe: empty (sem texto visível)
+[2026-11-09 14:19:52] [INFO] Termo 'quantum communication': 100 resultados brutos
+[2026-11-09 14:19:52] [INFO] Termo 'quantum communication': 148 itens HEU quantum acumulados
+[2026-11-09 14:19:52] [INFO] NSF NQNI: 1 registros finais.
+[2026-11-09 14:19:52] [INFO] Iniciando coleta DARPA Quantum Benchmarking Initiative.
+[2026-11-09 14:19:52] [INFO] Buscando termo: 'quantum sensors'
+[2026-11-09 14:19:53] [WARN] Aquisicao rejeitada para https://www.nsf.gov/funding/opportunities/edu: empty (sem texto visível)
+[2026-11-09 14:19:53] [INFO] NSF CISE: 20 registros finais.
+[2026-11-09 14:19:54] [WARN] curl SSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:19:55] [WARN] Aquisicao rejeitada para https://sam.gov/opp/4a1aad28cb2a4b2ab1ee408c639202ef/view: empty (sem texto visível)
+[2026-11-09 14:19:56] [WARN] curl SSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:19:57] [WARN] curl noSSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:19:57] [WARN] Aquisicao rejeitada para https://sam.gov/workspace/contract/opp/3fc74819705a4a81b205327ba4537973/view: empty (sem texto visível)
+[2026-11-09 14:19:59] [WARN] curl noSSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:00] [INFO] DARPA QBI: 2 registros finais.
+[2026-11-09 14:20:00] [INFO] Coletando FAPESB via categoria (ano=2026, status=Abertos)...
+[2026-11-09 14:20:02] [INFO] DOE Genesis: 4 registros finais.
+[2026-11-09 14:20:02] [INFO] Termo 'quantum sensors': 100 resultados brutos
+[2026-11-09 14:20:02] [INFO] Termo 'quantum sensors': 148 itens HEU quantum acumulados
+[2026-11-09 14:20:02] [INFO] Iniciando coleta Horizon Europe via API REST...
+[2026-11-09 14:20:02] [INFO] Buscando termo: HORIZON-EIC-2026-PRIZE
+[2026-11-09 14:20:03] [INFO] Buscando termo: 'quantum technology'
+[2026-11-09 14:20:04] [WARN] curl SSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:04] [WARN] curl SSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:06] [WARN] curl SSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:07] [WARN] curl SSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:08] [WARN] curl noSSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:09] [WARN] curl noSSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:10] [WARN] curl noSSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:11] [WARN] curl noSSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:13] [INFO] Termo 'HORIZON-EIC-2026-PRIZE': 100 resultados brutos
+[2026-11-09 14:20:13] [INFO] Termo 'HORIZON-EIC-2026-PRIZE': 4 itens HEU acumulados (brutos)
+[2026-11-09 14:20:13] [INFO] Buscando termo: HORIZON-EIC-2026-ACCELERATOR
+[2026-11-09 14:20:14] [WARN] curl SSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:15] [INFO] Termo 'quantum technology': 100 resultados brutos
+[2026-11-09 14:20:15] [INFO] Termo 'quantum technology': 148 itens HEU quantum acumulados
+[2026-11-09 14:20:15] [INFO] Deduplicando 148 itens brutos...
+[2026-11-09 14:20:15] [INFO] Apos deduplicacao: 22 itens unicos
+[2026-11-09 14:20:15] [INFO] QUANTUM: 22 registros finais coletados
+[2026-11-09 14:20:15] [INFO] Retornando lista com 34 registros
+[2026-11-09 14:20:16] [INFO] Iniciando coleta ERC via API REST...
+[2026-11-09 14:20:16] [INFO] Buscando termo: ERC AdG 2026
+[2026-11-09 14:20:16] [WARN] curl SSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:17] [WARN] curl noSSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:18] [WARN] curl SSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:19] [WARN] curl noSSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:20] [WARN] curl SSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:21] [INFO] Termo 'HORIZON-EIC-2026-ACCELERATOR': 100 resultados brutos
+[2026-11-09 14:20:21] [INFO] Termo 'HORIZON-EIC-2026-ACCELERATOR': 36 itens HEU acumulados (brutos)
+[2026-11-09 14:20:21] [WARN] Falha ao requisitar https://www.fapesb.ba.gov.br/category/edital/ apos tentar todos os metodos (httr2, Playwright, Chromote Stealth)
+[2026-11-09 14:20:21] [ERROR] FAPESB: falha ao buscar pagina de categoria
+[2026-11-09 14:20:21] [ERROR] Falha ao buscar pagina de categoria FAPESB
+[2026-11-09 14:20:21] [INFO] Iniciando coleta UNDP Brasil via componente externo...
+[2026-11-09 14:20:22] [WARN] curl noSSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:22] [INFO] Buscando termo: HORIZON-EIC-2026-PATHFINDER
+[2026-11-09 14:20:22] [INFO] Buscando componente de dados...
+[2026-11-09 14:20:23] [WARN] curl SSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:23] [INFO] Parseando JSON do componente JavaScript...
+[2026-11-09 14:20:23] [INFO] Componente retornou 7 registros.
+[2026-11-09 14:20:24] [INFO] Detalhe parseado com sucesso.
+[2026-11-09 14:20:24] [WARN] curl noSSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:24] [WARN] curl SSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:25] [WARN] curl noSSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:26] [INFO] Progresso: 5/7 registros processados.
+[2026-11-09 14:20:26] [INFO] Iniciando coleta EMBRAPII (embrapii.org.br/transparencia/).
+[2026-11-09 14:20:27] [INFO] UNDP: 7 registros finais coletados.
+[2026-11-09 14:20:27] [INFO] Iniciando coleta Alexander von Humboldt Foundation.
+[2026-11-09 14:20:27] [INFO] Buscando fellowships...
+[2026-11-09 14:20:27] [INFO] Termo 'ERC AdG 2026': 100 resultados brutos
+[2026-11-09 14:20:27] [INFO] Termo 'ERC AdG 2026': 0 itens ERC acumulados (brutos)
+[2026-11-09 14:20:27] [WARN] curl noSSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:28] [INFO] Buscando termo: ERC PoC 2026
+[2026-11-09 14:20:28] [INFO] Encontradas 30 chamadas unicas na pagina de transparencia.
+[2026-11-09 14:20:28] [INFO] Filter 'schollarships': 10 programas encontrados.
+[2026-11-09 14:20:28] [INFO] Detalhe parseado com sucesso (primeira chamada).
+[2026-11-09 14:20:28] [INFO] Termo 'HORIZON-EIC-2026-PATHFINDER': 100 resultados brutos
+[2026-11-09 14:20:28] [INFO] Termo 'HORIZON-EIC-2026-PATHFINDER': 43 itens HEU acumulados (brutos)
+[2026-11-09 14:20:29] [INFO] Buscando termo: HORIZON-MSCA-2026-PF
+[2026-11-09 14:20:29] [INFO] Filter 'award': 9 programas encontrados.
+[2026-11-09 14:20:29] [WARN] curl SSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:30] [INFO] Total de 18 programas únicos após dedup.
+[2026-11-09 14:20:32] [WARN] curl SSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:32] [WARN] curl SSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:33] [WARN] curl noSSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:34] [INFO] Progresso: 5/18 detalhes coletados.
+[2026-11-09 14:20:35] [WARN] curl SSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:36] [WARN] curl noSSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:38] [INFO] Progresso: 10/18 detalhes coletados.
+[2026-11-09 14:20:39] [WARN] curl noSSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:39] [INFO] Termo 'ERC PoC 2026': 100 resultados brutos
+[2026-11-09 14:20:39] [INFO] Termo 'ERC PoC 2026': 0 itens ERC acumulados (brutos)
+[2026-11-09 14:20:39] [INFO] Deduplicando 0 itens brutos...
+[2026-11-09 14:20:39] [INFO] Após deduplicação: 0 itens únicos
+[2026-11-09 14:20:39] [INFO] Total de itens ERC coletados: 0
+[2026-11-09 14:20:39] [WARN] Nenhum item ERC encontrado
+[2026-11-09 14:20:42] [WARN] curl noSSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:20:42] [INFO] Progresso: 15/18 detalhes coletados.
+[2026-11-09 14:20:45] [INFO] HUMBOLDT: 18 registros finais coletados.
+[2026-11-09 14:20:45] [INFO] Iniciando coleta SEBRAE & Edital de Inovação para a Indústria...
+[2026-11-09 14:20:45] [INFO] SEBRAE: 2 registros coletados.
+[2026-11-09 14:20:45] [INFO] Iniciando coleta FINEP via API REST...
+[2026-11-09 14:20:45] [INFO] Buscando página 1: https://www.finep.gov.br/o/c/chamadapublicas?sort=dataDePublicacao:desc&page=1&pageSize=250
+[2026-11-09 14:20:46] [INFO] Total de registros: 479
+[2026-11-09 14:20:46] [INFO] Página 1: 250 itens total, 32 filtrados (Aberta)
+[2026-11-09 14:20:47] [INFO] Buscando página 2: https://www.finep.gov.br/o/c/chamadapublicas?sort=dataDePublicacao:desc&page=2&pageSize=250
+[2026-11-09 14:20:47] [INFO] Página 2: 229 itens total, 0 filtrados (Aberta)
+[2026-11-09 14:20:47] [INFO] Total de itens coletados (Aberta): 32
+[2026-11-09 14:20:47] [WARN] Limitado a 20 registros
+[2026-11-09 14:20:48] [INFO] FINEP: 20 registros finais coletados
+[2026-11-09 14:20:49] [INFO] Progresso: 10/30 chamadas processadas.
+[2026-11-09 14:20:50] [INFO] [FINEP Aero] Iniciando coleta FINEP Aeroespacial e Defesa...
+[2026-11-09 14:20:50] [INFO] Iniciando coleta FINEP via API REST...
+[2026-11-09 14:20:50] [INFO] Buscando página 1: https://www.finep.gov.br/o/c/chamadapublicas?sort=dataDePublicacao:desc&page=1&pageSize=250
+[2026-11-09 14:20:51] [INFO] Total de registros: 479
+[2026-11-09 14:20:51] [INFO] Página 1: 250 itens total, 32 filtrados (Aberta)
+[2026-11-09 14:20:51] [INFO] Buscando página 2: https://www.finep.gov.br/o/c/chamadapublicas?sort=dataDePublicacao:desc&page=2&pageSize=250
+[2026-11-09 14:20:51] [INFO] Página 2: 229 itens total, 0 filtrados (Aberta)
+[2026-11-09 14:20:51] [INFO] Total de itens coletados (Aberta): 32
+[2026-11-09 14:20:52] [INFO] FINEP: 32 registros finais coletados
+[2026-11-09 14:20:53] [WARN] Falha ao requisitar https://ieav.dcta.mil.br/index.php/editais apos tentar todos os metodos (httr2, Playwright, Chromote Stealth)
+[2026-11-09 14:20:53] [ERROR] [fab_dcta] Aquisicao falhou (network_error): No module named 'playwright' | https://ieav.dcta.mil.br/index.php/editais
+[2026-11-09 14:20:56] [INFO] Termo 'HORIZON-MSCA-2026-PF': 100 resultados brutos
+[2026-11-09 14:20:56] [INFO] Termo 'HORIZON-MSCA-2026-PF': 79 itens HEU acumulados (brutos)
+[2026-11-09 14:20:57] [INFO] Buscando termo: HORIZON-MSCA-2026-DN
+[2026-11-09 14:20:58] [WARN] curl SSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:21:00] [WARN] curl SSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:21:00] [INFO] [CODEVASF] Iniciando coleta CODEVASF (Sertão & Bacia do São Francisco)...
+[2026-11-09 14:21:01] [WARN] Falha ao requisitar https://www.codevasf.gov.br/acesso-a-informacao/licitacoes-e-editais apos tentar todos os metodos (httr2, Playwright, Chromote Stealth)
+[2026-11-09 14:21:01] [INFO] [CODEVASF] CODEVASF: 1 registros finais coletados.
+[2026-11-09 14:21:02] [WARN] curl noSSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:21:04] [WARN] curl noSSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:21:05] [INFO] Progresso: 20/30 chamadas processadas.
+[2026-11-09 14:21:06] [INFO] Termo 'HORIZON-MSCA-2026-DN': 100 resultados brutos
+[2026-11-09 14:21:06] [INFO] Termo 'HORIZON-MSCA-2026-DN': 113 itens HEU acumulados (brutos)
+[2026-11-09 14:21:07] [INFO] Buscando termo: HORIZON-MSCA-2026-POSTDOC
+[2026-11-09 14:21:08] [WARN] curl SSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:21:10] [WARN] curl SSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:21:11] [WARN] curl noSSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:21:13] [WARN] curl noSSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:21:14] [WARN] Ambiguidade de data: '08/12/2026'
+[2026-11-09 14:21:14] [WARN] Ambiguidade de data: '11/12/2026'
+[2026-11-09 14:21:14] [WARN] Ambiguidade de data: '03/11/2026'
+[2026-11-09 14:21:14] [WARN] Ambiguidade de data: '12/02/2027'
+[2026-11-09 14:21:14] [WARN] Ambiguidade de data: '04/12/2026'
+[2026-11-09 14:21:14] [WARN] Ambiguidade de data: '03/09/2026'
+[2026-11-09 14:21:14] [WARN] Ambiguidade de data: '07/10/2026'
+[2026-11-09 14:21:14] [WARN] Ambiguidade de data: '07/01/2027'
+[2026-11-09 14:21:14] [WARN] Ambiguidade de data: '09/11/2026'
+[2026-11-09 14:21:14] [WARN] Ambiguidade de data: '07/10/2026'
+[2026-11-09 14:21:14] [WARN] Ambiguidade de data: '07/01/2027'
+[2026-11-09 14:21:14] [WARN] Ambiguidade de data: '07/10/2026'
+[2026-11-09 14:21:14] [WARN] Ambiguidade de data: '07/01/2027'
+[2026-11-09 14:21:14] [INFO] [SUDENE] Iniciando coleta SUDENE...
+[2026-11-09 14:21:15] [INFO] Termo 'HORIZON-MSCA-2026-POSTDOC': 100 resultados brutos
+[2026-11-09 14:21:15] [INFO] Termo 'HORIZON-MSCA-2026-POSTDOC': 120 itens HEU acumulados (brutos)
+[2026-11-09 14:21:16] [INFO] Buscando termo: HORIZON-MSCA-2026-DOCTORAL
+[2026-11-09 14:21:16] [INFO] [SUDENE] SUDENE: 1 registros finais coletados.
+[2026-11-09 14:21:16] [INFO] Iniciando coleta NEH (National Endowment for the Humanities).
+[2026-11-09 14:21:17] [WARN] curl SSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:21:18] [INFO] Progresso: 30/30 chamadas processadas.
+[2026-11-09 14:21:18] [INFO] EMBRAPII: 30 registros finais coletados.
+[2026-11-09 14:21:19] [WARN] curl SSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:21:19] [INFO] Bloqueio de CDN/CAPTCHA (status 200) detectado via httr2 para https://business.esa.int/funding. Acionando fallbacks...
+[2026-11-09 14:21:19] [WARN] Falha ao requisitar https://business.esa.int/funding apos tentar todos os metodos (httr2, Playwright, Chromote Stealth)
+[2026-11-09 14:21:19] [ERROR] Collector 'Generic HTML scraper' falhou para esa_solutions: Erro ao carregar a pagina inicial: https://business.esa.int/funding (network_error)
+[2026-11-09 14:21:19] [WARN] curl noSSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:21:21] [WARN] curl noSSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:21:22] [INFO] Termo 'HORIZON-MSCA-2026-DOCTORAL': 100 resultados brutos
+[2026-11-09 14:21:22] [INFO] Termo 'HORIZON-MSCA-2026-DOCTORAL': 127 itens HEU acumulados (brutos)
+[2026-11-09 14:21:23] [INFO] Buscando termo: HORIZON-WIDERA-ERC-POC
+[2026-11-09 14:21:26] [WARN] Falha ao requisitar https://www.funcap.ce.gov.br/editais/ apos tentar todos os metodos (httr2, Playwright, Chromote Stealth)
+[2026-11-09 14:21:26] [WARN] [funcap] Página principal indisponível (tls_error: Failed to perform HTTP request. | Caused by error in `curl::curl_fetch_memory()`: | ! SSL peer certificate or SSH remote key was not OK [www.ce.gov.br]: | SSL certificate OpenSSL verify result: unable to get local issuer certificate (20)); consultada plataforma oficial Montenegro.
+[2026-11-09 14:21:28] [WARN] curl SSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:21:34] [WARN] curl SSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:21:39] [WARN] curl noSSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:21:44] [WARN] Aquisicao rejeitada para https://sam.gov/workspace/contract/opp/fa3f3a1af846479f981c5a46c6ef1d22/view: empty (sem texto visível)
+[2026-11-09 14:21:44] [WARN] curl noSSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:21:49] [WARN] Ambiguidade de data: '6/3/2025'
+[2026-11-09 14:21:49] [WARN] Ambiguidade de data: '6/5/2025'
+[2026-11-09 14:21:49] [WARN] Ambiguidade de data: '6/10/2025'
+[2026-11-09 14:21:49] [WARN] Ambiguidade de data: '6/12/2025'
+[2026-11-09 14:21:49] [WARN] Ambiguidade de data: '4/11/24'
+[2026-11-09 14:21:49] [WARN] Ambiguidade de data: '5/1/24'
+[2026-11-09 14:21:54] [WARN] Ambiguidade de data: '11/02/2026'
+[2026-11-09 14:22:25] [INFO] Termo 'HORIZON-WIDERA-ERC-POC': 100 resultados brutos
+[2026-11-09 14:22:25] [INFO] Termo 'HORIZON-WIDERA-ERC-POC': 135 itens HEU acumulados (brutos)
+[2026-11-09 14:22:25] [INFO] Buscando termo: HORIZON-WIDERA-ERC-ADG
+[2026-11-09 14:22:27] [WARN] curl SSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:22:27] [WARN] Falha ao requisitar https://www2.facepe.br/fomento/valores-vigentes/ apos tentar todos os metodos (httr2, Playwright, Chromote Stealth)
+[2026-11-09 14:22:29] [WARN] curl SSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:22:30] [WARN] Falha ao baixar PDF https://www.gov.br/governodigital/pt-br/privacidade-e-seguranca/ppsi/modelo_ppdp.pdf
+[2026-11-09 14:22:31] [WARN] curl noSSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:22:33] [WARN] curl noSSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:22:36] [INFO] Termo 'HORIZON-WIDERA-ERC-ADG': 100 resultados brutos
+[2026-11-09 14:22:36] [INFO] Termo 'HORIZON-WIDERA-ERC-ADG': 146 itens HEU acumulados (brutos)
+[2026-11-09 14:22:36] [INFO] Buscando termo: HORIZON-WIDERA-TWINNING
+[2026-11-09 14:22:37] [WARN] curl SSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:22:39] [WARN] curl SSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:22:40] [WARN] curl noSSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:22:41] [WARN] curl noSSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:22:42] [INFO] Termo 'HORIZON-WIDERA-TWINNING': 100 resultados brutos
+[2026-11-09 14:22:42] [INFO] Termo 'HORIZON-WIDERA-TWINNING': 181 itens HEU acumulados (brutos)
+[2026-11-09 14:22:43] [INFO] Buscando termo: HORIZON-WIDERA-2026-NCP
+[2026-11-09 14:22:44] [WARN] curl SSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:22:46] [WARN] Ambiguidade de data: '11/08/2026'
+[2026-11-09 14:22:46] [WARN] Ambiguidade de data: '11/08/2026'
+[2026-11-09 14:22:46] [WARN] curl SSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:22:47] [WARN] curl noSSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:22:49] [WARN] curl noSSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:22:50] [WARN] Aquisicao rejeitada para https://patronage.fapema.br/: login (página de login)
+[2026-11-09 14:22:52] [INFO] Termo 'HORIZON-WIDERA-2026-NCP': 100 resultados brutos
+[2026-11-09 14:22:52] [INFO] Termo 'HORIZON-WIDERA-2026-NCP': 203 itens HEU acumulados (brutos)
+[2026-11-09 14:22:52] [INFO] Buscando termo: HORIZON-WIDERA-2026-COFUND
+[2026-11-09 14:22:54] [WARN] curl SSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:22:56] [WARN] curl SSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:22:57] [WARN] curl noSSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:22:59] [WARN] curl noSSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:23:02] [WARN] curl CLI: reached elapsed time limit
+[2026-11-09 14:23:02] [WARN] Todas as tentativas falharam. Ultimo erro: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL r
+[2026-11-09 14:23:02] [WARN] Resposta vazia ou inválida para 'HORIZON-WIDERA-2026-COFUND'
+[2026-11-09 14:23:02] [INFO] Buscando termo: HORIZON-CL3-2026
+[2026-11-09 14:23:03] [WARN] curl SSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:23:04] [WARN] curl SSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:23:05] [WARN] curl noSSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:23:07] [WARN] curl noSSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:23:08] [INFO] Termo 'HORIZON-CL3-2026': 100 resultados brutos
+[2026-11-09 14:23:08] [INFO] Termo 'HORIZON-CL3-2026': 274 itens HEU acumulados (brutos)
+[2026-11-09 14:23:08] [INFO] Buscando termo: HORIZON-CL5-2026
+[2026-11-09 14:23:09] [WARN] curl SSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:23:11] [WARN] curl SSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:23:11] [WARN] curl noSSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:23:13] [WARN] curl noSSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:23:14] [INFO] Termo 'HORIZON-CL5-2026': 100 resultados brutos
+[2026-11-09 14:23:14] [INFO] Termo 'HORIZON-CL5-2026': 332 itens HEU acumulados (brutos)
+[2026-11-09 14:23:15] [INFO] Buscando termo: HORIZON-CL2-2026
+[2026-11-09 14:23:15] [WARN] curl SSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:23:17] [WARN] curl SSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:23:18] [WARN] curl noSSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:23:20] [WARN] curl noSSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:23:21] [INFO] Termo 'HORIZON-CL2-2026': 100 resultados brutos
+[2026-11-09 14:23:21] [INFO] Termo 'HORIZON-CL2-2026': 385 itens HEU acumulados (brutos)
+[2026-11-09 14:23:22] [INFO] Buscando termo: HORIZON-CL4-2026-HUMAN
+[2026-11-09 14:23:23] [WARN] curl SSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:23:25] [WARN] curl SSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:23:25] [WARN] curl noSSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:23:27] [WARN] curl noSSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:23:28] [INFO] Termo 'HORIZON-CL4-2026-HUMAN': 100 resultados brutos
+[2026-11-09 14:23:28] [INFO] Termo 'HORIZON-CL4-2026-HUMAN': 464 itens HEU acumulados (brutos)
+[2026-11-09 14:23:29] [INFO] Buscando termo: HORIZON-CL5-2026-ENERGY
+[2026-11-09 14:23:29] [WARN] curl SSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:23:31] [WARN] curl SSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:23:32] [WARN] curl noSSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:23:34] [WARN] curl noSSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:23:35] [INFO] Termo 'HORIZON-CL5-2026-ENERGY': 100 resultados brutos
+[2026-11-09 14:23:35] [INFO] Termo 'HORIZON-CL5-2026-ENERGY': 498 itens HEU acumulados (brutos)
+[2026-11-09 14:23:35] [INFO] Buscando termo: HORIZON-CL5-2026-CLIMATE
+[2026-11-09 14:23:36] [WARN] curl SSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:23:38] [WARN] curl SSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:23:38] [WARN] curl noSSL tentativa 1: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:23:40] [WARN] curl noSSL tentativa 2: Failure when receiving data from the peer [api.tech.ec.europa.eu]: | OpenSSL SSL_read: OpenSSL/3.5.5: error:0A000126:SSL routines::unexpected eof while reading, errno 0
+[2026-11-09 14:23:41] [INFO] Termo 'HORIZON-CL5-2026-CLIMATE': 100 resultados brutos
+[2026-11-09 14:23:41] [INFO] Termo 'HORIZON-CL5-2026-CLIMATE': 551 itens HEU acumulados (brutos)
+[2026-11-09 14:23:41] [INFO] Deduplicando 551 itens brutos...
+[2026-11-09 14:23:41] [INFO] Após deduplicação: 59 itens únicos
+[2026-11-09 14:23:41] [INFO] Total de itens HEU coletados: 59
+[2026-11-09 14:23:41] [WARN] 54 registro(s) HEU sem data_limite. Tentando fallback CORDIS API...
+[2026-11-09 14:23:42] [INFO] Iniciando coleta PNCP Governo Federal & Ministérios...
+[2026-11-09 14:23:43] [INFO] PNCP Gov: 0 registros coletados.
+[2026-11-09 14:23:43] [INFO] Iniciando coleta FAPESP...
+[2026-11-09 14:23:43] [INFO] FAPESP: 2 registros coletados.
+[2026-11-09 14:23:43] [INFO] Iniciando coleta FAPERJ...
+[2026-11-09 14:23:43] [INFO] FAPERJ: 1 registros coletados.
+[2026-11-09 14:23:44] [INFO] HEU: 59 registros finais coletados
+[2026-11-09 14:23:44] [INFO] Retornando lista com 34 registros
+[2026-11-09 14:24:01] [WARN] Ambiguidade de data: '15/01/08'
+[2026-11-09 14:24:06] [WARN] Ambiguidade de data: '09/10/2026'
+[2026-11-09 14:24:10] [WARN] Ambiguidade de data: '04/03/2015'
+[2026-11-09 14:24:10] [WARN] Ambiguidade de data: '04/03/2015'
+[2026-11-09 14:24:14] [WARN] Aquisicao rejeitada para https://sc.gov.br/: empty (sem texto visível)
+[2026-11-09 14:25:45] [INFO] Fonte em processamento: daad | https://www.daad-brasil.org/pt/bolsas/busca/
+[2026-11-09 14:26:08] [INFO] [daad] sucesso: 12 registro(s) processado(s)
+[2026-11-09 14:26:09] [INFO] Fonte em processamento: quantum | https://api.tech.ec.europa.eu/search-api/prod/rest/search?apiKey=SEDIA&text=quantum
+[2026-11-09 14:26:10] [INFO] [quantum] vazio: 0 registros apos a validacao (coletor sem contrato de diagnostico).
+[2026-11-09 14:26:11] [INFO] Fonte em processamento: grants_gov | https://simpler.grants.gov/search
+[2026-11-09 14:26:11] [WARN] data_inconsistente: titulo 'Mission Spain Public Diplomacy NOFO Defensa y Yo 5.0, 2024-2025' | data_limite 2026-05-13 | fonte grants_gov
+[2026-11-09 14:26:11] [WARN] data_inconsistente: titulo 'Mission Spain Public Diplomacy 2022 Annual Program Statement' | data_limite 2026-05-13 | fonte grants_gov
+[2026-11-09 14:26:11] [WARN] data_inconsistente: titulo 'Public Affairs Section Notice of Funding Opportunity 2020' | data_limite 2026-05-13 | fonte grants_gov
+[2026-11-09 14:26:36] [INFO] [grants_gov] sucesso: 14 registro(s) processado(s)
+[2026-11-09 14:26:38] [INFO] Fonte em processamento: doe_ascr | https://science.osti.gov/ascr/Funding-Opportunities
+[2026-11-09 14:26:42] [INFO] [doe_ascr] sucesso: 1 registro(s) processado(s)
+[2026-11-09 14:26:44] [INFO] Fonte em processamento: nsf_international | https://www.nsf.gov/oise/international-collaborations
+[2026-11-09 14:27:02] [INFO] [nsf_international] sucesso: 10 registro(s) processado(s) (TRUNCADO por max_records). 139 candidato(s) avaliado(s); 20 valido(s); TRUNCADO por max_records.
+[2026-11-09 14:27:04] [INFO] Fonte em processamento: nsf_qise | https://www.nsf.gov/funding/opportunities/dcl-international-collaboration-supplements-quantum-information
+[2026-11-09 14:27:08] [INFO] [nsf_qise] sucesso: 1 registro(s) processado(s)
+[2026-11-09 14:27:09] [INFO] Fonte em processamento: nsf_cise | https://www.nsf.gov/funding/find-by-directorate
+[2026-11-09 14:27:10] [INFO] [nsf_cise] vazio: 0 registros apos a validacao (coletor sem contrato de diagnostico).
+[2026-11-09 14:27:11] [INFO] Fonte em processamento: doe_quantum_genesis | https://www.energy.gov/science/articles/energy-department-announces-initiative-create-and-deploy-worlds-first
+[2026-11-09 14:27:17] [INFO] [doe_quantum_genesis] sucesso: 2 registro(s) processado(s)
+[2026-11-09 14:27:19] [INFO] Fonte em processamento: doe_genesis | https://www.energy.gov/genesis
+[2026-11-09 14:27:29] [ERROR] [doe_genesis] Falha de persistencia: [doe_genesis_f0975d2af713c24f] Failed to fetch row : ERROR:  duplicate key value violates unique constraint "oportunidades_hash_deduplicacao_key" | DETAIL:  Key (hash_deduplicacao)=(f0975d2af713c24f) already exists. | 
+[2026-11-09 14:27:30] [WARN] [doe_genesis] parcial: Persistencia parcial: 2 de 4 registro(s) gravados. Erro: [doe_genesis_f0975d2af713c24f] Failed to fetch row : ERROR:  duplicate key value violates unique constraint "oportunidades_hash_deduplicacao_key" | DETAIL:  Key (hash_deduplicacao)=(f0975d2af713c24f) already exists. | 
+[2026-11-09 14:27:31] [INFO] Fonte em processamento: nsf_nqni | https://www.nsf.gov/funding/opportunities/nqni-national-quantum-nanotechnology-infrastructure/nsf26-505/solicitation
+[2026-11-09 14:27:36] [INFO] [nsf_nqni] sucesso: 1 registro(s) processado(s)
+[2026-11-09 14:27:37] [INFO] Fonte em processamento: darpa_quantum_benchmarking | https://www.darpa.mil/research/programs/quantum-benchmarking-initiative
+[2026-11-09 14:27:43] [INFO] [darpa_quantum_benchmarking] sucesso: 2 registro(s) processado(s)
+[2026-11-09 14:27:44] [INFO] Fonte em processamento: capes | https://www.gov.br/capes/pt-br/assuntos/editais-e-resultados-capes
+[2026-11-09 14:27:56] [INFO] [capes] sucesso: 6 registro(s) processado(s)
+[2026-11-09 14:27:58] [INFO] Fonte em processamento: fapesb | https://www.fapesb.ba.gov.br/category/edital/aberto/
+[2026-11-09 14:27:58] [WARN] [fapesb] erro: Nenhuma pagina consultada e nenhum registro: coleta nao realizada (nao e sucesso).
+[2026-11-09 14:28:00] [INFO] Fonte em processamento: horizon_europe | https://api.tech.ec.europa.eu/search-api/prod/rest/search?apiKey=SEDIA
+[2026-11-09 14:28:00] [WARN] Pacote polyglotr nao instalado. Traducao ignorada. Instale com: install.packages('polyglotr')
+[2026-11-09 14:28:15] [INFO] [horizon_europe] sucesso: 8 registro(s) processado(s)
+[2026-11-09 14:28:17] [INFO] Fonte em processamento: erc | https://api.tech.ec.europa.eu/search-api/prod/rest/search?apiKey=SEDIA&text=ERC
+[2026-11-09 14:28:17] [WARN] [erc] erro: Nenhuma pagina consultada e nenhum registro: coleta nao realizada (nao e sucesso).
+[2026-11-09 14:28:19] [INFO] Fonte em processamento: undp | https://www.undp.org/pt/brazil/licitacoes
+[2026-11-09 14:28:26] [INFO] [undp] sucesso: 3 registro(s) processado(s)
+[2026-11-09 14:28:28] [INFO] Fonte em processamento: embrapii | https://embrapii.org.br/transparencia/
+[2026-11-09 14:28:54] [INFO] [embrapii] sucesso: 15 registro(s) processado(s)
+[2026-11-09 14:28:56] [INFO] Fonte em processamento: humboldt | https://www.humboldt-foundation.de/en/apply/sponsorship-programmes/programmes-a-to-z
+[2026-11-09 14:29:25] [INFO] [humboldt] sucesso: 17 registro(s) processado(s)
+[2026-11-09 14:29:27] [INFO] Fonte em processamento: cnpq | https://www.gov.br/cnpq/pt-br/chamadas/abertas-para-submissao
+[2026-11-09 14:29:39] [INFO] [cnpq] sucesso: 6 registro(s) processado(s)
+[2026-11-09 14:29:41] [INFO] Fonte em processamento: sebrae | https://sebrae.com.br/sites/PortalSebrae/canais_adicionais/conheca_editais
+[2026-11-09 14:29:46] [INFO] [sebrae] sucesso: 2 registro(s) processado(s)
+[2026-11-09 14:29:48] [INFO] Fonte em processamento: finep | https://www.finep.gov.br/o/c/chamadapublicas?sort=dataDePublicacao:desc&pageSize=250
+[2026-11-09 14:30:19] [INFO] [finep] sucesso: 18 registro(s) processado(s)
+[2026-11-09 14:30:21] [INFO] Fonte em processamento: aeb | https://www.gov.br/aeb/pt-br/acesso-a-informacao/concurso-e-processos-seletivos
+[2026-11-09 14:30:25] [WARN] [aeb] parcial: 1 registro(s) processado(s). 1 item(ns) de processos seletivos; 1 concurso(s) de cargo excluidos; 1 detalhe(s), 1 falha(s).
+[2026-11-09 14:30:26] [INFO] Fonte em processamento: finep_aero | https://www.finep.gov.br/oportunidades
+[2026-11-09 14:30:32] [INFO] [finep_aero] sucesso: 2 registro(s) processado(s)
+[2026-11-09 14:30:34] [INFO] Fonte em processamento: fab_dcta | https://ieav.dcta.mil.br/index.php/editais
+[2026-11-09 14:30:34] [WARN] [fab_dcta] erro: [erro_rede] Aquisicao falhou (network_error): No module named 'playwright'
+[2026-11-09 14:30:36] [INFO] Fonte em processamento: bnb_fundeci | https://www.bnb.gov.br/fundeci/editais
+[2026-11-09 14:31:01] [INFO] [bnb_fundeci] sucesso: 14 registro(s) processado(s). 14 edital(is) FUNDECI; 0 com inscrição aberta (derivado); 2 detalhe(s) consultado(s), 0 falha(s).
+[2026-11-09 14:31:02] [INFO] Fonte em processamento: codevasf | https://www.codevasf.gov.br/acesso-a-informacao/licitacoes-e-editais
+[2026-11-09 14:31:06] [INFO] [codevasf] sucesso: 1 registro(s) processado(s)
+[2026-11-09 14:31:08] [INFO] Fonte em processamento: embrapa | https://www.embrapa.br/acessoainformacao/editais
+[2026-11-09 14:31:14] [INFO] [embrapa] sucesso: 2 registro(s) processado(s). Pagina oficial lista licitacoes administrativas: 50 item(ns) avaliados, 2 no escopo de fomento a pesquisa. Nenhuma URL alternativa foi assumida; procurar secao oficial de pesquisa/cooperacao/inovacao.
+[2026-11-09 14:31:15] [INFO] Fonte em processamento: sudene | https://pncp.gov.br/app/editais?q=533014&status=todos&pagina=1&tam_pagina=100&tipos=1
+[2026-11-09 14:31:19] [INFO] [sudene] sucesso: 1 registro(s) processado(s)
+[2026-11-09 14:31:21] [INFO] Fonte em processamento: neh | https://www.neh.gov/grants
+[2026-11-09 14:31:22] [INFO] [neh] vazio: 0 registros apos a validacao (coletor sem contrato de diagnostico).
+[2026-11-09 14:31:23] [INFO] Fonte em processamento: esa_solutions | https://business.esa.int/funding
+[2026-11-09 14:31:23] [ERROR] Falha na fonte esa_solutions: Erro ao carregar a pagina inicial: https://business.esa.int/funding (network_error)
+[2026-11-09 14:31:24] [INFO] Fonte em processamento: nasa_sbir | https://sbir.nasa.gov/solicitations
+[2026-11-09 14:31:41] [INFO] [nasa_sbir] sucesso: 9 registro(s) processado(s). 13 candidato(s) avaliado(s); 13 valido(s).
+[2026-11-09 14:31:42] [INFO] Fonte em processamento: facepe | https://www.facepe.br/editais/
+[2026-11-09 14:32:12] [INFO] [facepe] sucesso: 17 registro(s) processado(s) (TRUNCADO por max_records). 163 candidato(s) avaliado(s); 20 valido(s); TRUNCADO por max_records.
+[2026-11-09 14:32:13] [INFO] Fonte em processamento: funcap | https://www.funcap.ce.gov.br/editais/
+[2026-11-09 14:32:47] [WARN] [funcap] parcial: 20 registro(s) processado(s). 20 edital(is) na plataforma Montenegro (seção Abertos: 0 linha(s)); fonte usada: https://montenegro.funcap.ce.gov.br/sugba/editais/index_montenegro.php | Página principal indisponível (tls_error: Failed to perform HTTP request. | Caused by error in `curl::curl_fetch_memory()`: | ! SSL peer certificate or SSH remote key was not OK [www.ce.gov.br]: | SSL certificate OpenSSL verify result: unable to get local issuer certificate (20)); consultada plataforma oficial Montenegro.
+[2026-11-09 14:32:49] [INFO] Fonte em processamento: fapeal | https://fapeal.br/editais/
+[2026-11-09 14:32:54] [INFO] [fapeal] sucesso: 2 registro(s) processado(s) (TRUNCADO por max_records). 41 candidato(s) avaliado(s); 20 valido(s); TRUNCADO por max_records.
+[2026-11-09 14:32:56] [INFO] Fonte em processamento: fapema | https://www.fapema.br/editais/
+[2026-11-09 14:33:00] [INFO] [fapema] sucesso: 1 registro(s) processado(s) (TRUNCADO por max_records). 39 candidato(s) avaliado(s); 20 valido(s); TRUNCADO por max_records.
+[2026-11-09 14:33:02] [INFO] Fonte em processamento: transferegov | https://www.gov.br/transferegov/pt-br
+[2026-11-09 14:33:02] [WARN] [transferegov] erro: [erro_parser] Nenhum candidato extraido: contrato da pagina nao reconhecido (nao e vazio confirmado).
+[2026-11-09 14:33:04] [INFO] Fonte em processamento: bnb_hubine | https://www.bnb.gov.br/hub-de-inovacao
+[2026-11-09 14:33:04] [INFO] [bnb_hubine] vazio: Vazio confirmado: 0 oportunidades validas. 2 pagina(s) do Hubine analisadas (conteudo principal); 0 selecao(oes) concreta(s) com documento; 0 falha(s) de acesso. Paginas institucionais nao sao persistidas.
+[2026-11-09 14:33:06] [INFO] Fonte em processamento: sigitec | https://conexoes-inovacao.petrobras.com.br/conexoesinovacao/s/cooperacoes-tecnologicas?language=pt_BR
+[2026-11-09 14:33:06] [ERROR] Falha na fonte sigitec: A future (<unnamed-38>) of class MulticoreFuture was interrupted at 2026-11-09T14:25:45, while running on ‘runnervmwuk1x’ (pid 7405) [future <unnamed-38> (686489fe1b49f01b19b9f513b11f3f7c-38); on 686489fe1b49f01b19b9f513b11f3f7c@runnervmwuk1x<7081> at 2026-11-09 14:25:45.246294]
+[2026-11-09 14:33:06] [INFO] Fonte em processamento: bndes | https://www.bndes.gov.br/wps/portal/site/home/transparencia/licitacoes-contratos/licitacoes/
+[2026-11-09 14:33:15] [INFO] [bndes] sucesso: 4 registro(s) processado(s). 4 chamada(s) de inovação/CPSI. Consulta estruturada de licitações (Dados Abertos BNDES) pendente de adaptador.
+[2026-11-09 14:33:17] [INFO] Fonte em processamento: softex | https://softex.br/editais/
+[2026-11-09 14:33:17] [INFO] [softex] sucesso: 0 registro(s) processado(s). 12 candidato(s) avaliado(s); 12 valido(s).
+[2026-11-09 14:33:19] [INFO] Fonte em processamento: pncp_gov | https://pncp.gov.br/api/consulta/v1/contratacoes/publicas
+[2026-11-09 14:33:19] [INFO] [pncp_gov] vazio: 0 registros apos a validacao (coletor sem contrato de diagnostico).
+[2026-11-09 14:33:21] [INFO] Fonte em processamento: fapesp | https://fapesp.br/chamadas
+[2026-11-09 14:33:27] [INFO] [fapesp] sucesso: 2 registro(s) processado(s)
+[2026-11-09 14:33:28] [INFO] Fonte em processamento: faperj | https://www.faperj.br/?id=editais
+[2026-11-09 14:33:32] [INFO] [faperj] sucesso: 1 registro(s) processado(s)
+[2026-11-09 14:33:34] [INFO] Fonte em processamento: fapemig | https://fapemig.br/pt/chamadas/
+[2026-11-09 14:33:40] [INFO] [fapemig] sucesso: 2 registro(s) processado(s) (TRUNCADO por max_records). 22 candidato(s) avaliado(s); 20 valido(s); TRUNCADO por max_records.
+[2026-11-09 14:33:41] [INFO] Fonte em processamento: fapesc | https://fapesc.sc.gov.br/editais/
+[2026-11-09 14:33:42] [INFO] [fapesc] sucesso: 0 registro(s) processado(s). 5 candidato(s) avaliado(s); 5 valido(s).
+[2026-11-09 14:33:45] [WARN] Exportação XLSX gerada com truncamento de textos acima de 32.000 caracteres.
+[2026-11-09 14:33:45] [INFO] Fim da coleta oficial. 43 fontes processadas. 199 registros adicionados nesta rodada. 437 registros na base.
